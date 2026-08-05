@@ -7,9 +7,16 @@ import { hasShopifyCredentials } from "~/shopify.server";
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
 
-  // Shopify always opens the app with ?shop=…; hand straight to OAuth.
+  // Shopify opens an embedded app at application_url with ?shop=&host=… inside
+  // the admin iframe. Hand it to the app, which authenticates via session token
+  // and starts managed install itself when there is no session yet.
+  //
+  // Not /auth/login: that calls login(), which for an App Store distribution
+  // throws a redirect to https://admin.shopify.com/store/<shop>/oauth/install.
+  // As a navigation inside the admin's own iframe that is frame-blocked, so an
+  // already-installed merchant opening the app got a blank frame.
   if (hasShopifyCredentials && url.searchParams.get("shop")) {
-    throw redirect(`/auth/login?${url.searchParams.toString()}`);
+    throw redirect(`/app?${url.searchParams.toString()}`);
   }
 
   // With credentials present, installing on a real store is the main path.

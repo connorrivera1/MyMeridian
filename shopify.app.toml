@@ -19,7 +19,12 @@ client_id = "9dfbe484752628b0a96c4755caf4f502"
 # needs an approved request (Partner Dashboard -> App -> API access). Without
 # it there is no CAC, lifetime value, payback, or loss-leader detection — the
 # Acquisition screen explains this rather than showing zeroes.
-scopes = "read_orders read_products read_fulfillments read_refunds read_inventory"
+#
+# read_refunds is deliberately absent: it is not a Shopify access scope, and
+# refunds are read as Order.refunds inside the orders query, which read_orders
+# already covers. Requesting a scope the platform does not recognise risks
+# failing OAuth outright, and nothing in the app ever checked for it.
+scopes = "read_orders read_products read_fulfillments read_inventory"
 
 [auth]
 redirect_urls = [ "https://shopify.dev/apps/default-app-home/api/auth" ]

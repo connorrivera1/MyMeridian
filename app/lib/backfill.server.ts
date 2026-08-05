@@ -470,21 +470,28 @@ export async function runBackfill(
 ): Promise<BackfillResult> {
   const startedAt = Date.now();
 
+  // Read before the reset, because the reset is what used to throw the resume
+  // point away.
+  const shop = await prisma.shop.findUniqueOrThrow({ where: { id: shopId } });
+  const resume = resumePointFor(shop);
+
   await prisma.shop.update({
     where: { id: shopId },
     data: {
       syncStatus: SyncStatus.RUNNING,
       syncStartedAt: new Date(),
-      syncStage: "Reading store settings",
+      syncStage: resume ? "Resuming order history" : "Reading store settings",
       syncError: null,
-      syncedOrders: 0,
+      // Products are re-imported either way — the cursor only covers orders —
+      // so the product counter always restarts. The order counter carries over,
+      // or MAX_ORDERS would be a per-attempt cap rather than a total one.
+      syncedOrders: resume?.importedOrders ?? 0,
       syncedProducts: 0,
-      syncCursor: null,
+      syncCursor: resume?.cursor ?? null,
     },
   });
 
   try {
-    const shop = await prisma.shop.findUniqueOrThrow({ where: { id: shopId } });
     const capabilities = capabilitiesForShop(shop, process.env.SCOPES);
 
     // Offline access tokens now expire after an hour. The client handed in
@@ -509,7 +516,7 @@ export async function runBackfill(
       where: { id: shopId },
       data: { syncStage: "Importing order history" },
     });
-    const orders = await importOrders(shopId, client, capabilities);
+    const orders = await importOrders(shopId, client, capabilities, resume);
 
     // Without fulfilment access there are no shipping records, and a capacity
     // series built from orders alone would show a backlog that only ever grows
@@ -540,6 +547,10 @@ export async function runBackfill(
         syncStatus: SyncStatus.COMPLETE,
         syncCompletedAt: new Date(),
         syncStage: null,
+        // A finished walk has no resume point. Leaving the last page's cursor
+        // behind would let a later run that dies before the order stage resume
+        // from the end of the previous import and skip the whole store.
+        syncCursor: null,
         lastSyncedAt: new Date(),
         earliestOrderAt: orders.earliestOrderAt,
         hasAllOrdersScope: orders.sawOrdersOlderThan60Days,
@@ -905,23 +916,36 @@ async function pageThrough<T>(
   return collected;
 }
 
-async function importOrders(
+/** Exported for test only — see backfill-resume.test.ts. */
+export async function importOrders(
   shopId: string,
   admin: AdminClient,
   capabilities: Capabilities,
+  resume: OrderResumePoint | null = null,
 ) {
-  let cursor: string | null = null;
-  let count = 0;
+  let cursor: string | null = resume?.cursor ?? null;
+  let count = resume?.importedOrders ?? 0;
   // The journey is only worth probing for when customer access exists at all.
   let usedJourney = capabilities.customers;
   let reachedCap = false;
-  let earliestOrderAt: Date | null = null;
+  let usingResumeCursor = resume !== null;
 
   const sixtyDaysAgo = Date.now() - 60 * 86_400_000;
-  let sawOrdersOlderThan60Days = false;
+
+  // Orders are walked oldest-first (`sortKey: PROCESSED_AT`, ascending), so the
+  // oldest order the API will ever hand us is on page one — which a resumed run
+  // is precisely the run that does not fetch. Both of these are read off the
+  // orders already stored rather than recomputed from the pages still to come,
+  // or resuming would report the store's history as starting wherever it was
+  // interrupted and then claim, from `hasAllOrdersScope`, that the store simply
+  // had no trading before that date.
+  const resumed = await priorOrderHistory(resume ? shopId : null);
+  let earliestOrderAt: Date | null = resumed;
+  let sawOrdersOlderThan60Days = resumed ? resumed.getTime() < sixtyDaysAgo : false;
 
   // Customers seen in this run, so the first order per customer is flagged
-  // correctly without a query per order.
+  // correctly without a query per order. A resumed run starts this empty and
+  // will over-flag; `reconcileFirstOrdersForShop` below settles it shop-wide.
   const customerIdByGid = new Map<string, string>();
   const firstOrderSeen = new Set<string>();
 
@@ -953,8 +977,30 @@ async function importOrders(
         usedJourney = false;
         continue;
       }
+
+      // A stored cursor Shopify will not take back — expired, or from a
+      // connection that no longer exists — would otherwise strand the import
+      // for good: every later attempt resumes from the same bad page and fails
+      // in the same place. Fall back to a full walk, once, and only for the
+      // request that actually carried the stored cursor.
+      if (usingResumeCursor && isInvalidCursorError(error)) {
+        console.warn(
+          `[backfill] stored resume cursor rejected, restarting the order import: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        usingResumeCursor = false;
+        cursor = null;
+        count = 0;
+        earliestOrderAt = null;
+        sawOrdersOlderThan60Days = false;
+        continue;
+      }
+
       throw error;
     }
+
+    usingResumeCursor = false;
 
     for (const node of page.orders.nodes) {
       const processedAt = new Date(node.processedAt ?? node.createdAt);
@@ -1246,6 +1292,61 @@ export async function rebuildCapacityDays(shopId: string) {
 }
 
 // ---------------------------------------------------------------------------
+
+export interface OrderResumePoint {
+  /** Shopify's `endCursor` from the last page this shop actually imported. */
+  cursor: string;
+  /** Orders already written by the interrupted run, so the cap stays a total. */
+  importedOrders: number;
+}
+
+/**
+ * Where an interrupted import should pick the order walk up again.
+ *
+ * The cursor has been written after every page since the sync columns were
+ * added; nothing ever read it, so an import killed 19,000 orders in — by a
+ * deploy, a crash, or the hour-long staleness rule in `backfillIsStale` — began
+ * again at the first order and cost the merchant the whole walk a second time.
+ *
+ * Only an attempt that did not finish may be resumed. COMPLETE means the walk
+ * ended and the next run is a genuine re-import; PENDING is set by
+ * `ensureShopProvisioned` when the granted scopes change, and those runs must
+ * re-read the store from the beginning because the query itself is now asking
+ * for different fields.
+ */
+export function resumePointFor(shop: {
+  syncStatus: SyncStatus;
+  syncCursor: string | null;
+  syncedOrders: number;
+}): OrderResumePoint | null {
+  if (!shop.syncCursor) return null;
+  if (shop.syncStatus !== SyncStatus.RUNNING && shop.syncStatus !== SyncStatus.FAILED) {
+    return null;
+  }
+
+  return {
+    cursor: shop.syncCursor,
+    importedOrders: Math.max(0, shop.syncedOrders),
+  };
+}
+
+/** Exported for test only — see backfill-resume.test.ts. */
+export function isInvalidCursorError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /cursor/i.test(message);
+}
+
+/** Oldest order already stored for a shop, or null when not resuming. */
+async function priorOrderHistory(shopId: string | null): Promise<Date | null> {
+  if (!shopId) return null;
+
+  const oldest = await prisma.order.aggregate({
+    where: { shopId },
+    _min: { processedAt: true },
+  });
+
+  return oldest._min.processedAt ?? null;
+}
 
 export function backfillIsStale(shop: {
   syncStatus: SyncStatus;

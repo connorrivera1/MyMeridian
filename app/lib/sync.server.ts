@@ -90,6 +90,33 @@ export function deriveChannel(
   return { channel: Channel.DIRECT, utm };
 }
 
+/**
+ * What a set of Shopify refunds actually took back.
+ *
+ * `refund.transactions[]` is an attempt log, not a ledger: a declined refund
+ * stays in it with `status: "error"`, and a retry adds a second entry for the
+ * same money. Summing the array blindly turned one $120 refund that failed and
+ * was retried into $240 returned, which subtracts more ex-tax revenue than the
+ * order ever booked and drives its margin negative.
+ *
+ * Only successful transactions of kind `refund` moved money. A `void` releases
+ * an authorisation that was never captured, so it is not a refund either.
+ */
+export function refundedTotalFrom(refunds: unknown): string {
+  if (!Array.isArray(refunds)) return "0.00";
+
+  const total = refunds
+    .flatMap((refund: Payload) => refund?.transactions ?? [])
+    .filter((tx: Payload) => {
+      const status = String(tx?.status ?? "").toLowerCase();
+      const kind = String(tx?.kind ?? "refund").toLowerCase();
+      return kind === "refund" && (status === "success" || status === "");
+    })
+    .reduce((sum: number, tx: Payload) => sum + Number(tx?.amount ?? 0), 0);
+
+  return total.toFixed(2);
+}
+
 export async function syncOrderFromShopify(shopId: string, payload: Payload) {
   const shopifyId = gid("Order", payload.id);
 
@@ -121,12 +148,7 @@ export async function syncOrderFromShopify(shopId: string, payload: Payload) {
     customerId = customer.id;
   }
 
-  const refundedTotal = Array.isArray(payload.refunds)
-    ? payload.refunds
-        .flatMap((refund: Payload) => refund.transactions ?? [])
-        .reduce((sum: number, tx: Payload) => sum + Number(tx.amount ?? 0), 0)
-        .toFixed(2)
-    : "0.00";
+  const refundedTotal = refundedTotalFrom(payload.refunds);
 
   const processedAt = new Date(payload.processed_at ?? payload.created_at);
 

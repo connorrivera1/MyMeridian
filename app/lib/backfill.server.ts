@@ -2,7 +2,7 @@ import { Channel, CostSource, SyncStatus } from "@prisma/client";
 
 import prisma from "~/db.server";
 import { invalidateAnalyticsCache } from "~/data/analytics.server";
-import { deriveChannel } from "~/lib/sync.server";
+import { deriveChannel, reconcileFirstOrdersForShop } from "~/lib/sync.server";
 import { generatePricingRecommendations } from "~/lib/pricing.server";
 import { recomputeShopProfitability } from "~/lib/recompute.server";
 import { capabilitiesForShop, type Capabilities } from "~/lib/scopes";
@@ -985,6 +985,13 @@ async function importOrders(
     if (reachedCap || !page.orders.pageInfo.hasNextPage) break;
     cursor = page.orders.pageInfo.endCursor;
   }
+
+  // `firstOrderSeen` only knows this run. Webhooks may have written newer
+  // orders before the import ever started, and an import that stops at
+  // MAX_ORDERS or resumes from a cursor never sees the whole customer. Settle
+  // the flag from everything stored rather than from what this pass happened
+  // to walk past.
+  await reconcileFirstOrdersForShop(shopId);
 
   return {
     count,

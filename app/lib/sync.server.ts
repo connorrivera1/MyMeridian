@@ -139,6 +139,7 @@ export async function syncOrderFromShopify(shopId: string, payload: Payload) {
 
   // Customer first, so the order can be linked in one write.
   let customerId: string | null = null;
+  let customerFirstOrderAt: Date | null = null;
   if (payload.customer?.id) {
     const customer = await prisma.customer.upsert({
       where: {
@@ -158,6 +159,7 @@ export async function syncOrderFromShopify(shopId: string, payload: Payload) {
       update: { email: payload.customer.email ?? undefined },
     });
     customerId = customer.id;
+    customerFirstOrderAt = customer.firstOrderAt ?? null;
   }
 
   const refundedTotal = refundedTotalFrom(payload.refunds);
@@ -221,9 +223,105 @@ export async function syncOrderFromShopify(shopId: string, payload: Payload) {
     update: orderData,
   });
 
+  // The count above can only see what has already arrived, and webhooks are not
+  // ordered. A customer's second order delivered first finds no earlier order
+  // and claims the flag; when the genuine first order turns up later it also
+  // finds nothing earlier — the two orders differ in age, not in what each can
+  // see — so both read as first and nothing ever demotes the impostor. Decide it
+  // again from all of the customer's orders now that this one is stored.
+  const earliest = customerId
+    ? await reconcileFirstOrder(shopId, customerId, customerFirstOrderAt)
+    : null;
+
   await syncLineItems(shopId, order.id, payload);
 
-  return order;
+  return earliest ? { ...order, isFirstOrder: earliest.id === order.id } : order;
+}
+
+/**
+ * Make exactly one of a customer's orders their first, and say so on the
+ * customer row too.
+ *
+ * Order of arrival decides nothing here: the earliest stored order wins, and
+ * ties — two orders sharing a `processedAt` to the millisecond — fall to the
+ * order number, which Shopify issues in sequence. Idempotent, so it is safe to
+ * run on every delivery of the same order.
+ */
+export async function reconcileFirstOrder(
+  shopId: string,
+  customerId: string,
+  knownFirstOrderAt: Date | null = null,
+) {
+  const earliest = await prisma.order.findFirst({
+    where: { shopId, customerId },
+    orderBy: [{ processedAt: "asc" }, { orderNumber: "asc" }, { shopifyId: "asc" }],
+    select: {
+      id: true,
+      isFirstOrder: true,
+      processedAt: true,
+      channel: true,
+      campaignId: true,
+    },
+  });
+  if (!earliest) return null;
+
+  await prisma.order.updateMany({
+    where: { shopId, customerId, isFirstOrder: true, id: { not: earliest.id } },
+    data: { isFirstOrder: false },
+  });
+
+  if (!earliest.isFirstOrder) {
+    await prisma.order.update({
+      where: { id: earliest.id },
+      data: { isFirstOrder: true },
+    });
+  }
+
+  // The customer row is stamped when it is created, from the first order
+  // *delivered* rather than the first placed — so the same misordering pins the
+  // acquisition channel to whichever order happened to arrive first. A
+  // recompute would eventually correct `firstOrderAt`; it never touches the
+  // channel, and CAC is reported per channel.
+  if (knownFirstOrderAt?.getTime() !== earliest.processedAt.getTime()) {
+    await prisma.customer.update({
+      where: { id: customerId },
+      data: {
+        firstOrderAt: earliest.processedAt,
+        acquisitionChannel: earliest.channel,
+        acquisitionCampaignId: earliest.campaignId,
+      },
+    });
+  }
+
+  return earliest;
+}
+
+/**
+ * The same decision for a whole shop, in one statement.
+ *
+ * The import flags the first order it *sees* for each customer, which is right
+ * only when it sees all of them, oldest first. A resumed import, or one run on
+ * a shop whose webhooks already wrote newer orders, sees a slice — so the flag
+ * is settled once at the end from what is actually stored.
+ */
+export async function reconcileFirstOrdersForShop(shopId: string) {
+  return prisma.$executeRaw`
+    WITH ranked AS (
+      SELECT
+        o.id,
+        ROW_NUMBER() OVER (
+          PARTITION BY o."customerId"
+          ORDER BY o."processedAt" ASC, o."orderNumber" ASC, o."shopifyId" ASC
+        ) = 1 AS is_first
+      FROM "Order" o
+      WHERE o."shopId" = ${shopId} AND o."customerId" IS NOT NULL
+    )
+    UPDATE "Order" AS o
+       SET "isFirstOrder" = ranked.is_first
+      FROM ranked
+     WHERE o.id = ranked.id
+       AND o."isFirstOrder" IS DISTINCT FROM ranked.is_first
+  `;
 }
 
 async function syncLineItems(shopId: string, orderId: string, payload: Payload) {

@@ -12,8 +12,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const orderCount = vi.fn();
 const orderUpsert = vi.fn();
 const orderFindUnique = vi.fn();
+const orderFindFirst = vi.fn();
 const orderUpdate = vi.fn();
+const orderUpdateMany = vi.fn();
 const customerUpsert = vi.fn();
+const customerUpdate = vi.fn();
+let orderRows: any[] = [];
+let customerRows: any[] = [];
 const fulfillmentFindUnique = vi.fn();
 const fulfillmentFindFirst = vi.fn();
 const fulfillmentCreate = vi.fn();
@@ -27,10 +32,13 @@ vi.mock("~/db.server", () => ({
       count: (...args: unknown[]) => orderCount(...args),
       upsert: (...args: unknown[]) => orderUpsert(...args),
       findUnique: (...args: unknown[]) => orderFindUnique(...args),
+      findFirst: (...args: unknown[]) => orderFindFirst(...args),
       update: (...args: unknown[]) => orderUpdate(...args),
+      updateMany: (...args: unknown[]) => orderUpdateMany(...args),
     },
     customer: {
       upsert: (...args: unknown[]) => customerUpsert(...args),
+      update: (...args: unknown[]) => customerUpdate(...args),
     },
     orderLineItem: {
       deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
@@ -51,6 +59,7 @@ const { syncOrderFromShopify, syncFulfillmentFromShopify } = await import("./syn
 
 const SHOP_ID = "shop_1";
 const PROCESSED_AT = "2026-07-01T10:00:00Z";
+const EARLIER = "2026-06-01T10:00:00Z";
 
 function orderPayload(overrides: Record<string, unknown> = {}) {
   return {
@@ -84,17 +93,103 @@ function fulfillmentPayload(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** Sorts a fake table the way Prisma's `orderBy` array would. */
+function byOrderBy(orderBy: any) {
+  const keys: Record<string, "asc" | "desc">[] = Array.isArray(orderBy)
+    ? orderBy
+    : [orderBy];
+  return (a: any, b: any) => {
+    for (const key of keys) {
+      const [field, direction] = Object.entries(key)[0]!;
+      const left = a[field] instanceof Date ? a[field].getTime() : a[field];
+      const right = b[field] instanceof Date ? b[field].getTime() : b[field];
+      if (left < right) return direction === "desc" ? 1 : -1;
+      if (left > right) return direction === "desc" ? -1 : 1;
+    }
+    return 0;
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
-  customerUpsert.mockResolvedValue({ id: "cust_1" });
-  orderUpsert.mockImplementation(async ({ create }: any) => ({
-    id: "order_1",
-    ...create,
-  }));
-  orderCount.mockResolvedValue(0);
+
+  // Order and customer are fake tables rather than fixed answers. The defect
+  // this file covers is that the first-order decision depends on which rows
+  // already exist — a mock that answers the same thing regardless of what has
+  // been written cannot see it, and would pass against the bug.
+  orderRows = [];
+  customerRows = [];
+
+  customerUpsert.mockImplementation(async ({ where, create, update }: any) => {
+    const key = where.shopId_shopifyId;
+    const existing = customerRows.find(
+      (row) => row.shopId === key.shopId && row.shopifyId === key.shopifyId,
+    );
+    if (existing) {
+      for (const [field, value] of Object.entries(update ?? {})) {
+        if (value !== undefined) existing[field] = value;
+      }
+      return existing;
+    }
+    const row = { id: `cust_${customerRows.length + 1}`, ...create };
+    customerRows.push(row);
+    return row;
+  });
+  customerUpdate.mockImplementation(async ({ where, data }: any) => {
+    const row = customerRows.find((candidate) => candidate.id === where.id);
+    if (row) return Object.assign(row, data);
+    return { id: where.id, ...data };
+  });
+
+  orderUpsert.mockImplementation(async ({ where, create, update }: any) => {
+    const key = where.shopId_shopifyId;
+    const existing = orderRows.find(
+      (row) => row.shopId === key.shopId && row.shopifyId === key.shopifyId,
+    );
+    if (existing) return Object.assign(existing, update);
+    const row = { id: `order_${orderRows.length + 1}`, ...create };
+    orderRows.push(row);
+    return row;
+  });
+  orderCount.mockImplementation(async ({ where }: any) =>
+    orderRows.filter(
+      (row) =>
+        row.shopId === where.shopId &&
+        row.customerId === where.customerId &&
+        (where.shopifyId?.not === undefined ||
+          row.shopifyId !== where.shopifyId.not) &&
+        (where.processedAt?.lt === undefined ||
+          row.processedAt < where.processedAt.lt),
+    ).length,
+  );
+  orderFindFirst.mockImplementation(async ({ where, orderBy }: any) => {
+    const matched = orderRows
+      .filter(
+        (row) =>
+          row.shopId === where.shopId && row.customerId === where.customerId,
+      )
+      .sort(byOrderBy(orderBy));
+    return matched[0] ?? null;
+  });
+  orderUpdateMany.mockImplementation(async ({ where, data }: any) => {
+    const matched = orderRows.filter(
+      (row) =>
+        row.shopId === where.shopId &&
+        row.customerId === where.customerId &&
+        (where.isFirstOrder === undefined ||
+          row.isFirstOrder === where.isFirstOrder) &&
+        (where.id?.not === undefined || row.id !== where.id.not),
+    );
+    for (const row of matched) Object.assign(row, data);
+    return { count: matched.length };
+  });
 
   orderFindUnique.mockResolvedValue({ id: "order_1" });
-  orderUpdate.mockResolvedValue({ id: "order_1" });
+  orderUpdate.mockImplementation(async ({ where, data }: any) => {
+    const row = orderRows.find((candidate) => candidate.id === where.id);
+    if (row) return Object.assign(row, data);
+    return { id: where.id, ...data };
+  });
 
   // A fake table rather than a flat `null`: the defect being covered is that
   // two lookups which differ only in their `where` returned the same row, so a
@@ -166,8 +261,16 @@ describe("syncOrderFromShopify — isFirstOrder", () => {
     expect(redelivered.isFirstOrder).toBe(true);
   });
 
-  it("is false when the customer has an genuinely earlier order", async () => {
-    orderCount.mockResolvedValue(1);
+  it("is false when the customer has a genuinely earlier order", async () => {
+    await syncOrderFromShopify(
+      SHOP_ID,
+      orderPayload({
+        id: 99900000,
+        order_number: 1000,
+        processed_at: EARLIER,
+        created_at: EARLIER,
+      }),
+    );
 
     const order = await syncOrderFromShopify(SHOP_ID, orderPayload());
 
@@ -184,6 +287,128 @@ describe("syncOrderFromShopify — isFirstOrder", () => {
 
     expect(order.isFirstOrder).toBe(false);
     expect(orderCount).not.toHaveBeenCalled();
+    expect(orderFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("demotes an order that claimed the flag before the real first arrived", async () => {
+    // Webhook delivery is not ordered. A second order arriving first finds no
+    // earlier order and takes the flag; the genuine first order arriving later
+    // also finds nothing earlier — they differ in age, not in what each can
+    // see — so both end up flagged and every new-customer count, and the CAC
+    // divided by it, is wrong until someone notices.
+    const second = await syncOrderFromShopify(
+      SHOP_ID,
+      orderPayload({ id: 99900002, order_number: 1002 }),
+    );
+    expect(second.isFirstOrder).toBe(true);
+
+    const first = await syncOrderFromShopify(
+      SHOP_ID,
+      orderPayload({
+        id: 99900001,
+        order_number: 1001,
+        processed_at: EARLIER,
+        created_at: EARLIER,
+      }),
+    );
+
+    expect(first.isFirstOrder).toBe(true);
+    expect(orderRows.filter((row) => row.isFirstOrder)).toHaveLength(1);
+    expect(
+      orderRows.find((row) => row.shopifyId.endsWith("/99900002")).isFirstOrder,
+    ).toBe(false);
+  });
+
+  it("corrects the customer's firstOrderAt when the earlier order lands second", async () => {
+    // firstOrderAt is stamped when the customer row is created — the first
+    // order delivered, not the first placed. The GDPR export reads it.
+    await syncOrderFromShopify(
+      SHOP_ID,
+      orderPayload({ id: 99900002, order_number: 1002 }),
+    );
+    expect(customerRows[0].firstOrderAt).toEqual(new Date(PROCESSED_AT));
+
+    await syncOrderFromShopify(
+      SHOP_ID,
+      orderPayload({
+        id: 99900001,
+        order_number: 1001,
+        processed_at: EARLIER,
+        created_at: EARLIER,
+      }),
+    );
+
+    expect(customerRows[0].firstOrderAt).toEqual(new Date(EARLIER));
+  });
+
+  it("repoints the acquisition channel at the genuine first order", async () => {
+    // The customer row is stamped from whichever order created it, so a
+    // misordered delivery credits the wrong channel — and CAC is reported per
+    // channel, so the spend and the customer land in different columns.
+    await syncOrderFromShopify(
+      SHOP_ID,
+      orderPayload({
+        id: 99900002,
+        order_number: 1002,
+        landing_site: "/?utm_source=facebook&utm_medium=cpc&utm_campaign=retarget",
+      }),
+    );
+    expect(customerRows[0].acquisitionChannel).toBe("FACEBOOK");
+
+    await syncOrderFromShopify(
+      SHOP_ID,
+      orderPayload({
+        id: 99900001,
+        order_number: 1001,
+        processed_at: EARLIER,
+        created_at: EARLIER,
+        landing_site: "/?utm_source=google&utm_medium=cpc&utm_campaign=launch",
+      }),
+    );
+
+    expect(customerRows[0].acquisitionChannel).toBe("GOOGLE");
+    expect(customerRows[0].acquisitionCampaignId).toBe("launch");
+  });
+
+  it("breaks a same-instant tie on the order number, not on arrival", async () => {
+    // Two orders can share a processed_at to the millisecond. Something has to
+    // decide, and it must not be which webhook won the race.
+    await syncOrderFromShopify(
+      SHOP_ID,
+      orderPayload({ id: 99900002, order_number: 1002 }),
+    );
+    await syncOrderFromShopify(
+      SHOP_ID,
+      orderPayload({ id: 99900001, order_number: 1001 }),
+    );
+
+    const flagged = orderRows.filter((row) => row.isFirstOrder);
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0].orderNumber).toBe(1001);
+  });
+
+  it("does not flip back when the later order is redelivered", async () => {
+    await syncOrderFromShopify(
+      SHOP_ID,
+      orderPayload({ id: 99900002, order_number: 1002 }),
+    );
+    await syncOrderFromShopify(
+      SHOP_ID,
+      orderPayload({
+        id: 99900001,
+        order_number: 1001,
+        processed_at: EARLIER,
+        created_at: EARLIER,
+      }),
+    );
+
+    const redelivered = await syncOrderFromShopify(
+      SHOP_ID,
+      orderPayload({ id: 99900002, order_number: 1002 }),
+    );
+
+    expect(redelivered.isFirstOrder).toBe(false);
+    expect(orderRows.filter((row) => row.isFirstOrder)).toHaveLength(1);
   });
 });
 

@@ -306,7 +306,7 @@ tests: the card renders the request and the collect POST flips it to Collected.
 | GraphQL Admin API only | Done | No REST calls anywhere; new public apps may not use REST |
 | Webhook API version | Done | `2026-07`, matching `@shopify/shopify-api` 13.1.0 |
 | Production build | Done | `npm run build` clean |
-| Test suite | Done | **159 tests, 15 files, all passing** |
+| Test suite | Done | **188 tests, 17 files, all passing** (verified 2026-08-05 19:53, `npx vitest run`) |
 | Typecheck | Done | Clean |
 | Config validity | Done | `shopify app config validate` passes |
 | Every route renders | Done | 12 routes served 200 from a running server, with real computed figures |
@@ -327,24 +327,21 @@ thrown from the same function that throws the 401.
 2. **`Order.fulfillments(first: 10)` is still a hard cap.** It is a plain list
    in the Admin API, not a connection, so there is no `hasNextPage` to follow.
    An order with more than ten fulfilments loses the rest.
-3. **`Shop.syncCursor` is documented and written but never read.** An
-   interrupted import restarts from the beginning despite the resume point being
-   stored.
-4. **Order-level stored profit is a write-only cache.** `recompute` writes
+3. **Order-level stored profit is a write-only cache.** `recompute` writes
    `Order.netProfit`, but every dashboard figure is recomputed on the fly and
    nothing reads it back except `contributionProfit` for cohort LTV.
-5. **Ad platform connectors are not wired to live OAuth.** Modelled and
+4. **Ad platform connectors are not wired to live OAuth.** Modelled and
    encrypted end to end, but Facebook/Google/TikTok have no OAuth flow, so on a
    real store the acquisition screen shows organic and direct traffic with zero
    spend. The plan copy sells "unlimited ad channels".
-6. **Backfill and recompute run in-process.** Correct on a long-lived server,
+5. **Backfill and recompute run in-process.** Correct on a long-lived server,
    wrong on serverless where the process may not outlive the response. Both
    belong in a job queue before deploying there.
-7. **The demo auth bypass ships in the production bundle.** Guarded by a
+6. **The demo auth bypass ships in the production bundle.** Guarded by a
    boot-time throw when `NODE_ENV=production` and by Shopify-signal detection,
    which is solid, but the whole guard depends on `NODE_ENV` being set correctly
    at deploy. A reviewer reading the source will pause here.
-8. **The local `.env` still lists withdrawn scopes.** It reads
+7. **The local `.env` still lists withdrawn scopes.** It reads
    `read_customers,read_reports,read_analytics` alongside the real four.
     `.env.example` and the toml were corrected, but the file the dev server
     actually reads was not — and `capabilitiesForShop` falls back to

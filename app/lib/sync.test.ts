@@ -11,13 +11,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const orderCount = vi.fn();
 const orderUpsert = vi.fn();
+const orderFindUnique = vi.fn();
+const orderUpdate = vi.fn();
 const customerUpsert = vi.fn();
+const fulfillmentFindUnique = vi.fn();
+const fulfillmentFindFirst = vi.fn();
+const fulfillmentCreate = vi.fn();
+const fulfillmentUpdate = vi.fn();
+const fulfillmentCount = vi.fn();
+let fulfillmentRows: any[] = [];
 
 vi.mock("~/db.server", () => ({
   default: {
     order: {
       count: (...args: unknown[]) => orderCount(...args),
       upsert: (...args: unknown[]) => orderUpsert(...args),
+      findUnique: (...args: unknown[]) => orderFindUnique(...args),
+      update: (...args: unknown[]) => orderUpdate(...args),
     },
     customer: {
       upsert: (...args: unknown[]) => customerUpsert(...args),
@@ -26,11 +36,18 @@ vi.mock("~/db.server", () => ({
       deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
       createMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
+    fulfillment: {
+      findUnique: (...args: unknown[]) => fulfillmentFindUnique(...args),
+      findFirst: (...args: unknown[]) => fulfillmentFindFirst(...args),
+      create: (...args: unknown[]) => fulfillmentCreate(...args),
+      update: (...args: unknown[]) => fulfillmentUpdate(...args),
+      count: (...args: unknown[]) => fulfillmentCount(...args),
+    },
     variant: { findMany: vi.fn().mockResolvedValue([]) },
   },
 }));
 
-const { syncOrderFromShopify } = await import("./sync.server");
+const { syncOrderFromShopify, syncFulfillmentFromShopify } = await import("./sync.server");
 
 const SHOP_ID = "shop_1";
 const PROCESSED_AT = "2026-07-01T10:00:00Z";
@@ -53,6 +70,20 @@ function orderPayload(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function fulfillmentPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 77700001,
+    order_id: 99900001,
+    created_at: "2026-07-02T09:00:00Z",
+    status: "success",
+    tracking_company: "UPS",
+    service: "ground",
+    location_id: 4001,
+    line_items: [{ quantity: 2 }],
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   customerUpsert.mockResolvedValue({ id: "cust_1" });
@@ -61,6 +92,44 @@ beforeEach(() => {
     ...create,
   }));
   orderCount.mockResolvedValue(0);
+
+  orderFindUnique.mockResolvedValue({ id: "order_1" });
+  orderUpdate.mockResolvedValue({ id: "order_1" });
+
+  // A fake table rather than a flat `null`: the defect being covered is that
+  // two lookups which differ only in their `where` returned the same row, so a
+  // mock that answers the same thing to every query cannot see it.
+  fulfillmentRows = [];
+  fulfillmentFindUnique.mockImplementation(async ({ where }: any) => {
+    const key = where.shopId_shopifyId;
+    return (
+      fulfillmentRows.find(
+        (row) => row.shopId === key.shopId && row.shopifyId === key.shopifyId,
+      ) ?? null
+    );
+  });
+  fulfillmentFindFirst.mockImplementation(async ({ where }: any) => {
+    return (
+      fulfillmentRows.find(
+        (row) =>
+          row.shopId === where.shopId &&
+          row.orderId === where.orderId &&
+          row.createdAt.getTime() === new Date(where.createdAt).getTime() &&
+          (where.shopifyId === undefined || row.shopifyId === where.shopifyId),
+      ) ?? null
+    );
+  });
+  fulfillmentCreate.mockImplementation(async ({ data }: any) => {
+    const row = { id: `ful_${fulfillmentRows.length + 1}`, ...data };
+    fulfillmentRows.push(row);
+    return row;
+  });
+  fulfillmentUpdate.mockImplementation(async ({ where, data }: any) => {
+    const row = fulfillmentRows.find((candidate) => candidate.id === where.id);
+    if (row) return Object.assign(row, data);
+    return { id: where.id, ...data };
+  });
+  fulfillmentCount.mockResolvedValue(1);
 });
 
 describe("syncOrderFromShopify — isFirstOrder", () => {
@@ -115,5 +184,93 @@ describe("syncOrderFromShopify — isFirstOrder", () => {
 
     expect(order.isFirstOrder).toBe(false);
     expect(orderCount).not.toHaveBeenCalled();
+  });
+});
+
+describe("syncFulfillmentFromShopify", () => {
+  it("stores Shopify's fulfilment id so an update has something to match on", async () => {
+    await syncFulfillmentFromShopify(SHOP_ID, fulfillmentPayload());
+
+    const data = fulfillmentCreate.mock.calls[0]![0].data;
+    expect(data.shopifyId).toBe("gid://shopify/Fulfillment/77700001");
+    expect(data.itemCount).toBe(2);
+  });
+
+  it("applies a status and carrier change instead of dropping it", async () => {
+    // fulfillments/update repeats the original created_at. Matching on time
+    // alone read this as a duplicate and returned early, so a cancellation or
+    // a carrier correction never reached the row.
+    fulfillmentFindUnique.mockResolvedValue({
+      id: "ful_1",
+      shopifyId: "gid://shopify/Fulfillment/77700001",
+      status: "success",
+      carrier: "UPS",
+    });
+    fulfillmentCount.mockResolvedValue(0);
+
+    await syncFulfillmentFromShopify(
+      SHOP_ID,
+      fulfillmentPayload({ status: "cancelled", tracking_company: "FedEx" }),
+    );
+
+    expect(fulfillmentCreate).not.toHaveBeenCalled();
+    const { where, data } = fulfillmentUpdate.mock.calls[0]![0];
+    expect(where.id).toBe("ful_1");
+    expect(data.status).toBe("cancelled");
+    expect(data.carrier).toBe("FedEx");
+    // A cancelled fulfilment never shipped; leaving shippedAt set would count
+    // it against the warehouse's throughput.
+    expect(data.shippedAt).toBeNull();
+  });
+
+  it("keeps two shipments created in the same second apart", async () => {
+    // Both carry the same created_at, so the old triple match collapsed the
+    // second into the first and lost a shipment from the capacity series.
+    await syncFulfillmentFromShopify(SHOP_ID, fulfillmentPayload({ id: 77700001 }));
+    await syncFulfillmentFromShopify(SHOP_ID, fulfillmentPayload({ id: 77700002 }));
+
+    expect(fulfillmentCreate).toHaveBeenCalledTimes(2);
+    expect(fulfillmentUpdate).not.toHaveBeenCalled();
+  });
+
+  it("adopts a pre-migration row by timestamp rather than duplicating it", async () => {
+    // Rows imported before shopifyId existed carry none. The first update to
+    // one of them must claim it, not write a second row beside it.
+    fulfillmentFindUnique.mockResolvedValue(null);
+    fulfillmentFindFirst.mockResolvedValue({ id: "ful_legacy", shopifyId: null });
+
+    await syncFulfillmentFromShopify(SHOP_ID, fulfillmentPayload());
+
+    expect(fulfillmentFindFirst.mock.calls[0]![0].where.shopifyId).toBeNull();
+    expect(fulfillmentCreate).not.toHaveBeenCalled();
+    const { where, data } = fulfillmentUpdate.mock.calls[0]![0];
+    expect(where.id).toBe("ful_legacy");
+    expect(data.shopifyId).toBe("gid://shopify/Fulfillment/77700001");
+  });
+
+  it("stops claiming an order is fulfilled once its only shipment is cancelled", async () => {
+    fulfillmentCount.mockResolvedValue(0);
+
+    await syncFulfillmentFromShopify(SHOP_ID, fulfillmentPayload({ status: "cancelled" }));
+
+    expect(orderUpdate.mock.calls[0]![0].data.fulfillmentStatus).toBe("unfulfilled");
+    expect(fulfillmentCount.mock.calls[0]![0].where.status.notIn).toContain("cancelled");
+  });
+
+  it("still reports fulfilled while another shipment is active", async () => {
+    fulfillmentCount.mockResolvedValue(1);
+
+    await syncFulfillmentFromShopify(SHOP_ID, fulfillmentPayload({ status: "cancelled" }));
+
+    expect(orderUpdate.mock.calls[0]![0].data.fulfillmentStatus).toBe("fulfilled");
+  });
+
+  it("ignores a fulfilment for an order it has never seen", async () => {
+    orderFindUnique.mockResolvedValue(null);
+
+    const result = await syncFulfillmentFromShopify(SHOP_ID, fulfillmentPayload());
+
+    expect(result).toBeNull();
+    expect(fulfillmentCreate).not.toHaveBeenCalled();
   });
 });

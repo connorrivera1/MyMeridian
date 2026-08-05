@@ -1140,6 +1140,9 @@ async function importOneOrder(
       data: node.fulfillments.map((fulfillment) => ({
         shopId,
         orderId: order.id,
+        // Carried so a later fulfillments/update matches this row by identity
+        // rather than by timestamp, which an update repeats verbatim.
+        shopifyId: fulfillment.id,
         status: (fulfillment.status ?? "success").toLowerCase(),
         createdAt: new Date(fulfillment.createdAt),
         shippedAt: new Date(fulfillment.createdAt),

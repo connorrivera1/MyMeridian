@@ -356,44 +356,90 @@ export async function syncProductFromShopify(shopId: string, payload: Payload) {
   return product;
 }
 
+/** Shopify fulfilment states that mean nothing shipped, or that it came back. */
+const INACTIVE_FULFILLMENT_STATUSES = new Set(["cancelled", "canceled", "error", "failure"]);
+
+/**
+ * Apply a `fulfillments/create` or `fulfillments/update` delivery.
+ *
+ * Identity is Shopify's fulfilment id, never the timestamp. An update repeats
+ * the original `created_at`, so matching on `(shopId, orderId, createdAt)` read
+ * every update as a duplicate already stored and returned early — cancellations
+ * and carrier corrections never landed, and two shipments created in the same
+ * second collapsed into one row.
+ */
 export async function syncFulfillmentFromShopify(shopId: string, payload: Payload) {
   const order = await prisma.order.findUnique({
     where: { shopId_shopifyId: { shopId, shopifyId: gid("Order", payload.order_id) } },
   });
   if (!order) return null;
 
+  const shopifyId = payload.id ? gid("Fulfillment", payload.id) : null;
+  const createdAt = new Date(payload.created_at);
+  const status = String(payload.status ?? "success").toLowerCase();
+  const shipped = !INACTIVE_FULFILLMENT_STATUSES.has(status);
+
   const itemCount = (payload.line_items ?? []).reduce(
     (sum: number, item: Payload) => sum + Number(item.quantity ?? 0),
     0,
   );
 
-  const existing = await prisma.fulfillment.findFirst({
-    where: { shopId, orderId: order.id, createdAt: new Date(payload.created_at) },
-  });
-  if (existing) return existing;
+  const fields = {
+    status,
+    createdAt,
+    // A cancelled fulfilment never shipped, and one that was cancelled after
+    // the fact did not stay shipped. Clearing this keeps the fulfilment engine
+    // from counting it against the warehouse's throughput.
+    shippedAt: shipped && payload.created_at ? createdAt : null,
+    carrier: payload.tracking_company ?? null,
+    serviceLevel: payload.service ?? null,
+    itemCount,
+    location: String(payload.location_id ?? "primary"),
+  };
 
-  const fulfillment = await prisma.fulfillment.create({
-    data: {
-      shopId,
-      orderId: order.id,
-      status: payload.status ?? "success",
-      createdAt: new Date(payload.created_at),
-      shippedAt: payload.created_at ? new Date(payload.created_at) : null,
-      carrier: payload.tracking_company ?? null,
-      serviceLevel: payload.service ?? null,
-      itemCount,
-      location: String(payload.location_id ?? "primary"),
-      // Real carrier cost arrives from the 3PL connector, not from Shopify.
-      // Left at zero so the engine falls back to the merchant's cost rule
-      // rather than silently claiming this shipment was free.
-      shippingCost: "0.00",
-      pickPackCost: "0.00",
-    },
+  // Rows imported before `shopifyId` existed carry none, and neither does a
+  // payload without an id. Fall back to the old triple match so an update to
+  // one of those adopts the row instead of writing a second one beside it.
+  const existing = shopifyId
+    ? ((await prisma.fulfillment.findUnique({
+        where: { shopId_shopifyId: { shopId, shopifyId } },
+      })) ??
+      (await prisma.fulfillment.findFirst({
+        where: { shopId, orderId: order.id, createdAt, shopifyId: null },
+      })))
+    : await prisma.fulfillment.findFirst({
+        where: { shopId, orderId: order.id, createdAt },
+      });
+
+  const fulfillment = existing
+    ? await prisma.fulfillment.update({
+        where: { id: existing.id },
+        data: { ...fields, shopifyId: shopifyId ?? existing.shopifyId },
+      })
+    : await prisma.fulfillment.create({
+        data: {
+          shopId,
+          orderId: order.id,
+          shopifyId,
+          ...fields,
+          // Real carrier cost arrives from the 3PL connector, not from Shopify.
+          // Left at zero so the engine falls back to the merchant's cost rule
+          // rather than silently claiming this shipment was free.
+          shippingCost: "0.00",
+          pickPackCost: "0.00",
+        },
+      });
+
+  // Derived, not asserted: the order is only fulfilled while at least one of
+  // its fulfilments is. Stamping "fulfilled" unconditionally left an order
+  // whose single shipment was cancelled reading as shipped forever.
+  const active = await prisma.fulfillment.count({
+    where: { shopId, orderId: order.id, status: { notIn: [...INACTIVE_FULFILLMENT_STATUSES] } },
   });
 
   await prisma.order.update({
     where: { id: order.id },
-    data: { fulfillmentStatus: "fulfilled" },
+    data: { fulfillmentStatus: active > 0 ? "fulfilled" : "unfulfilled" },
   });
 
   return fulfillment;

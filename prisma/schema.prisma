@@ -365,6 +365,13 @@ model Fulfillment {
   orderId String
   order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
+  /// Shopify's own fulfilment id. The only stable identity a `fulfillments/update`
+  /// carries: it repeats the original `created_at`, so matching on time alone
+  /// mistook every update for a duplicate and dropped it. Nullable because rows
+  /// imported before this column existed have no id to backfill — Postgres treats
+  /// NULLs as distinct, so those legacy rows do not collide with each other.
+  shopifyId String?
+
   status       String    @default("pending")
   createdAt    DateTime
   shippedAt    DateTime?
@@ -377,6 +384,7 @@ model Fulfillment {
   itemCount    Int     @default(0)
   location     String  @default("primary")
 
+  @@unique([shopId, shopifyId])
   @@index([shopId, createdAt])
   @@index([orderId])
 }

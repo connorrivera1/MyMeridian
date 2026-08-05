@@ -1,4 +1,9 @@
-import { CostRuleKind, ConnectorProvider, ConnectorStatus } from "@prisma/client";
+import {
+  CostRuleKind,
+  ConnectorProvider,
+  ConnectorStatus,
+  SyncStatus,
+} from "@prisma/client";
 
 import prisma from "~/db.server";
 
@@ -49,9 +54,19 @@ export async function ensureShopProvisioned(domain: string, name?: string) {
   const existing = await prisma.shop.findUnique({ where: { domain } });
   if (existing) {
     if (existing.uninstalledAt) {
+      // Webhook subscriptions die with the install, so nothing that happened
+      // while the app was uninstalled exists anywhere — no orders, no refunds,
+      // no product changes. Leaving syncStatus as COMPLETE meant afterAuth's
+      // `alreadyImported` check skipped the backfill, and the merchant came
+      // back to a dashboard that loaded perfectly while silently missing every
+      // sale from the gap. Reset it so the import runs again on reinstall.
       return prisma.shop.update({
         where: { id: existing.id },
-        data: { uninstalledAt: null, installedAt: new Date() },
+        data: {
+          uninstalledAt: null,
+          installedAt: new Date(),
+          syncStatus: SyncStatus.PENDING,
+        },
       });
     }
     return existing;

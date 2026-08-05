@@ -139,7 +139,14 @@ function buildShopify() {
 
     hooks: {
       afterAuth: async ({ session, admin }) => {
-        await shopify.registerWebhooks({ session });
+        // No registerWebhooks here. shopify.app.toml carries
+        // [[webhooks.subscriptions]] and `include_config_on_deploy = true`, so
+        // Shopify registers them app-wide at deploy. Registering again per shop
+        // created a second, shop-specific subscription for the same topic from
+        // a list that had drifted out of step with the toml — it was missing
+        // products/create and fulfillments/update. Two subscriptions mean two
+        // deliveries with different X-Shopify-Webhook-Id values, which the
+        // idempotency check cannot suppress because it keys on that id.
 
         // Every install needs a Shop row and a starting set of cost rules,
         // otherwise the first dashboard load has nothing to reason about.

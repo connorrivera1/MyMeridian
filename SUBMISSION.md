@@ -206,6 +206,34 @@ same-second shipments produce two rows, the update lands as cancelled/FedEx with
 cancelled, and a pre-migration row is adopted rather than duplicated. The seven
 new tests were run against the old code first — five fail there.
 
+### The first order was decided by which webhook arrived first
+
+`syncOrderFromShopify` set `isFirstOrder` by counting the customer's orders that
+precede the one being written. Correct only if orders arrive in the order they
+were placed, which webhook delivery does not promise. A second order delivered
+first finds nothing earlier and takes the flag; the genuine first order arriving
+later also finds nothing earlier, so both stayed flagged and nothing demoted the
+impostor. New customers are counted off that flag and CAC is spend divided by
+new customers, so the acquisition screen overstated the count and understated
+the cost. The same misordering pinned `firstOrderAt` and `acquisitionChannel` to
+whichever order created the customer row — putting the spend and the customer it
+bought in different channel columns.
+
+`reconcileFirstOrder` now settles it after the order is stored, from all of the
+customer's orders: earliest wins, ties fall to the order number Shopify issues
+in sequence, and the customer row is repointed at that order. Idempotent, so
+redelivery reaches the same answer. The import had the same hole from the other
+side — `firstOrderSeen` only knows the current run, so a resumed import, one
+that stops at `MAX_ORDERS`, or one on a shop whose webhooks already wrote newer
+orders sees only a slice of the customer; `reconcileFirstOrdersForShop` settles
+the whole shop in one statement at the end of the import.
+
+Five new tests, run against the old code first — four fail there. The raw
+statement was proved against the live database on a scratch shop, since no
+prisma mock can say whether a window function partitions correctly: it flags
+exactly the earliest order per customer, leaves guest orders untouched, and a
+second run changes nothing. Scratch shop deleted after.
+
 ### Other
 
 - `app/scopes_update` webhook added. `grantedScopes` was written only in
@@ -264,29 +292,24 @@ thrown from the same function that throws the 401.
 2. **`Order.fulfillments(first: 10)` is still a hard cap.** It is a plain list
    in the Admin API, not a connection, so there is no `hasNextPage` to follow.
    An order with more than ten fulfilments loses the rest.
-3. **Out-of-order webhook delivery mis-assigns `isFirstOrder`.** If a customer's
-   second order is delivered before their first, both are flagged as first
-   orders and nothing demotes the later one. New-customer counts inflate and CAC
-   understates. `acquisitionChannel` and `firstOrderAt` are pinned to whichever
-   order was ingested first.
-4. **`Shop.syncCursor` is documented and written but never read.** An
+3. **`Shop.syncCursor` is documented and written but never read.** An
    interrupted import restarts from the beginning despite the resume point being
    stored.
-5. **Order-level stored profit is a write-only cache.** `recompute` writes
+4. **Order-level stored profit is a write-only cache.** `recompute` writes
    `Order.netProfit`, but every dashboard figure is recomputed on the fly and
    nothing reads it back except `contributionProfit` for cohort LTV.
-6. **Ad platform connectors are not wired to live OAuth.** Modelled and
+5. **Ad platform connectors are not wired to live OAuth.** Modelled and
    encrypted end to end, but Facebook/Google/TikTok have no OAuth flow, so on a
    real store the acquisition screen shows organic and direct traffic with zero
    spend. The plan copy sells "unlimited ad channels".
-7. **Backfill and recompute run in-process.** Correct on a long-lived server,
+6. **Backfill and recompute run in-process.** Correct on a long-lived server,
    wrong on serverless where the process may not outlive the response. Both
    belong in a job queue before deploying there.
-8. **The demo auth bypass ships in the production bundle.** Guarded by a
+7. **The demo auth bypass ships in the production bundle.** Guarded by a
    boot-time throw when `NODE_ENV=production` and by Shopify-signal detection,
    which is solid, but the whole guard depends on `NODE_ENV` being set correctly
    at deploy. A reviewer reading the source will pause here.
-9. **The local `.env` still lists withdrawn scopes.** It reads
+8. **The local `.env` still lists withdrawn scopes.** It reads
    `read_customers,read_reports,read_analytics` alongside the real four.
     `.env.example` and the toml were corrected, but the file the dev server
     actually reads was not — and `capabilitiesForShop` falls back to

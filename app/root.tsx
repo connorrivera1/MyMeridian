@@ -60,13 +60,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <html lang="en" data-theme="dark">
       <head>
         <meta charSet="utf-8" />
-        {/* First script in the head, as Shopify's embedded app requirements
-            state. Nothing may be emitted above it. */}
+        {/* App Bridge, first script in the head as Shopify's embedded app
+            requirements state. The meta tag must precede the script — App
+            Bridge reads the client id from it at load, and without it session
+            tokens are never minted and Shopify collects no Web Vitals, which
+            is a silent failure rather than a visible one. `data-api-key` is
+            kept alongside it because both forms are in circulation. */}
         {appBridgeApiKey && (
-          <script
-            src="https://cdn.shopify.com/shopifycloud/app-bridge.js"
-            data-api-key={appBridgeApiKey}
-          />
+          <>
+            <meta name="shopify-api-key" content={appBridgeApiKey} />
+            <script
+              src="https://cdn.shopify.com/shopifycloud/app-bridge.js"
+              data-api-key={appBridgeApiKey}
+            />
+          </>
         )}
         <Meta />
         <Links />

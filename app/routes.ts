@@ -3,6 +3,12 @@ import { index, route, type RouteConfig } from "@react-router/dev/routes";
 export default [
   index("routes/home.tsx"),
 
+  // Public, unauthenticated documents. Shopify's listing links to the privacy
+  // policy and the reviewer opens both without a session, so neither may ever
+  // be moved behind authentication.
+  route("privacy", "routes/legal.privacy.tsx"),
+  route("support", "routes/legal.support.tsx"),
+
   // Shop-domain entry form. Must precede the splat so it wins the match.
   route("auth/login", "routes/auth.login.tsx"),
   // Shopify OAuth entry and callback.

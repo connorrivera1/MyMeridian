@@ -1230,3 +1230,72 @@ table.data .primary-cell { font-weight: 550; color: var(--ink-primary); letter-s
   line-height: 1.6;
   margin: 0 0 28px;
 }
+
+/* --------------------------------------------------------------- legal pages
+   The privacy policy and support page are opened by Shopify's reviewer with no
+   session and outside the admin frame, so they carry their own typography
+   rather than inheriting the dashboard shell. */
+
+.legal {
+  max-width: 74ch;
+  margin: 0 auto;
+  padding: 56px 24px 96px;
+  font-size: 14px;
+  line-height: 1.72;
+  color: var(--ink-secondary);
+}
+
+.legal-head { margin-bottom: 36px; }
+
+.legal-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--ink-primary);
+  text-decoration: none;
+  font-weight: 620;
+  letter-spacing: -0.03em;
+}
+
+.legal h1 {
+  font-size: 27px;
+  font-weight: 680;
+  letter-spacing: -0.042em;
+  color: var(--ink-primary);
+  margin: 20px 0 6px;
+}
+
+.legal h2 {
+  font-size: 15px;
+  font-weight: 620;
+  letter-spacing: -0.02em;
+  color: var(--ink-primary);
+  margin: 34px 0 8px;
+}
+
+.legal-updated { font-size: 12px; color: var(--ink-muted); margin: 0; }
+
+.legal p { margin: 0 0 12px; }
+.legal ul { margin: 0 0 12px; padding-left: 20px; }
+.legal li { margin-bottom: 7px; }
+.legal strong { color: var(--ink-primary); font-weight: 600; }
+.legal a { color: var(--accent); }
+
+.legal code {
+  font-size: 12.5px;
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+/* Deliberately loud. This only renders on a deployment that has not set a
+   support contact, which is a listing requirement — it should be impossible to
+   miss while reading the page. */
+.legal-gap {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--status-warning);
+  border-radius: 10px;
+  padding: 13px 15px;
+  background: var(--glass);
+}

@@ -710,3 +710,84 @@ export function seriesColor(key: string, order: readonly string[]): string {
   if (index >= 0 && index < SERIES_VARS.length) return SERIES_VARS[index]!;
   return "var(--ink-muted)";
 }
+
+/* -------------------------------------------------------------- legal pages */
+
+/**
+ * Chrome for the public, unauthenticated documents Shopify's listing links to:
+ * the privacy policy and the support page. Deliberately outside the app shell —
+ * a reviewer opens these with no session and they must render on their own.
+ */
+export function LegalPage({
+  title,
+  updated,
+  children,
+}: {
+  title: string;
+  updated?: string;
+  children: ReactNode;
+}) {
+  return (
+    <main className="legal">
+      <header className="legal-head">
+        <a className="legal-brand" href="/">
+          <BrandMark size={30} />
+          <span>Meridian</span>
+        </a>
+        <h1>{title}</h1>
+        {updated && <p className="legal-updated">Last updated {updated}</p>}
+      </header>
+      {children}
+    </main>
+  );
+}
+
+/**
+ * Renders the support contact, or says plainly that it is missing.
+ *
+ * An unconfigured deployment showing a placeholder address would be worse than
+ * showing nothing: Shopify's reviewer emails whatever is on the page, and a
+ * bounce reads as an unsupported app.
+ */
+export function LegalContact({
+  contact,
+}: {
+  contact: {
+    supportEmail: string;
+    supportUrl: string;
+    legalEntity: string;
+  };
+}) {
+  const { supportEmail, supportUrl, legalEntity } = contact;
+
+  if (!supportEmail && !supportUrl) {
+    return (
+      <p className="legal-gap">
+        Support contact is not configured on this deployment. Set{" "}
+        <code>MERIDIAN_SUPPORT_EMAIL</code>, <code>MERIDIAN_LEGAL_ENTITY</code>{" "}
+        and optionally <code>MERIDIAN_SUPPORT_URL</code> before submitting to the
+        Shopify App Store — a reachable contact is a listing requirement.
+      </p>
+    );
+  }
+
+  return (
+    <p>
+      {legalEntity && <>{legalEntity}. </>}
+      {supportEmail && (
+        <>
+          Email <a href={`mailto:${supportEmail}`}>{supportEmail}</a>.{" "}
+        </>
+      )}
+      {supportUrl && (
+        <>
+          Support site:{" "}
+          <a href={supportUrl} rel="noreferrer">
+            {supportUrl}
+          </a>
+          .
+        </>
+      )}
+    </p>
+  );
+}

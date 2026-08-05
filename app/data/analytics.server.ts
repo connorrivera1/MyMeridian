@@ -50,12 +50,23 @@ export interface ShopAnalytics {
   computedInMs: number;
 }
 
-export function resolveRange(shop: Shop, preset: RangePreset): DateRange {
+export function resolveRange(
+  shop: Shop,
+  preset: RangePreset,
+  { anchorToData = false }: { anchorToData?: boolean } = {},
+): DateRange {
   const days = RANGE_PRESETS[preset].days;
 
-  // Anchor to the newest data rather than wall-clock now, so a demo store (or a
-  // store mid-backfill) shows a populated window instead of an empty one.
-  const to = shop.lastSyncedAt ?? new Date();
+  // "Last 30 days" has to mean the last 30 days. Anchoring the window to
+  // `lastSyncedAt` instead of now froze a live store's dashboard at whatever
+  // moment its backfill finished: every order that arrived afterwards by
+  // webhook has processedAt > lastSyncedAt, so `loadEngineOrders` filtered it
+  // straight back out and the merchant watched a dashboard that never advanced.
+  //
+  // The seeded demo store is the one case that genuinely wants the old
+  // behaviour — its data ends at a fixed point in the past, so anchoring to now
+  // would eventually show an empty window. Callers opt into that explicitly.
+  const to = (anchorToData ? shop.lastSyncedAt : null) ?? new Date();
   const from = new Date(to.getTime() - days * 86_400_000);
 
   return { from, to };

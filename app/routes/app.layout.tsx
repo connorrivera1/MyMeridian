@@ -41,7 +41,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   const alertCount = importing
     ? 0
-    : (await loadShopAnalytics(shop, resolveRange(shop, preset))).capacity.alerts.filter(
+    : (
+        await loadShopAnalytics(
+          shop,
+          resolveRange(shop, preset, { anchorToData: isDemo }),
+        )
+      ).capacity.alerts.filter(
         (a) => a.severity === "CRITICAL" || a.severity === "WARNING",
       ).length;
 

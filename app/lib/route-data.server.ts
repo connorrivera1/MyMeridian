@@ -21,7 +21,7 @@ export async function loadDashboard(request: Request) {
   const { shop, isDemo } = await requireShopContext(request);
 
   const preset = parseRangePreset(new URL(request.url).searchParams.get("range"));
-  const range = resolveRange(shop, preset);
+  const range = resolveRange(shop, preset, { anchorToData: isDemo });
 
   const spanMs = range.to.getTime() - range.from.getTime();
   const previousRange: DateRange = {

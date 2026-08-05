@@ -73,6 +73,14 @@ api_version = "2026-07"
   uri = "/webhooks/app/uninstalled"
   topics = [ "app/uninstalled" ]
 
+  # Under managed installation a merchant can grant or revoke an optional scope
+  # without reinstalling, and this is the only notification of it. Without it
+  # Shop.grantedScopes stays at whatever install recorded, and the import gates
+  # its GraphQL fields on that record.
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/scopes-update"
+  topics = [ "app/scopes_update" ]
+
   [[webhooks.subscriptions]]
   uri = "/webhooks/orders/create"
   topics = [ "orders/create", "orders/updated", "refunds/create" ]

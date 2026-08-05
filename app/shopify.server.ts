@@ -117,6 +117,10 @@ function buildShopify() {
         deliveryMethod: DeliveryMethod.Http,
         callbackUrl: "/webhooks/app-subscriptions/update",
       },
+      APP_SCOPES_UPDATE: {
+        deliveryMethod: DeliveryMethod.Http,
+        callbackUrl: "/webhooks/app/scopes-update",
+      },
     },
 
     hooks: {

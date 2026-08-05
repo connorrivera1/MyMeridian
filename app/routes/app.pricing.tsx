@@ -1,4 +1,4 @@
-import { Form, useLoaderData, useNavigation } from "react-router";
+import { Form, useActionData, useLoaderData, useNavigation } from "react-router";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { RecStatus } from "@prisma/client";
 
@@ -32,11 +32,26 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return { locked: { name: required.name, price: required.price } };
   }
 
-  const recommendations = await prisma.pricingRecommendation.findMany({
-    where: { shopId: shop.id, status: RecStatus.PENDING },
-    include: { variant: { include: { product: true } } },
-    orderBy: { expectedProfitDelta: "desc" },
-  });
+  const [recommendations, actioned] = await Promise.all([
+    prisma.pricingRecommendation.findMany({
+      where: { shopId: shop.id, status: RecStatus.PENDING },
+      include: { variant: { include: { product: true } } },
+      orderBy: { expectedProfitDelta: "desc" },
+    }),
+    // Accepted and dismissed suggestions were queried nowhere, and regeneration
+    // permanently excludes an actioned variant — so after Accept there was no
+    // screen anywhere showing what had been accepted, and an accidental
+    // Dismiss could not be undone.
+    prisma.pricingRecommendation.findMany({
+      where: {
+        shopId: shop.id,
+        status: { in: [RecStatus.APPLIED, RecStatus.DISMISSED] },
+      },
+      include: { variant: { include: { product: true } } },
+      orderBy: { actionedAt: "desc" },
+      take: 20,
+    }),
+  ]);
 
   const actionable = recommendations.filter(
     (rec) =>
@@ -69,6 +84,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
       method: rec.method,
       rationale: rec.rationale,
     })),
+    actioned: actioned.map((rec) => ({
+      id: rec.id,
+      productTitle: rec.variant.product.title,
+      variantTitle: rec.variant.title,
+      status: rec.status,
+      currentPriceCents: toCents(rec.currentPrice),
+      suggestedPriceCents: toCents(rec.suggestedPrice),
+      actionedAt: rec.actionedAt,
+    })),
   };
 }
 
@@ -89,24 +113,55 @@ export async function action({ request }: ActionFunctionArgs) {
   const intent = form.get("intent");
 
   if (intent === "regenerate") {
-    await generatePricingRecommendations(shop.id);
-    return { ok: true };
+    const count = await generatePricingRecommendations(shop.id);
+    return {
+      ok: true,
+      message:
+        `Recalculated. ${count} suggestion${count === 1 ? "" : "s"} from your ` +
+        `current price history.`,
+    };
   }
 
   const id = String(form.get("id") ?? "");
-  if (!id) return { ok: false };
+  if (!id) return { ok: false, message: "No recommendation was selected." };
 
   // Scoped to this shop so a crafted id cannot touch another merchant's data.
   const recommendation = await prisma.pricingRecommendation.findFirst({
     where: { id, shopId: shop.id },
+    include: { variant: { include: { product: true } } },
   });
-  if (!recommendation) return { ok: false };
+
+  // Previously this returned { ok: false } with a 200 and the route never read
+  // useActionData, so a failed Accept was a button that did nothing and said
+  // nothing. Every branch below now says what happened.
+  if (!recommendation) {
+    return {
+      ok: false,
+      message: "That recommendation no longer exists. Recalculate to refresh.",
+    };
+  }
+
+  const label = recommendation.variant.product.title;
 
   if (intent === "dismiss") {
     await prisma.pricingRecommendation.update({
       where: { id },
       data: { status: RecStatus.DISMISSED, actionedAt: new Date() },
     });
+
+    return { ok: true, message: `Dismissed the suggestion for ${label}.` };
+  }
+
+  if (intent === "restore") {
+    // Regeneration permanently excludes actioned variants, so without this an
+    // accidental Dismiss was unrecoverable and an Accept could never be
+    // reconsidered.
+    await prisma.pricingRecommendation.update({
+      where: { id },
+      data: { status: RecStatus.PENDING, actionedAt: null },
+    });
+
+    return { ok: true, message: `Restored the suggestion for ${label}.` };
   }
 
   if (intent === "apply") {
@@ -117,9 +172,17 @@ export async function action({ request }: ActionFunctionArgs) {
       where: { id },
       data: { status: RecStatus.APPLIED, actionedAt: new Date() },
     });
+
+    return {
+      ok: true,
+      message:
+        `Accepted for ${label}. Meridian has recorded it — set the new price ` +
+        `in Shopify to make it live. It has no permission to change prices ` +
+        `itself, by design.`,
+    };
   }
 
-  return { ok: true };
+  return { ok: false, message: "Unrecognised action." };
 }
 
 const CONFIDENCE_TONE = {
@@ -138,6 +201,7 @@ const METHOD_LABEL: Record<string, string> = {
 
 export default function Pricing() {
   const data = useLoaderData<typeof loader>();
+  const result = useActionData<typeof action>();
   const navigation = useNavigation();
   const busy = navigation.state !== "idle";
 
@@ -158,6 +222,10 @@ export default function Pricing() {
 
   return (
     <>
+      {result?.message && (
+        <Banner tone={result.ok ? "neutral" : "warn"}>{result.message}</Banner>
+      )}
+
       <div className="grid cols-3">
         <Tile
           tone="var(--viz-mint)"
@@ -336,6 +404,72 @@ export default function Pricing() {
           </div>
         )}
       </Card>
+
+      {data.actioned.length > 0 && (
+        <Card
+          title="Decided"
+          hint="What you have accepted or dismissed. Regeneration leaves these alone, so this is the only record of them — restore one to put it back in the list above."
+          flush
+        >
+          <div className="table-wrap">
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th className="right">Was</th>
+                  <th className="right">Suggested</th>
+                  <th>Decision</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {data.actioned.map((rec) => (
+                  <tr key={rec.id}>
+                    <td className="primary-cell">
+                      {rec.productTitle}
+                      <div className="cell-sub">{rec.variantTitle}</div>
+                    </td>
+                    <td className="right">
+                      <Money cents={rec.currentPriceCents} currency={data.currency} />
+                    </td>
+                    <td className="right">
+                      <Money cents={rec.suggestedPriceCents} currency={data.currency} />
+                    </td>
+                    <td>
+                      {rec.status === "APPLIED" ? (
+                        <Badge tone="good">Accepted</Badge>
+                      ) : (
+                        <Badge tone="neutral">Dismissed</Badge>
+                      )}
+                      {rec.actionedAt && (
+                        <div className="cell-sub">
+                          {new Date(rec.actionedAt).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </div>
+                      )}
+                    </td>
+                    <td className="right">
+                      <Form method="post">
+                        <input type="hidden" name="id" value={rec.id} />
+                        <button
+                          className="btn sm ghost"
+                          name="intent"
+                          value="restore"
+                          disabled={busy}
+                        >
+                          Restore
+                        </button>
+                      </Form>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
     </>
   );
 }

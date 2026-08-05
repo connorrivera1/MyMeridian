@@ -128,8 +128,27 @@ export async function syncOrderFromShopify(shopId: string, payload: Payload) {
         .toFixed(2)
     : "0.00";
 
+  const processedAt = new Date(payload.processed_at ?? payload.created_at);
+
+  // Whether this is the customer's first order must be decided by comparison
+  // against their OTHER orders, never by a bare count.
+  //
+  // Shopify redelivers the same order routinely — orders/create is followed by
+  // orders/updated, and refunds/create arrives later with the order nested
+  // inside. On every redelivery the order is already stored, so a plain
+  // `count({ customerId }) === 0` counts the order against itself and flips a
+  // genuine first order to false. That silently destroys new-customer counts,
+  // and CAC is spend divided by new customers, so the acquisition screen
+  // overstates CAC for every redelivered order.
   const isFirstOrder = customerId
-    ? (await prisma.order.count({ where: { shopId, customerId } })) === 0
+    ? (await prisma.order.count({
+        where: {
+          shopId,
+          customerId,
+          shopifyId: { not: shopifyId },
+          processedAt: { lt: processedAt },
+        },
+      })) === 0
     : false;
 
   const shippingCharged =
@@ -142,7 +161,7 @@ export async function syncOrderFromShopify(shopId: string, payload: Payload) {
 
   const orderData = {
     orderNumber: Number(payload.order_number ?? payload.number ?? 0),
-    processedAt: new Date(payload.processed_at ?? payload.created_at),
+    processedAt,
     customerId,
     currency: payload.currency ?? "USD",
     subtotal: decimal(payload.subtotal_price),

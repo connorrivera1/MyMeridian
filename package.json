@@ -1,0 +1,56 @@
+{
+  "name": "meridian",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20.10"
+  },
+  "scripts": {
+    "dev": "react-router dev",
+    "shopify:dev": "shopify app dev",
+    "build": "prisma generate && react-router build",
+    "start": "react-router-serve ./build/server/index.js",
+    "typecheck": "react-router typegen && tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:reset": "prisma migrate reset --force && npm run db:seed",
+    "setup": "prisma generate && prisma migrate deploy && tsx prisma/seed.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@prisma/client": "6.19.3",
+    "@react-router/node": "7.18.2",
+    "@react-router/serve": "7.18.2",
+    "@shopify/app-bridge-react": "4.2.12",
+    "@shopify/shopify-api": "13.1.0",
+    "@shopify/shopify-app-react-router": "1.2.1",
+    "@shopify/shopify-app-session-storage-prisma": "9.0.1",
+    "isbot": "5.1.31",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-router": "7.18.2",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@react-router/dev": "7.18.2",
+    "@shopify/cli": "^4.6.0",
+    "@types/node": "22.18.9",
+    "@types/react": "19.2.8",
+    "@types/react-dom": "19.2.3",
+    "prisma": "6.19.3",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "vite": "7.3.6",
+    "vite-tsconfig-paths": "5.1.4",
+    "vitest": "3.2.4"
+  }
+}

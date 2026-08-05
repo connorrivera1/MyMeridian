@@ -1,0 +1,76 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+name = "Meridian"
+handle = "meridian-profit"
+application_url = "https://shopify.dev/apps/default-app-home"
+embedded = true
+client_id = "9dfbe484752628b0a96c4755caf4f502"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+#
+# read_inventory is what exposes InventoryItem.unitCost — the cost of goods
+# behind every margin in the app. Without it COGS is zero and every profit
+# figure is overstated. It is NOT protected customer data, so it does not need
+# a Partner Dashboard request; if it turns out to cause trouble, dropping it is
+# safe and the app will say so rather than report inflated margins.
+#
+# read_customers is deliberately NOT here. It is protected customer data and
+# needs an approved request (Partner Dashboard -> App -> API access). Without
+# it there is no CAC, lifetime value, payback, or loss-leader detection — the
+# Acquisition screen explains this rather than showing zeroes.
+scopes = "read_orders read_products read_fulfillments read_refunds read_inventory"
+
+[auth]
+redirect_urls = [ "https://shopify.dev/apps/default-app-home/api/auth" ]
+
+[webhooks]
+# Pinned to the version @shopify/shopify-api 13.1.0 actually models. Leaving
+# this ahead of the library means webhook payloads arrive in a shape its types
+# do not describe.
+api_version = "2026-07"
+
+# ---------------------------------------------------------------------------
+# DISABLED FOR DEVELOPMENT — RESTORE BEFORE APP STORE SUBMISSION
+#
+# The three mandatory privacy compliance webhooks. A public app cannot pass
+# review without all three, and the handlers for them are already implemented
+# and unchanged:
+#
+#   app/routes/webhooks.gdpr.data-request.tsx
+#   app/routes/webhooks.gdpr.customers-redact.tsx
+#   app/routes/webhooks.gdpr.shop-redact.tsx
+#
+# To restore: uncomment the block below and replace the host with the app's
+# real public HTTPS URL. Shopify rejects localhost here — these endpoints must
+# be publicly reachable, which is the usual reason this block fails to deploy
+# from a dev machine. See README "Re-enabling compliance webhooks".
+#
+#   [webhooks.privacy_compliance]
+#   customer_data_request_url = "https://YOUR-APP-DOMAIN/webhooks/gdpr/customers-data-request"
+#   customer_deletion_url = "https://YOUR-APP-DOMAIN/webhooks/gdpr/customers-redact"
+#   shop_deletion_url = "https://YOUR-APP-DOMAIN/webhooks/gdpr/shop-redact"
+# ---------------------------------------------------------------------------
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/uninstalled"
+  topics = [ "app/uninstalled" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/orders/create"
+  topics = [ "orders/create", "orders/updated", "refunds/create" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/products/update"
+  topics = [ "products/update", "products/create" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/fulfillments/create"
+  topics = [ "fulfillments/create", "fulfillments/update" ]
+
+[pos]
+embedded = false
+
+[build]
+include_config_on_deploy = true
+automatically_update_urls_on_dev = true

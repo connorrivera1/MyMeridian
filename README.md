@@ -4,7 +4,8 @@ A unified profitability dashboard for Shopify stores. Revenue, COGS, fulfilment,
 ad spend and overhead resolved into one number a merchant can act on.
 
 Built as a real embedded Shopify app: React Router 7, Prisma/PostgreSQL,
-read-only Shopify scopes, mandatory GDPR webhooks, and the Billing API.
+read-only Shopify scopes and the mandatory GDPR webhooks. Billing is configured
+but not yet enforced — see *Known gaps*.
 
 ---
 
@@ -73,14 +74,13 @@ capacity model has throughput to learn from.
 Then hit **Re-import** in *Costs & connections*, or just place an order — the
 webhooks keep everything current from that point on.
 
-### Compliance webhooks are disabled for development
+### Compliance webhooks
 
-The three mandatory privacy webhooks are commented out in `shopify.app.toml`.
-Shopify rejects `https://localhost` for those endpoints — they must be publicly
-reachable — which is the usual reason the block fails to deploy from a dev
-machine.
-
-The handlers themselves are untouched and still routed:
+All three mandatory privacy webhooks are enabled in `shopify.app.toml`, as
+`compliance_topics` entries with relative URIs. Relative means they resolve
+against `application_url`, so they follow the dev tunnel and the production host
+automatically — there is no hostname to remember to change, which is what the
+old absolute-URL block kept getting wrong.
 
 | Topic | Handler |
 |---|---|
@@ -88,18 +88,17 @@ The handlers themselves are untouched and still routed:
 | `customers/redact` | `app/routes/webhooks.gdpr.customers-redact.tsx` |
 | `shop/redact` | `app/routes/webhooks.gdpr.shop-redact.tsx` |
 
-Nothing else depends on them: they exist to service erasure requests, and no
-profit, product, pricing or fulfilment figure touches that path.
+Each verifies HMAC before touching the database, answers an unverified request
+`401`, a valid one `200`, and a `GET` `405`. `app/routes/webhooks.gdpr.test.ts`
+signs real requests and asserts exactly that contract; the same cases have also
+been run over HTTP against a live server.
 
-**Re-enabling before submission** — a public app cannot pass review without all
-three:
+`customers/redact` anonymises orders in place rather than deleting them, so the
+personal data goes without silently rewriting the merchant's financial history.
 
-1. Deploy the app somewhere with a public HTTPS URL.
-2. Uncomment `[webhooks.privacy_compliance]` in `shopify.app.toml` and replace
-   `YOUR-APP-DOMAIN` with that host.
-3. `npm run shopify:dev` (or `shopify app deploy`) to push the config.
-4. Confirm all three return 200 to a signed request — they verify HMAC and
-   reject anything unsigned.
+The one thing still outstanding is that `application_url` is the CLI's
+placeholder. Until it points at a real public HTTPS host, these endpoints
+resolve to somewhere Shopify cannot reach.
 
 ### Permissions decide what the app can honestly claim
 
@@ -111,7 +110,7 @@ fails the *entire* query rather than returning null for that field.
 |---|---|
 | `read_orders` | Nothing works. Essential. |
 | `read_products` | No catalogue or pricing analysis. Essential. |
-| `read_inventory` | **No COGS.** Margins read as ~100% and every profit figure is overstated. Not protected data — add it freely. |
+| `read_inventory` | **No COGS.** Margins read as ~100% and every profit figure is overstated. Requested by default; not protected data. |
 | `read_customers` | No CAC, LTV, payback or loss-leader detection. **Protected customer data** — needs an approved request in the Partner Dashboard, not just the scope. |
 | `read_fulfillments` | No capacity forecasting. Meridian writes no capacity data at all rather than inferring a backlog that only ever grows. |
 
@@ -152,7 +151,7 @@ and must never be reachable there.
 | `npm run shopify:dev` | Run against a real store via the Shopify CLI |
 | `npm run dev` | Dev server (demo / no Shopify) |
 | `npm run db:migrate` | Apply migrations |
-| `npm test` | Engine test suite (85 tests) |
+| `npm test` | Test suite (121 tests) |
 | `npm run typecheck` | Types |
 | `npm run db:reset` | Drop, migrate, re-seed |
 | `npm run db:seed` | Re-seed the demo store |
@@ -343,8 +342,17 @@ and fought with over mark geometry.
   available basis; from then on webhooks snapshot the cost in force at the time.
 - Accepted price changes are recorded, not pushed to Shopify (requires
   `write_products`, deliberately not requested).
-- Billing plans are configured in the Billing API but the upgrade flow is not
-  built; plan changes go through the Shopify admin.
+- **Billing is declared but never enforced, and this is the main thing standing
+  between the app and submission.** `app/shopify.server.ts` configures three
+  Billing API plans with a 14-day trial, while `shopify.app.toml` and the
+  `app_subscriptions/update` handler describe managed pricing instead — two
+  mutually exclusive models, half-wired each. Nothing in `app/` ever calls
+  `billing.require`, `billing.check` or `billing.request`, and no loader or
+  action branches on `Subscription.plan`; it is read only to render a badge in
+  *Costs & connections*. Every feature advertised as Growth- or Scale-only is
+  served unconditionally on the default `trial`. A merchant can therefore be
+  charged and get nothing gated, or pay nothing and get everything. Pick one
+  model, add a real check and an upgrade path, and delete the loser.
 - The backfill and recompute both run in-process. That is correct on a
   long-lived server and wrong on a serverless platform, where the process may
   not outlive the response — both belong in a job queue before deploying there.

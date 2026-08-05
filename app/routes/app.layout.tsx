@@ -178,8 +178,15 @@ export default function AppLayout() {
     useLoaderData<typeof loader>();
   const location = useLocation();
 
-  const rangeLink = (next: RangePreset) =>
-    `${location.pathname}?range=${next}`;
+  // Keep whatever else the merchant has narrowed to. Rebuilding the query
+  // string from scratch here silently dropped an active sort and channel
+  // filter, so changing the date range on a filtered orders view threw the
+  // filter away without saying so.
+  const rangeLink = (next: RangePreset) => {
+    const params = new URLSearchParams(location.search);
+    params.set("range", next);
+    return `${location.pathname}?${params.toString()}`;
+  };
 
   const shell = (
     <div className="app-shell">

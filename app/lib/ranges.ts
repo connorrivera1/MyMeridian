@@ -18,3 +18,13 @@ export const RANGE_PRESETS: Record<RangePreset, { label: string; days: number }>
 export function parseRangePreset(value: string | null): RangePreset {
   return value && value in RANGE_PRESETS ? (value as RangePreset) : "30d";
 }
+
+/**
+ * How much price history the elasticity fit uses.
+ *
+ * Deliberately independent of the selected reporting range: a week of demand
+ * cannot identify an elasticity, so the model always looks back this far. It
+ * lives here rather than in pricing.server.ts because the pricing screen states
+ * it to the merchant, and a route component may not import a server module.
+ */
+export const PRICING_LOOKBACK_DAYS = 180;

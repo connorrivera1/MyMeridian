@@ -52,7 +52,30 @@ export async function recomputeShopProfitability(
     loadCostRules(shopId),
   ]);
 
-  const period = computeProfitForPeriod(orders, spend, rules, shop.timezone);
+  // The reporting window has to reach computeProfitForPeriod, or allocateOverhead
+  // skips its pro-rata branch and charges a whole month of overhead across only
+  // the orders that exist so far. On the in-progress month that is roughly nine
+  // times too much per order, and it moves every time another order lands.
+  //
+  // Bounded to the orders actually loaded rather than the epoch-wide default
+  // range: allocateOverhead walks the window a day at a time, and starting at
+  // the epoch would be tens of thousands of pointless iterations.
+  const earliestOrder = orders.reduce<Date | null>(
+    (min, order) => (!min || order.processedAt < min ? order.processedAt : min),
+    null,
+  );
+
+  const overheadRange = earliestOrder
+    ? { from: earliestOrder, to: effectiveRange.to }
+    : effectiveRange;
+
+  const period = computeProfitForPeriod(
+    orders,
+    spend,
+    rules,
+    shop.timezone,
+    overheadRange,
+  );
 
   await writeOrderProfits(period.orders);
   const customersUpdated = await writeCustomerAggregates(shopId, period.orders);

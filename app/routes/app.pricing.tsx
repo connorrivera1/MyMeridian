@@ -19,6 +19,7 @@ import {
 import { formatPercent, toCents } from "~/engine/money";
 import { requireShopContext } from "~/lib/auth.server";
 import { generatePricingRecommendations } from "~/lib/pricing.server";
+import { PRICING_LOOKBACK_DAYS } from "~/lib/ranges";
 import { loadDashboard } from "~/lib/route-data.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -162,7 +163,7 @@ export default function Pricing() {
 
       <Card
         title="Recommendations"
-        hint={`Modelled over the last ${data.rangeLabel} of demand.`}
+        hint={`Modelled over the last ${PRICING_LOOKBACK_DAYS} days of demand, whichever range is selected above.`}
         actions={
           <Form method="post">
             <button

@@ -5,8 +5,7 @@ import { loadStrategicProductIds } from "~/data/analytics.server";
 import { loadPricingInputs } from "~/data/queries.server";
 import { centsToDollars } from "~/engine/money";
 import { recommendPrice } from "~/engine/pricing";
-
-const LOOKBACK_DAYS = 180;
+import { PRICING_LOOKBACK_DAYS } from "~/lib/ranges";
 
 const CONFIDENCE_MAP = {
   HIGH: Confidence.HIGH,
@@ -24,7 +23,7 @@ export async function generatePricingRecommendations(
   shopId: string,
 ): Promise<number> {
   const to = new Date();
-  const from = new Date(to.getTime() - LOOKBACK_DAYS * 86_400_000);
+  const from = new Date(to.getTime() - PRICING_LOOKBACK_DAYS * 86_400_000);
 
   // Ask the profit engine which products are working loss leaders first, so the
   // pricing model can leave them alone instead of "fixing" the funnel.

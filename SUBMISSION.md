@@ -181,6 +181,31 @@ and a "Decided" table restores. Verified live: Accept moves the row to `APPLIED`
 and banners; Restore returns it to `PENDING` and clears `actionedAt`; a
 non-existent id now reports the failure.
 
+### Fulfilment updates were dropped on arrival
+
+`fulfillments/update` is subscribed in the toml and was being delivered.
+`syncFulfillmentFromShopify` matched an existing row on
+`(shopId, orderId, createdAt)` — and an update repeats the original
+`created_at` verbatim, so every update matched, returned early and changed
+nothing. Cancellations and carrier corrections never reached the row, and two
+shipments created in the same second collapsed into one, undercounting the
+shipped series `rebuildCapacityDays` is built from.
+
+Fulfilments now carry Shopify's own id (`shopifyId`, unique per shop, written by
+the backfill as well) and the sync upserts on it. The column is nullable so rows
+imported before it existed still load; the first update to one of those adopts
+it by timestamp rather than writing a second row beside it. Two consequences of
+the same fix: a cancelled fulfilment no longer keeps a `shippedAt`, and the
+order's `fulfillmentStatus` is derived from whether any fulfilment is still
+active instead of being stamped "fulfilled" unconditionally — an order whose
+only shipment was cancelled read as shipped forever.
+
+Verified against the live database on a scratch shop, then deleted: two
+same-second shipments produce two rows, the update lands as cancelled/FedEx with
+`shippedAt` cleared, the order flips to unfulfilled only when both are
+cancelled, and a pre-migration row is adopted rather than duplicated. The seven
+new tests were run against the old code first — five fail there.
+
 ### Other
 
 - `app/scopes_update` webhook added. `grantedScopes` was written only in
@@ -218,7 +243,7 @@ non-existent id now reports the failure.
 | GraphQL Admin API only | Done | No REST calls anywhere; new public apps may not use REST |
 | Webhook API version | Done | `2026-07`, matching `@shopify/shopify-api` 13.1.0 |
 | Production build | Done | `npm run build` clean |
-| Test suite | Done | **152 tests, 15 files, all passing** |
+| Test suite | Done | **159 tests, 15 files, all passing** |
 | Typecheck | Done | Clean |
 | Config validity | Done | `shopify app config validate` passes |
 | Every route renders | Done | 12 routes served 200 from a running server, with real computed figures |
@@ -247,27 +272,22 @@ thrown from the same function that throws the 401.
 4. **`Shop.syncCursor` is documented and written but never read.** An
    interrupted import restarts from the beginning despite the resume point being
    stored.
-5. **Fulfilments dedupe on `(shopId, orderId, createdAt)`** because
-   `Fulfillment` has no `shopifyId`. A `fulfillments/update` shares the original
-   `created_at`, matches, and returns early — so cancellations and carrier
-   corrections are never applied, and split shipments created in the same second
-   collapse into one.
-6. **Order-level stored profit is a write-only cache.** `recompute` writes
+5. **Order-level stored profit is a write-only cache.** `recompute` writes
    `Order.netProfit`, but every dashboard figure is recomputed on the fly and
    nothing reads it back except `contributionProfit` for cohort LTV.
-7. **Ad platform connectors are not wired to live OAuth.** Modelled and
+6. **Ad platform connectors are not wired to live OAuth.** Modelled and
    encrypted end to end, but Facebook/Google/TikTok have no OAuth flow, so on a
    real store the acquisition screen shows organic and direct traffic with zero
    spend. The plan copy sells "unlimited ad channels".
-8. **Backfill and recompute run in-process.** Correct on a long-lived server,
+7. **Backfill and recompute run in-process.** Correct on a long-lived server,
    wrong on serverless where the process may not outlive the response. Both
    belong in a job queue before deploying there.
-9. **The demo auth bypass ships in the production bundle.** Guarded by a
+8. **The demo auth bypass ships in the production bundle.** Guarded by a
    boot-time throw when `NODE_ENV=production` and by Shopify-signal detection,
    which is solid, but the whole guard depends on `NODE_ENV` being set correctly
    at deploy. A reviewer reading the source will pause here.
-10. **The local `.env` still lists withdrawn scopes.** It reads
-    `read_customers,read_reports,read_analytics` alongside the real four.
+9. **The local `.env` still lists withdrawn scopes.** It reads
+   `read_customers,read_reports,read_analytics` alongside the real four.
     `.env.example` and the toml were corrected, but the file the dev server
     actually reads was not — and `capabilitiesForShop` falls back to
     `process.env.SCOPES`, so this instance claims CAC/LTV capability it does not

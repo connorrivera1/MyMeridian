@@ -39,7 +39,7 @@ export interface ShopContext {
  * subsequent data request. Any of those means "this is a real merchant" and the
  * request must go through real authentication, never the demo.
  */
-function looksLikeShopifyRequest(request: Request): boolean {
+export function looksLikeShopifyRequest(request: Request): boolean {
   const url = new URL(request.url);
 
   for (const key of ["shop", "host", "embedded", "id_token", "session"]) {
@@ -47,6 +47,21 @@ function looksLikeShopifyRequest(request: Request): boolean {
   }
 
   return request.headers.get("authorization")?.startsWith("Bearer ") ?? false;
+}
+
+/**
+ * Should this document carry the App Bridge script?
+ *
+ * Shopify requires App Bridge to be the first script in the head of every page
+ * an embedded app serves, so the decision has to be made in the root layout,
+ * before any route module runs. It must NOT be loaded for the seeded demo:
+ * App Bridge redirects a page it believes should be embedded back into the
+ * admin, which would bounce a demo visitor straight out of the app.
+ */
+export function shouldLoadAppBridge(request: Request): boolean {
+  if (!hasShopifyCredentials) return false;
+  if (demoAvailable && !looksLikeShopifyRequest(request)) return false;
+  return true;
 }
 
 /**

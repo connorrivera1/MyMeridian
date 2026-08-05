@@ -1,7 +1,33 @@
-import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
+import {
+  Links,
+  Meta,
+  Outlet,
+  Scripts,
+  ScrollRestoration,
+  useRouteLoaderData,
+} from "react-router";
+import type { LoaderFunctionArgs } from "react-router";
 
 import "@fontsource-variable/inter";
 import styles from "./design/meridian.css?url";
+
+/**
+ * App Bridge has to be resolved here rather than in the embedded layout.
+ * Shopify's embedded requirement is that `app-bridge.js` is the first script in
+ * the document head; `AppProvider` renders it from inside `<body>`, which is
+ * where it sat before. The client id is public — it is the app's `client_id`
+ * from the Partner Dashboard and appears in every OAuth URL — so returning it
+ * from an unauthenticated loader discloses nothing.
+ */
+export async function loader({ request }: LoaderFunctionArgs) {
+  const { shouldLoadAppBridge } = await import("./lib/auth.server");
+
+  return {
+    appBridgeApiKey: shouldLoadAppBridge(request)
+      ? (process.env.SHOPIFY_API_KEY ?? "")
+      : "",
+  };
+}
 
 export const links = () => [
   { rel: "stylesheet", href: styles },
@@ -25,10 +51,23 @@ export const meta = () => [
 const THEME_BOOTSTRAP = `(function(){try{var t=localStorage.getItem("meridian-theme");if(t==="light"||t==="dark"){document.documentElement.dataset.theme=t;var m=document.querySelectorAll('meta[name="theme-color"]');for(var i=0;i<m.length;i++){m[i].setAttribute("content",t==="light"?"#f6f8fa":"#06080b");m[i].removeAttribute("media")}}}catch(e){}})();`;
 
 export function Layout({ children }: { children: React.ReactNode }) {
+  // `Layout` also wraps the error boundary, which renders when the loader threw
+  // and there is no data at all — hence the optional read.
+  const data = useRouteLoaderData<typeof loader>("root");
+  const appBridgeApiKey = data?.appBridgeApiKey ?? "";
+
   return (
     <html lang="en" data-theme="dark">
       <head>
         <meta charSet="utf-8" />
+        {/* First script in the head, as Shopify's embedded app requirements
+            state. Nothing may be emitted above it. */}
+        {appBridgeApiKey && (
+          <script
+            src="https://cdn.shopify.com/shopifycloud/app-bridge.js"
+            data-api-key={appBridgeApiKey}
+          />
+        )}
         <Meta />
         <Links />
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />

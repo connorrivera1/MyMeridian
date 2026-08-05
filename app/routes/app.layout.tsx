@@ -5,6 +5,7 @@ import {
   Outlet,
   useLoaderData,
   useLocation,
+  useNavigate,
   useRevalidator,
   useRouteError,
 } from "react-router";
@@ -56,8 +57,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
     isDemo,
     preset,
     alertCount,
-    // App Bridge needs the client id on the page to talk to the admin frame.
-    apiKey: process.env.SHOPIFY_API_KEY ?? "",
     sync: {
       status: shop.syncStatus,
       stage: shop.syncStage,
@@ -174,7 +173,7 @@ function SyncBanner({ sync, isDemo }: { sync: SyncState; isDemo: boolean }) {
 }
 
 export default function AppLayout() {
-  const { shopName, shopDomain, isDemo, preset, alertCount, apiKey, sync } =
+  const { shopName, shopDomain, isDemo, preset, alertCount, sync } =
     useLoaderData<typeof loader>();
   const location = useLocation();
 
@@ -279,11 +278,42 @@ export default function AppLayout() {
   }
 
   return (
-    <AppProvider embedded apiKey={apiKey}>
+    // `embedded` is deliberately off here. That prop is the only thing
+    // AppProvider uses it for — emitting the App Bridge script tag — and it
+    // emits it from inside <body>, which fails Shopify's "first script in the
+    // head" requirement. root.tsx puts it in the head instead; loading it twice
+    // would register two App Bridge instances against the same frame. Polaris
+    // and the navigation bridge below are what remain of AppProvider's job.
+    <AppProvider embedded={false}>
+      <AppBridgeNavigation />
       <Splash />
       {shell}
     </AppProvider>
   );
+}
+
+/**
+ * App Bridge turns admin-initiated navigation into a `shopify:navigate` event
+ * on the document. Without a listener the merchant's browser back button and
+ * any admin-side link into the app do a full page load instead of a client
+ * transition. AppProvider installs this itself when `embedded` is on; it is
+ * reproduced here because the script that makes it meaningful now lives in the
+ * head.
+ */
+function AppBridgeNavigation() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const handleNavigate = (event: Event) => {
+      const href = (event.target as HTMLElement | null)?.getAttribute("href");
+      if (href) navigate(href);
+    };
+
+    document.addEventListener("shopify:navigate", handleNavigate);
+    return () => document.removeEventListener("shopify:navigate", handleNavigate);
+  }, [navigate]);
+
+  return null;
 }
 
 const TITLES: Record<string, { title: string; subtitle: string }> = {

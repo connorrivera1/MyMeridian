@@ -33,8 +33,18 @@ const ORDER_PAGE_SIZE = 25;
 const PRODUCT_PAGE_SIZE = 50;
 const LINE_ITEMS_PER_ORDER = 50;
 
-/** Safety valve so a dev run against a huge store cannot go on forever. */
-const MAX_ORDERS = Number(process.env.MERIDIAN_MAX_BACKFILL_ORDERS ?? 20_000);
+/**
+ * Safety valve so a dev run against a huge store cannot go on forever.
+ *
+ * Validated rather than coerced: `??` only catches undefined, so `Number("")`
+ * gave 0 and capped the import at a single order while still reporting success,
+ * and any non-numeric value gave NaN, which made `count >= MAX_ORDERS` always
+ * false and removed the safety valve entirely.
+ */
+const MAX_ORDERS = (() => {
+  const configured = Number(process.env.MERIDIAN_MAX_BACKFILL_ORDERS);
+  return Number.isFinite(configured) && configured > 0 ? configured : 20_000;
+})();
 
 const MAX_THROTTLE_RETRIES = 6;
 
@@ -47,26 +57,69 @@ interface GraphQLError {
   extensions?: { code?: string };
 }
 
-class ShopifyFieldError extends Error {}
+export class ShopifyFieldError extends Error {}
 
-async function gql<T>(
+/**
+ * Pull the GraphQL errors out of whatever `admin.graphql` produced.
+ *
+ * This has to cope with a thrown error as well as a returned body, and the
+ * thrown case is the one that actually happens. Shopify answers HTTP 200 for
+ * both THROTTLED and access-denied, and the client library treats a 200 whose
+ * body carries `errors` as a failure: `GraphqlClient.request` calls
+ * `throwFailedRequest`, which raises `GraphqlQueryError` carrying
+ * `body.errors.graphQLErrors`. The React Router wrapper re-throws it unchanged.
+ *
+ * So the response this function used to inspect never has an `errors` key —
+ * it either resolves clean or throws. Reading only the resolved body left the
+ * whole throttle-backoff and capability-probe path below unreachable.
+ */
+function graphQLErrorsFrom(error: unknown): GraphQLError[] {
+  const body = (error as { body?: { errors?: { graphQLErrors?: GraphQLError[] } } })
+    ?.body;
+  const errors = body?.errors?.graphQLErrors;
+  if (Array.isArray(errors) && errors.length) return errors;
+
+  // HTTP 429 arrives as HttpThrottlingError with no GraphQL body at all.
+  const name = (error as { constructor?: { name?: string } })?.constructor?.name;
+  const message = error instanceof Error ? error.message : String(error);
+  if (name === "HttpThrottlingError" || /throttl/i.test(message)) {
+    return [{ message, extensions: { code: "THROTTLED" } }];
+  }
+
+  return [{ message }];
+}
+
+/** Exported for test only — see backfill-gql.test.ts. */
+export async function gql<T>(
   admin: AdminClient,
   query: string,
   variables: Record<string, unknown> = {},
 ): Promise<T> {
   for (let attempt = 0; attempt <= MAX_THROTTLE_RETRIES; attempt++) {
-    const response = await admin.graphql(query, { variables });
-    const body = (await response.json()) as {
-      data?: T;
-      errors?: GraphQLError[];
-    };
+    let errors: GraphQLError[];
 
-    if (!body.errors?.length) {
-      if (!body.data) throw new Error("Shopify returned no data.");
-      return body.data;
+    try {
+      const response = await admin.graphql(query, { variables });
+      const body = (await response.json()) as {
+        data?: T;
+        errors?: GraphQLError[];
+      };
+
+      if (!body.errors?.length) {
+        if (!body.data) throw new Error("Shopify returned no data.");
+        return body.data;
+      }
+
+      errors = body.errors;
+    } catch (error) {
+      // A no-data response is our own error, not Shopify's; do not retry it.
+      if (error instanceof Error && error.message === "Shopify returned no data.") {
+        throw error;
+      }
+      errors = graphQLErrorsFrom(error);
     }
 
-    const throttled = body.errors.some(
+    const throttled = errors.some(
       (error) => error.extensions?.code === "THROTTLED",
     );
 
@@ -78,7 +131,7 @@ async function gql<T>(
       continue;
     }
 
-    const message = body.errors.map((error) => error.message).join("; ");
+    const message = errors.map((error) => error.message).join("; ");
 
     // A missing or unauthorised field is a capability difference, not a
     // failure — the caller can retry with a narrower query.

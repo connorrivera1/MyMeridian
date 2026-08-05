@@ -30,27 +30,24 @@ redirect_urls = [ "https://shopify.dev/apps/default-app-home/api/auth" ]
 # do not describe.
 api_version = "2026-07"
 
-# ---------------------------------------------------------------------------
-# DISABLED FOR DEVELOPMENT — RESTORE BEFORE APP STORE SUBMISSION
-#
 # The three mandatory privacy compliance webhooks. A public app cannot pass
-# review without all three, and the handlers for them are already implemented
-# and unchanged:
-#
-#   app/routes/webhooks.gdpr.data-request.tsx
-#   app/routes/webhooks.gdpr.customers-redact.tsx
-#   app/routes/webhooks.gdpr.shop-redact.tsx
-#
-# To restore: uncomment the block below and replace the host with the app's
-# real public HTTPS URL. Shopify rejects localhost here — these endpoints must
-# be publicly reachable, which is the usual reason this block fails to deploy
-# from a dev machine. See README "Re-enabling compliance webhooks".
-#
-#   [webhooks.privacy_compliance]
-#   customer_data_request_url = "https://YOUR-APP-DOMAIN/webhooks/gdpr/customers-data-request"
-#   customer_deletion_url = "https://YOUR-APP-DOMAIN/webhooks/gdpr/customers-redact"
-#   shop_deletion_url = "https://YOUR-APP-DOMAIN/webhooks/gdpr/shop-redact"
-# ---------------------------------------------------------------------------
+# review without all three. Relative URIs resolve against application_url, so
+# they track dev-tunnel and production URLs automatically — no hardcoded host,
+# which is why the old [webhooks.privacy_compliance] absolute-URL block kept
+# breaking on dev machines. Handlers verify HMAC via authenticate.webhook and
+# return 401 on a bad signature, as Shopify's automated review requires.
+
+  [[webhooks.subscriptions]]
+  compliance_topics = [ "customers/data_request" ]
+  uri = "/webhooks/gdpr/customers-data-request"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = [ "customers/redact" ]
+  uri = "/webhooks/gdpr/customers-redact"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = [ "shop/redact" ]
+  uri = "/webhooks/gdpr/shop-redact"
 
   [[webhooks.subscriptions]]
   uri = "/webhooks/app/uninstalled"

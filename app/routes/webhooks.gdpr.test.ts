@@ -30,6 +30,8 @@ const orderUpdateMany = vi.fn();
 const sessionDeleteMany = vi.fn();
 const webhookEventCreate = vi.fn();
 const webhookEventUpdate = vi.fn();
+const dataRequestUpsert = vi.fn();
+const dataRequestDeleteMany = vi.fn();
 
 vi.mock("~/db.server", () => ({
   default: {
@@ -55,6 +57,10 @@ vi.mock("~/db.server", () => ({
     webhookEvent: {
       create: (...args: unknown[]) => webhookEventCreate(...args),
       update: (...args: unknown[]) => webhookEventUpdate(...args),
+    },
+    dataRequest: {
+      upsert: (...args: unknown[]) => dataRequestUpsert(...args),
+      deleteMany: (...args: unknown[]) => dataRequestDeleteMany(...args),
     },
     $transaction: (ops: Promise<unknown>[]) => Promise.all(ops),
   },
@@ -115,6 +121,8 @@ beforeEach(() => {
   orderUpdateMany.mockResolvedValue({ count: 0 });
   sessionDeleteMany.mockResolvedValue({ count: 0 });
   shopDelete.mockResolvedValue({});
+  dataRequestUpsert.mockResolvedValue({ id: "dr_1" });
+  dataRequestDeleteMany.mockResolvedValue({ count: 0 });
 });
 
 describe("HMAC verification", () => {
@@ -186,6 +194,103 @@ describe("customers/data_request", () => {
       }),
     );
   });
+
+  // The whole point of the topic. Before this the report was assembled, logged
+  // and discarded, so a merchant who was told in Settings that they could
+  // collect it had nothing to collect and no way to know.
+  it("stores the assembled export for the merchant to collect", async () => {
+    customerFindFirst.mockResolvedValue({
+      id: "cust_9",
+      shopifyId: "gid://shopify/Customer/5551234",
+      email: "shopper@example.com",
+      firstOrderAt: new Date("2026-02-01T00:00:00.000Z"),
+      ordersCount: 1,
+      lifetimeRevenue: "121.00",
+      acquisitionChannel: "GOOGLE",
+      orders: [
+        {
+          orderNumber: 1001,
+          processedAt: new Date("2026-02-01T00:00:00.000Z"),
+          total: "121.00",
+          lineItems: [{ title: "Merino Base Layer", quantity: 1, unitPrice: "84.00" }],
+        },
+      ],
+    });
+
+    const response = await invoke(
+      dataRequest,
+      webhookRequest(
+        "/webhooks/gdpr/customers-data-request",
+        "customers/data_request",
+        { shop_domain: SHOP_DOMAIN, customer: { id: 5551234 } },
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(dataRequestUpsert).toHaveBeenCalledTimes(1);
+
+    const stored = dataRequestUpsert.mock.calls[0]![0] as {
+      create: {
+        shopId: string;
+        shopifyCustomerId: string;
+        customerEmail: string;
+        ordersIncluded: number;
+        report: { orders: { orderNumber: number }[] };
+      };
+    };
+    expect(stored.create.shopId).toBe("shop_1");
+    expect(stored.create.shopifyCustomerId).toBe("gid://shopify/Customer/5551234");
+    expect(stored.create.customerEmail).toBe("shopper@example.com");
+    expect(stored.create.ordersIncluded).toBe(1);
+    expect(stored.create.report.orders[0]!.orderNumber).toBe(1001);
+  });
+
+  // "We hold nothing on this person" is the answer to the request, and the
+  // merchant has to be able to give it.
+  it("stores an empty export when no data is held", async () => {
+    await invoke(
+      dataRequest,
+      webhookRequest(
+        "/webhooks/gdpr/customers-data-request",
+        "customers/data_request",
+        { shop_domain: SHOP_DOMAIN, customer: { id: 404404 } },
+      ),
+    );
+
+    const stored = dataRequestUpsert.mock.calls[0]![0] as {
+      create: { shopifyCustomerId: string; ordersIncluded: number; report: { note?: string } };
+    };
+    expect(stored.create.shopifyCustomerId).toBe("404404");
+    expect(stored.create.ordersIncluded).toBe(0);
+    expect(stored.create.report.note).toMatch(/no data held/i);
+  });
+
+  it("keeps the export out of the application log", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    customerFindFirst.mockResolvedValue({
+      id: "cust_9",
+      shopifyId: "gid://shopify/Customer/5551234",
+      email: "shopper@example.com",
+      firstOrderAt: null,
+      ordersCount: 0,
+      lifetimeRevenue: "0",
+      acquisitionChannel: "DIRECT",
+      orders: [],
+    });
+
+    await invoke(
+      dataRequest,
+      webhookRequest(
+        "/webhooks/gdpr/customers-data-request",
+        "customers/data_request",
+        { shop_domain: SHOP_DOMAIN, customer: { id: 5551234 } },
+      ),
+    );
+
+    const logged = info.mock.calls.flat().join(" ");
+    expect(logged).not.toContain("shopper@example.com");
+    info.mockRestore();
+  });
 });
 
 describe("customers/redact", () => {
@@ -207,6 +312,51 @@ describe("customers/redact", () => {
       data: { customerId: null },
     });
     expect(customerDelete).toHaveBeenCalledWith({ where: { id: "cust_9" } });
+  });
+
+  // A held export is a full copy of the orders and email that erasure is about
+  // to remove. Leaving it behind erases nothing.
+  it("deletes any export still held for that customer", async () => {
+    customerFindFirst.mockResolvedValue({ id: "cust_9" });
+    dataRequestDeleteMany.mockResolvedValue({ count: 1 });
+
+    await invoke(
+      customersRedact,
+      webhookRequest(
+        "/webhooks/gdpr/customers-redact",
+        "customers/redact",
+        { shop_domain: SHOP_DOMAIN, customer: { id: 5551234 } },
+      ),
+    );
+
+    expect(dataRequestDeleteMany).toHaveBeenCalledWith({
+      where: {
+        shopId: "shop_1",
+        shopifyCustomerId: {
+          in: ["5551234", "gid://shopify/Customer/5551234"],
+        },
+      },
+    });
+  });
+
+  // Redaction can arrive after the customer row is already gone — a retried
+  // delivery, or a shopper Meridian never stored. The export is still there.
+  it("deletes held exports even when the customer row has gone", async () => {
+    customerFindFirst.mockResolvedValue(null);
+    dataRequestDeleteMany.mockResolvedValue({ count: 1 });
+
+    const response = await invoke(
+      customersRedact,
+      webhookRequest(
+        "/webhooks/gdpr/customers-redact",
+        "customers/redact",
+        { shop_domain: SHOP_DOMAIN, customer: { id: 5551234 } },
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(dataRequestDeleteMany).toHaveBeenCalledTimes(1);
+    expect(customerDelete).not.toHaveBeenCalled();
   });
 
   it("still returns 200 when the customer is unknown", async () => {

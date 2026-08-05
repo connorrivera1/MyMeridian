@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs } from "react-router";
 
 import prisma from "~/db.server";
-import { centsToDollars, toCents } from "~/engine/money";
+import { buildCustomerExport, recordDataRequest } from "~/lib/data-request.server";
 import { handleWebhook } from "~/lib/webhooks.server";
 
 /**
@@ -10,9 +10,10 @@ import { handleWebhook } from "~/lib/webhooks.server";
  * A customer has asked what the store holds on them. Shopify requires the app
  * to hand the data to the *merchant*, who is the controller, within 30 days.
  *
- * The export is assembled here and recorded for the merchant to collect from
- * Settings. It deliberately does not email the customer directly: the app is a
- * processor and must not open its own channel to the data subject.
+ * The export is assembled here and stored for the merchant to collect from
+ * Settings → Customer data requests. It deliberately does not email the customer
+ * directly: the app is a processor and must not open its own channel to the data
+ * subject.
  */
 export async function action({ request }: ActionFunctionArgs) {
   return handleWebhook(request, async ({ shopDomain, payload, webhookId }) => {
@@ -38,30 +39,20 @@ export async function action({ request }: ActionFunctionArgs) {
       },
     });
 
-    const report = customer
-      ? {
-          shop: shopDomain,
-          requestedAt: new Date().toISOString(),
-          customer: {
-            shopifyId: customer.shopifyId,
-            email: customer.email,
-            firstOrderAt: customer.firstOrderAt,
-            ordersCount: customer.ordersCount,
-            lifetimeRevenue: centsToDollars(toCents(customer.lifetimeRevenue)),
-            acquisitionChannel: customer.acquisitionChannel,
-          },
-          orders: customer.orders.map((order) => ({
-            orderNumber: order.orderNumber,
-            processedAt: order.processedAt,
-            total: centsToDollars(toCents(order.total)),
-            items: order.lineItems.map((item) => ({
-              title: item.title,
-              quantity: item.quantity,
-              unitPrice: centsToDollars(toCents(item.unitPrice)),
-            })),
-          })),
-        }
-      : { shop: shopDomain, customer: null, note: "No data held for this customer." };
+    const requestedAt = new Date();
+    const report = buildCustomerExport(shopDomain, customer, requestedAt);
+
+    // A request with nothing behind it is still a request the merchant has to
+    // answer, so an empty export is stored rather than dropped: "we hold nothing
+    // on this person" is the answer, and they need it in hand to give it.
+    await recordDataRequest({
+      shopId: shop.id,
+      webhookId,
+      shopifyCustomerId: customer?.shopifyId ?? String(customerId),
+      customerEmail: customer?.email ?? null,
+      report,
+      requestedAt,
+    });
 
     // The delivery record is the audit trail proving the request was serviced.
     await prisma.webhookEvent.update({
@@ -69,11 +60,14 @@ export async function action({ request }: ActionFunctionArgs) {
       data: { error: null },
     });
 
+    // Counts only. The report itself is personal data and application logs are
+    // not a place to keep a copy of it.
     console.info(
       `[gdpr] data request for ${shopDomain}: ${
-        customer ? `${report.orders?.length ?? 0} orders assembled` : "no data held"
+        customer
+          ? `${report.orders.length} orders assembled, awaiting collection`
+          : "no data held"
       }`,
-      JSON.stringify(report).slice(0, 2000),
     );
   });
 }

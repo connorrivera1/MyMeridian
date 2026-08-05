@@ -129,6 +129,7 @@ model Shop {
   connectors   Connector[]
   pricingRecs  PricingRecommendation[]
   priceChanges PriceChange[]
+  dataRequests DataRequest[]
   subscription Subscription?
 
   @@index([domain])
@@ -239,6 +240,43 @@ model Customer {
   @@unique([shopId, shopifyId])
   @@index([shopId, acquisitionChannel])
   @@index([shopId, firstOrderAt])
+}
+
+/// A serviced `customers/data_request`, held for the merchant to collect.
+///
+/// Shopify makes the merchant the controller and gives them 30 days to answer
+/// the shopper; the app is a processor and must hand the export to the merchant
+/// rather than to the customer. Assembling the report and dropping it — which is
+/// what this app did before this table existed — leaves the merchant with no way
+/// to answer, while Settings and the privacy policy both promise they can.
+model DataRequest {
+  id     String @id @default(cuid())
+  shopId String
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  /// Shopify's delivery id. Unique, so a retried webhook updates the one export
+  /// instead of stacking copies of the same customer's data.
+  webhookId String @unique
+
+  /// As Shopify sent it, so `customers/redact` can find this row without
+  /// depending on a Customer row that redaction is about to delete.
+  shopifyCustomerId String
+  customerEmail     String?
+
+  requestedAt    DateTime @default(now())
+  ordersIncluded Int      @default(0)
+
+  /// The assembled export, exactly as the merchant will receive it.
+  report Json
+
+  collectedAt DateTime?
+
+  /// An export is a second copy of a shopper's data, so it does not live
+  /// forever: it is deleted at this point whether or not it was collected.
+  expiresAt DateTime
+
+  @@index([shopId, requestedAt])
+  @@index([shopId, shopifyCustomerId])
 }
 
 model Order {

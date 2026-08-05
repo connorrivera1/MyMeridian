@@ -148,9 +148,11 @@ export default function Privacy() {
       </p>
       <ul>
         <li>
-          <code>customers/data_request</code> — we return everything held about
-          the named customer to the merchant, who is the controller and responds
-          to the shopper.
+          <code>customers/data_request</code> — everything held about the named
+          customer is assembled into an export and made available to the
+          merchant, who is the controller and responds to the shopper. The
+          merchant collects it from Settings; it is deleted 31 days after the
+          request whether or not they do.
         </li>
         <li>
           <code>customers/redact</code> — the customer record is deleted and

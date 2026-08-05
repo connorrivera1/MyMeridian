@@ -1,12 +1,23 @@
 import { ConnectorStatus, CostRuleKind } from "@prisma/client";
-import { Form, useActionData, useLoaderData, useNavigation } from "react-router";
+import {
+  Form,
+  useActionData,
+  useFetcher,
+  useLoaderData,
+  useNavigation,
+} from "react-router";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { z } from "zod";
 
 import prisma from "~/db.server";
 import { invalidateAnalyticsCache } from "~/data/analytics.server";
-import { Badge, Banner, Card, Stat } from "~/design/components";
+import { Badge, Banner, Card, Empty, Stat } from "~/design/components";
 import { requireShopContext } from "~/lib/auth.server";
+import {
+  DATA_REQUEST_RETENTION_DAYS,
+  listDataRequests,
+  markDataRequestCollected,
+} from "~/lib/data-request.server";
 import { resolvePlan } from "~/lib/plan.server";
 import { recomputeShopProfitability } from "~/lib/recompute.server";
 import { scopeReport } from "~/lib/scopes";
@@ -17,12 +28,17 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const { shop } = ctx;
   const plan = await resolvePlan(ctx);
 
-  const [costRules, connectors, orderCount, productCount] = await Promise.all([
-    prisma.costRule.findMany({ where: { shopId: shop.id }, orderBy: { kind: "asc" } }),
-    prisma.connector.findMany({ where: { shopId: shop.id }, orderBy: { provider: "asc" } }),
-    prisma.order.count({ where: { shopId: shop.id } }),
-    prisma.product.count({ where: { shopId: shop.id } }),
-  ]);
+  const [costRules, connectors, orderCount, productCount, dataRequests] =
+    await Promise.all([
+      prisma.costRule.findMany({ where: { shopId: shop.id }, orderBy: { kind: "asc" } }),
+      prisma.connector.findMany({
+        where: { shopId: shop.id },
+        orderBy: { provider: "asc" },
+      }),
+      prisma.order.count({ where: { shopId: shop.id } }),
+      prisma.product.count({ where: { shopId: shop.id } }),
+      listDataRequests(shop.id),
+    ]);
 
   return {
     shopName: shop.name,
@@ -65,6 +81,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
       lastSyncedAt: connector.lastSyncedAt,
       lastError: connector.lastError,
     })),
+    // The export travels with the page rather than sitting behind a download
+    // URL: this loader is already the merchant's authenticated session, and a
+    // separate endpoint serving personal data would be a second thing to get
+    // right. The list is capped and expired exports are purged before it.
+    dataRequests,
+    retentionDays: DATA_REQUEST_RETENTION_DAYS,
     plan: plan.planId,
   };
 }
@@ -97,6 +119,14 @@ export async function action({ request }: ActionFunctionArgs) {
       ok: true,
       message: "Import started. Progress appears at the top of the page.",
     };
+  }
+
+  if (form.get("intent") === "data-request-collected") {
+    const id = String(form.get("id") ?? "");
+    // Not an error if it was already collected — the merchant may download the
+    // same export twice, and only the first time is what the audit trail claims.
+    await markDataRequestCollected(shop.id, id);
+    return { ok: true, message: "Export downloaded and marked as collected." };
   }
 
   if (form.get("intent") === "recompute") {
@@ -427,6 +457,40 @@ export default function Settings() {
       )}
 
       <Card
+        title="Customer data requests"
+        hint={`When a shopper asks what your store holds on them, Shopify sends the request here and Meridian assembles the export for you to hand over. You are the controller and reply to the shopper; Meridian never contacts them. Exports are deleted ${data.retentionDays} days after the request.`}
+        flush
+      >
+        {data.dataRequests.length === 0 ? (
+          <div style={{ padding: "14px 16px" }}>
+            <Empty>
+              No requests. One appears here within seconds of a shopper asking
+              through Shopify.
+            </Empty>
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>Customer</th>
+                  <th>Requested</th>
+                  <th>Contents</th>
+                  <th>Status</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {data.dataRequests.map((request) => (
+                  <DataRequestRow key={request.id} request={request} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Card
         title="Connections"
         hint="Meridian reads from these. Where a connection is missing, the matching cost falls back to the rule above."
         actions={
@@ -541,6 +605,86 @@ export default function Settings() {
         </div>
       </Card>
     </>
+  );
+}
+
+type LoadedDataRequest = Awaited<ReturnType<typeof loader>>["dataRequests"][number];
+
+/**
+ * One request, with the export attached.
+ *
+ * The download is built in the browser from data the loader already sent, so
+ * collecting an export is not a second authenticated endpoint serving personal
+ * data. Marking it collected is a separate, deliberate write: the audit trail
+ * should record that the merchant took it, not that they looked at the page.
+ */
+function DataRequestRow({ request }: { request: LoadedDataRequest }) {
+  const fetcher = useFetcher();
+  const requestedAt = new Date(request.requestedAt);
+  const expiresAt = new Date(request.expiresAt);
+
+  const download = () => {
+    const blob = new Blob([JSON.stringify(request.report, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `data-request-${request.shopifyCustomerId.replace(
+      /[^\w.-]+/g,
+      "-",
+    )}-${requestedAt.toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+
+    fetcher.submit(
+      { intent: "data-request-collected", id: request.id },
+      { method: "post" },
+    );
+  };
+
+  return (
+    <tr>
+      <td className="primary-cell">
+        {request.customerEmail ?? "Email not held"}
+        <div className="cell-sub">
+          <code>{request.shopifyCustomerId}</code>
+        </div>
+      </td>
+      <td className="tiny muted">
+        {requestedAt.toLocaleString("en-US", {
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        })}
+        <div className="cell-sub">
+          deleted {expiresAt.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+          })}
+        </div>
+      </td>
+      <td className="secondary tiny">
+        {request.ordersIncluded > 0
+          ? `${request.ordersIncluded} order${request.ordersIncluded === 1 ? "" : "s"}, with line items`
+          : "Nothing held on this shopper"}
+      </td>
+      <td>
+        {request.collectedAt ? (
+          <Badge tone="good">Collected</Badge>
+        ) : (
+          <Badge tone="warning">Awaiting collection</Badge>
+        )}
+      </td>
+      <td>
+        <button className="btn sm" type="button" onClick={download}>
+          Download JSON
+        </button>
+      </td>
+    </tr>
   );
 }
 

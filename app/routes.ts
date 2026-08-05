@@ -22,6 +22,9 @@ export default [
     route("pricing", "routes/app.pricing.tsx"),
     route("fulfilment", "routes/app.fulfilment.tsx"),
     route("settings", "routes/app.settings.tsx"),
+    // Plan selection, upgrade and downgrade. Reachable without an active
+    // subscription — every other child route redirects here until there is one.
+    route("plan", "routes/app.plan.tsx"),
   ]),
 
   // Shop webhooks.

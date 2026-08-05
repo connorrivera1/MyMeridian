@@ -9,6 +9,7 @@ import {
   useRevalidator,
   useRouteError,
 } from "react-router";
+import { redirect } from "react-router";
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
@@ -20,6 +21,7 @@ import {
   IconFulfilment,
   IconOrders,
   IconOverview,
+  IconPlan,
   IconPricing,
   IconProducts,
   IconSettings,
@@ -27,10 +29,23 @@ import {
 } from "~/design/components";
 import { loadShopAnalytics, resolveRange } from "~/data/analytics.server";
 import { requireShopContext } from "~/lib/auth.server";
+import { planAllows, resolvePlan } from "~/lib/plan.server";
 import { parseRangePreset, RANGE_PRESETS, type RangePreset } from "~/lib/ranges";
+import { PLANS } from "~/lib/plans";
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { shop, isDemo } = await requireShopContext(request);
+  const ctx = await requireShopContext(request);
+  const { shop, isDemo } = ctx;
+
+  // Resolved here rather than per route so the answer is read once per
+  // navigation, and so a store with no active charge cannot reach a paid screen
+  // by typing its URL.
+  const plan = await resolvePlan(ctx);
+  const url = new URL(request.url);
+
+  if (!plan.planId && url.pathname !== "/app/plan") {
+    throw redirect(`/app/plan${url.search}`);
+  }
 
   const preset = parseRangePreset(new URL(request.url).searchParams.get("range"));
 
@@ -40,7 +55,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const importing =
     !isDemo && (shop.syncStatus === "RUNNING" || shop.syncStatus === "PENDING");
 
-  const alertCount = importing
+  const alertCount = importing || !planAllows(plan, "capacity")
     ? 0
     : (
         await loadShopAnalytics(
@@ -57,6 +72,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
     isDemo,
     preset,
     alertCount,
+    plan: {
+      id: plan.planId,
+      name: plan.planId ? PLANS[plan.planId].name : null,
+    },
     sync: {
       status: shop.syncStatus,
       stage: shop.syncStage,
@@ -173,7 +192,7 @@ function SyncBanner({ sync, isDemo }: { sync: SyncState; isDemo: boolean }) {
 }
 
 export default function AppLayout() {
-  const { shopName, shopDomain, isDemo, preset, alertCount, sync } =
+  const { shopName, shopDomain, isDemo, preset, alertCount, plan, sync } =
     useLoaderData<typeof loader>();
   const location = useLocation();
 
@@ -220,6 +239,13 @@ export default function AppLayout() {
           <NavLink to={`/app/settings?range=${preset}`} className="nav-link">
             <IconSettings />
             Costs &amp; connections
+          </NavLink>
+          {/* An in-app route rather than a link out to the Shopify admin.
+              Requirement 1.2.3 is that a merchant can change plans in both
+              directions without leaving the app or contacting support. */}
+          <NavLink to="/app/plan" className="nav-link">
+            <IconPlan />
+            {plan.name ? `Plan · ${plan.name}` : "Choose a plan"}
           </NavLink>
         </nav>
 
@@ -344,6 +370,10 @@ const TITLES: Record<string, { title: string; subtitle: string }> = {
   "/app/settings": {
     title: "Costs & connections",
     subtitle: "The inputs every number here depends on",
+  },
+  "/app/plan": {
+    title: "Plan",
+    subtitle: "Billed by Shopify, changeable at any time",
   },
 };
 

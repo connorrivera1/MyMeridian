@@ -7,13 +7,16 @@ import { handleWebhook } from "~/lib/webhooks.server";
 /**
  * app_subscriptions/update.
  *
- * Plan selection happens on Shopify's billing screen (managed pricing), so
- * this webhook is the only way the app learns which plan a merchant is on.
- * Without it the Subscription row is never written and Settings shows every
- * store as "trial" forever.
+ * Meridian bills through the Billing API (see `app/lib/plan.server.ts` for why
+ * not Shopify App Pricing), and this topic is still delivered for Billing API
+ * charges. It is not the only path any more — `resolvePlan` re-reads the plan
+ * from Shopify whenever the stored row is stale — but it is the fast one: a
+ * merchant who upgrades sees the new plan on their next page load rather than
+ * up to ten minutes later.
  *
- * Plans are matched by name against PLANS; the names configured in the
- * Partner Dashboard pricing page must match "Starter" / "Growth" / "Scale".
+ * Plan names come from `PLANS` in this build, which is also what the Billing
+ * API charge is created from, so the two cannot drift the way they could under
+ * managed pricing.
  */
 
 const ACTIVE_STATUSES = new Set(["active", "accepted"]);
@@ -37,18 +40,20 @@ export async function action({ request }: ActionFunctionArgs) {
     const planId = planIdForSubscriptionName(sub.name);
 
     if (isActive && !planId) {
-      // An active charge for a plan this build does not know is a config
-      // mismatch between the Partner Dashboard and PLANS — surface it loudly
-      // rather than silently billing on one plan and gating on another.
+      // An active charge for a plan this build does not know means a charge
+      // created by an older deploy whose PLANS have since changed. Surface it
+      // loudly rather than silently billing on one plan and gating on another.
       console.error(
         `[billing] active subscription "${sub.name}" for ${shopDomain} matches no known plan`,
       );
     }
 
     const data = {
-      // Cancelled, expired, declined or frozen charges drop the store back to
-      // trial rather than leaving it on a plan it no longer pays for.
-      plan: isActive && planId ? planId : "trial",
+      // Cancelled, expired, declined or frozen charges drop the store to no
+      // plan rather than leaving it on one it no longer pays for. "none" and
+      // not "trial": under the Billing API the free trial is a property of an
+      // active subscription, not a state that precedes one.
+      plan: isActive && planId ? planId : "none",
       status: status || "unknown",
       shopifyChargeId: sub.admin_graphql_api_id ?? null,
       trialEndsAt: sub.trial_ends_on ? new Date(sub.trial_ends_on) : null,

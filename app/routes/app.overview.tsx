@@ -28,11 +28,12 @@ import {
 } from "~/design/components";
 import { formatPercent, ratio } from "~/engine/money";
 import { CHANNEL_LABELS, type Channel } from "~/engine/types";
+import { planAllows } from "~/lib/plan.server";
 import { change, loadDashboard } from "~/lib/route-data.server";
 import { bucketWeekly, dailySeries } from "~/lib/series";
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { shop, analytics, previous, rangeLabel, preset, capabilities } =
+  const { shop, analytics, previous, rangeLabel, preset, capabilities, plan } =
     await loadDashboard(request);
 
   const p = analytics.period;
@@ -126,7 +127,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
         newCustomers: channel.newCustomers,
         verdict: channel.verdict,
       })),
-    alerts: analytics.capacity.alerts.slice(0, 2),
+    // Capacity is a Growth feature, so its alerts do not leak onto the
+    // overview of a Starter store — the "View capacity" link beside them would
+    // land on an upgrade notice.
+    alerts: planAllows(plan, "capacity")
+      ? analytics.capacity.alerts.slice(0, 2)
+      : [],
   };
 }
 

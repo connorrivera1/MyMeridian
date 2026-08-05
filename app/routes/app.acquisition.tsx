@@ -15,10 +15,12 @@ import {
   Legend,
   Money,
   Tile,
+  UpgradeNotice,
   seriesColor,
 } from "~/design/components";
 import { formatPercent } from "~/engine/money";
 import { CHANNEL_LABELS, type Channel } from "~/engine/types";
+import { planAllows, planFor } from "~/lib/plan.server";
 import { loadDashboard } from "~/lib/route-data.server";
 
 import { VerdictBadge } from "./app.overview";
@@ -35,7 +37,10 @@ const CHANNEL_ORDER: Channel[] = [
 ];
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { shop, analytics, rangeLabel, capabilities } = await loadDashboard(request);
+  const { shop, analytics, rangeLabel, capabilities, plan } =
+    await loadDashboard(request);
+
+  const cohortPlan = planFor("cohorts");
 
   const paid = analytics.channels.filter((channel) => channel.spendCents > 0);
 
@@ -51,6 +56,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
     rangeLabel,
     currency: shop.currency,
     hasCustomerData: capabilities.customers,
+    cohorts: {
+      allowed: planAllows(plan, "cohorts"),
+      planName: cohortPlan.name,
+      planPrice: cohortPlan.price,
+    },
     blended: {
       totalSpendCents: totalSpend,
       newCustomers: totalNewCustomers,
@@ -328,7 +338,20 @@ export default function Acquisition() {
         </div>
       </Card>
 
-      {selected && (
+      {!data.cohorts.allowed && (
+        <UpgradeNotice
+          feature="Cohort value and payback curves"
+          planName={data.cohorts.planName}
+          price={data.cohorts.planPrice}
+        >
+          The table above judges a channel on the customers it acquired. The
+          payback curve shows <em>when</em> each cohort crosses its own
+          acquisition cost — which is what tells you whether a channel is
+          expensive or merely slow.
+        </UpgradeNotice>
+      )}
+
+      {data.cohorts.allowed && selected && (
         <Card
           title={`Payback — ${CHANNEL_LABELS[selected.channel as Channel]}`}
           hint="Cumulative contribution per acquired customer, before marketing cost. Where it crosses the CAC line is when this channel starts making money. Click any channel row above to switch."

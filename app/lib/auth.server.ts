@@ -19,14 +19,22 @@ if (demoModeRequested && process.env.NODE_ENV === "production") {
 export const demoAvailable =
   demoModeRequested && process.env.NODE_ENV !== "production";
 
-type AdminClient = Awaited<
+type AdminContext = Awaited<
   ReturnType<NonNullable<typeof authenticate>["admin"]>
->["admin"];
+>;
+type AdminClient = AdminContext["admin"];
+type BillingClient = AdminContext["billing"];
 
 export interface ShopContext {
   shop: Shop;
   /** Null in demo mode — there is no Shopify Admin API without a session. */
   admin: AdminClient | null;
+  /**
+   * Null in demo mode. Reads and requests Billing API charges; see
+   * `plan.server.ts` for why this app bills through the Billing API rather
+   * than Shopify App Pricing.
+   */
+  billing: BillingClient | null;
   session: { shop: string; id: string } | null;
   isDemo: boolean;
 }
@@ -77,12 +85,12 @@ export async function requireShopContext(request: Request): Promise<ShopContext>
   const shopifyRequest = looksLikeShopifyRequest(request);
 
   if (hasShopifyCredentials && authenticate && (shopifyRequest || !demoAvailable)) {
-    const { session, admin } = await authenticate.admin(request);
+    const { session, admin, billing } = await authenticate.admin(request);
 
     const { ensureShopProvisioned } = await import("./provision.server");
     const shop = await ensureShopProvisioned(session.shop);
 
-    return { shop, admin, session, isDemo: false };
+    return { shop, admin, billing, session, isDemo: false };
   }
 
   if (!demoAvailable) {
@@ -102,5 +110,5 @@ export async function requireShopContext(request: Request): Promise<ShopContext>
     );
   }
 
-  return { shop, admin: null, session: null, isDemo: true };
+  return { shop, admin: null, billing: null, session: null, isDemo: true };
 }

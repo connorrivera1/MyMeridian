@@ -2,6 +2,16 @@
 
 name = "Meridian"
 handle = "meridian-profit"
+# NOT SUBMITTABLE AS IT STANDS. This is still the Shopify CLI's placeholder.
+# It must become the app's real, stable, public HTTPS origin before submission:
+# Shopify rejects localhost and tunnel URLs here, and it must not contain the
+# words "Shopify" or "Example". Every webhook `uri` below is relative and
+# resolves against this value, so until it is real all three mandatory
+# compliance webhooks resolve to a host Shopify cannot deliver to.
+#
+# `automatically_update_urls_on_dev = true` rewrites this and redirect_urls to
+# the tunnel while `shopify app dev` runs, which is why it can sit wrong for a
+# long time without anything locally appearing to break.
 application_url = "https://shopify.dev/apps/default-app-home"
 embedded = true
 client_id = "9dfbe484752628b0a96c4755caf4f502"
@@ -27,7 +37,12 @@ client_id = "9dfbe484752628b0a96c4755caf4f502"
 scopes = "read_orders read_products read_fulfillments read_inventory"
 
 [auth]
-redirect_urls = [ "https://shopify.dev/apps/default-app-home/api/auth" ]
+# The path has to match `authPathPrefix` in app/shopify.server.ts, which is
+# "/auth" — so the callback the library actually serves is /auth/callback. This
+# said /api/auth, which is the Remix template's default and a route that does
+# not exist in this app; OAuth would have failed on the redirect. The host is
+# still the placeholder from application_url above and changes with it.
+redirect_urls = [ "https://shopify.dev/apps/default-app-home/auth/callback" ]
 
 [webhooks]
 # Pinned to the version @shopify/shopify-api 13.1.0 actually models. Leaving
@@ -70,9 +85,11 @@ api_version = "2026-07"
   uri = "/webhooks/fulfillments/create"
   topics = [ "fulfillments/create", "fulfillments/update" ]
 
-  # Managed pricing: the merchant picks a plan on Shopify's billing screen and
-  # this webhook is how the app finds out. Plan names in the Partner Dashboard
-  # must match the PLANS in app/shopify.server.ts.
+  # Billing API charges, created by the app from the PLANS in
+  # app/shopify.server.ts. This topic is still delivered for Billing API
+  # subscriptions; Shopify App Pricing stopped sending it on 28 April 2026,
+  # which is one of the reasons Meridian does not use App Pricing — see
+  # app/lib/plan.server.ts.
   [[webhooks.subscriptions]]
   uri = "/webhooks/app-subscriptions/update"
   topics = [ "app_subscriptions/update" ]

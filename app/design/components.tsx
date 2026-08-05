@@ -443,6 +443,14 @@ export const IconAlert = svg(
   </>,
 );
 
+/** Subscription plan — a card, matching the billing screen it links to. */
+export const IconPlan = svg(
+  <>
+    <rect x="2.5" y="5" width="19" height="14" rx="2.5" />
+    <path d="M2.5 10h19M6.5 14.5h4" />
+  </>,
+);
+
 /**
  * Critical gets an octagon, warning keeps the triangle.
  *
@@ -709,6 +717,50 @@ export function seriesColor(key: string, order: readonly string[]): string {
   const index = order.indexOf(key);
   if (index >= 0 && index < SERIES_VARS.length) return SERIES_VARS[index]!;
   return "var(--ink-muted)";
+}
+
+/* ------------------------------------------------------------ plan gating */
+
+/**
+ * Shown in place of a screen the current plan does not include.
+ *
+ * Deliberately says what the feature does and what it costs, rather than just
+ * refusing — a merchant who cannot tell what they would be buying has no reason
+ * to buy it. The button goes to the in-app plan picker, never straight out to
+ * the Shopify admin.
+ */
+export function UpgradeNotice({
+  feature,
+  planName,
+  price,
+  children,
+}: {
+  /** What is locked, in the merchant's words: "Pricing recommendations". */
+  feature: string;
+  planName: string;
+  price: number;
+  /** One or two sentences on what the screen would show them. */
+  children: ReactNode;
+}) {
+  return (
+    <div className="card">
+      <div style={{ padding: "26px 24px", maxWidth: "68ch" }}>
+        <Badge tone="neutral">{planName} plan</Badge>
+        <h2
+          className="card-title"
+          style={{ fontSize: 17, margin: "12px 0 8px" }}
+        >
+          {feature} is part of {planName}
+        </h2>
+        <p className="secondary" style={{ margin: "0 0 18px", lineHeight: 1.65 }}>
+          {children}
+        </p>
+        <a className="btn primary" href="/app/plan">
+          See plans — {planName} is ${price}/month
+        </a>
+      </div>
+    </div>
+  );
 }
 
 /* -------------------------------------------------------------- legal pages */

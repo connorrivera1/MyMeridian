@@ -13,13 +13,20 @@ import {
   IconOverview,
   Legend,
   Tile,
+  UpgradeNotice,
 } from "~/design/components";
 import { formatPercent } from "~/engine/money";
 import { loadCapacityDays } from "~/data/queries.server";
+import { planAllows, planFor } from "~/lib/plan.server";
 import { loadDashboard } from "~/lib/route-data.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { shop, analytics } = await loadDashboard(request);
+  const { shop, analytics, plan } = await loadDashboard(request);
+
+  if (!planAllows(plan, "capacity")) {
+    const required = planFor("capacity");
+    return { locked: { name: required.name, price: required.price } };
+  }
 
   const capacity = analytics.capacity;
 
@@ -32,6 +39,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   });
 
   return {
+    locked: null,
     slaDays: shop.fulfillmentSlaDays,
     hasData: capacity.hasData,
     metrics: {
@@ -67,6 +75,20 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
 export default function Fulfilment() {
   const data = useLoaderData<typeof loader>();
+
+  if (data.locked) {
+    return (
+      <UpgradeNotice
+        feature="Fulfilment capacity"
+        planName={data.locked.name}
+        price={data.locked.price}
+      >
+        Meridian measures the throughput your team has actually demonstrated,
+        projects the next fortnight of demand against it, and tells you which
+        days will miss your shipping promise before the backlog forms.
+      </UpgradeNotice>
+    );
+  }
 
   if (!data.hasData) {
     return (

@@ -15,15 +15,22 @@ import {
   IconPricing,
   Money,
   Tile,
+  UpgradeNotice,
 } from "~/design/components";
 import { formatPercent, toCents } from "~/engine/money";
 import { requireShopContext } from "~/lib/auth.server";
+import { planAllows, planFor, resolvePlan } from "~/lib/plan.server";
 import { generatePricingRecommendations } from "~/lib/pricing.server";
 import { PRICING_LOOKBACK_DAYS } from "~/lib/ranges";
 import { loadDashboard } from "~/lib/route-data.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { shop, rangeLabel } = await loadDashboard(request);
+  const { shop, rangeLabel, plan } = await loadDashboard(request);
+
+  if (!planAllows(plan, "pricing")) {
+    const required = planFor("pricing");
+    return { locked: { name: required.name, price: required.price } };
+  }
 
   const recommendations = await prisma.pricingRecommendation.findMany({
     where: { shopId: shop.id, status: RecStatus.PENDING },
@@ -37,6 +44,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   );
 
   return {
+    locked: null,
     rangeLabel,
     currency: shop.currency,
     upsideCents: actionable.reduce(
@@ -65,7 +73,18 @@ export async function loader({ request }: LoaderFunctionArgs) {
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  const { shop } = await requireShopContext(request);
+  const ctx = await requireShopContext(request);
+  const { shop } = ctx;
+
+  // The loader hides this screen below Growth, but a form post does not go
+  // through the loader — without this check the gate is decoration.
+  if (!planAllows(await resolvePlan(ctx), "pricing")) {
+    throw new Response("Pricing recommendations need the Growth plan.", {
+      status: 402,
+      statusText: "Payment Required",
+    });
+  }
+
   const form = await request.formData();
   const intent = form.get("intent");
 
@@ -121,6 +140,21 @@ export default function Pricing() {
   const data = useLoaderData<typeof loader>();
   const navigation = useNavigation();
   const busy = navigation.state !== "idle";
+
+  if (data.locked) {
+    return (
+      <UpgradeNotice
+        feature="Pricing recommendations"
+        planName={data.locked.name}
+        price={data.locked.price}
+      >
+        Meridian fits a demand curve to each variant&rsquo;s own price history and
+        solves for the price that maximises contribution profit — not a rule of
+        thumb, and never a number invented for a variant that has never changed
+        price.
+      </UpgradeNotice>
+    );
+  }
 
   return (
     <>

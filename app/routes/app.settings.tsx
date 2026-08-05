@@ -5,23 +5,24 @@ import { z } from "zod";
 
 import prisma from "~/db.server";
 import { invalidateAnalyticsCache } from "~/data/analytics.server";
-import { Badge, Banner, Card, Money, Stat } from "~/design/components";
+import { Badge, Banner, Card, Stat } from "~/design/components";
 import { requireShopContext } from "~/lib/auth.server";
+import { resolvePlan } from "~/lib/plan.server";
 import { recomputeShopProfitability } from "~/lib/recompute.server";
 import { scopeReport } from "~/lib/scopes";
-import { PLANS } from "~/shopify.server";
+import { PLANS } from "~/lib/plans";
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { shop } = await requireShopContext(request);
+  const ctx = await requireShopContext(request);
+  const { shop } = ctx;
+  const plan = await resolvePlan(ctx);
 
-  const [costRules, connectors, subscription, orderCount, productCount] =
-    await Promise.all([
-      prisma.costRule.findMany({ where: { shopId: shop.id }, orderBy: { kind: "asc" } }),
-      prisma.connector.findMany({ where: { shopId: shop.id }, orderBy: { provider: "asc" } }),
-      prisma.subscription.findUnique({ where: { shopId: shop.id } }),
-      prisma.order.count({ where: { shopId: shop.id } }),
-      prisma.product.count({ where: { shopId: shop.id } }),
-    ]);
+  const [costRules, connectors, orderCount, productCount] = await Promise.all([
+    prisma.costRule.findMany({ where: { shopId: shop.id }, orderBy: { kind: "asc" } }),
+    prisma.connector.findMany({ where: { shopId: shop.id }, orderBy: { provider: "asc" } }),
+    prisma.order.count({ where: { shopId: shop.id } }),
+    prisma.product.count({ where: { shopId: shop.id } }),
+  ]);
 
   return {
     shopName: shop.name,
@@ -64,8 +65,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       lastSyncedAt: connector.lastSyncedAt,
       lastError: connector.lastError,
     })),
-    plan: subscription?.plan ?? "trial",
-    plans: Object.values(PLANS),
+    plan: plan.planId,
   };
 }
 
@@ -492,40 +492,30 @@ export default function Settings() {
         </div>
       </Card>
 
-      <div className="grid cols-3">
-        {data.plans.map((plan) => (
-          <div className="card" key={plan.id}>
-            <Stat
-              small
-              label={plan.name}
-              value={
-                <>
-                  <Money cents={plan.price * 100} currency="USD" decimals={false} />
-                  <span className="muted tiny"> /month</span>
-                </>
-              }
-              meta={<span>{plan.blurb}</span>}
-            />
-            <div style={{ padding: "0 16px 16px" }}>
-              <ul
-                className="tiny secondary"
-                style={{ margin: "6px 0 12px", paddingLeft: 16, lineHeight: 1.7 }}
-              >
-                {plan.features.map((feature) => (
-                  <li key={feature}>{feature}</li>
-                ))}
-              </ul>
-              {data.plan === plan.id ? (
-                <Badge tone="good">Current plan</Badge>
-              ) : (
-                <span className="tiny muted">
-                  Change plans from the Shopify admin billing screen.
-                </span>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
+      <Card
+        title="Plan"
+        hint="Billed by Shopify and shown on your Shopify invoice. Meridian never sees a card number."
+        actions={
+          <a className="btn sm" href="/app/plan">
+            {data.plan ? "Change plan" : "Choose a plan"}
+          </a>
+        }
+      >
+        <div className="row" style={{ gap: 10, alignItems: "center" }}>
+          {data.plan ? (
+            <>
+              <Badge tone="good">{PLANS[data.plan].name}</Badge>
+              <span className="tiny muted">
+                ${PLANS[data.plan].price}/month · {PLANS[data.plan].blurb}
+              </span>
+            </>
+          ) : (
+            <span className="tiny muted">
+              No active plan. Every feature is unavailable until one is chosen.
+            </span>
+          )}
+        </div>
+      </Card>
 
       <Card title="Store">
         <div className="grid cols-4">

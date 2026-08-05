@@ -6,6 +6,7 @@ import {
 import type { DateRange } from "~/data/queries.server";
 import { ratio } from "~/engine/money";
 import { requireShopContext } from "~/lib/auth.server";
+import { resolvePlan } from "~/lib/plan.server";
 import { parseRangePreset, RANGE_PRESETS } from "~/lib/ranges";
 import { capabilitiesForShop } from "~/lib/scopes";
 
@@ -18,7 +19,12 @@ import { capabilitiesForShop } from "~/lib/scopes";
  * that comparison is loaded once here rather than by each route.
  */
 export async function loadDashboard(request: Request) {
-  const { shop, isDemo } = await requireShopContext(request);
+  const ctx = await requireShopContext(request);
+  const { shop, isDemo } = ctx;
+
+  // Cheap after the layout loader has already run in the same navigation — the
+  // stored row is fresh, so this does not make a second Billing API call.
+  const plan = await resolvePlan(ctx);
 
   const preset = parseRangePreset(new URL(request.url).searchParams.get("range"));
   const range = resolveRange(shop, preset, { anchorToData: isDemo });
@@ -37,6 +43,7 @@ export async function loadDashboard(request: Request) {
   return {
     shop,
     isDemo,
+    plan,
     preset,
     rangeLabel: RANGE_PRESETS[preset].label,
     range,

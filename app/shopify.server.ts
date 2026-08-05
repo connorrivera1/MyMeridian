@@ -9,48 +9,14 @@ import {
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 
 import prisma from "./db.server";
+import { PLANS, TRIAL_DAYS } from "./lib/plans";
 
-export const PLANS = {
-  starter: {
-    id: "starter",
-    name: "Starter",
-    price: 49,
-    blurb: "Up to 1,000 orders / month",
-    features: [
-      "True profit per order",
-      "Product margin analysis",
-      "One ad channel connected",
-    ],
-  },
-  growth: {
-    id: "growth",
-    name: "Growth",
-    price: 149,
-    blurb: "Up to 10,000 orders / month",
-    features: [
-      "Everything in Starter",
-      "Unlimited ad channels + blended CAC",
-      "Pricing recommendations",
-      "Fulfilment capacity alerts",
-    ],
-  },
-  scale: {
-    id: "scale",
-    name: "Scale",
-    price: 399,
-    blurb: "Unlimited orders",
-    features: [
-      "Everything in Growth",
-      "Multi-location capacity modelling",
-      "Cohort LTV and payback curves",
-      "Priority support",
-    ],
-  },
-} as const;
-
-export type PlanId = keyof typeof PLANS;
-
-const TRIAL_DAYS = 14;
+/**
+ * Plans live in `lib/plans.ts` so route components can render the price list
+ * without dragging this module into the client bundle. Re-exported here
+ * because `shopifyApp()`'s billing config is built from them just below.
+ */
+export { PLANS, TRIAL_DAYS, type PlanId } from "./lib/plans";
 
 /**
  * The app is buildable and runnable before it has Shopify credentials, so that

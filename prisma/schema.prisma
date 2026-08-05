@@ -23,22 +23,33 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 /// Shape is dictated by @shopify/shopify-app-session-storage-prisma.
+///
+/// `refreshToken` and `refreshTokenExpires` are not optional extras. Version
+/// 9's `sessionToRow` writes both on every `storeSession`, unconditionally —
+/// so without these columns Prisma rejects the write with
+/// PrismaClientValidationError and no session is ever stored. That is not a
+/// degraded mode: it is every install failing at the point it exchanges a
+/// token. This schema was copied from a pre-9.x README and the app has never
+/// held a session row.
 model Session {
-  id            String    @id
-  shop          String
-  state         String
-  isOnline      Boolean   @default(false)
-  scope         String?
-  expires       DateTime?
-  accessToken   String
-  userId        BigInt?
-  firstName     String?
-  lastName      String?
-  email         String?
-  accountOwner  Boolean   @default(false)
-  locale        String?
-  collaborator  Boolean?  @default(false)
-  emailVerified Boolean?  @default(false)
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
+  /// Expiring offline access tokens live an hour; this is what buys a new one.
+  refreshToken        String?
+  refreshTokenExpires DateTime?
 
   @@index([shop])
 }
@@ -305,6 +316,12 @@ model OrderLineItem {
   unitCost    Decimal @db.Decimal(12, 4) @default(0)
   refundedQty Int     @default(0)
 
+  /// Line items are deleted and recreated on every order sync, outside a
+  /// transaction. Two concurrent deliveries of the same order could interleave
+  /// into two copies of each line, which would double both COGS and units for
+  /// that order and be invisible in the totals. The database is the only place
+  /// this can be closed cheaply.
+  @@unique([orderId, shopifyId])
   @@index([orderId])
   @@index([shopId, productId])
   @@index([shopId, variantId])

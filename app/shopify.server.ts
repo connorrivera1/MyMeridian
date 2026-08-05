@@ -39,6 +39,22 @@ function buildShopify() {
     distribution: AppDistribution.AppStore,
     isEmbeddedApp: true,
 
+    // Public apps created on or after 1 April 2026 must use expiring offline
+    // access tokens; every public app must by 1 January 2027, after which
+    // non-expiring tokens return authentication errors. Meridian is new, so
+    // the first date applies and this is a submission requirement, not a
+    // migration to schedule.
+    //
+    // This one flag does two things: token exchange sends `expiring: 1`
+    // instead of `expiring: 0` (the library sends the parameter either way —
+    // leaving the flag off actively requests a non-expiring token), and
+    // `ensureValidOfflineSession` starts refreshing a session within five
+    // minutes of expiry. It needs Session.refreshToken and
+    // Session.refreshTokenExpires to exist, which they now do.
+    future: {
+      expiringOfflineAccessTokens: true,
+    },
+
     billing: {
       [PLANS.starter.id]: {
         lineItems: [

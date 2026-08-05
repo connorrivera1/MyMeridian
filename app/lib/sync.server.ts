@@ -13,6 +13,18 @@ type Payload = Record<string, any>;
 
 const gid = (kind: string, id: unknown) => `gid://shopify/${kind}/${id}`;
 
+/**
+ * Variant GIDs carried by a products/create or products/update payload.
+ *
+ * Exists so the webhook can ask Shopify for the one field the payload never
+ * carries — the unit cost on each variant's inventory item.
+ */
+export function variantGidsIn(payload: Payload): string[] {
+  return (payload.variants ?? [])
+    .map((variant: Payload) => gid("ProductVariant", variant.id))
+    .filter(Boolean);
+}
+
 function decimal(value: unknown, fallback = "0.00"): string {
   if (value === null || value === undefined) return fallback;
   const text = String(value);

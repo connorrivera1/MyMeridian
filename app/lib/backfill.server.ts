@@ -6,6 +6,7 @@ import { deriveChannel } from "~/lib/sync.server";
 import { generatePricingRecommendations } from "~/lib/pricing.server";
 import { recomputeShopProfitability } from "~/lib/recompute.server";
 import { capabilitiesForShop, type Capabilities } from "~/lib/scopes";
+import { unauthenticated } from "~/shopify.server";
 
 /**
  * Historical import from the Admin GraphQL API.
@@ -31,6 +32,16 @@ interface AdminClient {
 
 const ORDER_PAGE_SIZE = 25;
 const PRODUCT_PAGE_SIZE = 50;
+
+/**
+ * Page sizes for the collections nested inside a product or an order.
+ *
+ * These are first pages, not limits: anything past them is fetched by a
+ * follow-up query. They were limits until now, which is the worst version of
+ * this bug — a store with 120-variant products or 80-line wholesale orders lost
+ * the overflow silently, and the missing cost showed up as margin.
+ */
+const VARIANTS_PER_PRODUCT = 100;
 const LINE_ITEMS_PER_ORDER = 50;
 
 /**
@@ -190,16 +201,47 @@ function productsQuery(includeCost: boolean) {
           productType
           vendor
           status
-          variants(first: 100) {
+          variants(first: ${VARIANTS_PER_PRODUCT}) {
+            pageInfo { hasNextPage endCursor }
             nodes {
-              id
-              sku
-              title
-              price
-              compareAtPrice
-              inventoryQuantity
-              ${includeCost ? "inventoryItem { unitCost { amount } }" : ""}
+              ${variantFields(includeCost)}
             }
+          }
+        }
+      }
+    }
+  `;
+}
+
+function variantFields(includeCost: boolean) {
+  return `
+    id
+    sku
+    title
+    price
+    compareAtPrice
+    inventoryQuantity
+    ${includeCost ? "inventoryItem { unitCost { amount } }" : ""}
+  `;
+}
+
+/**
+ * The rest of a product's variants, for the products that have more than one
+ * page of them.
+ *
+ * Without this, a product with more than `VARIANTS_PER_PRODUCT` variants
+ * imported only the first page and the rest got no `Variant` row at all. Their
+ * line items then snapshotted a zero unit cost and reported a 100% margin,
+ * which is wrong in the direction that looks like good news.
+ */
+function productVariantsQuery(includeCost: boolean) {
+  return `#graphql
+    query MeridianProductVariants($id: ID!, $cursor: String, $pageSize: Int!) {
+      product(id: $id) {
+        variants(first: $pageSize, after: $cursor) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            ${variantFields(includeCost)}
           }
         }
       }
@@ -213,6 +255,17 @@ function productsQuery(includeCost: boolean) {
  * back as a field error the import drops to the narrow query and carries on
  * with referrer-based attribution rather than failing the whole run.
  */
+const LINE_ITEM_FIELDS = `
+  id
+  title
+  sku
+  quantity
+  originalUnitPriceSet { shopMoney { amount } }
+  totalDiscountSet { shopMoney { amount } }
+  variant { id }
+  product { id }
+`;
+
 const ORDER_FIELDS = `
   id
   name
@@ -228,21 +281,51 @@ const ORDER_FIELDS = `
   totalPriceSet { shopMoney { amount } }
   totalRefundedSet { shopMoney { amount } }
   lineItems(first: ${LINE_ITEMS_PER_ORDER}) {
+    pageInfo { hasNextPage endCursor }
     nodes {
-      id
-      title
-      sku
-      quantity
-      originalUnitPriceSet { shopMoney { amount } }
-      totalDiscountSet { shopMoney { amount } }
-      variant { id }
-      product { id }
+      ${LINE_ITEM_FIELDS}
     }
   }
   refunds {
     id
     refundLineItems(first: ${LINE_ITEMS_PER_ORDER}) {
+      pageInfo { hasNextPage endCursor }
       nodes { quantity lineItem { id } }
+    }
+  }
+`;
+
+/**
+ * The rest of one order's line items.
+ *
+ * An order over `LINE_ITEMS_PER_ORDER` lines previously imported the first page
+ * and dropped the remainder, so its cost of goods was understated by whatever
+ * share those lines carried — around 40% of COGS on an 80-line wholesale order,
+ * reported as profit.
+ */
+const ORDER_LINE_ITEMS_QUERY = `#graphql
+  query MeridianOrderLineItems($id: ID!, $cursor: String, $pageSize: Int!) {
+    order(id: $id) {
+      lineItems(first: $pageSize, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          ${LINE_ITEM_FIELDS}
+        }
+      }
+    }
+  }
+`;
+
+/** The rest of one refund's line items, for the same reason. */
+const REFUND_LINE_ITEMS_QUERY = `#graphql
+  query MeridianRefundLineItems($id: ID!, $cursor: String, $pageSize: Int!) {
+    refund: node(id: $id) {
+      ... on Refund {
+        refundLineItems(first: $pageSize, after: $cursor) {
+          pageInfo { hasNextPage endCursor }
+          nodes { quantity lineItem { id } }
+        }
+      }
     }
   }
 `;
@@ -328,6 +411,53 @@ export interface BackfillResult {
  * On a long-lived server this is fine. On a serverless platform the process may
  * not outlive the response, and this should become a real job queue.
  */
+/**
+ * Re-acquire the admin client before its access token can expire.
+ *
+ * Offline access tokens are expiring now (Shopify requires it of new public
+ * apps from 1 April 2026) and live about an hour. The client passed into
+ * `runBackfill` is built once, in `afterAuth`, around a frozen Session — so on
+ * a store whose import runs longer than the token's life, every request after
+ * the hour mark fails with an authentication error and the import stops
+ * partway with a plausible-looking partial dataset.
+ *
+ * `unauthenticated.admin()` goes through `ensureValidOfflineSession`, which
+ * refreshes a session within five minutes of expiry and stores the new tokens,
+ * so re-acquiring here is enough. Forty minutes leaves a wide margin, and a
+ * failed re-acquisition keeps the existing client rather than aborting an
+ * import that may still have a valid token.
+ */
+const ADMIN_CLIENT_MAX_AGE_MS = 40 * 60 * 1000;
+
+function refreshingAdminClient(
+  shopDomain: string,
+  initial: AdminClient,
+): AdminClient {
+  let current = initial;
+  let acquiredAt = Date.now();
+
+  return {
+    async graphql(query, options) {
+      if (unauthenticated && Date.now() - acquiredAt >= ADMIN_CLIENT_MAX_AGE_MS) {
+        try {
+          current = (await unauthenticated.admin(shopDomain)).admin;
+          acquiredAt = Date.now();
+        } catch (error) {
+          console.error(
+            `[backfill] could not refresh the admin session for ${shopDomain}`,
+            error,
+          );
+          // Deliberately not fatal — the current token may still be valid, and
+          // if it is not the request below fails with a clearer error anyway.
+          acquiredAt = Date.now();
+        }
+      }
+
+      return current.graphql(query, options);
+    },
+  };
+}
+
 export function startBackfill(shopId: string, admin: AdminClient): void {
   void runBackfill(shopId, admin).catch((error) => {
     console.error(`[backfill] ${shopId} failed`, error);
@@ -357,7 +487,13 @@ export async function runBackfill(
     const shop = await prisma.shop.findUniqueOrThrow({ where: { id: shopId } });
     const capabilities = capabilitiesForShop(shop, process.env.SCOPES);
 
-    await importShopProfile(shopId, admin);
+    // Offline access tokens now expire after an hour. The client handed in
+    // here closes over a single frozen Session and never re-checks it, so a
+    // large store's import would start failing 401 partway through — exactly
+    // the stores where the import takes longest. See refreshingAdminClient.
+    const client = refreshingAdminClient(shop.domain, admin);
+
+    await importShopProfile(shopId, client);
 
     await prisma.shop.update({
       where: { id: shopId },
@@ -367,13 +503,13 @@ export async function runBackfill(
           : "Importing products (no cost access)",
       },
     });
-    const products = await importProducts(shopId, admin, capabilities.inventoryCost);
+    const products = await importProducts(shopId, client, capabilities.inventoryCost);
 
     await prisma.shop.update({
       where: { id: shopId },
       data: { syncStage: "Importing order history" },
     });
-    const orders = await importOrders(shopId, admin, capabilities);
+    const orders = await importOrders(shopId, client, capabilities);
 
     // Without fulfilment access there are no shipping records, and a capacity
     // series built from orders alone would show a backlog that only ever grows
@@ -474,6 +610,47 @@ interface VariantNode {
   inventoryItem: { unitCost: { amount: string } | null } | null;
 }
 
+/**
+ * Every variant after the first page, for one product.
+ *
+ * Only called for the products that actually overflow, so a catalogue of
+ * single-variant products costs exactly what it did before.
+ */
+export async function remainingVariants(
+  admin: AdminClient,
+  includeCost: boolean,
+  productId: string,
+  after: string | null,
+): Promise<VariantNode[]> {
+  const collected: VariantNode[] = [];
+  let cursor = after;
+
+  for (;;) {
+    const data: {
+      product: {
+        variants: {
+          pageInfo: { hasNextPage: boolean; endCursor: string | null };
+          nodes: VariantNode[];
+        };
+      } | null;
+    } = await gql(admin, productVariantsQuery(includeCost), {
+      id: productId,
+      cursor,
+      pageSize: VARIANTS_PER_PRODUCT,
+    });
+
+    const page = data.product?.variants;
+    if (!page) break;
+
+    collected.push(...page.nodes);
+
+    if (!page.pageInfo.hasNextPage) break;
+    cursor = page.pageInfo.endCursor;
+  }
+
+  return collected;
+}
+
 async function importProducts(
   shopId: string,
   admin: AdminClient,
@@ -493,7 +670,10 @@ async function importProducts(
           productType: string | null;
           vendor: string | null;
           status: string;
-          variants: { nodes: VariantNode[] };
+          variants: {
+            pageInfo: { hasNextPage: boolean; endCursor: string | null };
+            nodes: VariantNode[];
+          };
         }[];
       };
     } = await gql(admin, productsQuery(includeCost), {
@@ -522,7 +702,19 @@ async function importProducts(
         },
       });
 
-      for (const variant of node.variants.nodes) {
+      const variants = node.variants.pageInfo.hasNextPage
+        ? [
+            ...node.variants.nodes,
+            ...(await remainingVariants(
+              admin,
+              includeCost,
+              node.id,
+              node.variants.pageInfo.endCursor,
+            )),
+          ]
+        : node.variants.nodes;
+
+      for (const variant of variants) {
         // This is the real COGS, and the single most valuable field in the
         // whole import — without it every margin in the product is fiction.
         const unitCost = variant.inventoryItem?.unitCost?.amount ?? null;
@@ -568,6 +760,22 @@ async function importProducts(
   return imported;
 }
 
+interface LineItemNode {
+  id: string;
+  title: string;
+  sku: string | null;
+  quantity: number;
+  originalUnitPriceSet: never;
+  totalDiscountSet: never;
+  variant: { id: string } | null;
+  product: { id: string } | null;
+}
+
+interface RefundLineItemNode {
+  quantity: number;
+  lineItem: { id: string } | null;
+}
+
 interface OrderNode {
   id: string;
   name: string;
@@ -585,20 +793,15 @@ interface OrderNode {
   /** Absent entirely when customer access was not granted. */
   customer?: { id: string; email: string | null } | null;
   lineItems: {
-    nodes: {
-      id: string;
-      title: string;
-      sku: string | null;
-      quantity: number;
-      originalUnitPriceSet: never;
-      totalDiscountSet: never;
-      variant: { id: string } | null;
-      product: { id: string } | null;
-    }[];
+    pageInfo?: { hasNextPage: boolean; endCursor: string | null };
+    nodes: LineItemNode[];
   };
   refunds: {
     id: string;
-    refundLineItems: { nodes: { quantity: number; lineItem: { id: string } | null }[] };
+    refundLineItems: {
+      pageInfo?: { hasNextPage: boolean; endCursor: string | null };
+      nodes: RefundLineItemNode[];
+    };
   }[];
   /** Absent entirely when fulfilment access was not granted. */
   fulfillments?: {
@@ -619,6 +822,87 @@ interface OrderNode {
       } | null;
     } | null;
   } | null;
+}
+
+/**
+ * Fill in any line items the order page truncated, in place.
+ *
+ * Runs only for the orders that actually overflow — the common single-page
+ * order costs one `hasNextPage` check and no extra request. Mutating the node
+ * rather than returning a copy keeps `importOneOrder` unchanged: it already
+ * treats `node.lineItems.nodes` as the complete set, which is exactly what it
+ * now is.
+ */
+export async function hydrateOrderOverflow(
+  admin: AdminClient,
+  node: OrderNode,
+): Promise<void> {
+  if (node.lineItems.pageInfo?.hasNextPage) {
+    node.lineItems.nodes = [
+      ...node.lineItems.nodes,
+      ...(await pageThrough<LineItemNode>(
+        admin,
+        ORDER_LINE_ITEMS_QUERY,
+        node.id,
+        node.lineItems.pageInfo.endCursor,
+        (data) => (data as OrderLineItemsPage).order?.lineItems ?? null,
+      )),
+    ];
+  }
+
+  for (const refund of node.refunds ?? []) {
+    if (!refund.refundLineItems.pageInfo?.hasNextPage) continue;
+
+    refund.refundLineItems.nodes = [
+      ...refund.refundLineItems.nodes,
+      ...(await pageThrough<RefundLineItemNode>(
+        admin,
+        REFUND_LINE_ITEMS_QUERY,
+        refund.id,
+        refund.refundLineItems.pageInfo.endCursor,
+        (data) => (data as RefundLineItemsPage).refund?.refundLineItems ?? null,
+      )),
+    ];
+  }
+}
+
+interface Connection<T> {
+  pageInfo: { hasNextPage: boolean; endCursor: string | null };
+  nodes: T[];
+}
+
+interface OrderLineItemsPage {
+  order: { lineItems: Connection<LineItemNode> } | null;
+}
+
+interface RefundLineItemsPage {
+  refund: { refundLineItems: Connection<RefundLineItemNode> } | null;
+}
+
+/** Walk one nested connection to exhaustion, starting after `cursor`. */
+async function pageThrough<T>(
+  admin: AdminClient,
+  query: string,
+  id: string,
+  cursor: string | null,
+  select: (data: unknown) => Connection<T> | null,
+): Promise<T[]> {
+  const collected: T[] = [];
+  let after = cursor;
+
+  for (;;) {
+    const page = select(
+      await gql(admin, query, { id, cursor: after, pageSize: LINE_ITEMS_PER_ORDER }),
+    );
+    if (!page) break;
+
+    collected.push(...page.nodes);
+
+    if (!page.pageInfo.hasNextPage) break;
+    after = page.pageInfo.endCursor;
+  }
+
+  return collected;
 }
 
 async function importOrders(
@@ -678,6 +962,8 @@ async function importOrders(
         earliestOrderAt = processedAt;
       }
       if (processedAt.getTime() < sixtyDaysAgo) sawOrdersOlderThan60Days = true;
+
+      await hydrateOrderOverflow(admin, node);
 
       await importOneOrder(shopId, node, customerIdByGid, firstOrderSeen);
       count += 1;

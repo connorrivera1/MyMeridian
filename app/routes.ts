@@ -23,6 +23,7 @@ export default [
   route("webhooks/orders/create", "routes/webhooks.orders.tsx"),
   route("webhooks/products/update", "routes/webhooks.products.tsx"),
   route("webhooks/fulfillments/create", "routes/webhooks.fulfillments.tsx"),
+  route("webhooks/app-subscriptions/update", "routes/webhooks.app-subscriptions.tsx"),
 
   // Mandatory GDPR compliance webhooks. Every public app must implement all
   // three or it fails Shopify's automated review.

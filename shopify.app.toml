@@ -65,6 +65,13 @@ api_version = "2026-07"
   uri = "/webhooks/fulfillments/create"
   topics = [ "fulfillments/create", "fulfillments/update" ]
 
+  # Managed pricing: the merchant picks a plan on Shopify's billing screen and
+  # this webhook is how the app finds out. Plan names in the Partner Dashboard
+  # must match the PLANS in app/shopify.server.ts.
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app-subscriptions/update"
+  topics = [ "app_subscriptions/update" ]
+
 [pos]
 embedded = false
 

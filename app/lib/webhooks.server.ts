@@ -52,6 +52,14 @@ export async function receiveWebhook(request: Request): Promise<WebhookContext> 
     throw new Response("Shopify credentials are not configured.", { status: 503 });
   }
 
+  // A request with no signature at all is unauthenticated, not malformed.
+  // The library answers it 400, but Shopify's automated review probes these
+  // endpoints for 401 and a 400 is a plausible way to fail submission on a
+  // technicality — so answer the way the requirement is written.
+  if (!request.headers.get("x-shopify-hmac-sha256")) {
+    throw new Response("Unauthorized", { status: 401 });
+  }
+
   const { shop, topic, payload } = await authenticate.webhook(request);
 
   const webhookId =

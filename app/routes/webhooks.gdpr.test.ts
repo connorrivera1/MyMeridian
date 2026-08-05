@@ -136,10 +136,11 @@ describe("HMAC verification", () => {
       expect(customerDelete).not.toHaveBeenCalled();
     });
 
-    // Shopify's review bot signs its probe with a wrong secret (401, above).
-    // A request with no HMAC header at all is malformed rather than forged,
-    // and the library answers 400 — also a rejection, also review-safe.
-    it(`${topic}: rejects a missing HMAC header with 400`, async () => {
+    // Shopify's review bot signs its probe with a wrong secret (401, above),
+    // but the requirement is written as "return 401 for an unverified request"
+    // and an unsigned probe is unverified. The library answers those 400, which
+    // is a rejection but not the documented one, so the app answers first.
+    it(`${topic}: rejects a missing HMAC header with 401`, async () => {
       const body = JSON.stringify({ shop_domain: SHOP_DOMAIN });
       const request = new Request(`https://meridian-test.example.com${path}`, {
         method: "POST",
@@ -151,7 +152,9 @@ describe("HMAC verification", () => {
         },
       });
       const response = await invoke(route, request);
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(401);
+      expect(webhookEventCreate).not.toHaveBeenCalled();
+      expect(shopDelete).not.toHaveBeenCalled();
     });
 
     it(`${topic}: refuses GET with 405`, () => {

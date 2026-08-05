@@ -234,6 +234,41 @@ prisma mock can say whether a window function partitions correctly: it flags
 exactly the earliest order per customer, leaves guest orders untouched, and a
 second run changes nothing. Scratch shop deleted after.
 
+### The data export was assembled and then thrown away
+
+`customers/data_request` built the full report for the named shopper — customer
+record, every order, every line item — wrote 2,000 characters of it to the
+application log, stamped the WebhookEvent as processed, and returned. Nothing
+stored it. The route's own comment said the export was "recorded for the merchant
+to collect from Settings", Settings had no such surface, and `/privacy` told the
+world that "we return everything held about the named customer to the merchant".
+Three claims, none of them true: the merchant had a 30-day legal clock and
+nothing to answer it with. It also put a shopper's email and order history in the
+application log, which is not a place to keep personal data.
+
+Exports now land in a `DataRequest` row (migration `20260805210901`, applied) and
+appear in Settings → **Customer data requests**, one line per request with the
+customer, when it arrived, what it contains, and a Download JSON button; taking
+it stamps `collectedAt` so the audit trail records that the merchant actually
+had it. The upsert is keyed on Shopify's delivery id, so a retried webhook
+updates the single export rather than stacking copies of one shopper's data. An
+export is a second copy of that data, so two things bound it: it is deleted 31
+days after the request whether or not it was collected — purged on every read of
+the list, so nothing expired is ever offered — and `customers/redact` now deletes
+any export still held, including when the customer row has already gone.
+Erasure that leaves the export behind erases nothing. The log line is counts
+only. `/privacy` now describes what the code does.
+
+Twelve new tests plus five on the webhooks, the latter run against the old code
+first — all five fail there. Then driven end to end against real Postgres on a
+scratch shop: signed webhook → row stored with both orders and their line items,
+31-day window, a retried delivery still one row, collection stamped once and
+refused the second time, another shop unable to mark or see it, redaction
+deleting the export while the two orders survive anonymised, expiry sweeping an
+uncollected export at 32 days, and `shop/redact` cascading it away. Scratch shop
+deleted. The Settings surface itself was checked in the running app, not only in
+tests: the card renders the request and the collect POST flips it to Collected.
+
 ### Other
 
 - `app/scopes_update` webhook added. `grantedScopes` was written only in
@@ -258,8 +293,8 @@ second run changes nothing. Scratch shop deleted after.
 | Embedded app, session-token auth | Done | `isEmbeddedApp: true`, bearer-token detection in `app/lib/auth.server.ts` |
 | App Bridge first script in `<head>` | **Fixed** | Script index 0, preceded by the api-key meta tag — checked in a rendered document |
 | Auth callback route | Done | `authPathPrefix: "/auth"` + splat route; `redirect_urls` path corrected |
-| `customers/data_request` | Done | HMAC-verified; 200 signed, 401 unsigned, 401 tampered, 405 on GET |
-| `customers/redact` | Done | Same; anonymises orders in place rather than deleting them |
+| `customers/data_request` | **Fixed** | HMAC-verified; 200 signed, 401 unsigned, 401 tampered, 405 on GET. The export is now stored and collectable from Settings, expires after 31 days, and is verified end to end against Postgres |
+| `customers/redact` | Done | Same; anonymises orders in place rather than deleting them, and deletes any held data export |
 | `shop/redact` | Done | Same; purges sessions and cascades the shop delete |
 | Unverified webhook returns 401 | Done | 401 on every endpoint. The single most-failed automated check |
 | Webhook idempotency | Done | `X-Shopify-Webhook-Id` claimed before handling; a replayed delivery returns 200 and writes nothing |

@@ -1,8 +1,8 @@
 import type { ActionFunctionArgs } from "react-router";
 
 import prisma from "~/db.server";
+import { planIdForSubscriptionName } from "~/lib/billing.server";
 import { handleWebhook } from "~/lib/webhooks.server";
-import { PLANS, type PlanId } from "~/shopify.server";
 
 /**
  * app_subscriptions/update.
@@ -17,15 +17,6 @@ import { PLANS, type PlanId } from "~/shopify.server";
  */
 
 const ACTIVE_STATUSES = new Set(["active", "accepted"]);
-
-export function planIdForSubscriptionName(name: string | undefined): PlanId | null {
-  if (!name) return null;
-  const wanted = name.trim().toLowerCase();
-  for (const plan of Object.values(PLANS)) {
-    if (plan.name.toLowerCase() === wanted || plan.id === wanted) return plan.id;
-  }
-  return null;
-}
 
 interface AppSubscriptionPayload {
   admin_graphql_api_id?: string;

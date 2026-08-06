@@ -902,52 +902,30 @@ async function main() {
     }),
   });
 
-  // --- ad spend -----------------------------------------------------------
-  console.log("  Generating ad spend…");
-
-  const revenueByCampaignDay = new Map<string, number>();
-  for (const order of orderRows) {
-    if (!order.campaignId) continue;
-    const key = `${order.campaignId}|${order._dayIndex}`;
-    const net =
-      Number(order.subtotal) - Number(order.discountTotal) - Number(order.refundedTotal);
-    revenueByCampaignDay.set(key, (revenueByCampaignDay.get(key) ?? 0) + net);
-  }
-
-  const spendRows: any[] = [];
-  for (let d = 0; d < totalDays(); d++) {
-    const date = new Date(PERIOD_START.getTime() + d * DAY_MS);
-    const progress = d / Math.max(1, totalDays() - 1);
-    const promo = promoFor(date);
-
-    for (const campaign of CAMPAIGNS) {
-      const base =
-        campaign.dailySpendStart +
-        progress * (campaign.dailySpendEnd - campaign.dailySpendStart);
-
-      const spend = Math.round(jitter(base * (promo ? 1.5 : 1), 0.18));
-      const measured = revenueByCampaignDay.get(`${campaign.id}|${d}`) ?? 0;
-
-      spendRows.push({
-        shopId: shop.id,
-        date,
-        channel: campaign.channel,
-        campaignId: campaign.id,
-        campaignName: campaign.name,
-        spend: money(spend),
-        impressions: Math.round(spend * between(11, 19)),
-        clicks: Math.round(spend * between(0.14, 0.26)),
-        platformConversions: Math.round(
-          (measured / 12_000) * campaign.platformInflation,
-        ),
-        platformRevenue: (measured * campaign.platformInflation).toFixed(2),
-      });
-    }
-  }
-
-  for (let i = 0; i < spendRows.length; i += 1000) {
-    await prisma.adSpend.createMany({ data: spendRows.slice(i, i + 1000) });
-  }
+  // --- ad spend: deliberately none ----------------------------------------
+  //
+  // This block used to fabricate `AdSpend` for every campaign for every day, and
+  // it was the only writer of that table in the repo. Nothing else can write it:
+  // there is no ad-platform OAuth flow and no platform API client anywhere in the
+  // tree, and `provision.server.ts:97` creates every connector `NOT_CONFIGURED`
+  // and nothing ever configures one.
+  //
+  // So the seeded store showed blended CAC, paid spend, marketing efficiency,
+  // platform over-claim and per-channel ROAS, and every real store shows `—` and
+  // `$0.00` for the life of the install. This store is not a private fixture —
+  // it is what the listing screenshots are captured from and what the reviewer's
+  // demo store URL points at, which made it the last place still selling the
+  // capability that `plans.ts` and the Acquisition banner had already stopped
+  // selling. Seeding it was the same fault one layer down: fix the surface, not
+  // the default that keeps writing it back.
+  //
+  // `CAMPAIGNS` stays, and orders keep their campaign and UTM attribution, so the
+  // demo still shows channel revenue and contribution profit — the capability
+  // Starter actually sells, computed from the merchant's own orders and needing
+  // no platform token.
+  //
+  // Restore this in the same change that ships a real connector, and not before.
+  // `listing.test.ts` fails if it comes back on its own.
 
   // --- run the real engine over the seeded data ---------------------------
   console.log("  Computing profitability…");

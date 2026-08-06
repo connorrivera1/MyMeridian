@@ -8,9 +8,10 @@ from the plan blurbs in `app/lib/plans.ts`.
 not estimated — see *Character counts* at the end for how to re-check after an
 edit.
 
-Two things in here need Connor before this can be submitted, and they are called
-out in *Needs the owner* at the bottom. One of them is a factual accuracy
-problem, not a taste problem.
+What still needs Connor is called out in *Needs the owner* at the bottom, and it
+is now business facts and a screencast rather than anything about the code. The
+one factual accuracy problem in here — the app selling ad channels it cannot
+connect — was closed on 2026-08-06; see *Resolved*.
 
 ---
 
@@ -78,7 +79,8 @@ Every claim in it is load-bearing and checked:
 | requests no write access | `scopes = "read_orders read_products read_fulfillments read_inventory"`, `shopify.app.toml:47` |
 
 Deliberately **not** claimed: ad ROI, CAC, LTV, payback, ad-channel connections.
-See *Needs the owner*, item 1 — this is the accuracy problem.
+The in-app plan tiers have now been brought into line with this — see *Resolved*,
+item 1.
 
 ---
 
@@ -112,32 +114,61 @@ Cost to acquire a customer, and what that customer is worth after 90 days
 
 ---
 
+## Resolved
+
+### 1. The ad-spend claim — taken the third way, 2026-08-06
+
+The Growth blurb "Unlimited ad channels + blended CAC" and the Starter bullet
+"One ad channel connected" (`app/lib/plans.ts`) described a capability the app
+does not have. There is a `Connector` model, encrypted token storage and a UI row
+for Meta, Google and TikTok, but **no OAuth flow and no platform API client
+anywhere in the tree** — `provision.server.ts:97` creates every connector
+`NOT_CONFIGURED` and nothing ever configures one, and the only writer of
+`AdSpend` in the repo is `prisma/seed.ts:949`. So the seeded demo shows spend and
+a real store shows `$0.00` forever.
+
+That mattered more than a listing edit, because the plan blurbs are
+merchant-visible on `/app/plan` and a reviewer walks that screen during billing
+review while comparing the listing against a real install. The listing draft
+above was already silent on ad performance; the app itself was not.
+
+Of the three options this section used to pose, the third is taken — the plan
+tiers are reworded, so nothing merchant-visible sells ad spend:
+
+- Starter now reads **"Revenue and profit by channel"**, which is true without
+  any platform token: orders are attributed to a channel from their UTM
+  parameters and referring site (`sync.server.ts:76-100`), and each channel
+  carries real `netRevenueCents` and `contributionProfitCents`
+  (`engine/acquisition.ts:35-60`). It is ungated, so it belongs on the cheapest
+  plan.
+- Growth keeps its two genuine gates and nothing else: pricing recommendations
+  and fulfilment capacity alerts.
+- Prices, names and order caps are untouched.
+
+A second defect surfaced underneath it. `FEATURE_MIN_PLAN.multiChannelAds` was a
+**gate with no call site** — `planAllows(plan, "multiChannelAds")` appeared
+nowhere in the app, while the other three gates each have real enforcement
+points. It is removed. That is the same fault `plan.server.ts` was written to
+fix, one layer down: a promise declared in two places and enforced in neither.
+
+`plan.test.ts` carries the guard rather than the intention: `no plan sells ad
+spend, CAC or ROAS` fails on any plan whose copy contains `ad channel`, `ad
+spend`, `cac`, `roas` or `blended`, with a message naming why. Verified to fail
+by putting the old Growth bullet back. **Lift that test in the same change that
+ships a real connector, and not before.**
+
+The Acquisition screen degrades honestly on zero spend — CAC and marketing
+efficiency render `—` rather than `0` — but gave no reason, while the missing
+`read_customers` case on the same screen explains itself. It now carries a banner
+saying no ad platform is connected, that spend is never inferred from orders, and
+that the channel figures below are measured from the merchant's own orders and are
+unaffected.
+
+---
+
 ## Needs the owner
 
-### 1. The ad-spend claim — an accuracy decision, not a wording one
-
-The Acquisition screen, and the Growth plan blurb "Unlimited ad channels +
-blended CAC" (`app/lib/plans.ts`), describe a capability the app does not have
-yet. There is a `Connector` model, encrypted token storage and a UI row for Meta,
-Google and TikTok, but **no OAuth flow and no platform API client anywhere in the
-tree** — `AdSpend` rows are only ever written by `prisma/seed.ts`. On a real
-store the Acquisition screen shows organic and direct traffic with zero spend.
-
-So the draft above says nothing about ad performance. Shopify's review compares
-the listing against what the app does on a real install, and a listing that
-promises blended CAC on a store that will show `$0.00` spend is the kind of thing
-that gets a submission bounced rather than queried.
-
-Connor's call, and it is one of three:
-
-- **Ship the copy as drafted** — accurate today, undersells the built screens.
-- **Build the ad connectors first**, then add the CAC/LTV bullet. This is real
-  work, not a listing edit.
-- **Reword the plan tiers** so "unlimited ad channels" is not sold either. The
-  plan blurbs are merchant-visible on `/app/plan` and a reviewer walks that
-  screen during billing review.
-
-### 2. Support email and legal entity
+### 1. Support email and legal entity
 
 `MERIDIAN_SUPPORT_EMAIL` and `MERIDIAN_LEGAL_ENTITY` (and optionally
 `MERIDIAN_SUPPORT_URL`) are unset, so `/privacy` and `/support` currently render
@@ -146,7 +177,7 @@ address that bounces. These need a genuinely monitored inbox and the legal entit
 the app is published under (sole trader / LLC / Ltd). Both are business
 decisions; neither can be guessed. See `app/lib/brand.server.ts:13-24`.
 
-### 3. The setup screencast — an automatic bounce if missing
+### 2. The setup screencast — an automatic bounce if missing
 
 Shopify requires a screencast of the full setup flow, in English or with English
 subtitles, and rejects the submission outright without one. It cannot be recorded
@@ -158,10 +189,32 @@ This is not a copy task and nothing in this file unblocks it. It comes free with
 Phase 2 in `DEPLOY_PLAN.md` — record it during the first real install rather than
 staging it twice.
 
-### 4. Still missing from the listing, unrelated to copy
+### 3. Still missing from the listing, unrelated to copy
 
 - **Feature media** — one 1600×900 image or a 2–3 minute video.
-- **Demo store URL** for the reviewer to click through.
+- **Demo store URL** for the reviewer to click through. Re-seed before handing
+  this out: the store the URL points at is the same one the screenshots came
+  from, and until `npm run db:reset` runs it still holds the invented `AdSpend`
+  rows described below.
+- **Three screenshots to re-capture** — `acquisition`, `overview` and `orders`
+  are held in `listing/screenshots-held/`. The shipped set is at three, which is
+  Shopify's floor.
+
+### 4. The ad-spend claim was not closed where it mattered — 2026-08-06
+
+*Resolved* item 1 below fixed the plan tiers and added the Acquisition banner,
+and then this file and `SUBMISSION.md` both recorded the accuracy problem as
+closed. The listing media was never checked. Three of the six screenshots led
+with blended CAC, paid spend, marketing efficiency, per-channel ROAS and a
+per-order ADS column — every figure of which is a dash or a zero on a real store.
+
+The cause was the demo seed, which fabricated `AdSpend` and was the only writer
+of that table anywhere in the repo. The seed no longer does. Details, and the
+re-capture steps, are in `listing/screenshots-held/README.md`.
+
+The drafted copy above was already silent on ad performance and needed no change.
+The lesson is that "merchant-visible" includes everything checked into `listing/`,
+not just the routes.
 
 ---
 

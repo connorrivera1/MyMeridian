@@ -68,7 +68,7 @@ done from this repo — each is written up with where it lives and what it needs
 | Item | State |
 |---|---|
 | App icon, 1200×1200 PNG | **Done** — `listing/app-icon-1200.png`, rendered from the in-app brand mark. No text, no Shopify marks, square. |
-| Screenshots, 1600×900, 3–6 desktop | **Done** — six in `listing/screenshots/`, captured from the running app. |
+| Screenshots, 1600×900, 3–6 desktop | **At the floor.** Three in `listing/screenshots/` — `fulfilment`, `pricing`, `products`. Three more are held in `listing/screenshots-held/`: they were captured against a demo store with invented ad spend and advertised a capability the app does not have. See *The listing was still selling the ad channels* below. Shopify's minimum is three, so this passes with no headroom and at least one has to be re-captured. |
 | Privacy policy URL | **Done** — `/privacy`, public and unauthenticated. |
 | Support page | **Done** — `/support`, public. |
 | Support email + legal entity | **Missing.** Environment-driven (`MERIDIAN_SUPPORT_EMAIL`, `MERIDIAN_LEGAL_ENTITY`, optional `MERIDIAN_SUPPORT_URL`). Both pages render a visible "not configured" notice until they are set — deliberately, because a reviewer emails whatever is on the page and a placeholder that bounces reads as an unsupported app. |
@@ -78,15 +78,12 @@ done from this repo — each is written up with where it lives and what it needs
 | Screencast of the full setup process, English or English-subtitled | **Missing, and blocked on the owner.** An automatic bounce if absent. It has to show a real OAuth install through to a first dashboard view; the app has never been installed on any store, and it cannot be filmed against the demo bypass because that bypass is exactly what the recording exists to prove is not being used. Record it during the first real install rather than staging the flow twice. |
 | `extensions/` | Empty, and correctly so — Meridian ships no theme or checkout extension. |
 
-One flag out of drafting the copy, and it is an accuracy problem rather than a
-wording one: the Growth plan blurb sells "Unlimited ad channels + blended CAC"
-and the Acquisition screen is built, but **there is no ad platform OAuth
-anywhere in the tree** — `AdSpend` rows are written only by `prisma/seed.ts`, so
-a real store shows organic and direct traffic at zero spend. The drafted copy
-therefore promises nothing about ad ROI, CAC or LTV. The plan blurbs are
-merchant-visible on `/app/plan` and a reviewer walks that screen during billing
-review, so reconciling them is worth doing before submission. Options are laid
-out in `listing/copy.md`.
+The one accuracy flag out of drafting the copy was recorded as **closed** on
+2026-08-06 and was not — the fix reached `plans.ts` and the Acquisition banner,
+and the listing media it was really about was never looked at. Reopened and now
+closed for real; see *The listing was still selling the ad channels* below. The
+sentence that used to sit here claimed nothing merchant-visible sold ad
+performance, which was the claim that stopped anyone checking.
 
 ### 4. Performance work before a large merchant installs
 
@@ -141,6 +138,99 @@ on real data, which is a session of its own.
 ---
 
 ## Fixed this session
+
+### The listing was still selling the ad channels
+
+The fix below stopped `/app/plan` and the Acquisition screen selling ad-platform
+capability the app does not have, and this document then recorded the problem as
+closed: *"nothing merchant-visible sells ad spend, CAC or ROAS any more."*
+
+The listing screenshots are checked into this repo and are more merchant-visible
+than any screen in the app — they are what someone reads while deciding whether
+to install, and what the reviewer compares against a real install. Three of the
+six still sold it:
+
+- `acquisition.png` — Blended CAC $54.56, Paid spend $80.2K, Marketing efficiency
+  6.50×, Platform over-claim $211.8K, and a channel table giving Facebook, Google
+  and TikTok Ads a spend, a CAC, a claimed-vs-measured ROAS and a **Profitable**
+  verdict.
+- `overview.png` — an **Ad spend $80.2K** headline tile.
+- `orders.png` — an **ADS** column with a figure on every order, −$112.11 on the
+  first row.
+
+`products.png` was checked and kept: it names ad spend as one of the costs
+allocated to a product, which stays true at zero, and every figure on it comes
+from orders. `fulfilment.png` and `pricing.png` carry no ad figure.
+
+**The cause was one layer below the screenshots.** They were captured from the
+seeded demo store, and `prisma/seed.ts:949` fabricated `AdSpend` for every
+campaign for every day. That store is not a private fixture — it is the source of
+the listing media and the target of the demo store URL a reviewer is given. So
+the seed was the last thing in the repo still producing figures nothing else can
+produce, and fixing only the screens would have left it writing them back.
+
+Fixed: the seed no longer writes `AdSpend`, and the three screenshots are held in
+`listing/screenshots-held/` with a README naming what each one advertised and the
+re-capture steps. `CAMPAIGNS` and per-order UTM attribution are untouched, so the
+demo still shows channel revenue and contribution profit — the capability Starter
+genuinely sells.
+
+`app/lib/listing.test.ts` carries the guard: the seed may not write `AdSpend`,
+the three held files may not reappear in the shipped set, the set may not drop
+below Shopify's floor of three, and this document may not carry the sentence that
+declared the flag closed. Verified to fail on all four by reverting each change
+in turn. Lift it with the guard in `plan.test.ts`, in the same change that ships
+a real connector.
+
+**Not done, and it needs a machine that can run the app:** the three screens have
+not been re-captured. Nothing in the shipped set is now false, but the set is at
+three of a possible six, which is the floor. Re-seed first — the database still
+holds the old `AdSpend` rows until `npm run db:reset` runs, so a dev server
+started right now still shows the old figures.
+
+### The app sold ad channels it cannot connect
+
+Starter advertised "One ad channel connected" and Growth "Unlimited ad channels +
+blended CAC" on `/app/plan`, a screen the Shopify reviewer walks during billing
+review while comparing the listing against a real install. Neither is true and
+neither can be made true at runtime: there is no ad-platform OAuth flow and no
+platform API client anywhere in the tree, `provision.server.ts:97` creates every
+connector `NOT_CONFIGURED` and nothing ever configures one, and the only writer of
+`AdSpend` in the repo is `prisma/seed.ts:949`. The seeded demo shows spend; every
+real store shows `$0.00` for the life of the install.
+
+Underneath it, `FEATURE_MIN_PLAN.multiChannelAds` was a **gate with no call
+site** — `planAllows(plan, "multiChannelAds")` appears nowhere in the app, while
+`pricing`, `capacity` and `cohorts` each have real enforcement points. It could
+not have had one, because there is no capability to withhold. This is the same
+fault `plan.server.ts` exists to fix, one layer down: sold in two places,
+enforced in neither.
+
+Fixed: both claims removed, the dead gate deleted. Starter now reads "Revenue and
+profit by channel", which needs no platform token — orders are attributed to a
+channel from their UTM parameters and referring site (`sync.server.ts:76-100`)
+and each channel carries real `netRevenueCents` and `contributionProfitCents`.
+Growth keeps its two genuine gates. **Prices, plan names and order caps are
+unchanged.**
+
+`plan.test.ts` now carries the guard instead of the intention: `no plan sells ad
+spend, CAC or ROAS` fails on any plan whose copy contains `ad channel`, `ad
+spend`, `cac`, `roas` or `blended`, with a message naming the reason. It was
+verified to fail by putting the old Growth bullet back, then reverted. Lift it in
+the same change that ships a real connector, not before.
+
+The Acquisition screen already degraded honestly on zero spend — CAC and
+marketing efficiency render `—` rather than a misleading `0` — but gave no
+reason, while the missing-`read_customers` case on the same screen explains
+itself in full. It now carries a banner stating that no ad platform is connected,
+that spend is never inferred from orders, and that the channel revenue and profit
+below are measured from the merchant's own orders and are unaffected.
+
+Verified: 223 tests pass (was 221), typecheck clean, `npm run build` clean, and
+against a running dev server `/app/plan` renders the new bullets with no trace of
+the old ones and `/app/acquisition` still returns 200. The banner itself was
+confirmed to render by inverting only its condition against the seeded store —
+which has spend, so it is correctly absent in normal operation — and reverting.
 
 ### Every install would have failed
 
@@ -591,7 +681,10 @@ thrown from the same function that throws the 401.
 3. **Ad platform connectors are not wired to live OAuth.** Modelled and
    encrypted end to end, but Facebook/Google/TikTok have no OAuth flow, so on a
    real store the acquisition screen shows organic and direct traffic with zero
-   spend. The plan copy sells "unlimited ad channels".
+   spend. **No longer a listing risk** — nothing merchant-visible sells ad spend,
+   CAC or ROAS any more, the screen says plainly why those figures are blank, and
+   a test fails if the claim returns. It is now a missing feature rather than a
+   false promise, which is a gap Shopify does not bounce a submission for.
 4. **Backfill and recompute run in-process.** Correct on a long-lived server,
    wrong on serverless where the process may not outlive the response. Both
    belong in a job queue before deploying there.

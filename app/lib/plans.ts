@@ -11,6 +11,26 @@
  *
  * Nothing here touches `process.env` or any Node API, so it is safe on both
  * sides. `shopify.server.ts` imports it to build the Billing API config.
+ *
+ * **Nothing here may promise ad spend, CAC, ROAS or connected ad platforms.**
+ * There is a `Connector` model, encrypted token storage and a settings row for
+ * Meta, Google and TikTok, but no OAuth flow and no platform API client
+ * anywhere in the tree — `provision.server.ts` creates every connector
+ * `NOT_CONFIGURED` and nothing ever configures one, and the only writer of
+ * `AdSpend` in the repo is `prisma/seed.ts`. So the seeded demo shows spend and
+ * a real store shows `$0.00` forever.
+ *
+ * Starter used to sell "One ad channel connected" and Growth "Unlimited ad
+ * channels + blended CAC". A reviewer walks `/app/plan` during billing review
+ * and compares the listing against a real install, so that was a bounce waiting
+ * to happen rather than a wording preference. `plan.test.ts` now fails if the
+ * claim is put back; lift that test when the connectors ship, not before.
+ *
+ * What survives is what the code actually does without a platform token:
+ * orders are attributed to a channel from their UTM parameters and referring
+ * site (`sync.server.ts`), and each channel carries real revenue and
+ * contribution profit (`ChannelPerformance`). That is true on Starter, so it is
+ * sold there.
  */
 export const PLANS = {
   starter: {
@@ -21,7 +41,7 @@ export const PLANS = {
     features: [
       "True profit per order",
       "Product margin analysis",
-      "One ad channel connected",
+      "Revenue and profit by channel",
     ],
   },
   growth: {
@@ -31,7 +51,6 @@ export const PLANS = {
     blurb: "Up to 10,000 orders / month",
     features: [
       "Everything in Starter",
-      "Unlimited ad channels + blended CAC",
       "Pricing recommendations",
       "Fulfilment capacity alerts",
     ],

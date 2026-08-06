@@ -212,6 +212,20 @@ export default function Acquisition() {
         />
       </div>
 
+      {data.blended.totalSpendCents === 0 && (
+        <Banner>
+          No ad spend has reached Meridian for this period, so the four figures
+          above stay blank — each one divides by spend. Meridian does not connect
+          to Meta, Google or TikTok yet, and spend is never inferred from orders,
+          because a guessed CAC is worse than an absent one.
+          <br />
+          Everything below is unaffected: orders are attributed to a channel from
+          their UTM parameters and referring site, so channel revenue,
+          contribution profit and LTV are measured from your own orders and do
+          not need a platform connection.
+        </Banner>
+      )}
+
       {data.blended.overclaimCents > 0 && (
         <Banner tone="warn">
           Your ad platforms collectively claim{" "}

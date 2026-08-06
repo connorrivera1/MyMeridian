@@ -206,6 +206,45 @@ same-second shipments produce two rows, the update lands as cancelled/FedEx with
 cancelled, and a pre-migration row is adopted rather than duplicated. The seven
 new tests were run against the old code first — five fail there.
 
+### A split shipment counted as several orders shipped
+
+The Fulfilment screen exists to warn a merchant *before* the warehouse falls
+behind, and for any store that splits a shipment it could not. Backlog is
+cumulative orders received minus cumulative orders shipped, but received
+counted orders while shipped counted **fulfilment rows** — so an order sent in
+three parcels retired three orders from a backlog it had only ever added one
+to. `Math.max(0, ...)` pinned the result at zero for ever. The capacity
+ceiling, which is the busiest day the warehouse has actually had, was inflated
+by the same factor, so no real day ever reached it and no alert ever fired.
+
+Three defects on one path:
+
+- **`itemCount` was the whole order's units written onto every shipment of
+  it.** A 12-unit order in three parcels recorded 36 units shipped. It is now
+  the shipment's own `totalQuantity`, which the import had never asked for.
+- **`shippedAt` was stamped unconditionally by the import** while the webhook
+  cleared it for a cancelled shipment — one column, two writers, two meanings,
+  so a shipment cancelled and re-made counted twice. Both now use
+  `fulfillmentDidShip`, and `rebuildCapacityDays` filters on `shippedAt IS NOT
+  NULL` rather than writing a second definition of "shipped" in SQL.
+- **`fulfillments(first: 10)` truncated silently.** It is a plain list in the
+  Admin API, not a connection, so there is no `hasNextPage` to follow — the
+  documentation calls `first` a truncation. `fulfillmentsCount` now says how
+  many the order really has and a truncated order is refetched at 250, which
+  is above any real order since a fulfilment covers at least one line item.
+  This closes the last unpaginated collection in the import.
+
+An order is now counted on the day its **last** shipment left — one still
+partly in the building has not been fulfilled — while units stay on the day
+they physically shipped, because that is the throughput question.
+
+Nine new tests; five fail against the old mapping. `rebuildCapacityDays` is raw
+SQL that no mock can judge, so it was driven against real Postgres on a scratch
+shop: split shipments, a cancelled one, and an order completing across two
+days. Six of those fourteen checks fail against the old query, including the
+backlog pinned at 0 and a ceiling of 6 where the store completed 2. Scratch
+shop and script deleted.
+
 ### The first order was decided by which webhook arrived first
 
 `syncOrderFromShopify` set `isFirstOrder` by counting the customer's orders that
@@ -306,7 +345,7 @@ tests: the card renders the request and the collect POST flips it to Collected.
 | GraphQL Admin API only | Done | No REST calls anywhere; new public apps may not use REST |
 | Webhook API version | Done | `2026-07`, matching `@shopify/shopify-api` 13.1.0 |
 | Production build | Done | `npm run build` clean |
-| Test suite | Done | **188 tests, 17 files, all passing** (verified 2026-08-05 19:53, `npx vitest run`) |
+| Test suite | Done | **197 tests, 18 files, all passing** (verified 2026-08-05 22:46, `npx vitest run`) |
 | Typecheck | Done | Clean |
 | Config validity | Done | `shopify app config validate` passes |
 | Every route renders | Done | 12 routes served 200 from a running server, with real computed figures |
@@ -324,24 +363,21 @@ thrown from the same function that throws the 401.
 ## Known gaps that are not blockers, in rough priority order
 
 1. **Dashboard loaders are unbounded.** See Blocker 4.
-2. **`Order.fulfillments(first: 10)` is still a hard cap.** It is a plain list
-   in the Admin API, not a connection, so there is no `hasNextPage` to follow.
-   An order with more than ten fulfilments loses the rest.
-3. **Order-level stored profit is a write-only cache.** `recompute` writes
+2. **Order-level stored profit is a write-only cache.** `recompute` writes
    `Order.netProfit`, but every dashboard figure is recomputed on the fly and
    nothing reads it back except `contributionProfit` for cohort LTV.
-4. **Ad platform connectors are not wired to live OAuth.** Modelled and
+3. **Ad platform connectors are not wired to live OAuth.** Modelled and
    encrypted end to end, but Facebook/Google/TikTok have no OAuth flow, so on a
    real store the acquisition screen shows organic and direct traffic with zero
    spend. The plan copy sells "unlimited ad channels".
-5. **Backfill and recompute run in-process.** Correct on a long-lived server,
+4. **Backfill and recompute run in-process.** Correct on a long-lived server,
    wrong on serverless where the process may not outlive the response. Both
    belong in a job queue before deploying there.
-6. **The demo auth bypass ships in the production bundle.** Guarded by a
+5. **The demo auth bypass ships in the production bundle.** Guarded by a
    boot-time throw when `NODE_ENV=production` and by Shopify-signal detection,
    which is solid, but the whole guard depends on `NODE_ENV` being set correctly
    at deploy. A reviewer reading the source will pause here.
-7. **The local `.env` still lists withdrawn scopes.** It reads
+6. **The local `.env` still lists withdrawn scopes.** It reads
    `read_customers,read_reports,read_analytics` alongside the real four.
     `.env.example` and the toml were corrected, but the file the dev server
     actually reads was not — and `capabilitiesForShop` falls back to

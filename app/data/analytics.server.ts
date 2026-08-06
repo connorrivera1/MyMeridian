@@ -14,7 +14,7 @@ import {
   computeProductProfitability,
   type ProductProfit,
 } from "~/engine/products";
-import type { CostRuleSet, EngineOrder } from "~/engine/types";
+import type { CostRuleSet } from "~/engine/types";
 import { RANGE_PRESETS, type RangePreset } from "~/lib/ranges";
 
 import {
@@ -41,7 +41,6 @@ export interface ShopAnalytics {
   shop: Shop;
   range: DateRange;
   rules: CostRuleSet;
-  orders: EngineOrder[];
   period: PeriodProfit;
   products: ProductProfit[];
   channels: ChannelPerformance[];
@@ -76,14 +75,80 @@ export function resolveRange(
 // components ask for the same window inside one navigation; recomputing six
 // months of orders each time is pure waste. Any recompute invalidates it.
 const CACHE_TTL_MS = 60_000;
-const cache = new Map<string, { at: number; value: ShopAnalytics }>();
+
+interface CacheEntry<T> {
+  at: number;
+  /** Per-order rows retained by this entry. See CACHE_ORDER_BUDGET. */
+  weight: number;
+  value: T;
+}
+
+const cache = new Map<string, CacheEntry<ShopAnalytics>>();
 
 // Comparison windows are cached separately: they are built by the lean path
 // below and must never be mistaken for a full build of the same window.
-const periodCache = new Map<string, { at: number; value: PeriodProfit }>();
+const periodCache = new Map<string, CacheEntry<PeriodProfit>>();
+
+/**
+ * How many per-order profit rows the two caches may retain between them.
+ *
+ * The previous bound counted windows — `if (cache.size > 64) cache.clear()` —
+ * which is a bound on how many entries there are and none at all on what they
+ * weigh. An entry weighs whatever the merchant's window holds: measured on the
+ * seeded store, one 180-day `ShopAnalytics` retains 14.5MB, of which the
+ * `EngineOrder[]` above was 8.3MB. Sixty-four of those is ~930MB, and
+ * `fly.toml` gives this app a 1024MB VM. The bound could be reached by sixteen
+ * shops idly paging through the four range presets, on a store of twelve
+ * thousand orders — well below the "unlimited orders" the Scale plan sells.
+ *
+ * Counting rows rather than bytes because rows are what actually varies:
+ * `PeriodProfit.orders` is a flat array of fixed-shape records, ~520 bytes
+ * each, so this budget is roughly 60MB — a few percent of the VM.
+ *
+ * Overridable, because the right number is a function of the VM this happens to
+ * be running on and that is not knowable from here.
+ */
+const DEFAULT_CACHE_ORDER_BUDGET = 120_000;
+
+function cacheOrderBudget(): number {
+  const configured = Number(process.env.MERIDIAN_ANALYTICS_CACHE_ORDERS);
+  return Number.isFinite(configured) && configured > 0
+    ? configured
+    : DEFAULT_CACHE_ORDER_BUDGET;
+}
 
 function cacheKey(shopId: string, range: DateRange, stamp: number) {
   return `${shopId}|${range.from.getTime()}|${range.to.getTime()}|${stamp}`;
+}
+
+/**
+ * Evict oldest-first, across both caches, until the retained rows fit.
+ *
+ * `keep` is the entry just written. It is never evicted: the request that built
+ * it has already paid for it, and dropping it would mean a store whose single
+ * window exceeds the whole budget rebuilds on every page load — the caches
+ * would cost their maintenance and return nothing. Memory is then bounded by
+ * one window, which is the peak that building it required anyway.
+ */
+function trimCaches(keep: string) {
+  const entries = [
+    ...[...cache.entries()].map(([key, entry]) => ({ store: cache, key, entry })),
+    ...[...periodCache.entries()].map(([key, entry]) => ({
+      store: periodCache,
+      key,
+      entry,
+    })),
+  ].sort((a, b) => a.entry.at - b.entry.at);
+
+  const budget = cacheOrderBudget();
+  let retained = entries.reduce((sum, e) => sum + e.entry.weight, 0);
+
+  for (const { store, key, entry } of entries) {
+    if (retained <= budget) return;
+    if (key === keep) continue;
+    store.delete(key);
+    retained -= entry.weight;
+  }
 }
 
 export async function loadShopAnalytics(
@@ -123,11 +188,15 @@ export async function loadShopAnalytics(
     range,
   );
 
+  // `orders` — the hydrated engine input, line items and all — deliberately
+  // does not go into the returned object. Every consumer reads `period.orders`,
+  // the per-order profit rows; nothing outside this function has ever read the
+  // raw input. Returning it meant the cache held the engine's scratch paper for
+  // a minute after the answer was computed, at 57% of the entry's weight.
   const value: ShopAnalytics = {
     shop,
     range,
     rules,
-    orders,
     period,
     products: computeProductProfitability(orders, period.orders, productMeta),
     channels: computeChannelPerformance(orders, period.orders, spend, {
@@ -144,9 +213,8 @@ export async function loadShopAnalytics(
     computedInMs: Date.now() - startedAt,
   };
 
-  // Bound the cache — a busy multi-shop instance should not accumulate windows.
-  if (cache.size > 64) cache.clear();
-  cache.set(key, { at: Date.now(), value });
+  cache.set(key, { at: Date.now(), weight: period.orders.length, value });
+  trimCaches(key);
 
   return value;
 }
@@ -189,8 +257,8 @@ export async function loadPeriodProfit(
 
   const value = computeProfitForPeriod(orders, spend, rules, shop.timezone, range);
 
-  if (periodCache.size > 64) periodCache.clear();
-  periodCache.set(key, { at: Date.now(), value });
+  periodCache.set(key, { at: Date.now(), weight: value.orders.length, value });
+  trimCaches(key);
 
   return value;
 }

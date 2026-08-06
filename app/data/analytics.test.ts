@@ -236,3 +236,93 @@ describe("loadPeriodProfit", () => {
     expect(loadEngineOrders).toHaveBeenLastCalledWith(SHOP.id, earlier);
   });
 });
+
+/**
+ * Cover for what the analytics cache is allowed to hold on to.
+ *
+ * `fly.toml` gives this app a 1024MB VM, and the cache used to bound itself by
+ * counting entries: 64 windows, whatever each one weighed. A 180-day window on
+ * the seeded store — twelve thousand orders, which is a small store for a plan
+ * sold on "unlimited orders" — retains 14.5MB, so the old bound permitted
+ * roughly 930MB of cache on a 1GB box. Nothing failed on the demo store, which
+ * is exactly why it survived five passes.
+ */
+describe("analytics cache retention", () => {
+  const monthEnding = (month: number, day: number) => ({
+    from: new Date(Date.UTC(2026, month, 1)),
+    to: new Date(Date.UTC(2026, month, day)),
+  });
+
+  it("does not retain the engine's raw order input", async () => {
+    const analytics = await loadShopAnalytics(SHOP, RANGE);
+
+    // The hydrated `EngineOrder[]`, line items and all, was 57% of a cached
+    // entry's weight and was read by nothing outside the function that built
+    // it. Every consumer reads `period.orders`, which is the per-order profit
+    // row, not the engine's input.
+    expect(analytics).not.toHaveProperty("orders");
+    expect(analytics.period.orders).toHaveLength(ORDERS.length);
+  });
+
+  it("evicts the oldest window once the retained rows exceed the budget", async () => {
+    // Three orders per window, so a two-row budget is exceeded by the first
+    // entry and every entry after it. The alternative — pushing 120,000 rows
+    // through the profit engine — would measure the engine, not the bound.
+    vi.stubEnv("MERIDIAN_ANALYTICS_CACHE_ORDERS", "2");
+
+    const first = monthEnding(3, 30);
+    const second = monthEnding(4, 31);
+
+    await loadShopAnalytics(SHOP, first);
+    await loadShopAnalytics(SHOP, second);
+
+    const callsBefore = loadEngineOrders.mock.calls.length;
+
+    // The newest window is still warm — the request that built it paid for it.
+    await loadShopAnalytics(SHOP, second);
+    expect(loadEngineOrders.mock.calls.length).toBe(callsBefore);
+
+    // The one before it was dropped to stay inside the budget, so asking for it
+    // again is a rebuild rather than a hit.
+    await loadShopAnalytics(SHOP, first);
+    expect(loadEngineOrders.mock.calls.length).toBe(callsBefore + 1);
+
+    vi.unstubAllEnvs();
+  });
+
+  it("counts full builds and comparison windows against one budget", async () => {
+    // The two caches are separate maps but one heap. Bounding them
+    // independently would permit twice the memory the number was chosen for.
+    vi.stubEnv("MERIDIAN_ANALYTICS_CACHE_ORDERS", "2");
+
+    const full = monthEnding(3, 30);
+    const comparison = monthEnding(4, 31);
+
+    await loadShopAnalytics(SHOP, full);
+    await loadPeriodProfit(SHOP, comparison);
+
+    const callsBefore = loadEngineOrders.mock.calls.length;
+
+    await loadShopAnalytics(SHOP, full);
+
+    expect(loadEngineOrders.mock.calls.length).toBe(callsBefore + 1);
+
+    vi.unstubAllEnvs();
+  });
+
+  it("keeps a window that alone exceeds the budget, rather than never caching", async () => {
+    // A store whose single window is bigger than the whole budget would
+    // otherwise rebuild on every page load: the cache would cost its
+    // bookkeeping and return nothing. One window is the peak that building it
+    // already required.
+    vi.stubEnv("MERIDIAN_ANALYTICS_CACHE_ORDERS", "1");
+
+    await loadShopAnalytics(SHOP, RANGE);
+    const callsBefore = loadEngineOrders.mock.calls.length;
+    await loadShopAnalytics(SHOP, RANGE);
+
+    expect(loadEngineOrders.mock.calls.length).toBe(callsBefore);
+
+    vi.unstubAllEnvs();
+  });
+});

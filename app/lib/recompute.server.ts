@@ -33,15 +33,30 @@ export interface RecomputeResult {
   durationMs: number;
 }
 
+/**
+ * Recompute a shop's whole history. There is deliberately no range parameter.
+ *
+ * `writeCustomerAggregates` builds `ordersCount`, `lifetimeRevenue`,
+ * `lifetimeProfit` and `firstOrderAt` from the orders this run loaded and then
+ * writes them under lifetime names. Bounded to a window those become window
+ * totals wearing a lifetime label, and `firstOrderAt` is dragged forward to the
+ * earliest order *in the window* — undoing what `reconcileFirstOrder` settled,
+ * on the same column whose time-zone handling is fixed below.
+ *
+ * The parameter used to exist, was optional, and read like a safe incremental
+ * knob. Every caller passed nothing, so it never fired; it was a loaded gun
+ * left on the table. Anyone who wants an incremental recompute has to solve the
+ * lifetime-aggregate problem first, and removing the parameter is what forces
+ * that conversation instead of hiding it behind a default.
+ */
 export async function recomputeShopProfitability(
   shopId: string,
-  range?: DateRange,
 ): Promise<RecomputeResult> {
   const startedAt = Date.now();
 
   const shop = await prisma.shop.findUniqueOrThrow({ where: { id: shopId } });
 
-  const effectiveRange: DateRange = range ?? {
+  const effectiveRange: DateRange = {
     from: new Date(0),
     to: new Date(Date.now() + 86_400_000),
   };

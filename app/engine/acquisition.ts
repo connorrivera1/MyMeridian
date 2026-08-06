@@ -136,6 +136,21 @@ export interface CustomerJourney {
   acquiredAt: Date;
   channel: Channel;
   campaignId: string | null;
+  /**
+   * True when `acquiredAt` is the customer's genuine first order, and not
+   * merely the earliest one that fell inside the loaded window.
+   *
+   * Journeys are always built from a window of orders, so a customer acquired
+   * two years ago who orders again this month is indistinguishable, from inside
+   * that window, from someone brand new: their earliest visible order *is* the
+   * start of the data. Only the order's own `isFirstOrder` flag can separate
+   * them, because it is maintained against the customer's whole history by
+   * `reconcileFirstOrder` rather than against whatever the query returned.
+   *
+   * Everything that divides by "customers acquired" has to filter on this, or
+   * it is really dividing by "customers seen".
+   */
+  acquiredInWindow: boolean;
   timeline: {
     dayOffset: number;
     /** Contribution profit after the ad spend attributed to this order. */
@@ -168,6 +183,7 @@ export function buildJourneysFromRows(
     processedAt: Date;
     channel: Channel;
     campaignId: string | null;
+    isFirstOrder: boolean;
     contributionProfitCents: Cents;
     adCostCents: Cents;
   }[],
@@ -192,6 +208,7 @@ export function buildJourneysFromRows(
       acquiredAt: first.processedAt,
       channel: first.channel,
       campaignId: first.campaignId,
+      acquiredInWindow: first.isFirstOrder,
       timeline: sorted.map((row) => ({
         dayOffset: Math.floor(
           (row.processedAt.getTime() - first.processedAt.getTime()) / DAY_MS,
@@ -232,6 +249,7 @@ export function buildCustomerJourneys(
       acquiredAt: first.processedAt,
       channel: first.channel,
       campaignId: first.campaignId,
+      acquiredInWindow: first.isFirstOrder,
       timeline: sorted.map((order) => {
         const profit = profitByOrderId.get(order.id);
         return {
@@ -378,9 +396,17 @@ export function computeChannelPerformance(
 
     // Only customers actually acquired inside the window — mixing in customers
     // acquired earlier would deflate CAC.
+    //
+    // `acquiredInWindow` is what does that work, and the date bounds alone
+    // cannot. `journeys` is built from the orders loaded *for* this window, so
+    // every journey's `acquiredAt` is inside it by construction and the bounds
+    // exclude nothing: a customer from two years ago who reorders this month
+    // arrives here looking newly acquired. The bounds are kept because callers
+    // may pass a journey set built over a wider span than they are reporting on.
     const cohort = journeys.filter(
       (j) =>
         j.channel === channel &&
+        j.acquiredInWindow &&
         j.acquiredAt >= options.periodStart &&
         j.acquiredAt <= options.periodEnd,
     );
@@ -395,7 +421,14 @@ export function computeChannelPerformance(
 
     // Value is measured across every cohort old enough to answer, not just the
     // ones acquired inside the reporting window.
-    const valueCohort = valueJourneys.filter((j) => j.channel === channel);
+    //
+    // Still only customers whose day zero is actually in the data. A customer
+    // acquired before the lookback begins has both a false acquisition date and
+    // a timeline missing its opening orders, so averaging them into "value per
+    // acquired customer" measures a fragment of a journey against a whole CAC.
+    const valueCohort = valueJourneys.filter(
+      (j) => j.channel === channel && j.acquiredInWindow,
+    );
     const curve = ltvCurveFor(valueCohort, cohortEnd);
     const day90 = curve.find((p) => p.day === 90);
     const ltv90Measurable = day90?.measurable ?? false;
@@ -487,8 +520,11 @@ export function computeCampaignPerformance(
       0,
     );
 
+    // Same rule as the channel cohort: a returning customer whose first visible
+    // order carried this campaign's id was not acquired by it, and counting
+    // them divides the campaign's spend by more customers than it bought.
     const newCustomers = journeys.filter(
-      (j) => j.campaignId === campaign.campaignId,
+      (j) => j.campaignId === campaign.campaignId && j.acquiredInWindow,
     ).length;
 
     results.push({

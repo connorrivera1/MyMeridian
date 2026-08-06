@@ -253,6 +253,113 @@ breaking the source twelve ways, one test failing per break, all reverted.
 `verify-data.ts` against live Postgres is byte-identical to its output before
 this work, which it must be — nothing here touched a line of application code.
 
+### The day the clocks went forward fell out of the chart
+
+`dailySeries` builds the daily buckets behind the Overview and Orders charts. It
+created them by adding a fixed 86,400,000ms to `range.from` and reading the
+*local calendar day* off each stamp. Those two things disagree the moment the
+shop's zone changes offset inside the window: the stamps drift an hour against
+the local clock, and once the drift carries one across midnight a real calendar
+day gets no bucket. Every order placed that day then hit the `!bucket` branch
+and was dropped from the chart, while the headline KPI row beside it — computed
+from the same orders by a different path — still counted them.
+
+Nothing exotic was needed to fire it. The default 30-day range, an
+`America/New_York` store, and a dashboard loaded in the hour after local
+midnight on 2026-03-20 produced a series with no bucket for 2026-03-08 at all.
+Measured, not reasoned about: a probe over all 24 hourly anchors across both
+2026 transitions reported `MISSING 2026-03-08` for exactly the anchor that put
+the stride within an hour of midnight, which is why it survived being read.
+
+The walk now steps one *calendar* day at a time, anchored on local midday —
+twelve hours of slack against a transition that moves an hour. `DailyPoint`
+carries the day it belongs to as a `key`, so buckets are no longer identified by
+an instant that has to be re-derived. A new `series.test.ts` asserts the emitted
+days equal the days the window genuinely spans, for every hourly anchor across
+both northern transitions and both southern ones.
+
+Separately, `app.orders.tsx` formatted those buckets with
+`toLocaleDateString` and no `timeZone`. That runs in the loader, so a bucket
+keyed in the shop's zone was captioned in the *server's* — off by a day for any
+store west of it. It now states the shop's zone.
+
+`verify-data.ts` is byte-identical: it does not build a series.
+
+### The warehouse's days were cut on someone else's midnight
+
+`rebuildCapacityDays` is the source of every figure on the Fulfilment screen —
+backlog, throughput, the capacity ceiling, days-to-clear. All three of its raw
+statements grouped with a bare `date_trunc('day', …)`. Those columns are
+`timestamp without time zone` holding UTC, so that cuts the day on UTC midnight:
+**4pm** for a Los Angeles store. Every order placed in the merchant's evening —
+the busiest hours they have — was received on tomorrow's row. The backlog, the
+throughput and the ceiling every alert is measured against were built on a day
+boundary the warehouse does not work to, and one that disagreed with the day
+every other screen buckets by, which uses the shop's zone via `dayKey`.
+
+The demo store cannot show this, and that is why it lasted. Checked against the
+live database: the seed places orders only between 08:00 and 23:59 UTC, which is
+00:00 to 15:59 in the store's own Los Angeles zone. All 12,379 orders, and every
+fulfilment (all stamped 15:00 UTC), fall on the same calendar day either way —
+zero shifted. The one configuration where the bug does nothing is the one
+configuration that ships.
+
+Each statement now reads the stored instant as UTC and renders it in the shop's
+zone before truncating. An unusable or missing `timezone` falls back to UTC,
+because Postgres throws on a zone name it does not know and this runs at the very
+end of an import — a bad value would have cost the merchant the entire walk.
+
+Proved against real Postgres rather than asserted: the rebuild was run against
+the demo database and its 187 rows diffed against the 184 already stored. Every
+`ordersReceived`, `ordersFulfilled`, `unitsFulfilled` and `backlogEnd` matched
+exactly. The only differences were the ones the function has always had when run
+outside the seed — it writes `staffedHours` as 0 and extends the series to today
+— so the snapshot was restored and `verify-data.ts` is byte-identical.
+
+`rebuildCapacityDays` had no test at all before this, which is to say the
+split-shipment rule fixed earlier this session was held in place by nothing. A
+new `backfill-capacity.test.ts` covers all three statements and the arithmetic
+on their results, including the `MAX("shippedAt") GROUP BY "orderId"` collapse.
+
+### The one ad channel with no row at all
+
+The Settings screen renders one row per `Connector`, so a provider with no row
+is not shown as "Not configured" — it is not shown at all. `TIKTOK_ADS` was in
+that position: declared in the schema enum, labelled and given a purpose string
+on the Settings screen, and created by `prisma/seed.ts` — but never created by
+`ensureShopProvisioned`. The demo store therefore listed a TikTok Ads connector
+that no real install could ever produce, while the engine went on computing
+TikTok CAC, LTV:CAC and ROAS beside a table that did not mention TikTok.
+
+That is the same defect as the listing copy that sold channels the app cannot
+connect, one layer down: the demo showing a merchant something the product does
+not do. Provisioning now writes one row per provider, `NOT_CONFIGURED` for
+everything except Shopify, and `provision.test.ts` reads the enum rather than
+restating the list — so adding a provider without provisioning it fails.
+
+A store installed before a provider existed has no row for it either. Those are
+backfilled on reinstall with `skipDuplicates`, which leaves a connected row's
+token, display name and sync stamp untouched. Deliberately not done on every
+call: `ensureShopProvisioned` runs on every authenticated request, and reinstall
+is already a write.
+
+### The range parameter that would rewrite a lifetime as a window
+
+Known gap 7 from the previous session, closed. `writeCustomerAggregates` builds
+`ordersCount`, `lifetimeRevenue`, `lifetimeProfit` and `firstOrderAt` from only
+the orders the recompute loaded, then writes them under lifetime names. Bounded
+to a window those become window totals wearing a lifetime label, and
+`firstOrderAt` is dragged forward to the earliest order *in the window* —
+undoing what `reconcileFirstOrder` settles, on the same column whose time-zone
+handling was fixed the session before.
+
+All four callers passed no range, so it never fired. The parameter was public,
+optional, and shaped exactly like a safe incremental-update knob: a loaded gun
+left on the table. It is gone. Anyone who wants an incremental recompute now has
+to solve the lifetime-aggregate problem first, which is the conversation the
+default was hiding. Three tests hold the function to one argument and to loading
+from the epoch.
+
 ### The listing was still selling the ad channels
 
 The fix below stopped `/app/plan` and the Acquisition screen selling ad-platform
@@ -742,6 +849,65 @@ production on Fly and wrong on every developer machine, which is the worst way
 round for a bug to sit. Four new tests assert the generated SQL; two fail
 against the old cast.
 
+### Every returning customer counted as an acquisition
+
+CAC, LTV:CAC, payback, each channel's verdict and every product's loss-leader
+label all rest on one fact — which order was the customer's first. Three places
+needed it and all three inferred it from position inside the loaded window
+rather than reading `Order.isFirstOrder`, the column `reconcileFirstOrder` and
+`reconcileFirstOrdersForShop` exist to keep honest, and which `loadEngineOrders`
+was already selecting onto every `EngineOrder`.
+
+Journeys are built from the orders loaded *for* the reporting window, so a
+customer acquired two years ago who reorders this month has their earliest
+visible order read as an acquisition. `computeChannelPerformance` carried a
+filter meant to prevent precisely that:
+
+```ts
+// Only customers actually acquired inside the window — mixing in customers
+// acquired earlier would deflate CAC.
+j.acquiredAt >= options.periodStart && j.acquiredAt <= options.periodEnd
+```
+
+It cannot work. Every journey's `acquiredAt` is inside the window by
+construction, so the bounds excluded nothing and the comment documented a
+guard that was a no-op.
+
+Measured against the demo database, on the range the dashboard actually
+defaults to:
+
+| Window | Customers seen | Counted as new | Actually new | Facebook CAC shown | True |
+|---|---|---|---|---|---|
+| 30 days (default) | 2,951 | 2,951 | 2,068 | $53.87 | **$62.24** |
+| 7 days | 724 | 724 | 450 | $53.55 | **$67.78** |
+| 6 months (`verify-data`) | 9,192 | 9,192 | 9,192 | $67.13 | $67.13 |
+
+CAC is the denominator of LTV:CAC and the bar payback is measured against, so
+one deflated number flatters three at once and can carry a channel's verdict
+from MARGINAL to PROFITABLE. `computeCampaignPerformance` had the same defect
+with no date filter at all. `computeDownstreamValue` had it too, and there it
+decides a headline label: a clearance mug that acquired nobody was reported as
+a deliberate `STRATEGIC_LOSS_LEADER`, credited with six customers and $420 of
+other people's repeat purchases — confirmed by running the engine both ways.
+
+`CustomerJourney` now carries `acquiredInWindow`, taken from the order's own
+flag, and everything that divides by "customers acquired" filters on it. So
+does the LTV curve: a customer acquired before the lookback has a false day
+zero and a timeline missing its opening orders, and averaging them in measures
+a fragment of a journey against a whole CAC. `loadCohortRows` reads the one
+extra boolean this needs, pinned by its own projection test.
+
+It survived because the test that claimed to cover it handed January orders to
+a February `periodStart` — input no loader can produce. Rewritten against a
+realisable window, it fails. Six of the seven new tests fail against the
+previous engine.
+
+`verify-data.ts` is byte-identical. Its window spans the demo store's entire
+history (2026-02-01 to 2026-08-04, and the earliest order is 2026-02-01), so
+every customer in it really was acquired inside it and there is nothing here
+for the fix to change — which is also why six months of demo data never showed
+the bug, and why the third row of that table matches.
+
 ### Other
 
 - `app/scopes_update` webhook added. `grantedScopes` was written only in
@@ -779,7 +945,7 @@ against the old cast.
 | GraphQL Admin API only | Done | No REST calls anywhere; new public apps may not use REST |
 | Webhook API version | Done | `2026-07`, matching `@shopify/shopify-api` 13.1.0 |
 | Production build | Done | `npm run build` clean |
-| Test suite | Done | **290 tests, 24 files, all passing** (verified 2026-08-06 09:34, `npx vitest run`, three consecutive runs) |
+| Test suite | Done | **348 tests, 29 files, all passing** (verified 2026-08-06 17:29 on the merged branch, `npx vitest run`) |
 | Engine output unchanged by the query work | Done | `npx tsx scripts/verify-data.ts` against live Postgres, diffed byte-for-byte against its output before the change |
 | Typecheck | Done | Clean |
 | Config validity | Done | `shopify app config validate` passes |
@@ -812,7 +978,10 @@ thrown from the same function that throws the 401.
    spend. **No longer a listing risk** — nothing merchant-visible sells ad spend,
    CAC or ROAS any more, the screen says plainly why those figures are blank, and
    a test fails if the claim returns. It is now a missing feature rather than a
-   false promise, which is a gap Shopify does not bounce a submission for.
+   false promise, which is a gap Shopify does not bounce a submission for. The
+   wiring that *did* exist is now consistent: every provider in the enum gets a
+   connector row at install, so the Settings screen shows all three ad platforms
+   sitting at "Not configured" rather than omitting TikTok entirely.
 4. **Backfill and recompute run in-process.** Correct on a long-lived server,
    wrong on serverless where the process may not outlive the response. Both
    belong in a job queue before deploying there.
@@ -826,6 +995,27 @@ thrown from the same function that throws the 401.
     actually reads was not — and `capabilitiesForShop` falls back to
     `process.env.SCOPES`, so this instance claims CAC/LTV capability it does not
     have. Untouched here because it is a gitignored local credentials file.
+7. **Route loaders are still untested.** 20 of the 21 route files have no test;
+   only the three GDPR webhooks do. `loadDashboard` — which every dashboard
+   screen goes through, and which builds the comparison window — is among them,
+   as are the six non-GDPR webhook actions, none of which has an HMAC-rejection
+   test of its own. The layer below them is now covered: `series.ts`,
+   `provision.server.ts` and `rebuildCapacityDays` all gained their first tests
+   this session, and each one had a real defect in it.
+8. **The chart components format dates in the browser's zone.**
+   `app/design/charts.tsx` renders `point.date` with `toLocaleDateString` and no
+   `timeZone`, client-side, so a merchant travelling — or simply a laptop set to
+   a different zone from the store — reads axis labels that can sit a day off
+   the buckets behind them. The loader-side instance of this is fixed and
+   `DailyPoint` now carries an unambiguous `key`; threading the shop's zone
+   through to the components is the remaining half.
+9. **`CapacityDay.staffedHours` and `maxDailyCapacity` are written by the seed
+   and zeroed by the rebuild.** `rebuildCapacityDays` has no source for staffed
+   hours and writes `"0"`, and it recomputes the ceiling from observed
+   throughput. On the demo store the seeded values (16/40 hours, ceiling 95)
+   differ from what a rebuild produces (0, ceiling 102), so a re-import would
+   quietly change the Fulfilment screen. Harmless on a real store, which never
+   had staffed hours to lose, but the demo and the product disagree.
 
 ---
 

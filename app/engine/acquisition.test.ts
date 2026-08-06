@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildCustomerJourneys,
+  buildJourneysFromRows,
   computeCampaignPerformance,
   computeChannelPerformance,
 } from "./acquisition";
@@ -117,6 +118,39 @@ function buildCohort() {
   return { orders, spend, profits: period.orders };
 }
 
+/**
+ * The same ten acquisitions, plus ten customers who were already customers
+ * before this window opened and simply ordered through Facebook again inside
+ * it.
+ *
+ * This is what a real store looks like and what a fixture built only from
+ * acquisitions cannot show: from inside the window the two groups are
+ * identical apart from `isFirstOrder`. The returners are placed on a different
+ * day from the spend row so they take no ad cost, which keeps CAC arithmetic
+ * the only thing that moves.
+ */
+function buildCohortWithReturners() {
+  const { orders, spend } = buildCohort();
+
+  for (let i = 11; i <= 20; i++) {
+    orders.push(
+      order({
+        id: `returner-${i}`,
+        customerId: `c${i}`,
+        at: "2026-01-10T15:00:00Z",
+        channel: "FACEBOOK",
+        campaignId: "camp-a",
+        priceCents: 20_000,
+        costCents: 6000,
+      }),
+    );
+  }
+
+  const period = computeProfitForPeriod(orders, spend, ZERO_COST_RULES, TZ);
+
+  return { orders, spend, profits: period.orders };
+}
+
 describe("buildCustomerJourneys", () => {
   it("credits a customer to the channel that first brought them in", () => {
     const { orders, profits } = buildCohort();
@@ -140,6 +174,119 @@ describe("buildCustomerJourneys", () => {
     guest.customerId = null;
 
     expect(buildCustomerJourneys([guest], [])).toHaveLength(0);
+  });
+
+  it("marks a journey that opens on a repeat order as not acquired here", () => {
+    const { orders, profits } = buildCohort();
+    const acquired = buildCustomerJourneys(orders, profits);
+    expect(acquired.every((j) => j.acquiredInWindow)).toBe(true);
+
+    // The same customer seen from a window that starts after they were
+    // acquired: the acquiring order is absent and the repeat leads the journey.
+    const returning = buildCustomerJourneys(
+      [
+        order({
+          id: "repeat-only",
+          customerId: "c1",
+          at: "2026-01-25T15:00:00Z",
+          channel: "DIRECT",
+          priceCents: 20_000,
+          costCents: 5000,
+        }),
+      ],
+      [],
+    );
+
+    expect(returning).toHaveLength(1);
+    expect(returning[0]!.acquiredInWindow).toBe(false);
+  });
+});
+
+describe("buildJourneysFromRows", () => {
+  const cohortRow = (over: {
+    customerId: string;
+    at: string;
+    isFirstOrder: boolean;
+    contributionProfitCents: number;
+  }) => ({
+    customerId: over.customerId,
+    processedAt: new Date(over.at),
+    channel: "FACEBOOK" as Channel,
+    campaignId: null,
+    isFirstOrder: over.isFirstOrder,
+    contributionProfitCents: over.contributionProfitCents,
+    adCostCents: 0,
+  });
+
+  it("carries the acquisition flag through from the materialised rows", () => {
+    const journeys = buildJourneysFromRows([
+      cohortRow({
+        customerId: "c1",
+        at: "2026-01-05T00:00:00Z",
+        isFirstOrder: true,
+        contributionProfitCents: 10_000,
+      }),
+      cohortRow({
+        customerId: "c2",
+        at: "2026-01-06T00:00:00Z",
+        isFirstOrder: false,
+        contributionProfitCents: 2000,
+      }),
+    ]);
+
+    expect(journeys.map((j) => j.acquiredInWindow)).toEqual([true, false]);
+  });
+
+  it("keeps customers with no visible first order out of the value curve", () => {
+    const journeys = buildJourneysFromRows([
+      cohortRow({
+        customerId: "c1",
+        at: "2026-01-05T00:00:00Z",
+        isFirstOrder: true,
+        contributionProfitCents: 10_000,
+      }),
+      // Acquired before the lookback begins. Their opening orders are missing,
+      // so this journey is a fragment with a false day zero.
+      cohortRow({
+        customerId: "c2",
+        at: "2026-01-06T00:00:00Z",
+        isFirstOrder: false,
+        contributionProfitCents: 2000,
+      }),
+    ]);
+
+    const orders = [
+      order({
+        id: "o1",
+        customerId: "c1",
+        at: "2026-01-05T15:00:00Z",
+        channel: "FACEBOOK",
+        priceCents: 20_000,
+        costCents: 6000,
+        isFirstOrder: true,
+      }),
+    ];
+    const spend = [
+      spendRow({
+        date: new Date("2026-01-05T12:00:00Z"),
+        channel: "FACEBOOK",
+        spendCents: 10_000,
+      }),
+    ];
+    const period = computeProfitForPeriod(orders, spend, ZERO_COST_RULES, TZ);
+
+    const facebook = computeChannelPerformance(orders, period.orders, spend, {
+      periodStart: PERIOD_START,
+      periodEnd: PERIOD_END,
+      cohortJourneys: journeys,
+      cohortEnd: new Date("2026-06-01T00:00:00Z"),
+    }).find((c) => c.channel === "FACEBOOK")!;
+
+    const day90 = facebook.ltvCurve.find((p) => p.day === 90)!;
+
+    // One measurable customer worth $100 — not two averaging $60.
+    expect(day90.cohortSize).toBe(1);
+    expect(day90.cumulativeProfitPerCustomerCents).toBe(10_000);
   });
 });
 
@@ -348,15 +495,85 @@ describe("computeChannelPerformance", () => {
   });
 
   it("excludes customers acquired before the window from CAC", () => {
-    const { orders, spend, profits } = buildCohort();
+    // The shape the loader actually produces. Orders are fetched *for* the
+    // reporting window, so the January order that acquired c1 is not in the
+    // data at all — the only trace of it is `isFirstOrder: false` on the
+    // February order.
+    //
+    // This test used to hand January orders to a February `periodStart`, which
+    // no loader can produce: `acquiredAt` came out in January, the date bounds
+    // rejected it, and the test passed. With realisable input the bounds are
+    // powerless, because every journey's `acquiredAt` is inside the window by
+    // construction — which is exactly how every returning customer came to be
+    // counted as an acquisition.
+    const orders = [
+      order({
+        id: "returning",
+        customerId: "c1",
+        at: "2026-02-10T15:00:00Z",
+        channel: "FACEBOOK",
+        priceCents: 20_000,
+        costCents: 6000,
+      }),
+    ];
+    const spend = [
+      spendRow({
+        date: new Date("2026-02-10T12:00:00Z"),
+        channel: "FACEBOOK",
+        spendCents: 100_000,
+      }),
+    ];
+    const period = computeProfitForPeriod(orders, spend, ZERO_COST_RULES, TZ);
 
-    const narrow = computeChannelPerformance(orders, profits, spend, {
+    const narrow = computeChannelPerformance(orders, period.orders, spend, {
       periodStart: new Date("2026-02-01T00:00:00Z"),
       periodEnd: PERIOD_END,
     }).find((c) => c.channel === "FACEBOOK")!;
 
+    expect(narrow.orders).toBe(1);
     expect(narrow.newCustomers).toBe(0);
     expect(narrow.cacCents).toBeNull();
+  });
+
+  it("divides spend by the customers it bought, not the customers it saw", () => {
+    const { orders, spend, profits } = buildCohortWithReturners();
+
+    const facebook = computeChannelPerformance(orders, profits, spend, {
+      periodStart: PERIOD_START,
+      periodEnd: PERIOD_END,
+    }).find((c) => c.channel === "FACEBOOK")!;
+
+    // Twenty customers ordered through Facebook inside the window. Ten of them
+    // were bought; the other ten were already customers.
+    expect(facebook.orders).toBe(20);
+    expect(facebook.newCustomers).toBe(10);
+    expect(facebook.returningOrders).toBe(10);
+
+    // $1,000 ÷ 10 acquisitions. Counting all twenty gives $50 and makes the
+    // channel look twice as efficient as it is.
+    expect(facebook.cacCents).toBe(10_000);
+  });
+
+  it("does not let a deflated CAC flatter payback or the LTV ratio", () => {
+    const { orders, spend, profits } = buildCohortWithReturners();
+
+    const facebook = computeChannelPerformance(orders, profits, spend, {
+      periodStart: PERIOD_START,
+      periodEnd: PERIOD_END,
+      cohortEnd: new Date("2026-06-01T00:00:00Z"),
+    }).find((c) => c.channel === "FACEBOOK")!;
+
+    // An acquired customer is worth $290 gross of marketing over 90 days:
+    // $140 on the acquiring order ($200 − $60 COGS) and $150 on the repeat
+    // ($200 − $50). Against a true $100 CAC that is 2.9×.
+    //
+    // Counting the returners gave $50 CAC *and* averaged their single-order
+    // $140 journeys into the curve — $215 over $50, a 4.3× that no cohort in
+    // this fixture ever earned.
+    expect(facebook.ltv90Measurable).toBe(true);
+    expect(facebook.ltv90Cents).toBe(29_000);
+    expect(facebook.ltvToCacRatio).toBeCloseTo(2.9, 5);
+    expect(facebook.paybackDays).toBe(0);
   });
 
   it("reports organic channels as having no spend rather than infinite ROAS", () => {
@@ -395,5 +612,17 @@ describe("computeCampaignPerformance", () => {
     expect(campaigns[0]!.newCustomers).toBe(10);
     expect(campaigns[0]!.cacCents).toBe(10_000);
     expect(campaigns[0]!.verdict).toBe("PROFITABLE");
+  });
+
+  it("does not credit a campaign with customers it did not acquire", () => {
+    const { orders, spend, profits } = buildCohortWithReturners();
+
+    const campaign = computeCampaignPerformance(orders, profits, spend)[0]!;
+
+    // Twenty orders carry camp-a, ten customers were bought by it. This one had
+    // no date filter at all, so every returner counted.
+    expect(campaign.orders).toBe(20);
+    expect(campaign.newCustomers).toBe(10);
+    expect(campaign.cacCents).toBe(10_000);
   });
 });

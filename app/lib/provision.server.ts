@@ -50,6 +50,37 @@ const DEFAULT_COST_RULES = [
   },
 ] as const;
 
+/**
+ * The connector rows every store gets at install.
+ *
+ * One entry per `ConnectorProvider` in the schema, and a test holds it to that.
+ * `TIKTOK_ADS` was in the enum, labelled on the Settings screen, given a purpose
+ * string, and created by the seed — but never created here. So the demo store
+ * showed a TikTok Ads row and a real install showed nothing at all: not
+ * "Not configured", not an error, just one ad channel silently absent from the
+ * table while the engine went on computing TikTok CAC and ROAS beside it. Same
+ * shape as the listing copy that sold channels the app cannot connect, one
+ * layer down.
+ *
+ * Ad and payment providers start `NOT_CONFIGURED` because they are — none has
+ * an OAuth flow yet, and a row saying so is the honest version of that.
+ */
+function initialConnectors(domain: string) {
+  return [
+    {
+      provider: ConnectorProvider.SHOPIFY,
+      status: ConnectorStatus.CONNECTED,
+      displayName: domain,
+      lastSyncedAt: new Date(),
+    },
+    { provider: ConnectorProvider.FACEBOOK_ADS, status: ConnectorStatus.NOT_CONFIGURED },
+    { provider: ConnectorProvider.GOOGLE_ADS, status: ConnectorStatus.NOT_CONFIGURED },
+    { provider: ConnectorProvider.TIKTOK_ADS, status: ConnectorStatus.NOT_CONFIGURED },
+    { provider: ConnectorProvider.STRIPE, status: ConnectorStatus.NOT_CONFIGURED },
+    { provider: ConnectorProvider.WAREHOUSE_3PL, status: ConnectorStatus.NOT_CONFIGURED },
+  ];
+}
+
 export async function ensureShopProvisioned(domain: string, name?: string) {
   const existing = await prisma.shop.findUnique({ where: { domain } });
   if (existing) {
@@ -60,6 +91,17 @@ export async function ensureShopProvisioned(domain: string, name?: string) {
       // `alreadyImported` check skipped the backfill, and the merchant came
       // back to a dashboard that loaded perfectly while silently missing every
       // sale from the gap. Reset it so the import runs again on reinstall.
+      // A store installed before a provider existed has no row for it. Done on
+      // this path rather than on every call: `ensureShopProvisioned` runs on
+      // every authenticated request, and reinstall is already a write.
+      await prisma.connector.createMany({
+        data: initialConnectors(domain).map((connector) => ({
+          ...connector,
+          shopId: existing.id,
+        })),
+        skipDuplicates: true,
+      });
+
       return prisma.shop.update({
         where: { id: existing.id },
         data: {
@@ -86,20 +128,7 @@ export async function ensureShopProvisioned(domain: string, name?: string) {
           monthlyAmount: rule.monthlyAmount,
         })),
       },
-      connectors: {
-        create: [
-          {
-            provider: ConnectorProvider.SHOPIFY,
-            status: ConnectorStatus.CONNECTED,
-            displayName: domain,
-            lastSyncedAt: new Date(),
-          },
-          { provider: ConnectorProvider.FACEBOOK_ADS, status: ConnectorStatus.NOT_CONFIGURED },
-          { provider: ConnectorProvider.GOOGLE_ADS, status: ConnectorStatus.NOT_CONFIGURED },
-          { provider: ConnectorProvider.STRIPE, status: ConnectorStatus.NOT_CONFIGURED },
-          { provider: ConnectorProvider.WAREHOUSE_3PL, status: ConnectorStatus.NOT_CONFIGURED },
-        ],
-      },
+      connectors: { create: initialConnectors(domain) },
     },
   });
 

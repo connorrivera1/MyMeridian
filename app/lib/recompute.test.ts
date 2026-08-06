@@ -74,6 +74,7 @@ vi.mock("~/data/queries.server", () => ({
 }));
 
 const { recomputeShopProfitability } = await import("./recompute.server");
+const { loadAdSpend, loadEngineOrders } = await import("~/data/queries.server");
 
 /** Flatten a tagged-template call into the SQL text it would send. */
 function sqlTextOf(call: unknown[]): string {
@@ -93,6 +94,8 @@ function sqlTextOf(call: unknown[]): string {
 
 async function runRecompute() {
   executeRawCalls.length = 0;
+  vi.mocked(loadEngineOrders).mockClear();
+  vi.mocked(loadAdSpend).mockClear();
   shopFindUniqueOrThrow.mockResolvedValue({
     id: "shop_1",
     timezone: "America/Los_Angeles",
@@ -101,6 +104,46 @@ async function runRecompute() {
   await recomputeShopProfitability("shop_1");
   return executeRawCalls.map(sqlTextOf);
 }
+
+describe("recompute is whole-history by construction", () => {
+  /**
+   * `writeCustomerAggregates` rolls `ordersCount`, `lifetimeRevenue`,
+   * `lifetimeProfit` and `firstOrderAt` out of the orders this run loaded, and
+   * writes them under lifetime names. That is only true if the run loaded the
+   * customer's whole history. `recomputeShopProfitability` used to take an
+   * optional `range` — unused by all four callers, but public, optional, and
+   * shaped exactly like a safe incremental-update knob. Passing one would have
+   * written window totals under a lifetime label and dragged `firstOrderAt`
+   * forward to the earliest order in the window, undoing `reconcileFirstOrder`
+   * on the very column the timestamptz fix below exists to protect.
+   */
+
+  it("takes only a shop id — no range parameter to pass by mistake", () => {
+    expect(recomputeShopProfitability.length).toBe(1);
+  });
+
+  it("loads orders and spend from the epoch, not from a window", async () => {
+    await runRecompute();
+
+    for (const loader of [loadEngineOrders, loadAdSpend]) {
+      const [shopId, range] = vi.mocked(loader).mock.calls[0] as [string, { from: Date; to: Date }];
+      expect(shopId).toBe("shop_1");
+      expect(range.from.getTime()).toBe(0);
+      // `to` reaches past now, so an order processed moments ago is still in.
+      expect(range.to.getTime()).toBeGreaterThan(Date.now());
+    }
+  });
+
+  it("passes the same range to every loader, so aggregates cannot straddle windows", async () => {
+    await runRecompute();
+
+    const orderRange = vi.mocked(loadEngineOrders).mock.calls[0]![1];
+    const spendRange = vi.mocked(loadAdSpend).mock.calls[0]![1];
+
+    expect(orderRange.from.getTime()).toBe(spendRange.from.getTime());
+    expect(orderRange.to.getTime()).toBe(spendRange.to.getTime());
+  });
+});
 
 describe("writeCustomerAggregates timestamp binding", () => {
   it("casts firstOrderAt through timestamptz and back to UTC", async () => {

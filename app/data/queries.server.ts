@@ -170,6 +170,7 @@ export interface CohortRow {
   processedAt: Date;
   channel: Channel;
   campaignId: string | null;
+  isFirstOrder: boolean;
   contributionProfitCents: number;
   adCostCents: number;
 }
@@ -199,6 +200,10 @@ export async function loadCohortRows(
       processedAt: true,
       channel: true,
       campaignId: true,
+      // One boolean, and the cohort maths cannot be right without it: it is the
+      // only way to tell a customer acquired inside the lookback from one who
+      // merely reordered inside it. See `CustomerJourney.acquiredInWindow`.
+      isFirstOrder: true,
       contributionProfit: true,
       adCostAttributed: true,
     },
@@ -210,6 +215,7 @@ export async function loadCohortRows(
     processedAt: row.processedAt,
     channel: row.channel as Channel,
     campaignId: row.campaignId,
+    isFirstOrder: row.isFirstOrder,
     contributionProfitCents: toCents(row.contributionProfit),
     adCostCents: toCents(row.adCostAttributed),
   }));

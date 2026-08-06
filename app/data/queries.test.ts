@@ -23,7 +23,7 @@ vi.mock("~/db.server", () => ({
   },
 }));
 
-const { loadEngineOrders } = await import("./queries.server");
+const { loadCohortRows, loadEngineOrders } = await import("./queries.server");
 
 const RANGE = {
   from: new Date("2026-07-01T00:00:00.000Z"),
@@ -329,5 +329,82 @@ describe("loadEngineOrders column projection", () => {
         },
       ],
     });
+  });
+});
+
+/**
+ * The cohort query is where a missing column changes an answer instead of
+ * breaking a build.
+ *
+ * It feeds CAC, the LTV curve, payback and each channel's verdict. Drop
+ * `isFirstOrder` and none of that fails — every customer who merely reordered
+ * inside the lookback silently reads as a fresh acquisition, and the channel's
+ * spend gets divided by more customers than it bought. Pinned here for the same
+ * reason the projection above is, and because the failure is invisible.
+ */
+describe("loadCohortRows column projection", () => {
+  async function selectArg() {
+    orderFindMany.mockResolvedValue([]);
+    await loadCohortRows("shop_1", RANGE);
+    const [args] = orderFindMany.mock.calls[0] as [
+      { select: Record<string, unknown> }
+    ];
+    return args.select;
+  }
+
+  it("reads the acquisition flag the cohort maths depends on", async () => {
+    expect((await selectArg()).isFirstOrder).toBe(true);
+  });
+
+  it("asks for exactly the columns a journey needs", async () => {
+    expect(Object.keys(await selectArg()).sort()).toEqual(
+      [
+        "adCostAttributed",
+        "campaignId",
+        "channel",
+        "contributionProfit",
+        "customerId",
+        "isFirstOrder",
+        "processedAt",
+      ].sort(),
+    );
+  });
+
+  it("scopes to the shop, the window, and orders that have a customer", async () => {
+    orderFindMany.mockResolvedValue([]);
+    await loadCohortRows("shop_1", RANGE);
+
+    const [args] = orderFindMany.mock.calls[0] as [Record<string, unknown>];
+    expect(args.where).toEqual({
+      shopId: "shop_1",
+      processedAt: { gte: RANGE.from, lte: RANGE.to },
+      customerId: { not: null },
+    });
+  });
+
+  it("carries the flag through to the row the engine consumes", async () => {
+    orderFindMany.mockResolvedValue([
+      {
+        customerId: "cust_1",
+        processedAt: new Date("2026-07-10T09:00:00.000Z"),
+        channel: "GOOGLE",
+        campaignId: null,
+        isFirstOrder: false,
+        contributionProfit: "12.34",
+        adCostAttributed: "5.00",
+      },
+    ]);
+
+    expect(await loadCohortRows("shop_1", RANGE)).toEqual([
+      {
+        customerId: "cust_1",
+        processedAt: new Date("2026-07-10T09:00:00.000Z"),
+        channel: "GOOGLE",
+        campaignId: null,
+        isFirstOrder: false,
+        contributionProfitCents: 1234,
+        adCostCents: 500,
+      },
+    ]);
   });
 });

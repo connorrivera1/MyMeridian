@@ -38,6 +38,13 @@ function order(
   customerId: string,
   processedAt: Date,
   lineItems: EngineLineItem[],
+  /**
+   * Whether this is the customer's first ever order, as `Order.isFirstOrder`
+   * records it. Downstream value is only credited to the products in an
+   * acquiring order, so leaving this false models a customer who was already
+   * acquired before the window opened.
+   */
+  isFirstOrder = false,
 ): EngineOrder {
   const subtotal = lineItems.reduce(
     (s, l) => s + l.unitPriceCents * l.quantity,
@@ -51,7 +58,7 @@ function order(
     customerId,
     channel: "FACEBOOK",
     campaignId: null,
-    isFirstOrder: false,
+    isFirstOrder,
     subtotalCents: subtotal,
     discountTotalCents: 0,
     shippingChargedCents: 0,
@@ -72,7 +79,7 @@ function analyse(orders: EngineOrder[]) {
 describe("computeProductProfitability", () => {
   it("marks a healthy product profitable", () => {
     const results = analyse([
-      order("o1", "c1", new Date("2026-01-01"), [line("hero", 10_000, 3000)]),
+      order("o1", "c1", new Date("2026-01-01"), [line("hero", 10_000, 3000)], true),
     ]);
 
     const hero = results.find((r) => r.productId === "hero")!;
@@ -85,7 +92,7 @@ describe("computeProductProfitability", () => {
 
   it("flags a positive but thin margin separately from a healthy one", () => {
     const results = analyse([
-      order("o1", "c1", new Date("2026-01-01"), [line("thin", 10_000, 9200)]),
+      order("o1", "c1", new Date("2026-01-01"), [line("thin", 10_000, 9200)], true),
     ]);
 
     const thin = results.find((r) => r.productId === "thin")!;
@@ -101,9 +108,13 @@ describe("computeProductProfitability", () => {
     // back for a full-price jacket.
     for (let i = 1; i <= 6; i++) {
       orders.push(
-        order(`first-${i}`, `c${i}`, new Date("2026-01-01"), [
-          line("tripwire", 1000, 1500),
-        ]),
+        order(
+          `first-${i}`,
+          `c${i}`,
+          new Date("2026-01-01"),
+          [line("tripwire", 1000, 1500)],
+          true,
+        ),
       );
       orders.push(
         order(`repeat-${i}`, `c${i}`, new Date("2026-02-01"), [
@@ -115,9 +126,13 @@ describe("computeProductProfitability", () => {
     // Three customers who buy a below-cost mug and never return.
     for (let i = 7; i <= 9; i++) {
       orders.push(
-        order(`dud-${i}`, `c${i}`, new Date("2026-01-05"), [
-          line("dud", 1000, 1500),
-        ]),
+        order(
+          `dud-${i}`,
+          `c${i}`,
+          new Date("2026-01-05"),
+          [line("dud", 1000, 1500)],
+          true,
+        ),
       );
     }
 
@@ -143,9 +158,13 @@ describe("computeProductProfitability", () => {
     // floor, so the downstream signal is not trusted.
     for (let i = 1; i <= 3; i++) {
       orders.push(
-        order(`first-${i}`, `c${i}`, new Date("2026-01-01"), [
-          line("tripwire", 1000, 1500),
-        ]),
+        order(
+          `first-${i}`,
+          `c${i}`,
+          new Date("2026-01-01"),
+          [line("tripwire", 1000, 1500)],
+          true,
+        ),
       );
       orders.push(
         order(`repeat-${i}`, `c${i}`, new Date("2026-02-01"), [
@@ -160,11 +179,62 @@ describe("computeProductProfitability", () => {
     expect(tripwire.classification).toBe("BLEEDING");
   });
 
+  it("does not credit a returning customer's earliest visible order with acquiring them", () => {
+    const orders: EngineOrder[] = [];
+
+    // Six customers acquired inside the window by a full-price jacket, who do
+    // not come back. They set the store's downstream average at zero.
+    for (let i = 1; i <= 6; i++) {
+      orders.push(
+        order(
+          `new-${i}`,
+          `c${i}`,
+          new Date("2026-01-02"),
+          [line("hero", 10_000, 3000)],
+          true,
+        ),
+      );
+    }
+
+    // Six customers acquired long before the window. Their earliest order
+    // *inside* it happens to be a below-cost mug, and each then buys a jacket.
+    // The order that actually acquired them is outside the window and absent.
+    for (let i = 7; i <= 12; i++) {
+      orders.push(
+        order(`mug-${i}`, `c${i}`, new Date("2026-01-05"), [
+          line("dud", 1000, 1500),
+        ]),
+      );
+      orders.push(
+        order(`later-${i}`, `c${i}`, new Date("2026-02-05"), [
+          line("hero", 10_000, 3000),
+        ]),
+      );
+    }
+
+    const dud = analyse(orders).find((r) => r.productId === "dud")!;
+
+    // The mug still loses $5 a unit — that part was never in doubt.
+    expect(dud.contributionProfitCents).toBe(-3000); // 6 × −$5
+
+    // But it acquired nobody, so it has no downstream value to show for it.
+    // Reading `sorted[0]` as the acquiring order gave it six customers and
+    // $420 of other people's repeat purchases, clearing the cohort floor and
+    // the uplift bar and reporting a clearance line as a deliberate,
+    // working loss leader.
+    expect(dud.acquiredCustomers).toBe(0);
+    expect(dud.downstreamProfitCents).toBe(0);
+    expect(dud.classification).toBe("BLEEDING");
+  });
+
   it("splits shared order costs across products by revenue share", () => {
-    const shared = order("o1", "c1", new Date("2026-01-01"), [
-      line("hero", 7500, 1000),
-      line("dud", 2500, 500),
-    ]);
+    const shared = order(
+      "o1",
+      "c1",
+      new Date("2026-01-01"),
+      [line("hero", 7500, 1000), line("dud", 2500, 500)],
+      true,
+    );
     shared.actualShippingCostCents = 1000;
     shared.actualPickPackCostCents = 0;
 
@@ -182,10 +252,10 @@ describe("computeProductProfitability", () => {
 
   it("tracks attach rate and revenue share", () => {
     const results = analyse([
-      order("o1", "c1", new Date("2026-01-01"), [line("hero", 10_000, 3000)]),
-      order("o2", "c2", new Date("2026-01-02"), [line("hero", 10_000, 3000)]),
-      order("o3", "c3", new Date("2026-01-03"), [line("dud", 10_000, 3000)]),
-      order("o4", "c4", new Date("2026-01-04"), [line("dud", 10_000, 3000)]),
+      order("o1", "c1", new Date("2026-01-01"), [line("hero", 10_000, 3000)], true),
+      order("o2", "c2", new Date("2026-01-02"), [line("hero", 10_000, 3000)], true),
+      order("o3", "c3", new Date("2026-01-03"), [line("dud", 10_000, 3000)], true),
+      order("o4", "c4", new Date("2026-01-04"), [line("dud", 10_000, 3000)], true),
     ]);
 
     const hero = results.find((r) => r.productId === "hero")!;
@@ -196,10 +266,13 @@ describe("computeProductProfitability", () => {
   });
 
   it("counts a product once per order even when it appears on several lines", () => {
-    const multi = order("o1", "c1", new Date("2026-01-01"), [
-      line("hero", 10_000, 3000),
-      line("hero", 10_000, 3000),
-    ]);
+    const multi = order(
+      "o1",
+      "c1",
+      new Date("2026-01-01"),
+      [line("hero", 10_000, 3000), line("hero", 10_000, 3000)],
+      true,
+    );
 
     const hero = analyse([multi]).find((r) => r.productId === "hero")!;
 

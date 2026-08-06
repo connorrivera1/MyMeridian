@@ -310,6 +310,15 @@ function computeDownstreamValue(
     );
 
     const first = sorted[0]!;
+
+    // Only customers this window actually saw arrive. `sorted[0]` is the
+    // earliest order in the loaded window, which for a customer acquired
+    // earlier is just a repeat purchase — crediting the products in it with
+    // having acquired them would hand a loss-leader verdict to whatever a
+    // returning customer happened to buy, and count their remaining orders as
+    // that product's downstream value.
+    if (!first.isFirstOrder) continue;
+
     const laterProfit = sorted
       .slice(1)
       .reduce(

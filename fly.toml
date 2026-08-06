@@ -1,0 +1,44 @@
+app = "meridian-profit"
+primary_region = "iad"
+
+[build]
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8080"
+  # app/lib/auth.server.ts throws at boot if this is "true" while
+  # NODE_ENV=production. That is deliberate — the demo path bypasses Shopify
+  # session authentication — so this is not an optional line.
+  MERIDIAN_DEMO_MODE = "false"
+
+[deploy]
+  # Runs on a temporary machine before the new version takes traffic. There are
+  # six migrations in prisma/migrations, none applied to a production database.
+  release_command = "npx prisma migrate deploy"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+
+  # THE IMPORTANT LINES. afterAuth starts the historical import without
+  # awaiting it, so the process must outlive the response that started it.
+  # A machine that suspends when the request queue drains will kill a running
+  # backfill and leave a half-imported store that looks fine.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    method = "GET"
+    # Not "/". With Shopify credentials present, the index route redirects to
+    # /auth/login (302) — see app/routes/home.tsx. /privacy is public,
+    # unauthenticated and returns 200, which is what a health check wants.
+    path = "/privacy"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 1024

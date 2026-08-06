@@ -1,0 +1,36 @@
+# The Dockerfile runs `npm ci` and *then* `COPY . .`. Without this file the
+# host's node_modules lands on top of the freshly installed Linux tree, and
+# Prisma's query engine and every other native binary in it is darwin-arm64.
+# The build then fails, or worse, succeeds and dies at boot on Fly.
+node_modules
+
+# Built inside the image by `npm run build`. A stale host build/ copied in
+# would be overwritten anyway, and it is a large layer for nothing.
+build
+.react-router
+.cache
+dist
+coverage
+
+# Never bake secrets into an image. .env holds the local Postgres URL and the
+# Shopify keys; Fly supplies the real ones via `fly secrets set`.
+.env
+.env.*
+!.env.example
+
+.git
+.gitignore
+.github
+.shopify
+.DS_Store
+*.log
+
+# Local dev database files, if any were ever created.
+prisma/*.db
+prisma/*.db-journal
+
+# Documentation and listing assets are not part of the running server.
+DEPLOY_PLAN.md
+SUBMISSION.md
+README.md
+listing

@@ -163,13 +163,33 @@ async function writeCustomerAggregates(
   for (let i = 0; i < entries.length; i += WRITE_CHUNK) {
     const chunk = entries.slice(i, i + WRITE_CHUNK);
 
+    // `firstOrderAt` is cast through `timestamptz`, not straight to `timestamp`.
+    //
+    // The column is `timestamp without time zone` holding UTC, which is what
+    // every other writer puts there — `syncCustomer`, `reconcileFirstOrder` and
+    // the backfill all write it through Prisma, which binds a `Date` as UTC.
+    // Casting a bound `Date` directly to `::timestamp` instead renders it in the
+    // *session* time zone and drops the offset, so this statement wrote a value
+    // shifted by whatever `TimeZone` the connection happened to have. On this
+    // machine (`America/New_York`) that is four hours, and it is not even a
+    // constant — the offset follows DST, so orders either side of a transition
+    // shift by different amounts.
+    //
+    // That made `recompute` a second writer with a second meaning for one
+    // column: `reconcileFirstOrder` would settle a customer's first order
+    // correctly and the next recompute would move it. It stayed invisible here
+    // because a server running in UTC has a zero offset, which is the one
+    // configuration where the bug does nothing.
+    //
+    // `::timestamptz` binds the instant correctly, and `AT TIME ZONE 'UTC'`
+    // renders it back to a naive timestamp in UTC — the same value Prisma writes.
     const rows = chunk.map(
       ([customerId, agg]) => Prisma.sql`(
         ${customerId}::text,
         ${agg.orders}::integer,
         ${centsToDollars(agg.revenueCents)}::numeric,
         ${centsToDollars(agg.profitCents)}::numeric,
-        ${agg.firstAt}::timestamp
+        ${agg.firstAt}::timestamptz AT TIME ZONE 'UTC'
       )`,
     );
 

@@ -152,8 +152,182 @@ describe("loadEngineOrders fulfilment costs", () => {
 
     await loadEngineOrders("shop_1", RANGE);
 
-    const [args] = orderFindMany.mock.calls[0] as [{ include: Record<string, unknown> }];
-    expect(args.include).toEqual({ lineItems: true });
-    expect(args.include.fulfillments).toBeUndefined();
+    const [args] = orderFindMany.mock.calls[0] as [
+      { select: Record<string, unknown>; include?: unknown },
+    ];
+    expect(args.include).toBeUndefined();
+    expect(args.select.fulfillments).toBeUndefined();
+  });
+});
+
+/**
+ * The order query is a projection, not a whole-row read.
+ *
+ * `EngineOrder` uses thirteen of `Order`'s columns and the mapping discards the
+ * rest, so reading the whole row spent the transfer and the parse on columns
+ * nothing downstream could see — including eight materialised profit `Decimal`s
+ * that Prisma inflates into `Decimal.js` instances on the way to being ignored.
+ *
+ * These pin the column list itself. A `select` is the one kind of query where
+ * adding a field is silent and subtracting one is a crash much later, in a
+ * mapping that reads `undefined` as zero money, so the list is asserted exactly
+ * rather than sampled.
+ */
+describe("loadEngineOrders column projection", () => {
+  async function selectArg() {
+    orderFindMany.mockResolvedValue([]);
+    fulfillmentGroupBy.mockResolvedValue([]);
+    await loadEngineOrders("shop_1", RANGE);
+    const [args] = orderFindMany.mock.calls[0] as [
+      { select: Record<string, unknown> }
+    ];
+    return args.select;
+  }
+
+  it("asks for exactly the order columns the engine reads", async () => {
+    const select = await selectArg();
+
+    expect(Object.keys(select).sort()).toEqual(
+      [
+        "campaignId",
+        "channel",
+        "customerId",
+        "discountTotal",
+        "id",
+        "isFirstOrder",
+        "lineItems",
+        "orderNumber",
+        "processedAt",
+        "refundedTotal",
+        "shippingCharged",
+        "subtotal",
+        "taxTotal",
+        "total",
+      ].sort(),
+    );
+  });
+
+  it("asks for exactly the line item columns the engine reads", async () => {
+    const select = await selectArg();
+    const lineItems = select.lineItems as { select: Record<string, unknown> };
+
+    expect(Object.keys(lineItems.select).sort()).toEqual(
+      [
+        "discount",
+        "id",
+        "productId",
+        "quantity",
+        "refundedQty",
+        "title",
+        "unitCost",
+        "unitPrice",
+        "variantId",
+      ].sort(),
+    );
+  });
+
+  it("leaves the materialised profit columns unread", async () => {
+    const select = await selectArg();
+
+    // `recompute` writes these; every dashboard figure is computed on the fly
+    // from the columns above. Reading them here would be pure transfer cost,
+    // and worse, would make a stale cache look like an input.
+    for (const column of [
+      "cogsTotal",
+      "shippingCost",
+      "paymentFee",
+      "adCostAttributed",
+      "overheadAllocated",
+      "contributionProfit",
+      "netProfit",
+      "computedAt",
+    ]) {
+      expect(select[column]).toBeUndefined();
+    }
+  });
+
+  it("still filters and orders exactly as the whole-row read did", async () => {
+    orderFindMany.mockResolvedValue([]);
+    fulfillmentGroupBy.mockResolvedValue([]);
+
+    await loadEngineOrders("shop_1", RANGE);
+
+    const [args] = orderFindMany.mock.calls[0] as [Record<string, unknown>];
+    expect(args.where).toEqual({
+      shopId: "shop_1",
+      processedAt: { gte: RANGE.from, lte: RANGE.to },
+    });
+    expect(args.orderBy).toEqual({ processedAt: "asc" });
+  });
+
+  it("maps a projected row to the same EngineOrder the whole row produced", async () => {
+    // The row shape here is exactly what the projection returns — no extra
+    // columns — so this fails if the mapping ever reaches for one that is no
+    // longer selected.
+    orderFindMany.mockResolvedValue([
+      {
+        id: "order_1",
+        orderNumber: 1001,
+        processedAt: new Date("2026-07-10T09:00:00.000Z"),
+        customerId: "cust_1",
+        channel: "GOOGLE",
+        campaignId: "camp_1",
+        isFirstOrder: true,
+        subtotal: "100.00",
+        discountTotal: "5.00",
+        shippingCharged: "7.50",
+        taxTotal: "8.25",
+        total: "110.75",
+        refundedTotal: "10.00",
+        lineItems: [
+          {
+            id: "li_1",
+            productId: "prod_1",
+            variantId: "var_1",
+            title: "Alpine Shell Jacket",
+            quantity: 2,
+            refundedQty: 1,
+            unitPrice: "50.00",
+            discount: "5.00",
+            unitCost: "21.5000",
+          },
+        ],
+      },
+    ]);
+    fulfillmentGroupBy.mockResolvedValue([]);
+
+    const [order] = await loadEngineOrders("shop_1", RANGE);
+    if (!order) throw new Error("expected one order back");
+
+    expect(order).toEqual({
+      id: "order_1",
+      orderNumber: 1001,
+      processedAt: new Date("2026-07-10T09:00:00.000Z"),
+      customerId: "cust_1",
+      channel: "GOOGLE",
+      campaignId: "camp_1",
+      isFirstOrder: true,
+      subtotalCents: 10000,
+      discountTotalCents: 500,
+      shippingChargedCents: 750,
+      taxTotalCents: 825,
+      totalCents: 11075,
+      refundedTotalCents: 1000,
+      actualShippingCostCents: null,
+      actualPickPackCostCents: null,
+      lineItems: [
+        {
+          id: "li_1",
+          productId: "prod_1",
+          variantId: "var_1",
+          title: "Alpine Shell Jacket",
+          quantity: 2,
+          refundedQty: 1,
+          unitPriceCents: 5000,
+          discountCents: 500,
+          unitCostMicros: 215000,
+        },
+      ],
+    });
   });
 });

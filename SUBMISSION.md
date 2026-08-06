@@ -174,6 +174,86 @@ on real data, which is a session of its own.
 
 ## Fixed this session
 
+### Git state re-verified clean; `AUDIT-LIVE-REQUIREMENTS-2026-08-06.md`'s findings are already resolved
+
+A prior deputy's handoff flagged that a *later* run had hit
+`isolated_worktree_reconciliation_required` — i.e. work stranded on an
+unmerged worktree/branch again, the recurring failure mode for this project.
+Re-checked from scratch this session: `git worktree list` shows exactly two
+worktrees (`/Users/connorrivera/Meridian` on `eevee/meridian-triage`,
+`/Users/connorrivera/Meridian-wt-113` on `eevee/meridian-deputy-113`);
+`git log eevee/meridian-triage..eevee/meridian-deputy-113` is empty, so
+deputy-113's work is fully merged and nothing is stranded. `git fsck
+--unreachable` turns up eight dangling commits, all `git stash` autostash
+artefacts or a pre-amend duplicate of a commit already on the branch — none of
+them unique unmerged work. `main` is 62 commits behind `eevee/meridian-triage`
+with nothing unique to `main`. Nothing needed reconciling this pass; the branch
+is exactly where the last verified handoff (`825a1dd`, then `29ad5ec`) left it.
+
+Separately, `AUDIT-LIVE-REQUIREMENTS-2026-08-06.md` (untracked, owner-visible
+audit notes, left in place) turns out to already be resolved on this branch for
+every finding checked against current code:
+- **N1's code-side mitigation** ("the import's only recovery path…", directly
+  below) — done, commit `cdf940b`.
+- **N2** (privacy policy falsely claiming no shopper contact details are
+  held) — done, commit `9199895`; `app/routes/legal.privacy.tsx` now discloses
+  the stored email explicitly and consistently.
+- **N5** (GDPR webhook assembling a full export inside Shopify's 5-second
+  response window) — done, commit `7edec96`; `handleWebhook` now responds 200
+  as soon as the delivery is verified and claimed, and runs the handler after.
+- **N6** (App Bridge absent on the root error document) — done, no dedicated
+  commit found by message but present in code:
+  `app/root.tsx`'s `errorDocumentApiKey()` handles exactly this case.
+Only genuinely new/unresolved findings from that audit are N3 (app name
+collision — a business decision, not a code fix) and N4 (Billing API vs App
+Pricing — a deliberate choice to make at submission, not a defect). Recorded
+here so the next deputy doesn't re-derive this.
+
+### `loadDashboard` — the loader every dashboard screen goes through — now has its own test
+
+Known gap #7 named it directly: `loadDashboard` (`app/lib/route-data.server.ts`)
+had no test, despite being upstream of every dashboard route
+(`app.overview.tsx`, `app.orders.tsx`, `app.products.tsx`, `app.fulfilment.tsx`,
+`app.acquisition.tsx`, `app.pricing.tsx`). Added
+`app/lib/route-data.test.ts` — 12 cases covering the one piece of arithmetic
+unique to the function (the previous-period window tiles the current one, no
+gap, no overlap, same length), that `isDemo` is threaded through to
+`resolveRange`'s `anchorToData` rather than hardcoded, that each downstream
+loader gets the range it owns, that `resolvePlan` is called with the shop
+context, and that the demo shop gets every capability regardless of
+`grantedScopes`. `resolveRange`, `capabilitiesForShop` and
+`loadShopAnalytics`/`loadPeriodProfit` are already covered elsewhere
+(`app/data/ranges.test.ts`, `app/lib/scopes.test.ts`,
+`app/data/analytics.test.ts`), so this test only pins the wiring between them,
+matching the mocking style already used in `recompute.test.ts` and
+`webhooks.hmac.test.ts`. Verified the test isn't vacuous by temporarily
+breaking the previous-period arithmetic in `route-data.server.ts` (`to:
+range.from.getTime()` instead of `range.from.getTime() - 1`), confirming the
+test failed, then reverting — `git diff` on that file is empty.
+
+Also re-confirmed while scoping this: known gap #7's other half,
+"none of [the six non-GDPR webhooks] has an HMAC-rejection test of its own,"
+is already stale — `app/routes/webhooks.hmac.test.ts` (commit `d075cc4`)
+covers exactly that. Text below corrected to match.
+
+What's still genuinely untested: 20 of 21 route loaders remain uncovered
+(`app.orders.tsx`, `app.products.tsx`, `app.fulfilment.tsx`,
+`app.acquisition.tsx`, `app.pricing.tsx`, `app.settings.tsx`, `app.plan.tsx`,
+`app.layout.tsx`, `auth.*`, `home.tsx`, `legal.*`) — most are thin wrappers
+over `loadDashboard` or already-tested pieces, but none has a test asserting
+that wiring specifically. `loadEngineOrders` is also still unbounded (Blocker
+4) — deliberately not touched this pass; SUBMISSION.md already documents why a
+SQL roll-up is a session of its own (three time zones in one statement) rather
+than a quick fix, and this pass wasn't going to rush that with no live
+database to differential-test against.
+
+Baseline before this change: typecheck clean, vitest 348/348 in 29 files,
+`verify-data.ts` exit 0 twice, byte-identical
+(`fe961cfb99bbc1d17f906fe7c242768e871b21304fa15b8a40ef5c99dad237b6`), build
+clean. After: typecheck clean, vitest 360/360 in 30 files (348 + 12 new,
+nothing else changed), `verify-data.ts` exit 0 twice, same SHA (test-only
+change, no data or schema touched), build clean.
+
 ### The import's only recovery path was switched off on every real store
 
 A field Shopify refuses is a capability difference rather than a failure, and
@@ -995,13 +1075,26 @@ thrown from the same function that throws the 401.
     actually reads was not — and `capabilitiesForShop` falls back to
     `process.env.SCOPES`, so this instance claims CAC/LTV capability it does not
     have. Untouched here because it is a gitignored local credentials file.
-7. **Route loaders are still untested.** 20 of the 21 route files have no test;
-   only the three GDPR webhooks do. `loadDashboard` — which every dashboard
-   screen goes through, and which builds the comparison window — is among them,
-   as are the six non-GDPR webhook actions, none of which has an HMAC-rejection
-   test of its own. The layer below them is now covered: `series.ts`,
-   `provision.server.ts` and `rebuildCapacityDays` all gained their first tests
-   this session, and each one had a real defect in it.
+7. **Route loaders are still mostly untested — narrower than it was.** The six
+   non-GDPR webhook *actions* now have their own HMAC-rejection tests
+   (`app/routes/webhooks.hmac.test.ts` — real HMAC verification against every
+   route module, per-route write assertions, plus the answer-before-work and
+   replay-suppression behaviour). `loadDashboard` — the loader every dashboard
+   screen goes through, which builds the comparison window — now has its own
+   test too (`app/lib/route-data.test.ts`, 12 cases): the previous-period
+   window tiles the current one with no gap and no overlap and is the same
+   length, `isDemo` is threaded through to `anchorToData` rather than fixed,
+   `resolvePlan`/`loadShopAnalytics`/`loadPeriodProfit` are called with the
+   right arguments, and the demo shop gets every capability regardless of
+   `grantedScopes`. Checked each assertion actually bites by breaking the
+   previous-period arithmetic and confirming the test failed, then reverted.
+   What's still untested: the other 20 route loaders (`app.orders.tsx`,
+   `app.products.tsx`, `app.fulfilment.tsx`, `app.acquisition.tsx`,
+   `app.pricing.tsx`, `app.settings.tsx`, `app.plan.tsx`, `app.layout.tsx`,
+   `auth.*`, `home.tsx`, `legal.*`) have no dedicated test, though most are thin
+   wrappers over already-tested loaders. The layer below them is now covered:
+   `series.ts`, `provision.server.ts` and `rebuildCapacityDays` all gained
+   their first tests this session, and each one had a real defect in it.
 8. **The chart components format dates in the browser's zone.**
    `app/design/charts.tsx` renders `point.date` with `toLocaleDateString` and no
    `timeZone`, client-side, so a merchant travelling — or simply a laptop set to

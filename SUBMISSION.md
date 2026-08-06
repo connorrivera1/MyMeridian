@@ -78,15 +78,10 @@ done from this repo — each is written up with where it lives and what it needs
 | Screencast of the full setup process, English or English-subtitled | **Missing, and blocked on the owner.** An automatic bounce if absent. It has to show a real OAuth install through to a first dashboard view; the app has never been installed on any store, and it cannot be filmed against the demo bypass because that bypass is exactly what the recording exists to prove is not being used. Record it during the first real install rather than staging the flow twice. |
 | `extensions/` | Empty, and correctly so — Meridian ships no theme or checkout extension. |
 
-One flag out of drafting the copy, and it is an accuracy problem rather than a
-wording one: the Growth plan blurb sells "Unlimited ad channels + blended CAC"
-and the Acquisition screen is built, but **there is no ad platform OAuth
-anywhere in the tree** — `AdSpend` rows are written only by `prisma/seed.ts`, so
-a real store shows organic and direct traffic at zero spend. The drafted copy
-therefore promises nothing about ad ROI, CAC or LTV. The plan blurbs are
-merchant-visible on `/app/plan` and a reviewer walks that screen during billing
-review, so reconciling them is worth doing before submission. Options are laid
-out in `listing/copy.md`.
+The one accuracy flag out of drafting the copy is **closed** — see *The app sold
+ad channels it cannot connect* below. The plan tiers no longer promise ad spend,
+CAC or ROAS anywhere a merchant or a reviewer can see, and a test fails if the
+claim comes back.
 
 ### 4. Performance work before a large merchant installs
 
@@ -141,6 +136,50 @@ on real data, which is a session of its own.
 ---
 
 ## Fixed this session
+
+### The app sold ad channels it cannot connect
+
+Starter advertised "One ad channel connected" and Growth "Unlimited ad channels +
+blended CAC" on `/app/plan`, a screen the Shopify reviewer walks during billing
+review while comparing the listing against a real install. Neither is true and
+neither can be made true at runtime: there is no ad-platform OAuth flow and no
+platform API client anywhere in the tree, `provision.server.ts:97` creates every
+connector `NOT_CONFIGURED` and nothing ever configures one, and the only writer of
+`AdSpend` in the repo is `prisma/seed.ts:949`. The seeded demo shows spend; every
+real store shows `$0.00` for the life of the install.
+
+Underneath it, `FEATURE_MIN_PLAN.multiChannelAds` was a **gate with no call
+site** — `planAllows(plan, "multiChannelAds")` appears nowhere in the app, while
+`pricing`, `capacity` and `cohorts` each have real enforcement points. It could
+not have had one, because there is no capability to withhold. This is the same
+fault `plan.server.ts` exists to fix, one layer down: sold in two places,
+enforced in neither.
+
+Fixed: both claims removed, the dead gate deleted. Starter now reads "Revenue and
+profit by channel", which needs no platform token — orders are attributed to a
+channel from their UTM parameters and referring site (`sync.server.ts:76-100`)
+and each channel carries real `netRevenueCents` and `contributionProfitCents`.
+Growth keeps its two genuine gates. **Prices, plan names and order caps are
+unchanged.**
+
+`plan.test.ts` now carries the guard instead of the intention: `no plan sells ad
+spend, CAC or ROAS` fails on any plan whose copy contains `ad channel`, `ad
+spend`, `cac`, `roas` or `blended`, with a message naming the reason. It was
+verified to fail by putting the old Growth bullet back, then reverted. Lift it in
+the same change that ships a real connector, not before.
+
+The Acquisition screen already degraded honestly on zero spend — CAC and
+marketing efficiency render `—` rather than a misleading `0` — but gave no
+reason, while the missing-`read_customers` case on the same screen explains
+itself in full. It now carries a banner stating that no ad platform is connected,
+that spend is never inferred from orders, and that the channel revenue and profit
+below are measured from the merchant's own orders and are unaffected.
+
+Verified: 223 tests pass (was 221), typecheck clean, `npm run build` clean, and
+against a running dev server `/app/plan` renders the new bullets with no trace of
+the old ones and `/app/acquisition` still returns 200. The banner itself was
+confirmed to render by inverting only its condition against the seeded store —
+which has spend, so it is correctly absent in normal operation — and reverting.
 
 ### Every install would have failed
 
@@ -502,7 +541,7 @@ against the old cast.
 | GraphQL Admin API only | Done | No REST calls anywhere; new public apps may not use REST |
 | Webhook API version | Done | `2026-07`, matching `@shopify/shopify-api` 13.1.0 |
 | Production build | Done | `npm run build` clean |
-| Test suite | Done | **221 tests, 21 files, all passing** (verified 2026-08-06 00:18, `npm test`) |
+| Test suite | Done | **223 tests, 21 files, all passing** (verified 2026-08-06 04:26, `npm test`) |
 | Engine output unchanged by the query work | Done | `npx tsx scripts/verify-data.ts` against live Postgres, diffed byte-for-byte against its output before the change |
 | Typecheck | Done | Clean |
 | Config validity | Done | `shopify app config validate` passes |
@@ -532,7 +571,10 @@ thrown from the same function that throws the 401.
 3. **Ad platform connectors are not wired to live OAuth.** Modelled and
    encrypted end to end, but Facebook/Google/TikTok have no OAuth flow, so on a
    real store the acquisition screen shows organic and direct traffic with zero
-   spend. The plan copy sells "unlimited ad channels".
+   spend. **No longer a listing risk** — nothing merchant-visible sells ad spend,
+   CAC or ROAS any more, the screen says plainly why those figures are blank, and
+   a test fails if the claim returns. It is now a missing feature rather than a
+   false promise, which is a gap Shopify does not bounce a submission for.
 4. **Backfill and recompute run in-process.** Correct on a long-lived server,
    wrong on serverless where the process may not outlive the response. Both
    belong in a job queue before deploying there.

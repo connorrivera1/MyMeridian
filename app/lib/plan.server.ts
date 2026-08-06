@@ -32,14 +32,21 @@ const PLAN_RANK: Record<PlanId, number> = {
  * These mirror the feature lists in `PLANS` exactly. If the two disagree the
  * app is selling something it does not deliver, so `plan.test.ts` asserts that
  * every gate here appears in the marketing copy of the plan it belongs to.
+ *
+ * `multiChannelAds: "growth"` used to sit here, and it was the same defect this
+ * module was written to fix, one layer down: it was advertised on `/app/plan`,
+ * asserted by a test, and passed to `planAllows` from nowhere at all — the
+ * other three gates each have a real call site. It could not have had one,
+ * because no code path in the repo connects an ad platform or writes `AdSpend`
+ * outside `prisma/seed.ts`. A gate over a capability that cannot exist is not a
+ * gate; removing it is what makes the remaining three mean something. See the
+ * header of `plans.ts` for what has to ship before it comes back.
  */
 export const FEATURE_MIN_PLAN = {
   /** Pricing recommendations from fitted demand curves. */
   pricing: "growth",
   /** Fulfilment capacity modelling and backlog alerts. */
   capacity: "growth",
-  /** More than one connected ad channel, and blended CAC across them. */
-  multiChannelAds: "growth",
   /** Cohort lifetime value and payback curves. */
   cohorts: "scale",
 } as const satisfies Record<string, PlanId>;

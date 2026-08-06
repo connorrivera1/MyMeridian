@@ -30,6 +30,17 @@ containing the word "Shopify".
 Needs a real, stable, public HTTPS origin, then `application_url` deployed with
 `shopify app deploy`. This is the one item everything else waits on.
 
+**`DEPLOY_PLAN.md` now carries the whole path**: Fly.io as the host and why a
+serverless one would silently truncate every store's first import, a `Dockerfile`
+and `fly.toml` written against this app's build output and route table, and the
+exact command sequence. Neither of those two files has been built — there is no
+Docker and no flyctl on this machine — so the first `fly deploy` is a debugging
+pass. The plan also corrects an instruction that would have failed at the last
+step: **`shopify app config push` does not exist** on `@shopify/cli` 4.x, and
+config reaches the Partner Dashboard through `shopify app deploy` instead, which
+works here because `include_config_on_deploy = true`. Nothing has been deployed
+and no credential has been read or written.
+
 `redirect_urls` **is fixed** — it pointed at `/api/auth`, which is the Remix
 template's default and a route this app does not have, while `authPathPrefix`
 is `/auth`, so the real callback is `/auth/callback`. OAuth would have failed on
@@ -37,7 +48,9 @@ the redirect. The host still tracks `application_url`.
 
 ### 2. No Partner Dashboard configuration exists yet
 
-Independent of the code, submission needs, in the Partner Dashboard:
+Independent of the code, submission needs the following, none of which can be
+done from this repo — each is written up with where it lives and what it needs in
+`DEPLOY_PLAN.md` §6:
 
 - The three Billing API plans matching `PLANS` — Starter, Growth, Scale. The
   app creates the charges from code, so nothing needs typing in by hand, but the
@@ -58,22 +71,43 @@ Independent of the code, submission needs, in the Partner Dashboard:
 | Privacy policy URL | **Done** — `/privacy`, public and unauthenticated. |
 | Support page | **Done** — `/support`, public. |
 | Support email + legal entity | **Missing.** Environment-driven (`MERIDIAN_SUPPORT_EMAIL`, `MERIDIAN_LEGAL_ENTITY`, optional `MERIDIAN_SUPPORT_URL`). Both pages render a visible "not configured" notice until they are set — deliberately, because a reviewer emails whatever is on the page and a placeholder that bounces reads as an unsupported app. |
-| Listing copy — name ≤30 chars, intro ≤100, details ≤500, features ≤80 each | **Missing.** Not written. |
+| Listing copy — name ≤30 chars, intro ≤100, details ≤500, features ≤80 each | **Drafted** — `listing/copy.md`, paste-ready. Every field measured against its limit rather than estimated (the first details draft read as "about 500" and was 575). Every claim traced to the code that makes it true, and it claims nothing about ad performance — see the flag below. |
 | Feature media, 1600×900 or a 2–3 min video | **Missing.** |
 | Demo store URL for reviewers | **Missing.** |
-| Screencast of the full setup process, English or English-subtitled | **Missing.** An automatic bounce if absent. |
+| Screencast of the full setup process, English or English-subtitled | **Missing, and blocked on the owner.** An automatic bounce if absent. It has to show a real OAuth install through to a first dashboard view; the app has never been installed on any store, and it cannot be filmed against the demo bypass because that bypass is exactly what the recording exists to prove is not being used. Record it during the first real install rather than staging the flow twice. |
 | `extensions/` | Empty, and correctly so — Meridian ships no theme or checkout extension. |
+
+One flag out of drafting the copy, and it is an accuracy problem rather than a
+wording one: the Growth plan blurb sells "Unlimited ad channels + blended CAC"
+and the Acquisition screen is built, but **there is no ad platform OAuth
+anywhere in the tree** — `AdSpend` rows are written only by `prisma/seed.ts`, so
+a real store shows organic and direct traffic at zero spend. The drafted copy
+therefore promises nothing about ad ROI, CAC or LTV. The plan blurbs are
+merchant-visible on `/app/plan` and a reviewer walks that screen during billing
+review, so reconciling them is worth doing before submission. Options are laid
+out in `listing/copy.md`.
 
 ### 4. Performance work before a large merchant installs
 
 Not a hard gate at submission, but Shopify samples Core Web Vitals through App
 Bridge at the 75th percentile over 28 days, and the thresholds are LCP ≤ 2.5s,
-CLS ≤ 0.1, INP ≤ 200ms. `loadEngineOrders` hydrates every order *and every line
-item* in the window with no `take`, and `loadDashboard` does it twice (current
-and previous period) plus a 365-day cohort query, on every page load. The orders
-table's `PAGE_SIZE = 60` slices an already-materialised array, so the database
-work is identical on page 1 and page 40. Fine on the demo store, not fine on a
-Scale-plan store sold as "unlimited orders". Aggregate in SQL.
+CLS ≤ 0.1, INP ≤ 200ms.
+
+**Two of the three costs here are now fixed** — see *The dashboard did its most
+expensive work twice* below. `loadDashboard` no longer builds a second complete
+analysis for the comparison window, and `loadEngineOrders` no longer hydrates
+fulfilment rows to add them up in JavaScript.
+
+What remains: `loadEngineOrders` still hydrates every order and every line item
+in the window with no `take`, and the orders table's `PAGE_SIZE = 60` slices an
+already-materialised array, so the database work is identical on page 1 and page
+40. Neither can simply take a `take`. The P&L, the ad attribution and the
+overhead proration are all period-wide, so a truncated set of orders yields a
+confidently wrong profit figure rather than a slow one. Doing it properly means
+computing the roll-up in SQL, which means a second implementation of the profit
+formula — the same duplicate-definition shape as the `shippedAt` bug this
+session fixed, where one column had two writers and two meanings. Worth doing
+deliberately, with a live-database differential test, and not before submission.
 
 ---
 
@@ -308,6 +342,44 @@ uncollected export at 32 days, and `shop/redact` cascading it away. Scratch shop
 deleted. The Settings surface itself was checked in the running app, not only in
 tests: the card renders the request and the collect POST flips it to Collected.
 
+### The dashboard did its most expensive work twice
+
+Every headline in the product carries a change against the preceding window of
+the same length, and `loadDashboard` got that comparison by building a second
+complete `ShopAnalytics`. So every page load ran a **second 365-day cohort scan**
+— the one query deliberately unbounded by the reporting window — plus a second
+capacity query, a second product-meta query, and the product, channel, campaign
+and capacity engines, and then read eight scalars off the result and threw the
+rest away.
+
+`loadPeriodProfit` loads orders, ad spend and cost rules and calls the same
+`computeProfitForPeriod` over the same orders. Deliberately not a second way of
+computing profit: a comparison figure derived differently from the figure it is
+compared against would be a second definition of profit, which costs more than
+the query it saves. The returned shape stays `previous.period`, so no route
+changed. It reuses a warm full build of the same window, caches on the same key
+otherwise, and is cleared by the same invalidation — a comparison window that
+survived a recompute would show a delta against numbers that no longer exist.
+
+Separately, `loadEngineOrders` was hydrating every fulfilment row of every order
+in the window to add two columns together in JavaScript. A store that splits
+shipments paid for that per parcel rather than per order. It is a `groupBy` now.
+Both columns are `Decimal(12,2)`, so there is no sub-cent remainder for `SUM` to
+accumulate and no rounding for it to move: summing before the cents conversion is
+exactly the number summing after it produced. An order with no fulfilments has no
+group row, which reads as the same zero the empty array did, and zero still means
+"not known yet" rather than "shipped for free", so it still falls back to the
+merchant's cost rule.
+
+Fifteen new tests. The load-bearing one asserts deep equality between the lean
+roll-up and the full build's rather than spot-checking net profit, and one covers
+a window straddling two calendar months — a lean path that dropped the range
+argument would bill a full month's rent against a partial month while still
+agreeing on revenue and COGS. One more pins the aggregate's `where` clause, since
+an aggregate that forgot the window filter would read the whole table and still
+look correct on a small store. Then proved where it counts: `verify-data.ts`
+against live Postgres, **byte-identical to its output before the change**.
+
 ### Other
 
 - `app/scopes_update` webhook added. `grantedScopes` was written only in
@@ -345,7 +417,8 @@ tests: the card renders the request and the collect POST flips it to Collected.
 | GraphQL Admin API only | Done | No REST calls anywhere; new public apps may not use REST |
 | Webhook API version | Done | `2026-07`, matching `@shopify/shopify-api` 13.1.0 |
 | Production build | Done | `npm run build` clean |
-| Test suite | Done | **197 tests, 18 files, all passing** (verified 2026-08-05 22:46, `npx vitest run`) |
+| Test suite | Done | **212 tests, 20 files, all passing** (verified 2026-08-05 23:52, `npx vitest run`) |
+| Engine output unchanged by the query work | Done | `npx tsx scripts/verify-data.ts` against live Postgres, diffed byte-for-byte against its output before the change |
 | Typecheck | Done | Clean |
 | Config validity | Done | `shopify app config validate` passes |
 | Every route renders | Done | 12 routes served 200 from a running server, with real computed figures |
@@ -362,7 +435,10 @@ thrown from the same function that throws the 401.
 
 ## Known gaps that are not blockers, in rough priority order
 
-1. **Dashboard loaders are unbounded.** See Blocker 4.
+1. **`loadEngineOrders` is still unbounded**, and the orders table still pages a
+   materialised array. The duplicated comparison-window build and the fulfilment
+   row hydration are fixed; see Blocker 4 for why the remaining half needs a
+   deliberate SQL roll-up rather than a `take`.
 2. **Order-level stored profit is a write-only cache.** `recompute` writes
    `Order.netProfit`, but every dashboard figure is recomputed on the fly and
    nothing reads it back except `contributionProfit` for cohort LTV.

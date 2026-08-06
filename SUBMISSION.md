@@ -465,6 +465,65 @@ production on Fly and wrong on every developer machine, which is the worst way
 round for a bug to sit. Four new tests assert the generated SQL; two fail
 against the old cast.
 
+### Every returning customer counted as an acquisition
+
+CAC, LTV:CAC, payback, each channel's verdict and every product's loss-leader
+label all rest on one fact — which order was the customer's first. Three places
+needed it and all three inferred it from position inside the loaded window
+rather than reading `Order.isFirstOrder`, the column `reconcileFirstOrder` and
+`reconcileFirstOrdersForShop` exist to keep honest, and which `loadEngineOrders`
+was already selecting onto every `EngineOrder`.
+
+Journeys are built from the orders loaded *for* the reporting window, so a
+customer acquired two years ago who reorders this month has their earliest
+visible order read as an acquisition. `computeChannelPerformance` carried a
+filter meant to prevent precisely that:
+
+```ts
+// Only customers actually acquired inside the window — mixing in customers
+// acquired earlier would deflate CAC.
+j.acquiredAt >= options.periodStart && j.acquiredAt <= options.periodEnd
+```
+
+It cannot work. Every journey's `acquiredAt` is inside the window by
+construction, so the bounds excluded nothing and the comment documented a
+guard that was a no-op.
+
+Measured against the demo database, on the range the dashboard actually
+defaults to:
+
+| Window | Customers seen | Counted as new | Actually new | Facebook CAC shown | True |
+|---|---|---|---|---|---|
+| 30 days (default) | 2,951 | 2,951 | 2,068 | $53.87 | **$62.24** |
+| 7 days | 724 | 724 | 450 | $53.55 | **$67.78** |
+| 6 months (`verify-data`) | 9,192 | 9,192 | 9,192 | $67.13 | $67.13 |
+
+CAC is the denominator of LTV:CAC and the bar payback is measured against, so
+one deflated number flatters three at once and can carry a channel's verdict
+from MARGINAL to PROFITABLE. `computeCampaignPerformance` had the same defect
+with no date filter at all. `computeDownstreamValue` had it too, and there it
+decides a headline label: a clearance mug that acquired nobody was reported as
+a deliberate `STRATEGIC_LOSS_LEADER`, credited with six customers and $420 of
+other people's repeat purchases — confirmed by running the engine both ways.
+
+`CustomerJourney` now carries `acquiredInWindow`, taken from the order's own
+flag, and everything that divides by "customers acquired" filters on it. So
+does the LTV curve: a customer acquired before the lookback has a false day
+zero and a timeline missing its opening orders, and averaging them in measures
+a fragment of a journey against a whole CAC. `loadCohortRows` reads the one
+extra boolean this needs, pinned by its own projection test.
+
+It survived because the test that claimed to cover it handed January orders to
+a February `periodStart` — input no loader can produce. Rewritten against a
+realisable window, it fails. Six of the seven new tests fail against the
+previous engine.
+
+`verify-data.ts` is byte-identical. Its window spans the demo store's entire
+history (2026-02-01 to 2026-08-04, and the earliest order is 2026-02-01), so
+every customer in it really was acquired inside it and there is nothing here
+for the fix to change — which is also why six months of demo data never showed
+the bug, and why the third row of that table matches.
+
 ### Other
 
 - `app/scopes_update` webhook added. `grantedScopes` was written only in
@@ -502,7 +561,7 @@ against the old cast.
 | GraphQL Admin API only | Done | No REST calls anywhere; new public apps may not use REST |
 | Webhook API version | Done | `2026-07`, matching `@shopify/shopify-api` 13.1.0 |
 | Production build | Done | `npm run build` clean |
-| Test suite | Done | **221 tests, 21 files, all passing** (verified 2026-08-06 00:18, `npm test`) |
+| Test suite | Done | **232 tests, 21 files, all passing** (verified 2026-08-06 01:44, `npm test`) |
 | Engine output unchanged by the query work | Done | `npx tsx scripts/verify-data.ts` against live Postgres, diffed byte-for-byte against its output before the change |
 | Typecheck | Done | Clean |
 | Config validity | Done | `shopify app config validate` passes |
@@ -546,6 +605,19 @@ thrown from the same function that throws the 401.
     actually reads was not — and `capabilitiesForShop` falls back to
     `process.env.SCOPES`, so this instance claims CAC/LTV capability it does not
     have. Untouched here because it is a gitignored local credentials file.
+7. **`recomputeShopProfitability(shopId, range)` would corrupt customer
+   lifetime figures if anyone ever passed the range.** `writeCustomerAggregates`
+   builds `ordersCount`, `lifetimeRevenue`, `lifetimeProfit` and `firstOrderAt`
+   from only the orders the recompute loaded, then writes them as the
+   customer's lifetime totals. With a bounded range those become window totals
+   under a lifetime name, and `firstOrderAt` is moved to the earliest order in
+   the range — undoing what `reconcileFirstOrder` settled, on the column whose
+   time-zone handling was fixed the session before. Harmless today: all four
+   callers (backfill, both Settings actions, the seed) pass no range, so the
+   effective range is epoch-to-tomorrow. But the parameter is public, optional
+   and reads as a safe incremental-update knob, which is the trap. Either drop
+   the parameter or compute the aggregates from the customer's whole history
+   rather than from `period.orders`.
 
 ---
 

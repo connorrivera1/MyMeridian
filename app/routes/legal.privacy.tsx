@@ -56,7 +56,10 @@ export default function Privacy() {
         <li>
           <code>read_orders</code> — order totals, discounts, taxes, shipping
           charged, line items and refunds. This is the revenue side of every
-          profit number.
+          profit number. A Shopify order also carries the customer who placed
+          it, so this scope — and not any customer scope — is how the two
+          shopper fields listed under <em>Personal data specifically</em> below
+          reach {APP_NAME}.
         </li>
         <li>
           <code>read_products</code> — products and variants, so line items can
@@ -79,20 +82,58 @@ export default function Privacy() {
         remains a manual action the merchant takes in Shopify.
       </p>
       <p>
-        Some stores additionally approve <code>read_customers</code> or{" "}
-        <code>read_all_orders</code> through Shopify&rsquo;s protected customer
-        data process. Where they are granted, {APP_NAME} stores a customer
-        identifier, first-order date and acquisition channel in order to compute
-        customer acquisition cost and lifetime value. Where they are not
-        granted, those screens say so rather than showing zeroes.
+        <code>read_customers</code> and <code>read_all_orders</code> are{" "}
+        <strong>not</strong> requested. Because <code>read_all_orders</code> is
+        not held, Shopify returns only the last 60 days of order history, and
+        the app says so on screen rather than presenting a short history as a
+        complete one.
       </p>
 
       <h2>Personal data specifically</h2>
       <p>
-        {APP_NAME} does not read, request or store payment card details,
-        passwords, or shopper contact details. Where <code>read_customers</code>{" "}
-        is granted, the customer records held are limited to a Shopify customer
-        id, the date of their first order, and the channel that acquired them.
+        Shopper personal data does reach {APP_NAME}, through{" "}
+        <code>read_orders</code>. Exactly two shopper fields are read from
+        Shopify and stored:
+      </p>
+      <ul>
+        <li>
+          the <strong>Shopify customer id</strong> carried on the order — the
+          identifier that links a store&rsquo;s repeat orders to one person, so
+          that lifetime value and acquisition cost can be computed at all; and
+        </li>
+        <li>
+          the <strong>email address</strong> on that customer record. It is
+          stored so that a <code>customers/data_request</code> or{" "}
+          <code>customers/redact</code> naming a shopper can be matched to the
+          right rows and answered, and it is included in the export handed to
+          the merchant for a data request.
+        </li>
+      </ul>
+      <p>
+        Nothing else about a shopper is read or stored. {APP_NAME} holds no
+        shopper <strong>name</strong>, <strong>phone number</strong>,{" "}
+        <strong>billing or shipping address</strong> or{" "}
+        <strong>IP address</strong>, and it does not read, request or store
+        payment card details or passwords. It requests no scope that would
+        expose them.
+      </p>
+      <p>
+        Derived from those two fields and the orders themselves, {APP_NAME}{" "}
+        stores per customer: the date of their first order, the channel and
+        campaign that acquired them, their order count, and their lifetime
+        revenue and profit. Per order it stores the order number, its
+        timestamps, currency, the money totals above, financial and fulfilment
+        status, the marketing channel, any UTM parameters, and the landing page
+        URL of the visit the order is attributed to. The referring URL is read
+        to classify that channel but is not itself stored. Line items are stored
+        as title, SKU, quantity and unit price.
+      </p>
+      <p>
+        Because a shopper email address is among the fields read and stored,
+        {APP_NAME}&rsquo;s access to orders falls under Shopify&rsquo;s
+        protected customer data requirements at the level that covers customer
+        email, and is subject to the approval and the data-handling
+        undertakings that go with it.
       </p>
 
       <h2>What the merchant gives us directly</h2>

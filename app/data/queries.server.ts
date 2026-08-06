@@ -53,27 +53,41 @@ export async function loadEngineOrders(
   shopId: string,
   range: DateRange,
 ): Promise<EngineOrder[]> {
-  const orders = await prisma.order.findMany({
-    where: { shopId, processedAt: { gte: range.from, lte: range.to } },
-    include: {
-      lineItems: true,
-      fulfillments: { select: { shippingCost: true, pickPackCost: true } },
-    },
-    orderBy: { processedAt: "asc" },
-  });
+  // The engine wants two totals per order, not the fulfilment rows themselves,
+  // so the sum is done in Postgres. A store that splits shipments has several
+  // fulfilments per order and this is the difference between hydrating one row
+  // per parcel and one row per order. Both columns are Decimal(12,2), so
+  // summing before the cents conversion is exact — there is no sub-cent
+  // remainder for SUM to accumulate and no rounding for it to move.
+  const [orders, fulfilmentCosts] = await Promise.all([
+    prisma.order.findMany({
+      where: { shopId, processedAt: { gte: range.from, lte: range.to } },
+      include: { lineItems: true },
+      orderBy: { processedAt: "asc" },
+    }),
+    prisma.fulfillment.groupBy({
+      by: ["orderId"],
+      where: {
+        shopId,
+        order: { processedAt: { gte: range.from, lte: range.to } },
+      },
+      _sum: { shippingCost: true, pickPackCost: true },
+    }),
+  ]);
+
+  const fulfilmentCostByOrder = new Map(
+    fulfilmentCosts.map((row) => [row.orderId, row._sum]),
+  );
 
   return orders.map((order) => {
     // Shopify's own fulfilment webhooks carry no carrier cost — that arrives
     // from the 3PL connector. A zero therefore means "not known yet", not
-    // "shipped for free", and must fall back to the merchant's cost rule.
-    const shippingCostCents = order.fulfillments.reduce(
-      (sum, f) => sum + toCents(f.shippingCost),
-      0,
-    );
-    const pickPackCostCents = order.fulfillments.reduce(
-      (sum, f) => sum + toCents(f.pickPackCost),
-      0,
-    );
+    // "shipped for free", and must fall back to the merchant's cost rule. An
+    // order with no fulfilments has no group row at all, which reads as the
+    // same zero.
+    const summed = fulfilmentCostByOrder.get(order.id);
+    const shippingCostCents = toCents(summed?.shippingCost);
+    const pickPackCostCents = toCents(summed?.pickPackCost);
 
     return {
       id: order.id,

@@ -139,6 +139,53 @@ on real data, which is a session of its own.
 
 ## Fixed this session
 
+### Two things were correct and nothing would have noticed them changing
+
+No defect behind either of these — both paths were already right. What was
+missing was anything that would fail if they stopped being.
+
+**HMAC on the six webhooks that are not compliance topics.**
+`webhooks.gdpr.test.ts` proves `customers/data_request`, `customers/redact` and
+`shop/redact` answer 401 to an unverified request, because that is the check
+Shopify's automated review runs. Nothing proved it for `orders`, `products`,
+`fulfillments`, `app/uninstalled`, `app_subscriptions/update` or
+`app/scopes_update` — and those are the ones that write the merchant's numbers.
+An unverified `orders/create` reaching `syncOrderFromShopify` books revenue from
+a payload anyone on the internet can POST. All six go through `handleWebhook`,
+so they were covered by construction, which is exactly what a route that quietly
+stopped calling it would still satisfy.
+
+`app/routes/webhooks.hmac.test.ts` drives the real route modules against real
+verification with only the database and the sync layer mocked: forged signature,
+signature from the wrong secret, absent header and empty header on each, every
+one asserting that no `WebhookEvent` row and no downstream write happened —
+a 401 that had already written is a passing status code and a breach. A positive
+control per endpoint stops the suite passing by rejecting everything, and three
+`handleWebhook` promises that nothing checked are now checked: a replayed
+delivery id is suppressed rather than booked twice, a throwing handler still
+answers 200 so Shopify does not retry until it disables the subscription, and
+`refunds/create` is not fed to the order sync. Verified by breaking the source
+twice — removing the missing-signature guard fails 12, reading the shop and
+topic straight off the headers instead of verifying fails 12 — then reverted.
+
+**`runBackfill` itself.** The four `backfill-*.test.ts` files cover the import's
+pieces — GraphQL errors, the resume cursor, nested-collection pagination, the
+fulfilment rows — and not one of them calls `runBackfill`. So the orchestration
+was untested, and it is where the expensive mistakes live: clearing `syncCursor`
+on success and keeping it on failure are one line each, in opposite directions,
+and getting either backwards costs a merchant the whole walk or skips the store
+entirely. `app/lib/backfill.test.ts` adds 23 covering that pair, the failure
+path and its 500-character truncation, the resume arithmetic, both capability
+branches, the per-order writes (refunds summed across every refund touching a
+line, cost snapshotted with "0" for an unknown variant rather than a 100%
+margin), and `backfillIsStale`. The expiring-token fix is driven through
+`runBackfill` with a clock that ages past the limit mid-import, so it proves
+`refreshingAdminClient` is wired in rather than merely present. Verified by
+breaking the source twelve ways, one test failing per break, all reverted.
+
+`verify-data.ts` against live Postgres is byte-identical to its output before
+this work, which it must be — nothing here touched a line of application code.
+
 ### The listing was still selling the ad channels
 
 The fix below stopped `/app/plan` and the Acquisition screen selling ad-platform
@@ -593,7 +640,7 @@ against the old cast.
 | `customers/data_request` | **Fixed** | HMAC-verified; 200 signed, 401 unsigned, 401 tampered, 405 on GET. The export is now stored and collectable from Settings, expires after 31 days, and is verified end to end against Postgres |
 | `customers/redact` | Done | Same; anonymises orders in place rather than deleting them, and deletes any held data export |
 | `shop/redact` | Done | Same; purges sessions and cascades the shop delete |
-| Unverified webhook returns 401 | Done | 401 on every endpoint. The single most-failed automated check |
+| Unverified webhook returns 401 | Done | 401 on every one of the nine endpoints, and now guarded by tests on all nine rather than by a check someone ran once — forged signature, signature from the wrong secret, absent header, empty header, each asserting no write happened, plus a positive control. The single most-failed automated check |
 | Webhook idempotency | Done | `X-Shopify-Webhook-Id` claimed before handling; a replayed delivery returns 200 and writes nothing |
 | `app/uninstalled` cleanup | Done | Deletes sessions, stamps `uninstalledAt` |
 | `app/scopes_update` | **Added** | Keeps `grantedScopes` honest under managed installation |
@@ -603,7 +650,7 @@ against the old cast.
 | GraphQL Admin API only | Done | No REST calls anywhere; new public apps may not use REST |
 | Webhook API version | Done | `2026-07`, matching `@shopify/shopify-api` 13.1.0 |
 | Production build | Done | `npm run build` clean |
-| Test suite | Done | **223 tests, 21 files, all passing** (verified 2026-08-06 04:26, `npm test`) |
+| Test suite | Done | **290 tests, 24 files, all passing** (verified 2026-08-06 09:34, `npx vitest run`, three consecutive runs) |
 | Engine output unchanged by the query work | Done | `npx tsx scripts/verify-data.ts` against live Postgres, diffed byte-for-byte against its output before the change |
 | Typecheck | Done | Clean |
 | Config validity | Done | `shopify app config validate` passes |

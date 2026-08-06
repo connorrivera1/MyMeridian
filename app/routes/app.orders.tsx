@@ -82,8 +82,16 @@ export async function loader({ request }: LoaderFunctionArgs) {
       lossMakingShare: p.orderCount ? losers.length / p.orderCount : 0,
       lossTotalCents: lossTotal,
     },
+    // Rendered here, on the server, so the zone has to be stated. Without it
+    // the label came out in whatever zone the server runs in while the bucket
+    // itself was keyed in the shop's, which is how a day's profit ends up
+    // captioned with the day before's date.
     daily: daily.map((day) => ({
-      label: day.date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      label: day.date.toLocaleDateString("en-US", {
+        timeZone: shop.timezone,
+        month: "short",
+        day: "numeric",
+      }),
       value: day.netProfitCents,
     })),
     spark: daily.map((day) =>

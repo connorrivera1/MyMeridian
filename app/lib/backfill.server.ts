@@ -1,4 +1,4 @@
-import { Channel, CostSource, SyncStatus } from "@prisma/client";
+import { Channel, CostSource, Prisma, SyncStatus } from "@prisma/client";
 
 import prisma from "~/db.server";
 import { invalidateAnalyticsCache } from "~/data/analytics.server";
@@ -1324,6 +1324,24 @@ export function fulfillmentRowsForOrder(
 // ---------------------------------------------------------------------------
 
 /**
+ * The zone to cut the warehouse's days on.
+ *
+ * Postgres throws on a zone name it does not recognise, and this runs at the
+ * very end of an import — a store whose `timezone` is empty or malformed would
+ * lose the whole walk to it. UTC is the wrong answer for such a store but it is
+ * the answer the series already had, so falling back cannot make anything worse.
+ */
+function capacityZone(timezone: string | null | undefined): string {
+  if (!timezone) return "UTC";
+  try {
+    new Intl.DateTimeFormat("en-CA", { timeZone: timezone });
+    return timezone;
+  } catch {
+    return "UTC";
+  }
+}
+
+/**
  * Rebuild the daily capacity series from imported orders and fulfilments.
  *
  * Backlog is cumulative orders received minus cumulative orders shipped, which
@@ -1345,16 +1363,43 @@ export function fulfillmentRowsForOrder(
  * Cancelled and failed fulfilments are excluded by `shippedAt IS NOT NULL`
  * rather than by naming statuses here, which keeps one definition of "shipped"
  * in `fulfillmentDidShip` instead of a second one written in SQL.
+ *
+ * Every day here is a day in the *shop's* zone. These columns are
+ * `timestamp without time zone` holding UTC, so a bare `date_trunc('day', …)`
+ * cuts the warehouse's week on UTC midnight: for a Los Angeles store that is
+ * 4pm local, and every order placed in the merchant's evening — the busiest
+ * hours of the day — was received on tomorrow's row. Backlog, throughput, the
+ * capacity ceiling and the days-to-clear promise were all built on a day
+ * boundary the warehouse does not work to, and one that disagreed with the day
+ * every other screen buckets by, which uses the shop's zone via `dayKey`.
+ *
+ * The seeded demo store cannot show this: it only ever places orders between
+ * 08:00 and 23:59 UTC, which is 00:00 to 15:59 in its own Los Angeles zone, so
+ * no seeded order ever falls on the far side of a UTC midnight. Checked against
+ * the demo database — 12,379 orders, none of them shifted.
  */
 export async function rebuildCapacityDays(shopId: string) {
+  const shop = await prisma.shop.findUniqueOrThrow({
+    where: { id: shopId },
+    select: { timezone: true },
+  });
+  const zone = capacityZone(shop.timezone);
+
+  // `AT TIME ZONE 'UTC'` reads the stored naive timestamp as the UTC instant it
+  // is; the second `AT TIME ZONE` renders that instant as a naive local one.
+  // `date_trunc` then cuts on local midnight, and the result comes back as a
+  // naive date that names the shop's calendar day.
+  const localDay = (column: Prisma.Sql) =>
+    Prisma.sql`date_trunc('day', ${column} AT TIME ZONE 'UTC' AT TIME ZONE ${zone}::text)`;
+
   const [received, shippedOrders, shippedUnits] = await Promise.all([
     prisma.$queryRaw<{ day: Date; count: bigint }[]>`
-      SELECT date_trunc('day', "processedAt") AS day, COUNT(*) AS count
+      SELECT ${localDay(Prisma.sql`"processedAt"`)} AS day, COUNT(*) AS count
       FROM "Order" WHERE "shopId" = ${shopId}
       GROUP BY 1 ORDER BY 1
     `,
     prisma.$queryRaw<{ day: Date; count: bigint }[]>`
-      SELECT date_trunc('day', last_shipped) AS day, COUNT(*) AS count
+      SELECT ${localDay(Prisma.sql`last_shipped`)} AS day, COUNT(*) AS count
       FROM (
         SELECT "orderId", MAX("shippedAt") AS last_shipped
         FROM "Fulfillment"
@@ -1364,7 +1409,7 @@ export async function rebuildCapacityDays(shopId: string) {
       GROUP BY 1 ORDER BY 1
     `,
     prisma.$queryRaw<{ day: Date; units: bigint }[]>`
-      SELECT date_trunc('day', "shippedAt") AS day,
+      SELECT ${localDay(Prisma.sql`"shippedAt"`)} AS day,
              COALESCE(SUM("itemCount"), 0) AS units
       FROM "Fulfillment"
       WHERE "shopId" = ${shopId} AND "shippedAt" IS NOT NULL

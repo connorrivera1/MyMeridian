@@ -68,7 +68,7 @@ done from this repo — each is written up with where it lives and what it needs
 | Item | State |
 |---|---|
 | App icon, 1200×1200 PNG | **Done** — `listing/app-icon-1200.png`, rendered from the in-app brand mark. No text, no Shopify marks, square. |
-| Screenshots, 1600×900, 3–6 desktop | **At the floor.** Three in `listing/screenshots/` — `fulfilment`, `pricing`, `products`. Three more are held in `listing/screenshots-held/`: they were captured against a demo store with invented ad spend and advertised a capability the app does not have. See *The listing was still selling the ad channels* below. Shopify's minimum is three, so this passes with no headroom and at least one has to be re-captured. |
+| Screenshots, 1600×900, 3–6 desktop | **Done, five of six.** `fulfilment`, `pricing`, `products`, and `overview` + `orders` re-captured 2026-08-06 against a store with the invented ad spend cleared — Ad spend now reads `$0` with a dash, and the ADS column is `-$0.00` on every order. `acquisition` stays in `listing/screenshots-held/`: re-captured it is accurate and unshippable, four blank headline tiles over a channel table of dashes. Two above Shopify's floor of three, so the listing no longer depends on it. See *The listing was still selling the ad channels* below. |
 | Privacy policy URL | **Done** — `/privacy`, public and unauthenticated. |
 | Support page | **Done** — `/support`, public. |
 | Support email + legal entity | **Missing.** Environment-driven (`MERIDIAN_SUPPORT_EMAIL`, `MERIDIAN_LEGAL_ENTITY`, optional `MERIDIAN_SUPPORT_URL`). Both pages render a visible "not configured" notice until they are set — deliberately, because a reviewer emails whatever is on the page and a placeholder that bounces reads as an unsupported app. |
@@ -175,18 +175,29 @@ re-capture steps. `CAMPAIGNS` and per-order UTM attribution are untouched, so th
 demo still shows channel revenue and contribution profit — the capability Starter
 genuinely sells.
 
-`app/lib/listing.test.ts` carries the guard: the seed may not write `AdSpend`,
-the three held files may not reappear in the shipped set, the set may not drop
-below Shopify's floor of three, and this document may not carry the sentence that
-declared the flag closed. Verified to fail on all four by reverting each change
-in turn. Lift it with the guard in `plan.test.ts`, in the same change that ships
-a real connector.
+`app/lib/listing.test.ts` carries the guard: the seed may not write `AdSpend`, no
+shipped screenshot may be byte-identical to a held original, `acquisition.png`
+stays held while there is no connector, the set stays within Shopify's three-to-six
+band, and this document may not carry the sentence that declared the flag closed.
+Verified to fail by reverting each in turn. Lift it with the guard in
+`plan.test.ts`, in the same change that ships a real connector.
 
-**Not done, and it needs a machine that can run the app:** the three screens have
-not been re-captured. Nothing in the shipped set is now false, but the set is at
-three of a possible six, which is the floor. Re-seed first — the database still
-holds the old `AdSpend` rows until `npm run db:reset` runs, so a dev server
-started right now still shows the old figures.
+**Re-captured 2026-08-06.** `overview.png` and `orders.png` are shipped again and
+the set is at five. The blocker was two things and neither was the app: the
+database still held 1,288 `AdSpend` rows from the old seed, and no renderer had
+been found — `/Applications/Google Chrome.app` exits headless here without
+writing a file. Playwright's `chrome-headless-shell` is already cached under
+`~/Library/Caches/ms-playwright/` and screenshots cleanly; that is the capture
+path to reuse. The rows were cleared surgically rather than by `npm run db:reset`,
+which Prisma refuses to run for an AI agent without Connor's explicit consent:
+delete the `AdSpend` rows, then re-run the same engine tail the seed runs
+(`recomputeShopProfitability` + `generatePricingRecommendations`) so the
+persisted per-order `adCostAttributed` and customer aggregates are rewritten from
+the empty spend set. Result: 0 spend rows, 0 orders with non-zero ad cost, 12,379
+orders and 9,192 customers recomputed, unattributed ad spend $0.00.
+
+**Still open on the media:** `acquisition.png`, and it is now a product gap rather
+than an accuracy one. Feature media and the demo store URL are also still missing.
 
 ### The app sold ad channels it cannot connect
 

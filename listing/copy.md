@@ -192,13 +192,14 @@ staging it twice.
 ### 3. Still missing from the listing, unrelated to copy
 
 - **Feature media** — one 1600×900 image or a 2–3 minute video.
-- **Demo store URL** for the reviewer to click through. Re-seed before handing
-  this out: the store the URL points at is the same one the screenshots came
-  from, and until `npm run db:reset` runs it still holds the invented `AdSpend`
-  rows described below.
-- **Three screenshots to re-capture** — `acquisition`, `overview` and `orders`
-  are held in `listing/screenshots-held/`. The shipped set is at three, which is
-  Shopify's floor.
+- **Demo store URL** for the reviewer to click through. The store behind it is the
+  same one the screenshots come from, and its invented `AdSpend` rows were cleared
+  on 2026-08-06 — the local database now holds none.
+- **One screenshot still held** — `acquisition`, in `listing/screenshots-held/`.
+  Re-captured against the cleaned store it is accurate and unshippable: four blank
+  headline tiles over a channel table of dashes. It comes back with a connector.
+  `overview` and `orders` were re-captured and are shipped, so the set is at five
+  of a possible six rather than sitting on Shopify's floor of three.
 
 ### 4. The ad-spend claim was not closed where it mattered — 2026-08-06
 

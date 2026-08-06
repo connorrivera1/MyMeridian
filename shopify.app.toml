@@ -12,6 +12,28 @@ handle = "meridian-profit"
 # `automatically_update_urls_on_dev = true` rewrites this and redirect_urls to
 # the tunnel while `shopify app dev` runs, which is why it can sit wrong for a
 # long time without anything locally appearing to break.
+#
+# TODO(deploy): no production deployment target is configured anywhere in this
+# repo yet, so this cannot be filled in automatically. Checked: .env /
+# .env.example (SHOPIFY_APP_URL is "http://localhost:3000", dev-only), .shopify/
+# (CLI project link only, no host), package.json (no deploy script/target), and
+# no wrangler.toml / fly.toml / vercel.json anywhere in the tree. There is also
+# no git remote configured. SUBMISSION.md independently flags this exact gap as
+# Blocker #1. Once a real host exists, set application_url to that origin and
+# update redirect_urls below to match — webhook `uri` values are relative and
+# resolve against this automatically.
+#
+# DEPLOY_PLAN.md now carries the rest of it: Fly.io as the host and why a
+# serverless one would silently truncate every store's first import, the
+# Dockerfile and fly.toml to deploy with, and the exact command sequence.
+# Two things there are easy to get wrong from this file alone:
+#
+#   - `shopify app config push` no longer exists on @shopify/cli 4.x. Config
+#     reaches the Partner Dashboard through `shopify app deploy`, which carries
+#     it because [build] include_config_on_deploy is true below.
+#   - set automatically_update_urls_on_dev = false at the same time as filling
+#     this in. While it is true, one later `shopify app dev` rewrites this line
+#     and redirect_urls to a tunnel that stops existing when the session ends.
 application_url = "https://shopify.dev/apps/default-app-home"
 embedded = true
 client_id = "9dfbe484752628b0a96c4755caf4f502"

@@ -50,11 +50,45 @@ export const meta = () => [
  */
 const THEME_BOOTSTRAP = `(function(){try{var t=localStorage.getItem("meridian-theme");if(t==="light"||t==="dark"){document.documentElement.dataset.theme=t;var m=document.querySelectorAll('meta[name="theme-color"]');for(var i=0;i<m.length;i++){m[i].setAttribute("content",t==="light"?"#f6f8fa":"#06080b");m[i].removeAttribute("media")}}}catch(e){}})();`;
 
+/**
+ * The api key for a document whose root loader never produced one.
+ *
+ * `Layout` also wraps the error boundary, and the boundary renders in cases
+ * where the loader above did not run at all: a 404 on an unmatched path
+ * matches no route, so nothing calls it. `useRouteLoaderData("root")` is
+ * `undefined` there, and the head went out with no `app-bridge.js` in it —
+ * which breaks the merchant out of the admin iframe on the one page they most
+ * need App Bridge to get back from. Shopify's wording is the script tag in the
+ * head of *every* document.
+ *
+ * Server-side the key comes from the environment, exactly as the loader gets
+ * it. Client-side it is read back out of the meta tag the server just wrote,
+ * so both renders produce the same markup and hydration stays quiet — and if
+ * the server emitted nothing, the client finds nothing and agrees.
+ */
+function errorDocumentApiKey(): string {
+  if (typeof document === "undefined") {
+    return typeof process === "undefined"
+      ? ""
+      : (process.env.SHOPIFY_API_KEY ?? "");
+  }
+
+  return (
+    document
+      .querySelector('meta[name="shopify-api-key"]')
+      ?.getAttribute("content") ?? ""
+  );
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   // `Layout` also wraps the error boundary, which renders when the loader threw
   // and there is no data at all — hence the optional read.
   const data = useRouteLoaderData<typeof loader>("root");
-  const appBridgeApiKey = data?.appBridgeApiKey ?? "";
+  // `data.appBridgeApiKey` is deliberately "" for a request that must not load
+  // App Bridge — the seeded demo, and the public legal pages — so the fallback
+  // is keyed on the loader having produced nothing at all, not on the key
+  // being empty. An error document is the only case that reaches it.
+  const appBridgeApiKey = data ? data.appBridgeApiKey : errorDocumentApiKey();
 
   return (
     <html lang="en" data-theme="dark">

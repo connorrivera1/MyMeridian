@@ -949,7 +949,7 @@ the bug, and why the third row of that table matches.
 | Engine output unchanged by the query work | Done | `npx tsx scripts/verify-data.ts` against live Postgres, diffed byte-for-byte against its output before the change |
 | Typecheck | Done | Clean |
 | Config validity | Done | `shopify app config validate` passes |
-| Every route renders | Done | 12 routes served 200 from a running server, with real computed figures |
+| Every route renders | Done | 12 routes served 200 from a running server, with real computed figures. Re-checked on the merged branch 2026-08-06 17:32: `/app`, `/app/orders`, `/app/products`, `/app/acquisition`, `/app/fulfilment`, `/app/settings`, `/app/plan`, `/privacy` and `/support` all 200 with content, `/` 302 as designed — the orders screen and the fulfilment figures specifically, since the DST and day-boundary fixes land under both |
 
 The webhook rows are verified at handler level: the running dev server has no
 Shopify credentials, so over plain HTTP every webhook endpoint answers 503

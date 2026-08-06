@@ -430,6 +430,49 @@ function ordersQuery(shape: OrderQueryShape) {
   `;
 }
 
+/**
+ * The optional groups in the order query, in the order they are given up.
+ *
+ * Shopify answers a request for a field it will not serve with HTTP 200 and an
+ * access-denied error that *names the field* — "Access denied for
+ * customerJourneySummary field." — and `gql` turns that into a
+ * `ShopifyFieldError`. This table is how the import decides which field to stop
+ * asking for, rather than assuming it knows which one failed.
+ *
+ * It has to be the message that decides, because the scopes a store grants and
+ * the protected-customer-data request approved for the app are two different
+ * permissions. `read_orders` is itself protected customer data, so a field can
+ * be denied on a store that granted every scope Meridian asks for, and only the
+ * error says which.
+ *
+ * `customerJourneySummary` is matched before `customer` deliberately: the
+ * journey is the narrower loss, and `\bcustomer\b` does not match inside
+ * `customerJourneySummary` anyway (the following `J` is a word character), so
+ * neither pattern can steal the other's error.
+ */
+const OPTIONAL_ORDER_FIELDS: {
+  key: keyof OrderQueryShape;
+  /** What stops being imported once this group is dropped. */
+  cost: string;
+  implicated: RegExp;
+}[] = [
+  {
+    key: "journey",
+    cost: "attribution falls back to the referrer, which is weaker but honest",
+    implicated: /customerJourneySummary|customer_journey/i,
+  },
+  {
+    key: "customers",
+    cost: "orders import without customer identity, so there is no CAC or lifetime value",
+    implicated: /\bcustomers?\b|\bemail\b/i,
+  },
+  {
+    key: "fulfillments",
+    cost: "capacity forecasting and backlog alerts have nothing to read",
+    implicated: /\bfulfillments?\b/i,
+  },
+];
+
 // ---------------------------------------------------------------------------
 // Orchestration
 // ---------------------------------------------------------------------------
@@ -1005,8 +1048,14 @@ export async function importOrders(
 ) {
   let cursor: string | null = resume?.cursor ?? null;
   let count = resume?.importedOrders ?? 0;
+  // Which optional groups this run is still asking for. Narrowed in place by
+  // the ShopifyFieldError handler below as Shopify refuses them one at a time.
   // The journey is only worth probing for when customer access exists at all.
-  let usedJourney = capabilities.customers;
+  const shape: OrderQueryShape = {
+    journey: capabilities.customers,
+    customers: capabilities.customers,
+    fulfillments: capabilities.fulfillments,
+  };
   let reachedCap = false;
   let usingResumeCursor = resume !== null;
 
@@ -1038,24 +1087,33 @@ export async function importOrders(
     };
 
     try {
-      page = await gql(
-        admin,
-        ordersQuery({
-          journey: usedJourney,
-          customers: capabilities.customers,
-          fulfillments: capabilities.fulfillments,
-        }),
-        { cursor, pageSize: ORDER_PAGE_SIZE },
-      );
+      page = await gql(admin, ordersQuery(shape), {
+        cursor,
+        pageSize: ORDER_PAGE_SIZE,
+      });
     } catch (error) {
-      if (error instanceof ShopifyFieldError && usedJourney) {
-        // This store cannot expose the customer journey. Attribution falls
-        // back to the referrer, which is weaker but honest.
-        console.warn(
-          `[backfill] customerJourneySummary unavailable, continuing without it: ${error.message}`,
+      if (error instanceof ShopifyFieldError) {
+        // Give up the field Shopify actually named, not the one this code used
+        // to guess at. Only a group still in the query can be the cause, and
+        // each pass disables at least one, so this terminates: once nothing
+        // optional is left the error is real and falls through to the throw.
+        const refused = OPTIONAL_ORDER_FIELDS.find(
+          (candidate) =>
+            shape[candidate.key] && candidate.implicated.test(error.message),
         );
-        usedJourney = false;
-        continue;
+
+        if (refused) {
+          console.warn(
+            `[backfill] ${refused.key} unavailable, continuing without it — ` +
+              `${refused.cost}: ${error.message}`,
+          );
+          shape[refused.key] = false;
+          // Customer access denied takes the journey with it: the journey is a
+          // property of the same shopper, so a second round trip to be told so
+          // again buys nothing.
+          if (refused.key === "customers") shape.journey = false;
+          continue;
+        }
       }
 
       // A stored cursor Shopify will not take back — expired, or from a
@@ -1121,7 +1179,7 @@ export async function importOrders(
 
   return {
     count,
-    usedJourney,
+    usedJourney: shape.journey,
     reachedCap,
     earliestOrderAt,
     sawOrdersOlderThan60Days,

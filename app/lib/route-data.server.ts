@@ -1,4 +1,5 @@
 import {
+  loadPeriodProfit,
   loadShopAnalytics,
   resolveRange,
   type ShopAnalytics,
@@ -35,9 +36,13 @@ export async function loadDashboard(request: Request) {
     to: new Date(range.from.getTime() - 1),
   };
 
-  const [analytics, previous] = await Promise.all([
+  // Only the preceding window's roll-up is ever read — see `change()` below and
+  // every `previous.period.*` reference in the routes. Building a second full
+  // `ShopAnalytics` for it doubled the work on every page load, including a
+  // duplicate 365-day cohort scan, for figures nothing looked at.
+  const [analytics, previousPeriod] = await Promise.all([
     loadShopAnalytics(shop, range),
-    loadShopAnalytics(shop, previousRange),
+    loadPeriodProfit(shop, previousRange),
   ]);
 
   return {
@@ -48,7 +53,7 @@ export async function loadDashboard(request: Request) {
     rangeLabel: RANGE_PRESETS[preset].label,
     range,
     analytics,
-    previous,
+    previous: { period: previousPeriod },
     /** What this store actually authorised. Screens branch on it. */
     capabilities: capabilitiesForShop(shop, process.env.SCOPES),
   };

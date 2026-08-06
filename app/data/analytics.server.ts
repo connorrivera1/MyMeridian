@@ -78,6 +78,10 @@ export function resolveRange(
 const CACHE_TTL_MS = 60_000;
 const cache = new Map<string, { at: number; value: ShopAnalytics }>();
 
+// Comparison windows are cached separately: they are built by the lean path
+// below and must never be mistaken for a full build of the same window.
+const periodCache = new Map<string, { at: number; value: PeriodProfit }>();
+
 function cacheKey(shopId: string, range: DateRange, stamp: number) {
   return `${shopId}|${range.from.getTime()}|${range.to.getTime()}|${stamp}`;
 }
@@ -147,8 +151,53 @@ export async function loadShopAnalytics(
   return value;
 }
 
+/**
+ * The period roll-up on its own, without the analysis layered on top of it.
+ *
+ * Every headline in the product carries a change against the preceding window
+ * of the same length, and that comparison needs nothing but `PeriodProfit`
+ * scalars — net profit, revenue, contribution, ad spend, order count, AOV.
+ * Building a whole `ShopAnalytics` for it meant every page load also ran a
+ * second 365-day cohort scan, a second capacity query, a second product-meta
+ * query, and the product, channel, campaign and capacity engines, then read one
+ * field off the result and discarded the rest.
+ *
+ * This is the same `computeProfitForPeriod` call over the same orders, so the
+ * comparison figures are identical to what the full build produced — there is
+ * no second definition of profit here, only less work around the one.
+ */
+export async function loadPeriodProfit(
+  shop: Shop,
+  range: DateRange,
+): Promise<PeriodProfit> {
+  const stamp = shop.lastComputedAt?.getTime() ?? 0;
+  const key = cacheKey(shop.id, range, stamp);
+
+  // A full build for this window already holds this exact roll-up. Reuse it
+  // rather than recomputing, so paging back through ranges stays cheap.
+  const full = cache.get(key);
+  if (full && Date.now() - full.at < CACHE_TTL_MS) return full.value.period;
+
+  const hit = periodCache.get(key);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value;
+
+  const [orders, spend, rules] = await Promise.all([
+    loadEngineOrders(shop.id, range),
+    loadAdSpend(shop.id, range),
+    loadCostRules(shop.id),
+  ]);
+
+  const value = computeProfitForPeriod(orders, spend, rules, shop.timezone, range);
+
+  if (periodCache.size > 64) periodCache.clear();
+  periodCache.set(key, { at: Date.now(), value });
+
+  return value;
+}
+
 export function invalidateAnalyticsCache() {
   cache.clear();
+  periodCache.clear();
 }
 
 /** Products whose loss is genuinely buying better-than-average customers. */

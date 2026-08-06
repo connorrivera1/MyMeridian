@@ -59,8 +59,41 @@ done from this repo — each is written up with where it lives and what it needs
   the non-default choice in the submission form as of 2026 and has to be made
   deliberately; requirement 1.2.1 permits it. See "Billing" below for the
   reasoning, re-verified against live docs on 6 August 2026.
-- A **Protected Customer Data** request approved, if CAC/LTV/payback are to work
-  (`read_customers`). The app degrades honestly without it.
+- A **Protected Customer Data** request approved. **This line used to say the
+  request only mattered "if CAC/LTV/payback are to work (`read_customers`)" and
+  that the app "degrades honestly without it". Both halves are wrong**, and the
+  live doc was re-read on 6 August 2026 to be sure of it rather than taken from
+  the audit note that first flagged it:
+
+  > "Orders … Orders, draft orders, abandoned checkouts, refunds, transactions,
+  > and other data that relate to a single customer."
+
+  Orders are themselves protected customer data, so the request gates
+  `read_orders` — the scope the entire product is built on — not just the
+  customer extras. Unapproved access is not a clean absence either:
+
+  > "GraphQL requests to unapproved types will return an HTTP `200 Ok` response
+  > with an error message in the `errors` hash."
+
+  So this is a **hard gate on first submission, and the longest-lead item in
+  the whole list** because it runs on Shopify's review clock rather than ours.
+  Start it before anything else here.
+
+  Which **level** to request is decided by one field. `customer { id email }`
+  in the order query and `Customer.email` in the schema put Meridian at
+  **Level 2** — "Customer data **including** name, address, phone, or email
+  fields" — which carries extra attestations (encrypted backups, test and
+  production data kept separate, a data loss prevention strategy, staff access
+  limits and an access log, strong staff passwords, an incident response
+  policy). Requesting Level 1 and discovering the gap later costs another round
+  of Shopify's clock.
+
+  The code side of this is now handled: an order import that is refused a field
+  drops that field and keeps going rather than aborting, so a reviewer
+  installing while the request is still pending gets a working dashboard with
+  the refused data missing instead of an empty one. See *The import's only
+  recovery path was switched off on every real store* below. That makes the
+  wait survivable; it does not remove the gate.
 - A **`read_all_orders`** access request, or order history is capped at 60 days.
 - An **emergency developer contact** (email + phone) — a separate field from the
   support contact.
@@ -140,6 +173,38 @@ on real data, which is a session of its own.
 ---
 
 ## Fixed this session
+
+### The import's only recovery path was switched off on every real store
+
+A field Shopify refuses is a capability difference rather than a failure, and
+the plumbing for that has been right for a while: access-denied comes back as
+HTTP 200 with an `errors` hash, and `gql` raises `ShopifyFieldError` so the
+caller can ask again with a narrower query.
+
+The caller narrowed exactly one way. It assumed every field error was
+`customerJourneySummary`, and it only attempted the retry when the journey was
+still enabled — and the journey is enabled from `capabilities.customers`, which
+reads `read_customers`, which is **not one of the four scopes in
+`shopify.app.toml`**. So on every non-demo store the flag was false before the
+first request went out, and the entire recovery path was dead code. Any refused
+field aborted the whole import; the merchant got a dashboard of zeroes and a
+failed sync.
+
+That is the state a reviewer installs in. Scopes granted and the protected
+customer data request approved are two separate permissions (see Blocker 2), so
+fields can be refused on a store that granted every scope the app asks for.
+
+The degrade is now decided by the error message instead of guessed: the first
+optional group still in the query that the message implicates is dropped, in
+order of how little is lost — journey, then customer identity, then fulfilments.
+Customer access takes the journey with it, since it is the same shopper and a
+second round trip to be told so again buys nothing. A refusal naming a field the
+import cannot do without still throws, because degrading there would store a
+store's orders with no money on them. Each pass disables at least one group, so
+a store that refuses everything terminates instead of looping on the refusal.
+
+Seven new tests in `app/lib/backfill-field-access.test.ts`, four of which fail
+against the old code. `cdf940b`.
 
 ### Two things were correct and nothing would have noticed them changing
 

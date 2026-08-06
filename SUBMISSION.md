@@ -55,8 +55,10 @@ done from this repo — each is written up with where it lives and what it needs
 
 - The three Billing API plans matching `PLANS` — Starter, Growth, Scale. The
   app creates the charges from code, so nothing needs typing in by hand, but the
-  app must be opted into **manual pricing**, not Shopify App Pricing. See
-  "Billing" below for why.
+  app must be opted into **manual pricing**, not Shopify App Pricing. That is
+  the non-default choice in the submission form as of 2026 and has to be made
+  deliberately; requirement 1.2.1 permits it. See "Billing" below for the
+  reasoning, re-verified against live docs on 6 August 2026.
 - A **Protected Customer Data** request approved, if CAC/LTV/payback are to work
   (`read_customers`). The app degrades honestly without it.
 - A **`read_all_orders`** access request, or order history is capped at 60 days.
@@ -324,11 +326,73 @@ toml and the subscription webhook, and no `billing.check`, `billing.require` or
 `billing.request` anywhere. `Subscription.plan` was read only to render a badge.
 Every feature sold as Growth- or Scale-only was served to every store.
 
-Settled on the **Billing API**, which is forced rather than stylistic: since
-28 April 2026 Shopify App Pricing no longer sends `app_subscriptions/update`,
-and the only way to read a plan under it is the Partner API — an
-organisation-level credential the app does not hold and cannot obtain from a
-merchant session.
+Settled on the **Billing API**. That choice stands, but the reasoning
+originally given for it does not survive contact with the current docs, and is
+restated below.
+
+#### Re-verified against live docs, 6 August 2026
+
+Every quote here was fetched from shopify.dev on 6 August 2026, not recalled.
+
+**The decision is unchanged: ship on the Billing API.** It remains expressly
+permitted for a new public app. Requirement 1.2.1 is titled "Use Shopify App
+Pricing or the Shopify Billing API", and reads: *"Apps that use off-platform
+billing cannot be distributed through the Shopify App store. Your app must use
+Shopify App Pricing or the Shopify Billing API for any app charges."* There is
+no new-app carve-out in 1.2.x, and no published sunset date for the Billing
+API. As of today Shopify's own migration tooling is at phase one — plan
+preparation only; *"preparing plans in the tool doesn't migrate your existing
+shops or subscriptions"* — so the path that would move subscriptions has not
+shipped.
+<https://shopify.dev/docs/apps/launch/shopify-app-store/app-store-requirements>,
+<https://shopify.dev/changelog/prepare-your-app-for-migration-to-shopify-app-pricing>
+
+**What was right.** *"After April 28, 2026, Shopify App Pricing no longer sends
+webhooks for subscription changes. Use the Partner API and URL redirect
+parameters instead."* The `app_subscriptions/update` reasoning in
+`plan.server.ts`, `shopify.app.toml` and `webhooks.app-subscriptions.tsx` is
+accurate. Note the removal applies only to the App Pricing path — the topic is
+still live for the Billing API, which is what this app is on.
+<https://shopify.dev/docs/apps/launch/billing/shopify-app-pricing>
+
+**What was wrong, and is corrected here.** The claim that the Partner API is
+"an organisation-level credential the app does not hold and cannot obtain from
+a merchant session" is a category error. It is *our own* Partner org's
+credential, generated in our own dashboard and held as a backend secret:
+*"Access the Active Subscription and Historical Events APIs through the Partner
+API with Partner API credentials"*, where *"{org_id} is the organization ID
+shown in your Partner Dashboard URL"*. Nothing about it is merchant-granted.
+There is also a second mechanism the original reasoning missed entirely — the
+`plan_handle` URL redirect parameter, *"The plan that the merchant is subscribed
+to"*, delivered when a merchant selects or confirms a plan, which is readable
+from an ordinary session. So App Pricing is not unreadable from a merchant
+session, and this repo should not claim it is: a reviewer can falsify that
+sentence in one page load.
+<https://shopify.dev/docs/apps/launch/billing/shopify-app-pricing/migrating-to-shopify-app-pricing>
+
+**The honest reasoning, which is a cost argument and not an impossibility
+one.** App Pricing would require a second credential and a non-Admin-API
+dependency — *"Update code that uses the GraphQL Admin API to check
+subscription status, such as billing.check() or currentAppInstallation queries,
+to use the Partner API equivalents"* — plus redirect-parameter handling to
+cover changes between polls, replacing a `billing.check` that reads from the
+same Admin session as everything else in the app. That is real work against a
+billing implementation that is finished, tested and gated, for no requirement
+gain. Not migrating.
+
+**The cost of the choice, stated plainly.** App Pricing is now Shopify's
+default: *"Shopify App Pricing is the default option when you submit a new
+public app for approval"*, and *"the default and recommended approach for all
+apps published on the Shopify App Store"*, with the Billing API described as
+*"still supported for existing apps and outlier pricing models Shopify App
+Pricing doesn't cover"*. Choosing manual pricing is therefore an explicit
+opt-out at submission and may draw a reviewer question. The answer to that
+question is 1.2.1, quoted above. Requirement **1.2.3** is the one that has to
+hold under manual pricing, because App Pricing would handle it for us — in-app
+upgrade *and* downgrade without contacting support or reinstalling. It is
+implemented and listed below.
+<https://shopify.dev/docs/apps/launch/billing>,
+<https://shopify.dev/docs/apps/launch/billing/manual-pricing>
 
 - `lib/plan.server.ts` resolves the plan from `billing.check`, caches it in the
   `Subscription` row for ten minutes, and falls back to the stored row when

@@ -7,11 +7,24 @@ import { PLANS, type PlanId } from "~/shopify.server";
  * Which plan a store is on, and what that entitles it to.
  *
  * Meridian bills through the Shopify **Billing API**, not Shopify App Pricing.
- * That choice is forced rather than stylistic: as of 28 April 2026 App Pricing
- * no longer sends `app_subscriptions/update`, and the only way to read a plan
- * under it is the Partner API — a separate organisation-level credential the
- * app does not hold and cannot obtain at runtime. The Billing API keeps the
- * plan readable from the same Admin session the rest of the app already has.
+ * Requirement 1.2.1 permits either — "Your app must use Shopify App Pricing or
+ * the Shopify Billing API for any app charges" — so this is a deliberate choice
+ * and not a forced one. App Pricing is Shopify's default at submission, and the
+ * Billing API is documented as legacy; both were re-verified against live docs
+ * on 6 August 2026 and neither carries a deadline. `SUBMISSION.md` § "Billing"
+ * has the quotes and the URLs.
+ *
+ * What the Billing API buys: `billing.check` reads the plan from the same Admin
+ * session as everything else here, and `app_subscriptions/update` is still
+ * delivered for Billing API charges. Under App Pricing both of those go away —
+ * as of 28 April 2026 it sends no subscription webhooks, and plan reads move to
+ * the Partner API, which is our own Partner org's credential held as a backend
+ * secret, plus the `plan_handle` redirect parameter for changes between polls.
+ *
+ * That is a second credential and a non-Admin-API dependency for no requirement
+ * gain, which is the reason not to migrate. It is *not* that App Pricing cannot
+ * be read from a merchant session — an earlier version of this comment said so
+ * and it was wrong.
  *
  * The app previously declared both models at once and enforced neither: three
  * Billing API plans in `shopify.server.ts`, managed-pricing wording in the toml

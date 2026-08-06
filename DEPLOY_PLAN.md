@@ -285,12 +285,18 @@ signed-in Partner account.
 **a. Opt into manual pricing (Billing API), not Shopify App Pricing.**
 Partner Dashboard → the app → Pricing. The app creates its own charges from
 `PLANS` in `app/shopify.server.ts`, so no plan needs typing in by hand, but the
-app must not be on managed App Pricing. This is forced rather than stylistic:
-since 28 April 2026 App Pricing no longer sends `app_subscriptions/update`, and
-the only way to read a plan under it is the Partner API — an organisation-level
-credential the app does not hold and cannot obtain from a merchant session. The
-three plans are Starter $49, Growth $149, Scale $399, all 30-day interval, USD,
-14-day trial.
+app must not be on managed App Pricing. Note that App Pricing is now the
+**default** selection here, so this is an explicit opt-out and may draw a
+reviewer question; requirement 1.2.1 permits either, in as many words. The
+reasoning is a cost argument, not an impossibility one: since 28 April 2026 App
+Pricing sends no subscription webhooks, and plan reads move off the Admin API
+onto the Partner API plus the `plan_handle` redirect parameter — a second
+credential and a non-Admin-API dependency, for no requirement gain, against a
+billing implementation that is already finished and gated. Re-verified against
+live shopify.dev docs on 6 August 2026; quotes and URLs are in `SUBMISSION.md`
+§ "Billing". An earlier version of this paragraph said App Pricing plans could
+not be read from a merchant session at all, which is wrong. The three plans are
+Starter $49, Growth $149, Scale $399, all 30-day interval, USD, 14-day trial.
 
 **b. Protected Customer Data request — `read_customers`.**
 Partner Dashboard → the app → API access → Protected customer data. A form with

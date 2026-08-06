@@ -1,8 +1,9 @@
 # Shopify App Store submission checklist
 
 Status of every requirement Shopify checks, as verified against the code and a
-running instance on 2026-08-05. Each verdict cites what was actually run or
-read, not what the code comments claim.
+running instance on 2026-08-05, and re-verified from a clean checkout on
+2026-08-06. Each verdict cites what was actually run or read, not what the code
+comments claim.
 
 Branch: `eevee/meridian-triage`. Nothing has been deployed, pushed or submitted,
 and the repo has no git remote configured.
@@ -93,21 +94,49 @@ Not a hard gate at submission, but Shopify samples Core Web Vitals through App
 Bridge at the 75th percentile over 28 days, and the thresholds are LCP ≤ 2.5s,
 CLS ≤ 0.1, INP ≤ 200ms.
 
-**Two of the three costs here are now fixed** — see *The dashboard did its most
-expensive work twice* below. `loadDashboard` no longer builds a second complete
-analysis for the comparison window, and `loadEngineOrders` no longer hydrates
-fulfilment rows to add them up in JavaScript.
+**Three of the four costs here are now fixed** — see *The dashboard did its most
+expensive work twice* and *The order query read eighteen columns nothing used*
+below. `loadDashboard` no longer builds a second complete analysis for the
+comparison window, `loadEngineOrders` no longer hydrates fulfilment rows to add
+them up in JavaScript, and it no longer reads whole `Order` and `OrderLineItem`
+rows when the engine uses thirteen columns of thirty-one and nine of thirteen.
+Measured on the seeded store (12,379 orders, 19,532 line items): the 30-day
+window went 108ms → 72ms and the 365-day window 400ms → 247ms, on both the
+reporting window and the comparison window built beside it.
 
-What remains: `loadEngineOrders` still hydrates every order and every line item
-in the window with no `take`, and the orders table's `PAGE_SIZE = 60` slices an
-already-materialised array, so the database work is identical on page 1 and page
-40. Neither can simply take a `take`. The P&L, the ad attribution and the
-overhead proration are all period-wide, so a truncated set of orders yields a
-confidently wrong profit figure rather than a slow one. Doing it properly means
-computing the roll-up in SQL, which means a second implementation of the profit
-formula — the same duplicate-definition shape as the `shippedAt` bug this
-session fixed, where one column had two writers and two meanings. Worth doing
-deliberately, with a live-database differential test, and not before submission.
+What remains: `loadEngineOrders` still returns every order in the window with no
+`take`, and the orders table's `PAGE_SIZE = 60` slices an already-materialised
+array, so the database work is identical on page 1 and page 40. It cannot simply
+take a `take` — the P&L, the ad attribution and the overhead proration are all
+period-wide, so a truncated set of orders yields a confidently wrong profit
+figure rather than a slow one.
+
+Closing it properly means computing the roll-up in SQL. Two things were
+established this session about what that costs, and both argue for doing it
+deliberately rather than before submission:
+
+- **The prize is smaller than it looks.** Now that the projection has landed, a
+  measured prototype of the comparison window — orders without line items, plus
+  a SQL `SUM(ROUND(unitCost * soldQty, 2))` per order — comes to 39ms against
+  the current 75ms. Around 36ms a page load, for a second implementation of the
+  COGS and payment-fee arithmetic.
+- **Raw SQL over these timestamp columns is genuinely treacherous, and that is
+  now demonstrated rather than argued.** The first prototype of that aggregate
+  silently dropped 21 orders, because a `Date` bound into `$queryRaw` and
+  compared against a `timestamp without time zone` column is rendered in the
+  *session* time zone — a four-hour shift on this machine, and one that follows
+  DST. Chasing that down is what surfaced the real `firstOrderAt` defect fixed
+  below. A roll-up would also have to reproduce `dayKey`'s `Intl` bucketing in
+  the *merchant's* zone for ad attribution and overhead, while the column is
+  naive UTC and the session is a third zone. Three time zones in one statement
+  is where the next silent divergence lives.
+
+One encouraging finding for whoever picks it up: `allocate` distributes overhead
+and ad spend by largest-remainder and sums to exactly its input, so the period
+*totals* are reproducible in SQL even though the per-order split is not. The
+obstacle is the time bucketing, not the profit formula. It wants a
+live-database differential test asserting the SQL roll-up equals the engine's
+on real data, which is a session of its own.
 
 ---
 
@@ -380,6 +409,62 @@ an aggregate that forgot the window filter would read the whole table and still
 look correct on a small store. Then proved where it counts: `verify-data.ts`
 against live Postgres, **byte-identical to its output before the change**.
 
+### The order query read eighteen columns nothing used
+
+`loadEngineOrders` selected every column of every order and every line item in
+the window and then mapped thirteen of `Order`'s thirty-one and nine of
+`OrderLineItem`'s thirteen into `EngineOrder`, dropping the rest one function
+later. The dropped ones still cost a read, a transfer and a parse on every
+dashboard load, on both the reporting window and the comparison window.
+
+Eight of them are the materialised profit `Decimal`s — `cogsTotal`, `netProfit`,
+`contributionProfit` and the rest that `recompute` writes — which are the
+expensive kind to waste, since Prisma inflates every `Decimal` into a
+`Decimal.js` instance before the mapping gets a chance to ignore it. Leaving
+them unread is also the honest thing: nothing on this path should be able to
+mistake a write-only cache for an input.
+
+Same rows, same `where`, same `orderBy`, same values — a projection, not a
+change of shape. 30-day window 108ms → 72ms, 365-day 400ms → 247ms on the seeded
+store. Five new tests pin the column list exactly rather than sampling it, since
+a `select` is the one query where adding a field is silent and removing one
+surfaces much later as `undefined` read as zero money, plus one that maps a row
+carrying only the projected columns so the mapping cannot quietly reach for an
+unselected one. `verify-data.ts` against live Postgres is byte-identical to its
+output before the change.
+
+### A customer's first order was stored in the server's time zone
+
+`writeCustomerAggregates` wrote `Customer.firstOrderAt` through a raw statement
+casting a bound `Date` straight to `::timestamp`. Postgres renders a bound
+instant in the *session* time zone before that cast, and the cast then discards
+the offset — so the stored value was shifted by whatever `TimeZone` the
+connection had. Proved against the live database inside a rolled-back
+transaction, writing one known instant three ways:
+
+| Instant | Prisma ORM | `::timestamp` | `::timestamptz AT TIME ZONE 'UTC'` |
+|---|---|---|---|
+| 2026-03-01T02:30Z | 0h | **−5h** | 0h |
+| 2026-03-15T02:30Z | 0h | **−4h** | 0h |
+| 2026-08-03T23:53Z | 0h | **−4h** | 0h |
+
+Not a constant error: the offset follows DST, so two orders either side of a
+transition move by different amounts and no single correction undoes it.
+
+Every other writer of that column goes through Prisma and stores UTC —
+`syncCustomer`, `reconcileFirstOrder`, the backfill and the seed. So this was one
+column with two writers and two meanings, the same shape as the `shippedAt`
+defect above. `reconcileFirstOrder` exists precisely to settle which order came
+first, and the next `recompute` would move the answer it had just settled. The
+date is also handed to the shopper in the GDPR export built by
+`data-request.server.ts`, which is a poor place to be four hours wrong.
+
+It stayed invisible because a server running in UTC has a zero offset — the one
+configuration where this does nothing. It would have read as correct in
+production on Fly and wrong on every developer machine, which is the worst way
+round for a bug to sit. Four new tests assert the generated SQL; two fail
+against the old cast.
+
 ### Other
 
 - `app/scopes_update` webhook added. `grantedScopes` was written only in
@@ -417,7 +502,7 @@ against live Postgres, **byte-identical to its output before the change**.
 | GraphQL Admin API only | Done | No REST calls anywhere; new public apps may not use REST |
 | Webhook API version | Done | `2026-07`, matching `@shopify/shopify-api` 13.1.0 |
 | Production build | Done | `npm run build` clean |
-| Test suite | Done | **212 tests, 20 files, all passing** (verified 2026-08-05 23:52, `npx vitest run`) |
+| Test suite | Done | **221 tests, 21 files, all passing** (verified 2026-08-06 00:18, `npm test`) |
 | Engine output unchanged by the query work | Done | `npx tsx scripts/verify-data.ts` against live Postgres, diffed byte-for-byte against its output before the change |
 | Typecheck | Done | Clean |
 | Config validity | Done | `shopify app config validate` passes |
@@ -436,9 +521,11 @@ thrown from the same function that throws the 401.
 ## Known gaps that are not blockers, in rough priority order
 
 1. **`loadEngineOrders` is still unbounded**, and the orders table still pages a
-   materialised array. The duplicated comparison-window build and the fulfilment
-   row hydration are fixed; see Blocker 4 for why the remaining half needs a
-   deliberate SQL roll-up rather than a `take`.
+   materialised array. The duplicated comparison-window build, the fulfilment
+   row hydration and the whole-row read are all fixed; see Blocker 4 for the
+   measured cost of the remaining piece (~36ms a page load) and for why it needs
+   a deliberate SQL roll-up with a live-database differential test rather than a
+   `take`.
 2. **Order-level stored profit is a write-only cache.** `recompute` writes
    `Order.netProfit`, but every dashboard figure is recomputed on the fly and
    nothing reads it back except `contributionProfit` for cohort LTV.

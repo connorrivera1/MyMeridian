@@ -555,13 +555,38 @@ two files was changed.
    the banner appeared. `fly mpg create` / `fly mpg attach` are the managed
    equivalents.
 
+Two further things were confirmed while the image was up, both of which back
+claims made elsewhere in this file: the container idles at **51 MiB** serving
+requests, so §4's 1024 MB VM has room, and booting with
+`MERIDIAN_DEMO_MODE=true` while `NODE_ENV=production` **does** abort the
+process — `Error: MERIDIAN_DEMO_MODE must not be enabled when
+NODE_ENV=production` — so §4's comment on that line is accurate.
+
 ### Two things that still cannot be checked here
 
-- **Architecture.** This is an Apple Silicon Mac, so the local image is arm64;
-  Fly machines are x86_64. This does not matter for the normal path — plain
-  `fly deploy` builds on Fly's own remote builder, which is amd64, from this
-  same Dockerfile. It matters if anyone reaches for `fly deploy --local-only`,
-  which would push an arm64 image to an amd64 machine. Don't.
+- **A full amd64 build.** This is an Apple Silicon Mac, so the image built and
+  booted above is arm64; Fly machines are x86_64. Building the whole Dockerfile
+  for `linux/amd64` locally does not work, but for a reason that has nothing to
+  do with this app: esbuild's Go binary crashes under qemu user-mode emulation
+  (`failed to load config from /app/vite.config.ts` → "The service was
+  stopped", with a Go goroutine dump from
+  `esbuild/cmd/esbuild/service.go`). Rosetta would emulate x86_64 well enough,
+  but Colima would not register it as the binfmt handler here. **This is an
+  emulation artifact and not a defect — nothing in the normal path emulates
+  anything.** Plain `fly deploy` builds on Fly's own remote builder, which is
+  native amd64, from this same Dockerfile.
+
+  The part of the image that genuinely is architecture-dependent was checked on
+  amd64 directly, since it is the only part that could break: in an
+  `--platform linux/amd64` container, `npm ci` against this exact lockfile
+  succeeds, `prisma generate` emits
+  `libquery_engine-debian-openssl-3.0.x.so.node` — matching the OpenSSL 3.0.20
+  that bookworm-slim ships — and `new PrismaClient()` loads it. Everything else
+  in the image is plain JavaScript.
+
+  What follows from this is one rule: **do not run `fly deploy --local-only`**
+  on this machine. It would either fail the same way, or push an arm64 image to
+  an amd64 machine. The default remote builder is correct; let it do the work.
 - **The app name.** `meridian-profit` is assumed free on Fly; confirming that
   needs an account. If it is taken, the new name has to change in four places
   at once: `app` in `fly.toml`, `SHOPIFY_APP_URL` in §5 step 3, and

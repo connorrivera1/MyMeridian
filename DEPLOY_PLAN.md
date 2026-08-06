@@ -87,12 +87,16 @@ correctly today. Revisit post-submission (§9).
 
 ## 4. Deploy configuration
 
-⚠️ **Neither file below has been built or run.** There is no Docker and no
-flyctl on this machine (verified, §1). They are written from the app's actual
-build output, dependency versions and route table, but the first `fly deploy`
-should be treated as a debugging pass, not a formality. They are kept here
-rather than committed as repo files precisely so that nothing looks more proven
-than it is.
+✅ **Superseded 2026-08-06 — both files are now built, booted and committed.**
+Docker and flyctl were installed on this machine and the Dockerfile below was
+built and run; see §11 for exactly what was verified and the three corrections
+to §5 that came out of it. The files now live in the repo root rather than only
+here. The paragraph that used to be here said the first `fly deploy` should be
+treated as a debugging pass — that is no longer the expectation, though §11
+lists the two things that still cannot be checked without a Fly account.
+
+The text below is retained verbatim as the source the committed files were
+written from.
 
 ### `Dockerfile`
 
@@ -483,9 +487,10 @@ database — the same numbers, verified, after this session's changes to it.
 
 What remains is almost entirely infrastructure and business decisions:
 
-1. **Nobody has picked a host or run a deploy.** §4 and §5 make that a
-   sequence to execute rather than a decision to make, but neither file in §4
-   has been built, because this machine has no Docker.
+1. **Nobody has run a deploy.** The host is picked and, as of 2026-08-06, the
+   §4 files are built and booted rather than merely written (§11). What is left
+   is a Fly account and the six commands in §5 — a sequence to execute, and now
+   one that has been rehearsed everywhere it can be without an account.
 2. **Nothing has ever touched real Shopify credentials.** Phase 2 is the first
    trial by fire for the session-storage fix, the backfill and billing, all of
    which have only ever been verified against mocks or a local unauthenticated
@@ -493,3 +498,74 @@ What remains is almost entirely infrastructure and business decisions:
 3. **Three things genuinely need Connor** and cannot be produced here: the
    support email and legal entity, the emergency contact phone number, and the
    setup screencast — which needs a real install that does not exist yet.
+
+---
+
+## 11. Build verification, 2026-08-06
+
+§1 and §4 both rested on "this machine has no Docker and no flyctl". That is no
+longer true, so the claim §4 could not make has now been checked.
+
+**Tooling installed:** flyctl 0.4.79 (`~/.fly/bin`, added to `~/.zshrc`), and
+Colima 0.10.3 + Docker CLI 29.7.1 as the container runtime — Docker Desktop was
+never installed and Colima needs no license and no GUI. Docker daemon 29.5.2,
+4 CPU / 6 GB / 40 GB, `vz` VM type.
+
+### What was verified against the actual image
+
+| Check | Result |
+|---|---|
+| `docker build .` | **Succeeds**, first attempt, no edits to §4's Dockerfile. 790 MB image. |
+| Prisma client survives `npm prune --omit=dev` | **Yes.** `require('@prisma/client')` loads and reports 6.19.3, and `libquery_engine-linux-arm64-openssl-3.0.x.so.node` is present in the runtime stage. This was the step most likely to silently break, and it does not. |
+| `openssl` / `ca-certificates` in base | **Load-bearing and correct.** The computed binary target is `openssl-3.0.x`, which is what bookworm-slim provides once those packages are installed. |
+| Server boots | **Yes.** `react-router-serve` comes up and is serving in about two seconds, so fly.toml's 20s `grace_period` is comfortable. |
+| `GET /privacy` | **200.** The health check path in fly.toml is right. |
+| `GET /support` | **200.** |
+| `release_command` — `npx prisma migrate deploy` | **Runs from inside the image** against a real Postgres, finds **6 migrations**, exits clean. The prisma CLI reinstalled after the prune resolves without a network fetch. |
+| `/privacy` and `/support` contact block | Both render the **"not configured on this deployment"** notice when `MERIDIAN_SUPPORT_EMAIL` / `MERIDIAN_LEGAL_ENTITY` are unset — confirming §6e is a real reviewer-visible gate, not a theoretical one. |
+| `fly.toml` | Parses, and every key lands where Fly's schema expects it. `fly config validate` itself needs an account and was not run. |
+| `npx vitest run` | **290 tests in 24 files, all passing.** §1 and §8 say 212 in 20; more landed after this plan was written. |
+
+### The one fix the build required
+
+**`.dockerignore` did not exist, and the Dockerfile needs one.** §4 runs
+`npm ci --include=dev` and *then* `COPY . .`. With no ignore file, the host's
+`node_modules` is copied straight over the freshly installed Linux tree — every
+native binary in it, Prisma's query engine included, is darwin-arm64. `COPY . .`
+also swept in `.env`, baking the local Postgres URL and Shopify keys into the
+image layers. Both are fixed by the committed `.dockerignore`; nothing in §4's
+two files was changed.
+
+### Corrections to §5
+
+1. **§5 has no `fly auth login`.** Step 2 opens with `fly launch`, which fails
+   with `no access token available` on a fresh flyctl. Log in first.
+2. **`fly launch` will stop and ask about the existing `fly.toml`.** It now
+   exists in the repo root, so the command prompts to reuse it. Answer yes, or
+   pass `--copy-config` to skip the question. Do **not** let it write its own
+   Dockerfile — it will not, because one is already present, which is the
+   outcome §5's "decline" note was after.
+3. **`fly postgres` is now the *unmanaged* option and says so.** flyctl 0.4.79
+   prints a banner: unmanaged Postgres "is not supported by Fly.io Support and
+   users are responsible for operations, management, and disaster recovery",
+   pointing at `fly mpg` (Managed Postgres) instead. §5's commands still exist
+   and still work. But this is a profitability tool holding a store's entire
+   order history, and choosing who owns disaster recovery for it is a decision
+   worth making deliberately rather than by following a command written before
+   the banner appeared. `fly mpg create` / `fly mpg attach` are the managed
+   equivalents.
+
+### Two things that still cannot be checked here
+
+- **Architecture.** This is an Apple Silicon Mac, so the local image is arm64;
+  Fly machines are x86_64. This does not matter for the normal path — plain
+  `fly deploy` builds on Fly's own remote builder, which is amd64, from this
+  same Dockerfile. It matters if anyone reaches for `fly deploy --local-only`,
+  which would push an arm64 image to an amd64 machine. Don't.
+- **The app name.** `meridian-profit` is assumed free on Fly; confirming that
+  needs an account. If it is taken, the new name has to change in four places
+  at once: `app` in `fly.toml`, `SHOPIFY_APP_URL` in §5 step 3, and
+  `application_url` plus `redirect_urls` in `shopify.app.toml`.
+
+Nothing in this session touched a Fly account, a Shopify secret, or the Partner
+Dashboard. §5 steps 2 through 6 are unchanged and remain Connor's to run.

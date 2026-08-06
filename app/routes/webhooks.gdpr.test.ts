@@ -66,6 +66,8 @@ vi.mock("~/db.server", () => ({
   },
 }));
 
+const { webhooksSettled } = await import("~/lib/webhooks.server");
+
 const dataRequest = await import("./webhooks.gdpr.data-request");
 const customersRedact = await import("./webhooks.gdpr.customers-redact");
 const shopRedact = await import("./webhooks.gdpr.shop-redact");
@@ -102,7 +104,13 @@ async function invoke(
   try {
     // Webhook actions only read `request`; the rest of the framework args are
     // irrelevant to them.
-    return await route.action({ request } as ActionFunctionArgs);
+    const response = await route.action({ request } as ActionFunctionArgs);
+    // 200 goes back the moment the delivery is verified and claimed; the
+    // export assembly and the deletes happen after it, because Shopify allows
+    // five seconds for the whole request and this endpoint reads a shopper's
+    // entire order history. Wait for that work before asserting on it.
+    await webhooksSettled();
+    return response;
   } catch (thrown) {
     // authenticate.webhook throws a Response on verification failure; a route
     // framework would surface it as the HTTP response, so tests do the same.

@@ -78,12 +78,51 @@ export async function receiveWebhook(request: Request): Promise<WebhookContext> 
 }
 
 /**
+ * Handler work that has been started but has not finished, and that nothing is
+ * waiting on — the response for it has already gone back to Shopify.
+ *
+ * Tracked rather than simply dropped so that `webhooksSettled` exists: a bare
+ * floating promise is untestable and unshutdownable, and both matter.
+ */
+const inFlight = new Set<Promise<void>>();
+
+/**
+ * Wait for every deferred handler to finish.
+ *
+ * For tests, which need the side effect the response no longer waits for, and
+ * for a graceful shutdown, which should not drop a half-written sync on the
+ * floor. Loops because a handler may schedule more work as it runs.
+ */
+export async function webhooksSettled(): Promise<void> {
+  while (inFlight.size > 0) {
+    await Promise.allSettled([...inFlight]);
+  }
+}
+
+/**
  * Wrap a handler with verification, replay suppression and error capture.
  *
- * Always resolves 200 for a verified webhook, even when the handler throws:
- * returning 500 makes Shopify retry with the same payload, and after enough
- * failures it disables the subscription entirely. The failure is recorded
- * instead so it can be replayed deliberately.
+ * Shopify allows five seconds for the entire request, retries anything slower
+ * eight times over four hours, and after eight consecutive failures deletes the
+ * subscription outright — which loses every future delivery, not one. So the
+ * response is sent as soon as the delivery is verified and claimed, and the
+ * handler runs after it. `webhooks.gdpr.data-request.tsx` assembles a shopper's
+ * whole order history with every line item; on a large store with a long-lived
+ * customer that is not reliably a sub-five-second job, and it was inside the
+ * response window.
+ *
+ * What still happens before the response, and must:
+ *  - HMAC verification, so an unverified request is 401 and writes nothing;
+ *  - the `claimWebhook` insert, so the reply and the idempotency record are
+ *    decided together. Claiming after responding would let a retry that arrives
+ *    while the first delivery is still working claim it a second time and
+ *    double-book the same order.
+ *
+ * The handler's own errors are still swallowed into a 200 for the same reason
+ * as before — a 500 buys a retry of a payload that will fail again — and are
+ * recorded on the event row instead. That now happens after the response has
+ * gone, which changes nothing about it: the row is the audit trail, not the
+ * reply.
  */
 export async function handleWebhook(
   request: Request,
@@ -91,10 +130,36 @@ export async function handleWebhook(
 ): Promise<Response> {
   const context = await receiveWebhook(request);
 
-  if (context.isReplay) {
-    return new Response(null, { status: 200 });
+  if (!context.isReplay) {
+    deferAfterResponse(context, handler);
   }
 
+  return new Response(null, { status: 200 });
+}
+
+/**
+ * Start the handler now and let the response overtake it.
+ *
+ * Called synchronously, so the handler runs up to its first await before the
+ * caller returns: the work is deferred past the response, not past the event
+ * loop. Nothing awaits the promise on the request path, so it must never
+ * reject — an unhandled rejection here takes the process down and loses every
+ * delivery queued behind it.
+ */
+function deferAfterResponse(
+  context: WebhookContext,
+  handler: (context: WebhookContext) => Promise<void>,
+): void {
+  const work: Promise<void> = runHandler(context, handler);
+
+  inFlight.add(work);
+  void work.finally(() => inFlight.delete(work));
+}
+
+async function runHandler(
+  context: WebhookContext,
+  handler: (context: WebhookContext) => Promise<void>,
+): Promise<void> {
   try {
     await handler(context);
     await markWebhookProcessed(context.webhookId);
@@ -103,6 +168,4 @@ export async function handleWebhook(
     console.error(`[webhook:${context.topic}] ${context.shopDomain}`, error);
     await markWebhookProcessed(context.webhookId, message);
   }
-
-  return new Response(null, { status: 200 });
 }

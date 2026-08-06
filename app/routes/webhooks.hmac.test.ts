@@ -85,6 +85,8 @@ vi.mock("~/data/analytics.server", () => ({
   loadStrategicProductIds: vi.fn(),
 }));
 
+const { webhooksSettled } = await import("~/lib/webhooks.server");
+
 const orders = await import("./webhooks.orders");
 const products = await import("./webhooks.products");
 const fulfillments = await import("./webhooks.fulfillments");
@@ -195,7 +197,14 @@ function webhookRequest(
 
 async function invoke(route: WebhookRoute, request: Request): Promise<Response> {
   try {
-    return await route.action({ request } as ActionFunctionArgs);
+    const response = await route.action({ request } as ActionFunctionArgs);
+    // The route answers Shopify as soon as the delivery is verified and
+    // claimed, and does the work afterwards — five seconds is the whole
+    // request budget. So the response arriving proves nothing about the side
+    // effects yet, and every assertion below would race it. Settling here
+    // keeps the tests asserting on the same thing they always did.
+    await webhooksSettled();
+    return response;
   } catch (thrown) {
     // Verification failure throws a Response; the framework turns that into
     // the HTTP response, so the test does the same.
@@ -303,6 +312,38 @@ describe("verified delivery handling", () => {
 
     expect(response.status).toBe(200);
     expect(syncOrderFromShopify).not.toHaveBeenCalled();
+  });
+
+  // The reason the handler moved off the response path at all. Shopify allows
+  // five seconds for the entire request and deletes the subscription after
+  // eight consecutive failures, so a slow handler used to be able to cost the
+  // app every future delivery of that topic. Calls `action` directly rather
+  // than through `invoke`, which settles the deferred work on purpose.
+  it("answers Shopify before the handler has finished", async () => {
+    let release = () => {};
+    syncOrderFromShopify.mockImplementationOnce(
+      () => new Promise<undefined>((resolve) => (release = () => resolve(undefined))),
+    );
+
+    const response = await ordersEndpoint.route.action({
+      request: webhookRequest(
+        ordersEndpoint.path,
+        ordersEndpoint.topic,
+        ordersEndpoint.payload,
+      ),
+    } as ActionFunctionArgs);
+
+    expect(response.status).toBe(200);
+    // Started — the work is deferred past the response, not past the event
+    // loop, so it is already running when Shopify gets its answer.
+    expect(syncOrderFromShopify).toHaveBeenCalledTimes(1);
+    // ...but demonstrably not finished: the event row is only stamped when the
+    // handler returns, and it has not returned.
+    expect(webhookEventUpdate).not.toHaveBeenCalled();
+
+    release();
+    await webhooksSettled();
+    expect(webhookEventUpdate).toHaveBeenCalledTimes(1);
   });
 
   it("still answers 200 when the handler throws", async () => {

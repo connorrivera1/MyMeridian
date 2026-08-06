@@ -192,7 +192,29 @@ staging it twice.
 ### 3. Still missing from the listing, unrelated to copy
 
 - **Feature media** — one 1600×900 image or a 2–3 minute video.
-- **Demo store URL** for the reviewer to click through.
+- **Demo store URL** for the reviewer to click through. Re-seed before handing
+  this out: the store the URL points at is the same one the screenshots came
+  from, and until `npm run db:reset` runs it still holds the invented `AdSpend`
+  rows described below.
+- **Three screenshots to re-capture** — `acquisition`, `overview` and `orders`
+  are held in `listing/screenshots-held/`. The shipped set is at three, which is
+  Shopify's floor.
+
+### 4. The ad-spend claim was not closed where it mattered — 2026-08-06
+
+*Resolved* item 1 below fixed the plan tiers and added the Acquisition banner,
+and then this file and `SUBMISSION.md` both recorded the accuracy problem as
+closed. The listing media was never checked. Three of the six screenshots led
+with blended CAC, paid spend, marketing efficiency, per-channel ROAS and a
+per-order ADS column — every figure of which is a dash or a zero on a real store.
+
+The cause was the demo seed, which fabricated `AdSpend` and was the only writer
+of that table anywhere in the repo. The seed no longer does. Details, and the
+re-capture steps, are in `listing/screenshots-held/README.md`.
+
+The drafted copy above was already silent on ad performance and needed no change.
+The lesson is that "merchant-visible" includes everything checked into `listing/`,
+not just the routes.
 
 ---
 

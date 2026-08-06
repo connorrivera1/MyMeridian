@@ -455,7 +455,23 @@ export async function syncProductFromShopify(shopId: string, payload: Payload) {
 }
 
 /** Shopify fulfilment states that mean nothing shipped, or that it came back. */
-const INACTIVE_FULFILLMENT_STATUSES = new Set(["cancelled", "canceled", "error", "failure"]);
+export const INACTIVE_FULFILLMENT_STATUSES = new Set([
+  "cancelled",
+  "canceled",
+  "error",
+  "failure",
+]);
+
+/**
+ * Whether a fulfilment in this state actually put goods on a van.
+ *
+ * The backfill and the webhook both write `Fulfillment.shippedAt` and used to
+ * disagree about it: the webhook cleared it for a cancelled shipment, the
+ * import stamped it unconditionally. One column, two writers, two meanings.
+ */
+export function fulfillmentDidShip(status: string | null | undefined): boolean {
+  return !INACTIVE_FULFILLMENT_STATUSES.has(String(status ?? "success").toLowerCase());
+}
 
 /**
  * Apply a `fulfillments/create` or `fulfillments/update` delivery.

@@ -2,7 +2,11 @@ import { Channel, CostSource, SyncStatus } from "@prisma/client";
 
 import prisma from "~/db.server";
 import { invalidateAnalyticsCache } from "~/data/analytics.server";
-import { deriveChannel, reconcileFirstOrdersForShop } from "~/lib/sync.server";
+import {
+  deriveChannel,
+  fulfillmentDidShip,
+  reconcileFirstOrdersForShop,
+} from "~/lib/sync.server";
 import { generatePricingRecommendations } from "~/lib/pricing.server";
 import { recomputeShopProfitability } from "~/lib/recompute.server";
 import { capabilitiesForShop, type Capabilities } from "~/lib/scopes";
@@ -43,6 +47,17 @@ const PRODUCT_PAGE_SIZE = 50;
  */
 const VARIANTS_PER_PRODUCT = 100;
 const LINE_ITEMS_PER_ORDER = 50;
+
+/**
+ * Fulfilments asked for on the order page, and the ceiling for the follow-up.
+ *
+ * Almost every order has one shipment, so the page asks for few and pays a
+ * scalar `fulfillmentsCount` to know when it was wrong. 250 is the Admin API's
+ * standard truncation ceiling and is above any real order: a fulfilment covers
+ * at least one line item, and an order cannot hold more line items than that.
+ */
+const FULFILLMENTS_PER_ORDER = 10;
+const FULFILLMENTS_MAX_PER_ORDER = 250;
 
 /**
  * Safety valve so a dev run against a huge store cannot go on forever.
@@ -330,13 +345,40 @@ const REFUND_LINE_ITEMS_QUERY = `#graphql
   }
 `;
 
-/** Needs read_fulfillments. */
+const FULFILLMENT_NODE_FIELDS = `
+  id
+  createdAt
+  status
+  totalQuantity
+  trackingInfo(first: 1) { company }
+`;
+
+/**
+ * Needs read_fulfillments.
+ *
+ * `Order.fulfillments` is a plain list, not a connection — its own
+ * documentation calls `first` a truncation ("Truncate the array result to this
+ * size") and there is no `pageInfo` to follow. So the overflow cannot be paged
+ * the way line items and variants are; it has to be re-asked for. That is what
+ * `fulfillmentsCount` is here for: a scalar that says how many there really
+ * are, so a truncated order can be spotted and refetched rather than silently
+ * losing every shipment past the tenth.
+ */
 const FULFILLMENT_FIELDS = `
-  fulfillments(first: 10) {
-    id
-    createdAt
-    status
-    trackingInfo(first: 1) { company }
+  fulfillmentsCount { count precision }
+  fulfillments(first: ${FULFILLMENTS_PER_ORDER}) {
+    ${FULFILLMENT_NODE_FIELDS}
+  }
+`;
+
+/** One order's fulfilments, re-asked for without the page query's truncation. */
+const ORDER_FULFILLMENTS_QUERY = `#graphql
+  query MeridianOrderFulfillments($id: ID!, $pageSize: Int!) {
+    order(id: $id) {
+      fulfillments(first: $pageSize) {
+        ${FULFILLMENT_NODE_FIELDS}
+      }
+    }
   }
 `;
 
@@ -787,6 +829,15 @@ interface RefundLineItemNode {
   lineItem: { id: string } | null;
 }
 
+export interface FulfillmentNode {
+  id: string;
+  createdAt: string;
+  status: string | null;
+  /** "Sum of all line item quantities for the fulfillment." */
+  totalQuantity: number | null;
+  trackingInfo: { company: string | null }[];
+}
+
 interface OrderNode {
   id: string;
   name: string;
@@ -815,12 +866,9 @@ interface OrderNode {
     };
   }[];
   /** Absent entirely when fulfilment access was not granted. */
-  fulfillments?: {
-    id: string;
-    createdAt: string;
-    status: string | null;
-    trackingInfo: { company: string | null }[];
-  }[];
+  fulfillments?: FulfillmentNode[];
+  /** How many the order really has, so a truncated list can be spotted. */
+  fulfillmentsCount?: { count: number; precision: string } | null;
   customerJourneySummary?: {
     lastVisit: {
       landingPage: string | null;
@@ -861,6 +909,19 @@ export async function hydrateOrderOverflow(
     ];
   }
 
+  if (fulfillmentsWereTruncated(node)) {
+    const refetched = (
+      (await gql(admin, ORDER_FULFILLMENTS_QUERY, {
+        id: node.id,
+        pageSize: FULFILLMENTS_MAX_PER_ORDER,
+      })) as OrderFulfillmentsPage
+    ).order?.fulfillments;
+
+    // A deleted order answers `order: null`. Keep the shipments the page did
+    // give us rather than dropping the ones we already hold.
+    if (refetched) node.fulfillments = refetched;
+  }
+
   for (const refund of node.refunds ?? []) {
     if (!refund.refundLineItems.pageInfo?.hasNextPage) continue;
 
@@ -888,6 +949,25 @@ interface OrderLineItemsPage {
 
 interface RefundLineItemsPage {
   refund: { refundLineItems: Connection<RefundLineItemNode> } | null;
+}
+
+interface OrderFulfillmentsPage {
+  order: { fulfillments: FulfillmentNode[] } | null;
+}
+
+/**
+ * Whether the order page handed back fewer shipments than the order has.
+ *
+ * `fulfillmentsCount` is absent when fulfilment access was not granted, and
+ * then there is nothing to refetch. A precision that is not exact is treated
+ * as a possible undercount: the cost of being wrong is one extra request for
+ * that order, against losing shipments the merchant paid to make.
+ */
+function fulfillmentsWereTruncated(node: OrderNode): boolean {
+  const total = node.fulfillmentsCount;
+  if (!total || !node.fulfillments) return false;
+  if (total.precision && total.precision !== "EXACT") return true;
+  return total.count > node.fulfillments.length;
 }
 
 /** Walk one nested connection to exhaustion, starting after `cursor`. */
@@ -1184,31 +1264,59 @@ async function importOneOrder(
   await prisma.fulfillment.deleteMany({ where: { orderId: order.id } });
 
   if (node.fulfillments?.length) {
-    const itemCount = node.lineItems.nodes.reduce(
-      (sum, item) => sum + item.quantity,
-      0,
-    );
-
     await prisma.fulfillment.createMany({
-      data: node.fulfillments.map((fulfillment) => ({
-        shopId,
-        orderId: order.id,
-        // Carried so a later fulfillments/update matches this row by identity
-        // rather than by timestamp, which an update repeats verbatim.
-        shopifyId: fulfillment.id,
-        status: (fulfillment.status ?? "success").toLowerCase(),
-        createdAt: new Date(fulfillment.createdAt),
-        shippedAt: new Date(fulfillment.createdAt),
-        carrier: fulfillment.trackingInfo?.[0]?.company ?? null,
-        itemCount,
-        // Shopify does not know what the carrier charged. Left at zero so the
-        // engine falls back to the merchant's shipping cost rule rather than
-        // claiming the shipment was free.
-        shippingCost: "0.00",
-        pickPackCost: "0.00",
-      })),
+      data: fulfillmentRowsForOrder(shopId, order.id, node.fulfillments),
     });
   }
+}
+
+/**
+ * One database row per shipment, from the shipments the order actually has.
+ *
+ * Exported for test only — the two things this gets right are both things the
+ * import had wrong, and neither is visible through a mocked Prisma.
+ *
+ * `itemCount` is that shipment's own units, read from Shopify's
+ * `totalQuantity`. It used to be the *whole order's* units written onto every
+ * shipment of it, so a 12-unit order sent in three parcels recorded 36 units
+ * shipped. `rebuildCapacityDays` sums this column for the warehouse's daily
+ * throughput and takes the busiest day as the capacity ceiling, so a store
+ * that splits shipments had both inflated by however many parcels it splits
+ * into — and a ceiling set too high is one that no real day ever reaches,
+ * which is exactly the alert the Fulfilment screen exists to raise.
+ *
+ * `shippedAt` is null for a cancelled or failed fulfilment, matching what
+ * `syncFulfillmentFromShopify` has written since the webhook fix. The import
+ * stamped it unconditionally, so a shipment that was cancelled and re-made
+ * counted as two.
+ */
+export function fulfillmentRowsForOrder(
+  shopId: string,
+  orderId: string,
+  fulfillments: readonly FulfillmentNode[],
+) {
+  return fulfillments.map((fulfillment) => {
+    const status = String(fulfillment.status ?? "success").toLowerCase();
+    const createdAt = new Date(fulfillment.createdAt);
+
+    return {
+      shopId,
+      orderId,
+      // Carried so a later fulfillments/update matches this row by identity
+      // rather than by timestamp, which an update repeats verbatim.
+      shopifyId: fulfillment.id,
+      status,
+      createdAt,
+      shippedAt: fulfillmentDidShip(status) ? createdAt : null,
+      carrier: fulfillment.trackingInfo?.[0]?.company ?? null,
+      itemCount: fulfillment.totalQuantity ?? 0,
+      // Shopify does not know what the carrier charged. Left at zero so the
+      // engine falls back to the merchant's shipping cost rule rather than
+      // claiming the shipment was free.
+      shippingCost: "0.00",
+      pickPackCost: "0.00",
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1223,33 +1331,59 @@ async function importOneOrder(
  * The capacity ceiling is the best day the warehouse has actually had — a
  * merchant has no configured number to give us, and their own best day is a
  * more honest ceiling than a guess.
+ *
+ * Both halves of that subtraction have to count the same thing, and they did
+ * not. Received counted orders; shipped counted *fulfilment rows*, so a store
+ * that splits one order across three parcels retired three orders from a
+ * backlog it had only ever added one to. `Math.max(0, ...)` then pinned the
+ * backlog at zero for ever, and the screen whose entire purpose is to warn a
+ * merchant before the warehouse falls behind could not report that it had.
+ *
+ * So an order is counted once, on the day its last shipment left — an order
+ * still partly in the building has not been fulfilled — while units stay on
+ * the day they physically shipped, because that is the throughput question.
+ * Cancelled and failed fulfilments are excluded by `shippedAt IS NOT NULL`
+ * rather than by naming statuses here, which keeps one definition of "shipped"
+ * in `fulfillmentDidShip` instead of a second one written in SQL.
  */
 export async function rebuildCapacityDays(shopId: string) {
-  const [received, shipped] = await Promise.all([
+  const [received, shippedOrders, shippedUnits] = await Promise.all([
     prisma.$queryRaw<{ day: Date; count: bigint }[]>`
       SELECT date_trunc('day', "processedAt") AS day, COUNT(*) AS count
       FROM "Order" WHERE "shopId" = ${shopId}
       GROUP BY 1 ORDER BY 1
     `,
-    prisma.$queryRaw<{ day: Date; count: bigint; units: bigint }[]>`
-      SELECT date_trunc('day', "createdAt") AS day,
-             COUNT(*) AS count,
+    prisma.$queryRaw<{ day: Date; count: bigint }[]>`
+      SELECT date_trunc('day', last_shipped) AS day, COUNT(*) AS count
+      FROM (
+        SELECT "orderId", MAX("shippedAt") AS last_shipped
+        FROM "Fulfillment"
+        WHERE "shopId" = ${shopId} AND "shippedAt" IS NOT NULL
+        GROUP BY "orderId"
+      ) completed
+      GROUP BY 1 ORDER BY 1
+    `,
+    prisma.$queryRaw<{ day: Date; units: bigint }[]>`
+      SELECT date_trunc('day', "shippedAt") AS day,
              COALESCE(SUM("itemCount"), 0) AS units
-      FROM "Fulfillment" WHERE "shopId" = ${shopId}
+      FROM "Fulfillment"
+      WHERE "shopId" = ${shopId} AND "shippedAt" IS NOT NULL
       GROUP BY 1 ORDER BY 1
     `,
   ]);
 
   if (received.length === 0) return;
 
+  const dayKey = (day: Date) => day.toISOString().slice(0, 10);
+
   const receivedByDay = new Map(
-    received.map((row) => [row.day.toISOString().slice(0, 10), Number(row.count)]),
+    received.map((row) => [dayKey(row.day), Number(row.count)]),
   );
-  const shippedByDay = new Map(
-    shipped.map((row) => [
-      row.day.toISOString().slice(0, 10),
-      { orders: Number(row.count), units: Number(row.units) },
-    ]),
+  const ordersShippedByDay = new Map(
+    shippedOrders.map((row) => [dayKey(row.day), Number(row.count)]),
+  );
+  const unitsShippedByDay = new Map(
+    shippedUnits.map((row) => [dayKey(row.day), Number(row.units)]),
   );
 
   const start = received[0]!.day;
@@ -1264,7 +1398,10 @@ export async function rebuildCapacityDays(shopId: string) {
 
   const rows = days.map((day) => {
     const inbound = receivedByDay.get(day) ?? 0;
-    const out = shippedByDay.get(day) ?? { orders: 0, units: 0 };
+    const out = {
+      orders: ordersShippedByDay.get(day) ?? 0,
+      units: unitsShippedByDay.get(day) ?? 0,
+    };
 
     cumulativeReceived += inbound;
     cumulativeShipped += out.orders;

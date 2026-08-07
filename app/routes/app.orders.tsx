@@ -32,6 +32,47 @@ type SortKey = keyof typeof SORTS;
 
 const PAGE_SIZE = 60;
 
+/**
+ * Sort, filter and paginate one page's worth of orders for the table.
+ *
+ * Pulled out of the loader because it is pure — no request, no Prisma — so it
+ * can be tested directly against an in-memory array instead of a mocked
+ * `loadDashboard`. `page` is 1-based and clamped into range rather than
+ * trusted from the URL: an out-of-range `?page=` used to silently return an
+ * empty table instead of the last real page or an error.
+ */
+export function paginateOrders<
+  T extends { channel: string; netProfitCents: number; processedAt: Date },
+>(
+  orders: readonly T[],
+  options: { sort: SortKey; channelFilter: string | null; page: number },
+): { rows: T[]; total: number; page: number; pageCount: number } {
+  const { sort, channelFilter, page: requestedPage } = options;
+
+  const rows = channelFilter
+    ? orders.filter((order) => order.channel === channelFilter)
+    : orders;
+
+  const sorted = [...rows].sort((a, b) => {
+    if (sort === "best") return b.netProfitCents - a.netProfitCents;
+    if (sort === "worst") return a.netProfitCents - b.netProfitCents;
+    return b.processedAt.getTime() - a.processedAt.getTime();
+  });
+
+  const total = sorted.length;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // Clamp rather than trust: a stale bookmark or a hand-edited `?page=` after
+  // the filter narrows the set must land somewhere real, not on a blank table.
+  const page = Math.min(Math.max(1, Math.trunc(requestedPage) || 1), pageCount);
+
+  return {
+    rows: sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    total,
+    page,
+    pageCount,
+  };
+}
+
 export async function loader({ request }: LoaderFunctionArgs) {
   const { shop, analytics, previous, rangeLabel, preset } =
     await loadDashboard(request);
@@ -39,18 +80,14 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const sort = (url.searchParams.get("sort") ?? "recent") as SortKey;
   const channelFilter = url.searchParams.get("channel");
+  const requestedPage = Number(url.searchParams.get("page") ?? "1");
 
   const p = analytics.period;
 
-  let rows = p.orders;
-  if (channelFilter) {
-    rows = rows.filter((order) => order.channel === channelFilter);
-  }
-
-  const sorted = [...rows].sort((a, b) => {
-    if (sort === "best") return b.netProfitCents - a.netProfitCents;
-    if (sort === "worst") return a.netProfitCents - b.netProfitCents;
-    return b.processedAt.getTime() - a.processedAt.getTime();
+  const { rows: pageRows, total, page, pageCount } = paginateOrders(p.orders, {
+    sort,
+    channelFilter,
+    page: requestedPage,
   });
 
   const losers = p.orders.filter((order) => order.netProfitCents < 0);
@@ -97,8 +134,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
     spark: daily.map((day) =>
       day.orders ? Math.round(day.netProfitCents / day.orders) : 0,
     ),
-    total: sorted.length,
-    orders: sorted.slice(0, PAGE_SIZE).map((order) => ({
+    total,
+    page,
+    pageCount,
+    orders: pageRows.map((order) => ({
       orderId: order.orderId,
       orderNumber: order.orderNumber,
       processedAt: order.processedAt,
@@ -193,17 +232,18 @@ export default function Orders() {
 
       <Card
         title="Orders"
-        hint={`${data.total.toLocaleString()} orders in the last ${data.rangeLabel}. Showing ${Math.min(
-          data.orders.length,
-          data.total,
-        ).toLocaleString()}.`}
+        hint={`${data.total.toLocaleString()} orders in the last ${data.rangeLabel}. Showing ${
+          data.orders.length === 0 ? 0 : (data.page - 1) * PAGE_SIZE + 1
+        }–${((data.page - 1) * PAGE_SIZE + data.orders.length).toLocaleString()}${
+          data.pageCount > 1 ? ` (page ${data.page} of ${data.pageCount})` : ""
+        }.`}
         actions={
           <>
             <div className="segmented">
               {(Object.keys(SORTS) as SortKey[]).map((key) => (
                 <Link
                   key={key}
-                  to={linkWith({ sort: key })}
+                  to={linkWith({ sort: key, page: null })}
                   aria-current={key === data.sort ? "true" : undefined}
                   preventScrollReset
                 >
@@ -218,7 +258,7 @@ export default function Orders() {
         <div className="legend" style={{ paddingBottom: 10 }}>
           <span className="legend-item muted">Channel:</span>
           <Link
-            to={linkWith({ channel: null })}
+            to={linkWith({ channel: null, page: null })}
             style={{
               fontWeight: data.channelFilter ? 400 : 700,
               color: data.channelFilter ? undefined : "var(--ink-primary)",
@@ -229,7 +269,7 @@ export default function Orders() {
           {data.channels.map((channel) => (
             <Link
               key={channel}
-              to={linkWith({ channel })}
+              to={linkWith({ channel, page: null })}
               className="legend-item"
               style={{
                 fontWeight: data.channelFilter === channel ? 700 : 400,
@@ -341,6 +381,46 @@ export default function Orders() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+        {data.pageCount > 1 && (
+          <div
+            className="row"
+            style={{
+              justifyContent: "flex-end",
+              gap: 8,
+              padding: "14px 20px",
+            }}
+          >
+            {data.page > 1 ? (
+              <Link
+                className="btn sm"
+                to={linkWith({ page: String(data.page - 1) })}
+                preventScrollReset
+              >
+                Previous
+              </Link>
+            ) : (
+              <span className="btn sm" aria-disabled="true" style={{ opacity: 0.45 }}>
+                Previous
+              </span>
+            )}
+            <span className="tiny muted">
+              Page {data.page} of {data.pageCount}
+            </span>
+            {data.page < data.pageCount ? (
+              <Link
+                className="btn sm"
+                to={linkWith({ page: String(data.page + 1) })}
+                preventScrollReset
+              >
+                Next
+              </Link>
+            ) : (
+              <span className="btn sm" aria-disabled="true" style={{ opacity: 0.45 }}>
+                Next
+              </span>
+            )}
           </div>
         )}
       </Card>

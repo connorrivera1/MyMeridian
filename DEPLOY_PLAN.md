@@ -25,7 +25,7 @@ the ordered path from here to a submitted listing.
 |---|---|
 | `git status` | Clean but for `shopify.app.toml` (a comment block from an earlier session, no functional change) and this file. |
 | `npm run typecheck` | **Clean.** `react-router typegen && tsc --noEmit`. |
-| `npx vitest run` | **212 tests, 20 files, all passing.** |
+| `npx vitest run` | **360 tests, 30 files, all passing** (2026-08-07; was 212/20 when this row was last written — see `SUBMISSION.md` for the intervening work). |
 | `npm run build` | **Clean.** `build/client` and `build/server` both produced. |
 | `npx tsx scripts/verify-data.ts` | **Clean, and byte-identical to before this session's engine changes.** P&L, product profitability, channel CAC/LTV, capacity and pricing all compute against the seeded demo shop on live Postgres. |
 | `npx shopify app config --help` | Subcommands are `link`, `pull`, `use`, `validate`. **There is no `config push`.** See §8. |
@@ -298,15 +298,42 @@ live shopify.dev docs on 6 August 2026; quotes and URLs are in `SUBMISSION.md`
 not be read from a merchant session at all, which is wrong. The three plans are
 Starter $49, Growth $149, Scale $399, all 30-day interval, USD, 14-day trial.
 
-**b. Protected Customer Data request — `read_customers`.**
+**b. Protected Customer Data request, Level 2 — gates `read_orders`, not just
+`read_customers`. This is a hard gate, and it is the single longest-lead item
+on this whole page.**
 Partner Dashboard → the app → API access → Protected customer data. A form with
-a written justification and a data-handling questionnaire. Needed for CAC,
-lifetime value, payback and the loss-leader/bleeding distinction. The app
-degrades honestly without it — the Acquisition screen explains its own absence
-rather than showing zeroes — so this is not a hard gate on first submission, but
-**start it early**: it runs on Shopify's own review clock, separate from app
-review. Note the scope is deliberately absent from `shopify.app.toml` today;
-adding it before the request is approved is what breaks OAuth, not what fixes it.
+a written justification and a data-handling questionnaire.
+
+An earlier version of this paragraph said the request only mattered for
+`read_customers` — "if CAC/LTV/payback are to work" — and that the app
+"degrades honestly without it". Both halves were wrong, corrected in
+`SUBMISSION.md` (§"What actually blocks submission") after re-reading the live
+doc on 6 August 2026:
+
+> "Orders … Orders, draft orders, abandoned checkouts, refunds, transactions,
+> and other data that relate to a single customer."
+
+Orders are themselves protected customer data, so the request gates
+`read_orders` — the scope the entire product is built on, already requested in
+`shopify.app.toml` today — not just the customer extras. Unapproved access is
+not a clean absence either:
+
+> "GraphQL requests to unapproved types will return an HTTP `200 Ok` response
+> with an error message in the `errors` hash."
+
+So without approval the order query itself comes back redacted and the app
+computes nothing. **Start this before anything else in this section** — it
+runs on Shopify's own review clock, separate from app review, and nothing else
+here is gated by Shopify's clock the way this is.
+
+Request **Level 2**, not Level 1: `customer { id email }` in the order query
+(`app/lib/backfill.server.ts:387`) and `Customer.email` in the schema put
+Meridian at Level 2 — "Customer data **including** name, address, phone, or
+email fields" — which carries extra attestations (encrypted backups, test and
+production data kept separate, a data loss prevention strategy, staff access
+limits and an access log, strong staff passwords, an incident response
+policy). Requesting Level 1 and discovering the gap later costs another round
+of Shopify's clock.
 
 **c. `read_all_orders` access request.**
 Same screen, separate request, same reasoning. Without it Shopify caps order
@@ -395,6 +422,9 @@ of that is now done — see §9.
 ## 9. Worklist
 
 ### Must happen before submission
+- **Protected Customer Data request, Level 2** (§6b). The longest-lead item on
+  this page and a hard gate — start it first, everything else can proceed in
+  parallel while it's on Shopify's clock.
 - **Blocker #1 — a real `application_url`** (§2–§5). Cannot pass review without it.
 - **Partner Dashboard items** (§6a, §6d) and the listing gaps in §7.
 - **Support email / legal entity actually set** (§6e), or a reviewer sees the

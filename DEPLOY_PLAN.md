@@ -454,7 +454,15 @@ of that is now done — see §9.
   not at review.
 - **Orders table pages a materialised array.** `PAGE_SIZE = 60` slices in
   memory, so the database work is identical on page 1 and page 40. Same root
-  cause as above.
+  cause as above. **Partially addressed 2026-08-07:** page 2+ was previously
+  unreachable at all — there was no `page` param, so the table silently
+  dropped every order past the 60th in the current sort. That's fixed
+  (`paginateOrders` in `app/routes/app.orders.tsx`, with Previous/Next
+  controls and out-of-range clamping); a store can now actually see every
+  order in its window. What's still open is the underlying cost: the full
+  period is still fetched from Postgres and sorted in memory on every page
+  request, same as `loadEngineOrders` above — reaching page 40 now works, it
+  just isn't cheap yet. The real fix is the same SQL-side rollup work.
 - **In-process backfill and recompute.** Designed around in §3 rather than
   fixed. Correct to defer — fixing it means a real job queue, which is an
   architecture change with its own risk. Do it if the host ever changes.

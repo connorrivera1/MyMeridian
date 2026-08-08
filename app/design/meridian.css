@@ -108,6 +108,17 @@
   --series-7: #e6d7b2;
   --series-8: #97a0c4;
 
+  /* legacy hue names, re-aimed at the scene. Routes address tiles by these;
+     the old neon meanings map onto sky hues (mint was profit → gold). */
+  --viz-mint: var(--accent);
+  --viz-teal: #93c6d4;
+  --viz-blue: #9db1e8;
+  --viz-violet: #bda6e8;
+  --viz-pink: #e98fa7;
+  --viz-amber: #eec983;
+  --viz-orange: #f2a582;
+  --viz-rose: #ee8570;
+
   --radius: 22px;
   --radius-sm: 13px;
   --shadow:
@@ -185,6 +196,15 @@
   --series-6: #b8547a;
   --series-7: #8a7a4a;
   --series-8: #6a7396;
+
+  --viz-mint: var(--mark-result);
+  --viz-teal: #3d8ba0;
+  --viz-blue: #4d68b8;
+  --viz-violet: #7d5fb3;
+  --viz-pink: #b8547a;
+  --viz-amber: #b98a2e;
+  --viz-orange: #c56a3d;
+  --viz-rose: #bf4936;
 
   --shadow:
     0 1px 3px rgba(52, 48, 80, 0.07),
@@ -781,20 +801,20 @@ code {
 
 /*
  * The top strip is a floating HUD, not a bar: a single frosted cluster holding
- * the date range and theme control, pinned to the top right while the page's
- * own head sits as large type directly on the sky.
+ * the date range and theme control, sitting over the page head's right side.
+ * It scrolls with the page — pinned, it collided with whatever number happened
+ * to scroll under it.
  */
 .topbar {
-  position: sticky;
-  top: 14px;
+  position: relative;
   z-index: 30;
   display: flex;
   justify-content: flex-end;
   align-items: center;
   gap: 10px;
-  padding: 0 30px;
+  padding: 18px 30px 0;
   pointer-events: none;
-  margin-bottom: -46px;
+  margin-bottom: -58px;
 }
 
 .topbar > * { pointer-events: auto; }
@@ -939,12 +959,22 @@ button.chip:hover {
   background: rgba(255, 253, 248, 0.85);
 }
 
-.chip.solid {
+/* Doubly-scoped: the light-theme .chip override outranks a bare .chip.solid,
+   and the solid pill must survive both skies. */
+.chip.solid,
+:root[data-theme="light"] .chip.solid {
   background: var(--pill);
   border-color: transparent;
   color: var(--pill-ink);
   font-weight: 560;
   box-shadow: 0 10px 30px -12px rgba(8, 10, 26, 0.6);
+}
+
+a.chip.solid:hover,
+:root[data-theme="light"] a.chip.solid:hover {
+  background: var(--pill);
+  filter: brightness(1.05);
+  transform: translateY(-1px);
 }
 
 /* ------------------------------------------------------------------ pieces */
@@ -1242,8 +1272,10 @@ button.chip:hover {
 .btn:active { transform: translateY(0); }
 
 /* The solid pill: in dusk it is the one white object in the scene, exactly the
-   reference's "Start Exercise". In daylight it inverts to indigo. */
-.btn.primary {
+   reference's "Start Exercise". In daylight it inverts to indigo. Doubly
+   scoped so the light-theme .btn override cannot wash it out. */
+.btn.primary,
+:root[data-theme="light"] .btn.primary {
   background: var(--pill);
   border-color: transparent;
   color: var(--pill-ink);
@@ -1255,7 +1287,11 @@ button.chip:hover {
   color: var(--pill-ink);
   transform: translateY(-1px);
 }
-:root[data-theme="light"] .btn.primary:hover { background: #2e365e; }
+:root[data-theme="light"] .btn.primary:hover { background: #2e365e; color: var(--pill-ink); }
+
+/* Buttons inside stacked forms size to their label — a flex column would
+   otherwise stretch them into full-width slabs. */
+.stack > .btn { align-self: flex-start; margin-top: 6px; }
 
 .btn.ghost { background: transparent; border-color: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .btn.sm { padding: 5.5px 12px; font-size: 11.5px; }

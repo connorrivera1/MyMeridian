@@ -350,8 +350,9 @@ export function Tile({
       <div className="tile-meta">{meta}</div>
       {/* A tile with no trend collapses to a small foot rather than reserving
           the sparkline's height, which would leave it looking bottom-heavy
-          beside its neighbours. */}
-      {spark && spark.length > 1 ? (
+          beside its neighbours. An all-zero series counts as no trend — a lit
+          line hugging the floor reads as data when it is only a baseline. */}
+      {spark && spark.length > 1 && spark.some((v) => v !== 0) ? (
         <div className="tile-spark">
           <TileSpark values={spark} tone={tone} height={hero ? 74 : 46} />
         </div>

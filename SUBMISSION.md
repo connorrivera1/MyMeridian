@@ -110,6 +110,7 @@ done from this repo — each is written up with where it lives and what it needs
 | Listing copy — name ≤30 chars, intro ≤100, details ≤500, features ≤80 each | **Drafted** — `listing/copy.md`, paste-ready. Every field measured against its limit rather than estimated (the first details draft read as "about 500" and was 575). Every claim traced to the code that makes it true, and it claims nothing about ad performance — see the flag below. |
 | Feature media, 1600×900 or a 2–3 min video | **Missing.** |
 | Demo store URL for reviewers | **Missing.** |
+| Reviewer testing instructions (4.5.4 / 4.5.5) | **Drafted** — `listing/copy.md`, *Testing instructions for the reviewer*, paste-ready. This field was previously tracked nowhere: it carries no asset, so unlike the screencast and the feature media it never showed up as a missing file. Meridian has no login of its own, so 4.5.4 is answered by saying so explicitly rather than leaving it blank. Every claim in the block is cited to code. Three placeholders — demo store URL, storefront password, support email — resolve from items already in *Needs the owner* and are not new work. |
 | Screencast of the full setup process, English or English-subtitled | **Missing, and blocked on the owner.** An automatic bounce if absent. It has to show a real OAuth install through to a first dashboard view; the app has never been installed on any store, and it cannot be filmed against the demo bypass because that bypass is exactly what the recording exists to prove is not being used. Record it during the first real install rather than staging the flow twice. |
 | `extensions/` | Empty, and correctly so — Meridian ships no theme or checkout extension. |
 
@@ -173,6 +174,56 @@ on real data, which is a session of its own.
 ---
 
 ## Fixed this session
+
+### The one submission field with no asset behind it: reviewer testing instructions
+
+`AUDIT-LIVE-REQUIREMENTS-2026-08-06.md` row #51 is the only line in its table
+marked *"UNKNOWN — not tracked anywhere in the baseline"*, and it was still
+untracked: a grep for `testing instruction`, `reviewer instruction`, `4.5.4` and
+`4.5.5` across `SUBMISSION.md`, `DEPLOY_PLAN.md`, `listing/copy.md` and
+`README.md` returned nothing at all.
+
+It stayed invisible because it is the one submission requirement with **no
+artefact attached**. The screencast, the feature media and the demo store are
+all missing *files* or *URLs*, so they appear in the listing table as gaps. The
+testing instructions are a free-text box on the form, and a box nobody drafted
+looks the same as a box that does not exist.
+
+Requirement 4.5.4/4.5.5 asks for the credentials a reviewer needs and that they
+grant the full feature set. Meridian has no account of its own — no sign-up
+route exists, and the only unauthenticated documents are `/privacy` and
+`/support` — so the correct answer is to state that the Shopify session is the
+only credential, not to leave the field empty, which reads as an omission.
+
+Drafted paste-ready in `listing/copy.md` under *Testing instructions for the
+reviewer*, in the same form as the rest of that file: a block to paste, then a
+table tracing every claim in it to the code that makes it true. Each citation
+was opened and checked rather than carried over — install-time scopes
+(`shopify.app.toml:59`), the three plan prices and `TRIAL_DAYS`
+(`app/lib/plans.ts`), `billingIsTest` (`plan.server.ts:101`) and where it is
+passed to `billing.request` (`app.plan.tsx:55-59`), the automatic import from
+`afterAuth` (`shopify.server.ts:156-163`), the six sidebar labels
+(`app.layout.tsx:109-114`), the four Settings cost rules
+(`app.settings.tsx:234,260,278,302`), the "spend is never inferred" banner
+(`app.acquisition.tsx:217-219`) and the 60-day banner
+(`app.layout.tsx:178-188`).
+
+Two things fell out of writing it:
+
+- **A stale citation in `listing/copy.md`** — the no-write-scope row pointed at
+  `shopify.app.toml:47`, which is a comment line; the `scopes` key is at `:59`.
+  Corrected. The audit had the right line and the listing draft had not been
+  re-checked against it.
+- **The instructions must not point the reviewer at the demo bypass.** It is
+  barred at boot under `NODE_ENV=production` (known gap 5), and sending a
+  reviewer down it would defeat the screencast requirement, which exists
+  precisely to prove the real OAuth path works. Recorded in the draft so nobody
+  adds it later as a convenience.
+
+The three placeholders in the block — demo store URL, storefront password,
+support email — all resolve from items already in *Needs the owner*; drafting
+this added no new owner work, and it means the field is written before the
+Partner Dashboard form is opened rather than typed into the box from memory.
 
 ### Git state re-verified clean; `AUDIT-LIVE-REQUIREMENTS-2026-08-06.md`'s findings are already resolved
 

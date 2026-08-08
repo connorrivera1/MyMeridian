@@ -76,7 +76,7 @@ Every claim in it is load-bearing and checked:
 | loss leaders that genuinely pay for themselves | `STRATEGIC_LOSS_LEADER` needs contribution ≤ 0, ≥5 acquired customers, downstream profit covering the loss, **and** >1.25× the store's average post-first-order value — `app/engine/products.ts:220-242` |
 | prices fitted to your own price history | weighted log-log OLS on the variant's own price points, `app/engine/pricing.ts:99-175` |
 | which day your warehouse falls behind | 14-day forecast against demonstrated throughput, `app/engine/capacity.ts:152-182` |
-| requests no write access | `scopes = "read_orders read_products read_fulfillments read_inventory"`, `shopify.app.toml:47` |
+| requests no write access | `scopes = "read_orders read_products read_fulfillments read_inventory"`, `shopify.app.toml:59` |
 
 Deliberately **not** claimed: ad ROI, CAC, LTV, payback, ad-channel connections.
 The in-app plan tiers have now been brought into line with this — see *Resolved*,
@@ -111,6 +111,108 @@ request in *Needs the owner* is approved first — it is false without it:
 Cost to acquire a customer, and what that customer is worth after 90 days
 ```
 **73 characters.**
+
+---
+
+## Testing instructions for the reviewer — limit not published
+
+Requirements **4.5.4** and **4.5.5** say the submission must carry any account
+credentials the reviewer needs to exercise the app, and that those credentials
+must grant the **full** feature set. Nothing in this file, `SUBMISSION.md` or
+`DEPLOY_PLAN.md` drafted this field before now, which is how it stayed invisible:
+it is a form field with no asset attached to it, so it does not show up as a
+missing file the way the screencast and the feature media do.
+
+**Meridian has no login of its own.** There is no Meridian account to create, no
+third-party service to connect and no API key for the reviewer to enter — the
+Shopify session is the only credential. So 4.5.4 is satisfied by saying that
+explicitly rather than leaving the field blank, which reads to a reviewer as an
+omission rather than an answer.
+
+```
+Meridian has no separate login. There is no account to create and no third-party
+service to connect — the app authenticates entirely through your Shopify
+session, so installing on the demo store below gives you the full feature set
+immediately.
+
+Demo store: <DEMO STORE URL>
+Storefront password: <PASSWORD>
+
+1. Install from the listing. Meridian asks for four read-only scopes:
+   read_orders, read_products, read_fulfillments and read_inventory. It requests
+   no write scope and cannot change a price, an order or anything else.
+
+2. Choose a plan when prompted. Starter ($49/mo), Growth ($149/mo) and Scale
+   ($399/mo) each carry a 14-day free trial, and every charge raised on a
+   development store is a test charge, so nothing is billed. Until a plan is
+   active every other screen redirects to the plan page. You can move up or down
+   between all three at any time from the "Plan" item in the sidebar, in-app and
+   without contacting us.
+
+3. The historical import starts on its own as install finishes — orders,
+   products, cost per item and fulfilments. The dashboard fills in as it runs.
+
+4. Then walk the sidebar:
+   - Overview — net profit, revenue and margin over the selected date range.
+   - Profit per order — every order with COGS, shipping, payment fees and
+     overhead subtracted.
+   - Products — which products are profitable, which are bleeding, and which
+     loss leaders pay for themselves through what the customer buys later.
+   - Acquisition — revenue and profit by channel, attributed from each order's
+     UTM parameters and referring site.
+   - Pricing — recommendations fitted to each variant's own price history.
+   - Fulfilment — a 14-day backlog forecast against demonstrated throughput.
+   Settings holds the four cost rules the figures are built from: payment
+   processing, shipping, pick-and-pack, and fixed monthly overhead. Editing any
+   of them re-computes every screen above.
+
+Two areas are deliberately blank, and the app says why on screen rather than
+showing a zero:
+
+- Ad spend, CAC, ROAS and marketing efficiency on the Acquisition screen.
+  Meridian does not connect to Meta, Google or TikTok yet and never infers spend
+  from orders, so these stay blank on every store, demo included. The revenue
+  and profit by channel on that same screen are measured from the store's own
+  orders and are unaffected.
+- Order history older than 60 days, unless read_all_orders has been granted.
+  Shopify caps the read; the app shows a banner explaining the cap rather than
+  presenting a short history as a complete one.
+
+Support: <SUPPORT EMAIL>
+```
+
+**Three placeholders have to be real before this is pasted**, and each is
+already tracked in *Needs the owner* above rather than being new work:
+
+| Placeholder | Where it comes from |
+|---|---|
+| `<DEMO STORE URL>` | *Needs the owner*, item 3 — the same store the screenshots came from |
+| `<PASSWORD>` | the demo store's storefront password; **delete both the line and this row** if the store is not password-protected |
+| `<SUPPORT EMAIL>` | `MERIDIAN_SUPPORT_EMAIL`, *Needs the owner*, item 1 |
+
+Every claim in the block is traced to the code that makes it true, on the same
+terms as the listing copy above:
+
+| Claim | Where it is true in the code |
+|---|---|
+| no login of its own; Shopify session is the only credential | no sign-up route in `app/routes.ts`; the only unauthenticated documents are `/privacy` and `/support` |
+| four read-only scopes, no write scope | `shopify.app.toml:59` |
+| three plans at $49 / $149 / $399 | `app/lib/plans.ts:35-70` |
+| 14-day free trial on every plan | `TRIAL_DAYS = 14`, `app/lib/plans.ts` |
+| charges on a development store are test charges | `billingIsTest = process.env.NODE_ENV !== "production"`, `app/lib/plan.server.ts:101`, passed to `billing.request` at `app/routes/app.plan.tsx:55-59` |
+| every other screen redirects to the plan page until a plan is active | `app/routes.ts` — the `plan` route is the one child reachable without a subscription |
+| plan changes are in-app and both directions | sidebar `Plan` link, `app/routes/app.layout.tsx:246-249`; `billing.request` for any of the three, `app/routes/app.plan.tsx:55-59` (requirement 1.2.3) |
+| the import starts by itself at the end of install | `startBackfill` from `afterAuth`, `app/shopify.server.ts:156-163` |
+| the six sidebar screens and their labels | `NAV`, `app/routes/app.layout.tsx:109-114` |
+| four editable cost rules in Settings | `app/routes/app.settings.tsx:234,260,278,302` — payment processing, shipping, pick-and-pack, fixed monthly overhead |
+| channel attribution from UTM and referring site | `app/lib/sync.server.ts:76-100` |
+| ad spend is never inferred, and the screen says so | `app/routes/app.acquisition.tsx:217-219` |
+| the 60-day cap and its on-screen banner | `app/routes/app.layout.tsx:178-188` |
+
+One thing this field should **not** say: that the reviewer can use the demo
+bypass. It ships in the bundle but is barred at boot when `NODE_ENV=production`
+(known gap 5 in `SUBMISSION.md`), and pointing a reviewer at it would defeat the
+screencast requirement, which exists to prove the real OAuth path works.
 
 ---
 

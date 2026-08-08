@@ -18,7 +18,6 @@ import {
   IconChannels,
   IconFulfilment,
   IconOrders,
-  IconOverview,
   IconPricing,
   IconProducts,
   Legend,
@@ -38,6 +37,30 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   const p = analytics.period;
   const prior = previous.period;
+
+  // The greeting is computed in the shop's own timezone, on the server, so it
+  // is right for the merchant and identical on both sides of hydration.
+  const hourInShopTz = Number(
+    new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
+      hourCycle: "h23",
+      timeZone: shop.timezone,
+    }).format(new Date()),
+  );
+  const greeting =
+    hourInShopTz >= 5 && hourInShopTz < 12
+      ? "Good morning,"
+      : hourInShopTz >= 12 && hourInShopTz < 18
+        ? "Good afternoon,"
+        : hourInShopTz >= 18
+          ? "Good evening,"
+          : "Working late,";
+  const kickerDate = new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    timeZone: shop.timezone,
+  }).format(new Date());
 
   const daily = dailySeries(p.orders, analytics.range, shop.timezone);
   const series = bucketWeekly(daily);
@@ -76,6 +99,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
     preset,
     currency: shop.currency,
     capabilities,
+    greeting,
+    kickerDate,
+    shopName: shop.name,
     // Cost access can be granted and still unused if the merchant never filled
     // in "Cost per item", so the check is on the data, not just the scope.
     missingCogs: p.cogsCents === 0 && p.orderCount > 0,
@@ -176,6 +202,45 @@ export default function Overview() {
 
   return (
     <>
+      {/* The opening move, straight on the sky: the merchant is greeted by
+          name, and the number they came for stands under it in sunlight. */}
+      <section className="greet" aria-label="Net profit summary">
+        <p className="greet-kicker">
+          {data.kickerDate} · last {data.rangeLabel}
+        </p>
+        <h2 className="greet-title">
+          {data.greeting}
+          <span className="greet-shop">{data.shopName}</span>
+        </h2>
+        <div className="greet-figure-row">
+          <div className="greet-amount">
+            <AnimatedMoney
+              cents={kpi.netProfitCents}
+              currency={data.currency}
+              decimals={false}
+            />
+          </div>
+          <Delta value={kpi.netProfitChange} />
+          <span className="greet-caption">
+            net profit kept, vs previous {data.rangeLabel}
+          </span>
+        </div>
+        <div className="greet-meta">
+          <span className="chip">
+            {kpi.netMarginPct === null ? "—" : formatPercent(kpi.netMarginPct)} net margin
+          </span>
+          <span className="chip">
+            <AnimatedInt value={kpi.orderCount} /> orders
+          </span>
+          <span className="chip">
+            <Money cents={kpi.aovCents} currency={data.currency} /> average order
+          </span>
+          <a className="chip solid" href="#bridge">
+            Where the money went
+          </a>
+        </div>
+      </section>
+
       {data.missingCogs && (
         <Banner tone="warn">
           <strong style={{ color: "var(--ink-primary)" }}>
@@ -225,51 +290,27 @@ export default function Overview() {
         </Card>
       )}
 
-      {/* hero spans two columns so the number the merchant came for owns the row */}
-      <div className="grid cols-4">
-        <div style={{ gridColumn: "span 2" }}>
-          <Tile
-            hero
-            tone="var(--viz-mint)"
-            icon={<IconOverview />}
-            label={`Net profit · last ${data.rangeLabel}`}
-            value={<AnimatedMoney cents={kpi.netProfitCents} currency={data.currency} decimals={false} />}
-            spark={data.spark.profit}
-            meta={
-              <>
-                <Delta value={kpi.netProfitChange} />
-                <span>vs previous {data.rangeLabel}</span>
-                <span className="muted">·</span>
-                <span>
-                  {kpi.netMarginPct === null ? "—" : formatPercent(kpi.netMarginPct)} margin
-                </span>
-              </>
-            }
-          />
-        </div>
-
+      {/* Six instruments in glass, three to a row. The headline profit lives
+          in the greeting above, so no tile has to shout over the others. */}
+      <div className="grid cols-3">
         <Tile
-          tone="var(--viz-blue)"
+          tone="var(--mark-structure)"
           icon={<IconOrders />}
           label="Net revenue"
           value={<AnimatedMoney cents={kpi.netRevenueCents} currency={data.currency} compact decimals={false} />}
           spark={data.spark.revenue}
           meta={<Delta value={kpi.netRevenueChange} />}
         />
-
         <Tile
-          tone="var(--viz-teal)"
+          tone="var(--series-2)"
           icon={<IconPricing />}
           label="Profit per order"
           value={<AnimatedMoney cents={kpi.profitPerOrderCents} currency={data.currency} />}
           spark={data.spark.perOrder}
           meta={<Delta value={kpi.profitPerOrderChange} />}
         />
-      </div>
-
-      <div className="grid cols-4">
         <Tile
-          tone="var(--viz-violet)"
+          tone="var(--series-4)"
           icon={<IconProducts />}
           label="Contribution profit"
           value={<AnimatedMoney cents={kpi.contributionProfitCents} currency={data.currency} compact decimals={false} />}
@@ -277,7 +318,7 @@ export default function Overview() {
           meta={<Delta value={kpi.contributionChange} />}
         />
         <Tile
-          tone="var(--viz-pink)"
+          tone="var(--series-3)"
           icon={<IconChannels />}
           label="Ad spend"
           value={<AnimatedMoney cents={kpi.adCostCents} currency={data.currency} compact decimals={false} />}
@@ -285,7 +326,7 @@ export default function Overview() {
           meta={<Delta value={kpi.adCostChange} invert />}
         />
         <Tile
-          tone="var(--viz-amber)"
+          tone="var(--series-5)"
           icon={<IconOrders />}
           label="Orders"
           value={<AnimatedInt value={kpi.orderCount} />}
@@ -293,7 +334,7 @@ export default function Overview() {
           meta={<Delta value={kpi.orderChange} />}
         />
         <Tile
-          tone="var(--viz-orange)"
+          tone="var(--series-6)"
           icon={<IconFulfilment />}
           label="Average order value"
           value={<AnimatedMoney cents={kpi.aovCents} currency={data.currency} />}
@@ -303,6 +344,7 @@ export default function Overview() {
       </div>
 
       <Card
+        id="bridge"
         title="Where the money went"
         hint="Every cost between the revenue you booked and the profit you kept. Costs are shown in the order they hit the P&L."
       >

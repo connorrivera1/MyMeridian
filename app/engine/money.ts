@@ -140,12 +140,29 @@ export function formatMoney(
   const value = centsToDollars(cents);
 
   if (compact && Math.abs(value) >= 10_000) {
-    return new Intl.NumberFormat("en-US", {
+    // Hand-rolled rather than `notation: "compact"`: ICU builds disagree on
+    // trailing zeros ("$521.0K" in Node, "$521K" in Chrome), and the server
+    // and browser render this same string on either side of hydration. The
+    // thresholds sit at 999,950 so a value that rounds to 1000 of one unit
+    // rolls over to the next instead of printing "$1,000K".
+    let divisor = 1e3;
+    let suffix = "K";
+    if (Math.abs(value) >= 999_950_000) {
+      divisor = 1e9;
+      suffix = "B";
+    } else if (Math.abs(value) >= 999_950) {
+      divisor = 1e6;
+      suffix = "M";
+    }
+    // toFixed(1) then Number() trims a trailing ".0" deterministically.
+    const scaled = Number((value / divisor).toFixed(1));
+    const body = new Intl.NumberFormat("en-US", {
       style: "currency",
       currency,
-      notation: "compact",
+      minimumFractionDigits: 0,
       maximumFractionDigits: 1,
-    }).format(value);
+    }).format(scaled);
+    return `${body}${suffix}`;
   }
 
   return new Intl.NumberFormat("en-US", {

@@ -8,8 +8,8 @@ import {
 } from "react-router";
 import type { LoaderFunctionArgs } from "react-router";
 
-import "@fontsource-variable/inter";
 import styles from "./design/meridian.css?url";
+import satoshiUrl from "./fonts/satoshi/Satoshi-Variable.woff2?url";
 
 /**
  * App Bridge has to be resolved here rather than in the embedded layout.
@@ -30,6 +30,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
 }
 
 export const links = () => [
+  // The whole surface is set in one variable font; preloading it means the
+  // splash wordmark never flashes a fallback face.
+  {
+    rel: "preload",
+    href: satoshiUrl,
+    as: "font",
+    type: "font/woff2",
+    crossOrigin: "anonymous" as const,
+  },
   { rel: "stylesheet", href: styles },
   { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
   { rel: "preconnect", href: "https://cdn.shopify.com" },
@@ -40,15 +49,15 @@ export const meta = () => [
   { name: "viewport", content: "width=device-width, initial-scale=1" },
   // Media-scoped so the browser chrome follows the sky. The toggle also
   // rewrites these at runtime, since data-theme can override the OS setting.
-  { name: "theme-color", content: "#06080b", media: "(prefers-color-scheme: dark)" },
-  { name: "theme-color", content: "#f6f8fa", media: "(prefers-color-scheme: light)" },
+  { name: "theme-color", content: "#161c36", media: "(prefers-color-scheme: dark)" },
+  { name: "theme-color", content: "#f4efe5", media: "(prefers-color-scheme: light)" },
 ];
 
 /**
  * Applied before first paint so a merchant who chose light mode never sees a
  * dark flash on navigation. Small enough to inline; it only reads one key.
  */
-const THEME_BOOTSTRAP = `(function(){try{var t=localStorage.getItem("meridian-theme");if(t==="light"||t==="dark"){document.documentElement.dataset.theme=t;var m=document.querySelectorAll('meta[name="theme-color"]');for(var i=0;i<m.length;i++){m[i].setAttribute("content",t==="light"?"#f6f8fa":"#06080b");m[i].removeAttribute("media")}}}catch(e){}})();`;
+const THEME_BOOTSTRAP = `(function(){try{var t=localStorage.getItem("meridian-theme");if(t==="light"||t==="dark"){document.documentElement.dataset.theme=t;var m=document.querySelectorAll('meta[name="theme-color"]');for(var i=0;i<m.length;i++){m[i].setAttribute("content",t==="light"?"#f4efe5":"#161c36");m[i].removeAttribute("media")}}}catch(e){}})();`;
 
 /**
  * The api key for a document whose root loader never produced one.

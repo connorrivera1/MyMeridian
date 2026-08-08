@@ -1184,7 +1184,7 @@ export function ThemeToggle() {
 
       // Keep the browser/OS chrome on the same sky as the page.
       document.querySelectorAll('meta[name="theme-color"]').forEach((tag) => {
-        tag.setAttribute("content", next === "light" ? "#f6f8fa" : "#06080b");
+        tag.setAttribute("content", next === "light" ? "#f4efe5" : "#161c36");
         tag.removeAttribute("media");
       });
 
@@ -1193,7 +1193,7 @@ export function ThemeToggle() {
   }, []);
 
   return (
-    <button className="btn ghost sm" onClick={toggle} aria-label="Toggle colour theme">
+    <button className="btn sm" onClick={toggle} aria-label="Toggle colour theme">
       {theme === "dark" ? "☾" : "☀"}
     </button>
   );

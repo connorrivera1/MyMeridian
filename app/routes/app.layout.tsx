@@ -261,8 +261,9 @@ export default function AppLayout() {
       </aside>
 
       <div className="main">
+        {/* A floating HUD cluster rather than a bar — the page's own head sits
+            as large type directly on the sky below it. */}
         <header className="topbar">
-          <RouteTitle />
           <div className="topbar-actions">
             <div className="segmented" role="group" aria-label="Date range">
               {(Object.keys(RANGE_PRESETS) as RangePreset[]).map((key) => (
@@ -281,6 +282,7 @@ export default function AppLayout() {
         </header>
 
         <div className="content">
+          <RouteTitle />
           <SyncBanner sync={sync} isDemo={isDemo} />
           {/* keyed on the path so the entrance cascade replays per page */}
           <div key={location.pathname} className="page-enter">
@@ -379,10 +381,15 @@ const TITLES: Record<string, { title: string; subtitle: string }> = {
 
 function RouteTitle() {
   const { pathname } = useLocation();
+
+  // The overview opens with the time-of-day greeting instead of a page title —
+  // rendering both would say "Overview" over a line that already says it.
+  if (pathname === "/app") return null;
+
   const entry = TITLES[pathname] ?? TITLES["/app"]!;
 
   return (
-    <div>
+    <div className="page-head">
       <h1 className="page-title">{entry.title}</h1>
       <p className="page-subtitle">{entry.subtitle}</p>
     </div>

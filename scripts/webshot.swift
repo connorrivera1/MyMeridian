@@ -30,9 +30,13 @@ let theme = args.count > 7 ? args[7] : ""
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 
+let webConfig = WKWebViewConfiguration()
+// Fresh ephemeral store per run: the shared disk cache happily serves a stale
+// page across invocations of this tool, which defeats verify-edit loops.
+webConfig.websiteDataStore = WKWebsiteDataStore.nonPersistent()
 let webView = WKWebView(
     frame: NSRect(x: 0, y: 0, width: width, height: height),
-    configuration: WKWebViewConfiguration()
+    configuration: webConfig
 )
 
 // A borderless window parked far offscreen: WKWebView only paints when it is
@@ -55,7 +59,11 @@ let freezeScript = """
   // The splash rides its own React timers; frozen mid-sequence it would sit
   // over every capture, so it goes.
   document.querySelector(".splash")?.remove();
-  window.scrollTo(0, SCROLL_Y);
+  // Instant, not smooth: a smooth scroll animates across frames, so every
+  // scroll-derived state would be computed against a stale scrollY of 0.
+  window.scrollTo({ top: SCROLL_Y, left: 0, behavior: "instant" });
+  // Pages with scroll-driven scenes expose a deterministic settle hook.
+  if (window.__skySettle) window.__skySettle();
   const settle = () => {
     document.getAnimations({ subtree: true }).forEach((a) => {
       try {
@@ -98,6 +106,13 @@ final class Delegate: NSObject, WKNavigationDelegate {
 }
 
 let delegate = Delegate {
+    // Lazy images below the fold never load in an offscreen view, so a later
+    // scrollTo clamps against a page that hasn't reached its real height yet.
+    // Force everything eager the moment the document lands.
+    webView.evaluateJavaScript(
+        "document.querySelectorAll('img[loading=\\\"lazy\\\"]').forEach(function(i){i.loading='eager'})",
+        completionHandler: nil
+    )
     // Give loaders, fonts and chart draws time to arrive before freezing.
     DispatchQueue.main.asyncAfter(deadline: .now() + waitMs / 1000) {
         webView.evaluateJavaScript(freezeScript) { _, _ in
@@ -129,7 +144,7 @@ let delegate = Delegate {
 }
 
 webView.navigationDelegate = delegate
-webView.load(URLRequest(url: url))
+webView.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData))
 
 // Watchdog: a page that never finishes loading should fail loudly, not hang.
 DispatchQueue.main.asyncAfter(deadline: .now() + 45) {

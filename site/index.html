@@ -1,0 +1,1019 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Meridian — true profit for your Shopify store</title>
+<meta name="description" content="Shopify reports gross sales. Meridian reports what is left — true net profit per order and product, after COGS, shipping, fees, ad spend and overhead." />
+<meta property="og:title" content="Meridian — true profit for your Shopify store" />
+<meta property="og:description" content="Shopify reports gross sales. Meridian reports what is left." />
+<meta property="og:image" content="assets/overview-top2.jpg" />
+<meta name="theme-color" content="#141a33" />
+<link rel="icon" href="favicon.svg" type="image/svg+xml" />
+<style>
+/*
+ * Meridian — golden hour, the marketing cut.
+ *
+ * Same world as the product: a twilight sky whose sun crosses the meridian as
+ * the visitor scrolls. The page works three ways — WebGL sky when it can,
+ * the painted CSS scene when it can't, and everything legible with no JS at
+ * all. All chrome is frosted glass; the only opaque objects are the two pills.
+ */
+
+@font-face {
+  font-family: "Satoshi";
+  src: url("fonts/Satoshi-Variable.woff2") format("woff2-variations");
+  font-weight: 300 900;
+  font-display: swap;
+}
+
+:root {
+  --zenith: #141a33;
+  --upper: #232c52;
+  --mid: #3a4671;
+  --haze: #5d6493;
+  --veil: #8a7590;
+  --ember: #c08a6e;
+  --glow: #e7ae78;
+
+  --ink: #f4efe6;
+  --ink-2: rgba(244, 239, 230, 0.75);
+  --ink-3: rgba(244, 239, 230, 0.55);
+
+  --glass: rgba(21, 26, 51, 0.5);
+  --glass-strong: rgba(18, 23, 46, 0.72);
+  --edge: rgba(255, 255, 255, 0.14);
+  --border: rgba(244, 239, 230, 0.14);
+
+  --gold: #f0c273;
+  --gold-dim: rgba(240, 194, 115, 0.16);
+  --ember-neg: #ee8570;
+  --peri: #9db1e8;
+
+  --pill: #f6f1e7;
+  --pill-ink: #232a4d;
+
+  --font: "Satoshi", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+html, body { margin: 0; padding: 0; }
+
+body {
+  background: var(--zenith);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 15px;
+  font-weight: 440;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+/* The painted scene — always present, so the page is beautiful before (or
+   without) the shader, and screenshots never catch a void. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(120rem 44rem at 50% 118%, rgba(231, 174, 120, 0.5), rgba(192, 138, 110, 0.22) 38%, transparent 66%),
+    radial-gradient(70rem 30rem at 78% 108%, rgba(240, 194, 115, 0.32), transparent 60%),
+    linear-gradient(180deg, var(--zenith) 0%, var(--upper) 30%, var(--mid) 54%, var(--haze) 72%, var(--veil) 84%, var(--ember) 100%);
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+#sky {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+::selection { background: var(--gold-dim); color: var(--ink); }
+a { color: inherit; text-decoration: none; }
+img { max-width: 100%; display: block; }
+
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 28px; position: relative; }
+
+/* ------------------------------------------------------------------ header */
+
+.header {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 50;
+  transition: background 0.3s ease, border-color 0.3s ease, backdrop-filter 0.3s ease;
+  border-bottom: 1px solid transparent;
+}
+
+.header.scrolled {
+  background: rgba(13, 17, 36, 0.78);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border-bottom-color: var(--border);
+  box-shadow: 0 18px 50px -30px rgba(8, 10, 26, 0.8);
+}
+
+.header-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 16px 28px;
+  display: flex;
+  align-items: center;
+  gap: 26px;
+}
+
+.brand { display: inline-flex; align-items: center; gap: 11px; font-size: 17px; font-weight: 500; letter-spacing: 0.01em; }
+.brand svg { display: block; }
+
+.header-nav { margin-left: auto; display: flex; align-items: center; gap: 22px; font-size: 13.5px; font-weight: 480; }
+.header-nav a:not(.pill) { color: var(--ink-2); transition: color 0.16s ease; }
+.header-nav a:not(.pill):hover { color: var(--ink); }
+
+/* ------------------------------------------------------------------- pills */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 22px;
+  border-radius: 999px;
+  background: var(--pill);
+  color: var(--pill-ink);
+  font-size: 14px;
+  font-weight: 580;
+  letter-spacing: 0.004em;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 14px 38px -14px rgba(8, 10, 26, 0.7);
+  transition: transform 0.18s var(--ease), background 0.18s ease;
+  white-space: nowrap;
+}
+.pill:hover { background: #ffffff; transform: translateY(-1px); }
+.pill.sm { padding: 8px 16px; font-size: 13px; }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 18px;
+  border-radius: 999px;
+  background: rgba(244, 239, 230, 0.09);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 480;
+  white-space: nowrap;
+  transition: background 0.18s ease, transform 0.18s var(--ease);
+}
+a.chip:hover, button.chip:hover { background: rgba(244, 239, 230, 0.17); transform: translateY(-1px); }
+
+.kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.kicker::before {
+  content: "";
+  width: 22px; height: 1px;
+  background: linear-gradient(90deg, var(--gold), transparent);
+}
+
+/* -------------------------------------------------------------------- hero */
+
+.hero {
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  padding: 130px 0 90px;
+  position: relative;
+}
+
+.hero-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr); gap: 40px; align-items: center; }
+
+.hero h1 {
+  margin: 20px 0 0;
+  font-size: clamp(44px, 6.2vw, 82px);
+  font-weight: 300;
+  letter-spacing: -0.032em;
+  line-height: 1.03;
+  color: var(--ink-2);
+}
+.hero h1 strong { display: block; font-weight: 430; color: var(--ink); }
+
+.hero-sub {
+  margin: 26px 0 0;
+  max-width: 56ch;
+  font-size: 16px;
+  color: var(--ink-2);
+  line-height: 1.7;
+}
+
+.hero-ctas { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 34px; }
+
+.hero-chips { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 30px; }
+
+/* The floating greeting card — the reference's exercise card, speaking profit. */
+.float-card {
+  justify-self: end;
+  width: min(340px, 100%);
+  border-radius: 26px;
+  padding: 24px 26px;
+  background: var(--glass);
+  backdrop-filter: blur(28px) saturate(140%);
+  -webkit-backdrop-filter: blur(28px) saturate(140%);
+  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 var(--edge), 0 30px 80px -30px rgba(8, 10, 26, 0.8);
+  will-change: transform;
+}
+
+.float-kicker { font-size: 10px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3); }
+.float-amount {
+  font-size: 44px;
+  font-weight: 320;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  margin: 10px 0 2px;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 44px rgba(240, 194, 115, 0.4);
+}
+.float-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-3); margin-bottom: 12px; }
+.float-delta {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2.5px 9px; border-radius: 999px;
+  background: var(--gold-dim); color: var(--gold);
+  font-size: 11.5px; font-weight: 620; font-variant-numeric: tabular-nums;
+}
+.float-card svg.spark { display: block; width: 100%; height: 54px; margin: 6px 0 14px; }
+.float-card .pill { width: 100%; justify-content: center; }
+
+.scroll-cue {
+  position: absolute;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.scroll-cue::after {
+  content: "";
+  width: 1px; height: 34px;
+  background: linear-gradient(180deg, var(--gold), transparent);
+  animation: cue 2.4s var(--ease) infinite;
+}
+@keyframes cue { 0% { transform: scaleY(0); transform-origin: top; } 45% { transform: scaleY(1); transform-origin: top; } 46% { transform-origin: bottom; } 100% { transform: scaleY(0); transform-origin: bottom; } }
+
+/* ---------------------------------------------------------------- sections */
+
+section { padding: 110px 0; position: relative; }
+section.tight { padding: 70px 0; }
+
+.sec-head { max-width: 720px; }
+.sec-head h2 {
+  margin: 18px 0 0;
+  font-size: clamp(30px, 3.6vw, 46px);
+  font-weight: 320;
+  letter-spacing: -0.024em;
+  line-height: 1.12;
+}
+.sec-head h2 strong { font-weight: 460; }
+.sec-head p { margin: 18px 0 0; font-size: 15.5px; color: var(--ink-2); line-height: 1.7; max-width: 58ch; }
+
+/* glass frame around product shots */
+.frame {
+  margin-top: 54px;
+  border-radius: 28px;
+  padding: 14px;
+  background: rgba(244, 239, 230, 0.07);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 var(--edge), 0 60px 140px -50px rgba(8, 10, 26, 0.9);
+  will-change: transform;
+  transform-style: preserve-3d;
+}
+.frame img { border-radius: 16px; width: 100%; }
+.frame-cap {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 14px 10px 4px;
+  font-size: 12.5px; color: var(--ink-3);
+}
+.frame-cap .dots { display: inline-flex; gap: 5px; }
+.frame-cap .dots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(244,239,230,0.18); }
+
+.perspective { perspective: 1400px; }
+
+/* features */
+.feat-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; margin-top: 56px; }
+
+.feat {
+  border-radius: 26px;
+  overflow: hidden;
+  background: var(--glass);
+  backdrop-filter: blur(26px) saturate(140%);
+  -webkit-backdrop-filter: blur(26px) saturate(140%);
+  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 var(--edge), 0 34px 90px -40px rgba(8, 10, 26, 0.85);
+  transition: transform 0.28s var(--ease), border-color 0.28s ease;
+}
+.feat:hover { transform: translateY(-4px); border-color: rgba(244, 239, 230, 0.26); }
+
+.feat-body { padding: 26px 28px 20px; }
+.feat h3 { margin: 12px 0 0; font-size: 21px; font-weight: 460; letter-spacing: -0.014em; }
+.feat p { margin: 10px 0 0; font-size: 13.5px; color: var(--ink-2); line-height: 1.65; }
+
+.feat-icon {
+  width: 34px; height: 34px;
+  display: grid; place-items: center;
+  border-radius: 999px;
+  background: rgba(244, 239, 230, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.13);
+  color: var(--gold);
+}
+.feat-icon svg { width: 16px; height: 16px; }
+
+.feat-shot { padding: 18px 18px 0; }
+.feat-shot img {
+  border-radius: 14px 14px 0 0;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  box-shadow: 0 -20px 60px -30px rgba(8, 10, 26, 0.8);
+}
+
+/* cost ribbon */
+.ribbon { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 30px; }
+.ribbon .chip { pointer-events: none; font-variant-numeric: tabular-nums; }
+.ribbon .chip.gold { background: var(--gold-dim); border-color: rgba(240, 194, 115, 0.35); color: var(--gold); font-weight: 560; }
+.ribbon .chip.neg { color: var(--ember-neg); }
+
+/* two skies */
+.skies { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; margin-top: 54px; align-items: start; }
+.skies figure { margin: 0; }
+.skies .frame { margin-top: 0; }
+.skies figcaption { text-align: center; font-size: 12.5px; color: var(--ink-3); padding-top: 14px; }
+
+/* trust strip */
+.trust {
+  margin-top: 90px;
+  border-radius: 26px;
+  border: 1px solid var(--border);
+  background: var(--glass);
+  backdrop-filter: blur(26px) saturate(140%);
+  -webkit-backdrop-filter: blur(26px) saturate(140%);
+  box-shadow: inset 0 1px 0 var(--edge);
+  padding: 26px 30px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px 44px;
+  align-items: center;
+  justify-content: center;
+}
+.trust-item { display: inline-flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--ink-2); }
+.trust-item svg { width: 16px; height: 16px; color: var(--gold); flex: none; }
+
+/* pricing */
+.plans { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; margin-top: 56px; align-items: stretch; }
+
+.plan {
+  border-radius: 26px;
+  padding: 30px 30px 28px;
+  background: var(--glass);
+  backdrop-filter: blur(26px) saturate(140%);
+  -webkit-backdrop-filter: blur(26px) saturate(140%);
+  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 var(--edge), 0 34px 90px -40px rgba(8, 10, 26, 0.85);
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.28s var(--ease), border-color 0.28s ease;
+}
+.plan:hover { transform: translateY(-4px); }
+.plan.featured { border-color: rgba(240, 194, 115, 0.4); }
+.plan.featured::before { content: none; }
+
+.plan-name { font-size: 11px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3); display: flex; align-items: center; gap: 10px; }
+.plan-name .tag {
+  font-size: 10px; letter-spacing: 0.08em;
+  padding: 3px 9px; border-radius: 999px;
+  background: var(--gold-dim); color: var(--gold);
+}
+.plan-price { margin-top: 14px; font-size: 46px; font-weight: 320; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+.plan-price small { font-size: 14px; font-weight: 460; color: var(--ink-3); letter-spacing: 0; }
+.plan-blurb { margin: 8px 0 0; font-size: 12.5px; color: var(--ink-3); }
+
+.plan ul { list-style: none; margin: 22px 0 26px; padding: 0; display: flex; flex-direction: column; gap: 11px; }
+.plan li { display: flex; gap: 10px; font-size: 13.5px; color: var(--ink-2); line-height: 1.5; }
+.plan li svg { width: 15px; height: 15px; color: var(--gold); flex: none; margin-top: 2px; }
+
+.plan-foot { margin-top: auto; }
+
+.pricing-note { text-align: center; margin-top: 30px; font-size: 13px; color: var(--ink-3); }
+.pricing-cta { display: flex; justify-content: center; margin-top: 26px; }
+
+/* footer */
+footer {
+  border-top: 1px solid var(--border);
+  background: rgba(18, 23, 46, 0.45);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  padding: 44px 0 54px;
+  margin-top: 60px;
+}
+.foot-inner { display: flex; flex-wrap: wrap; gap: 26px; align-items: center; justify-content: space-between; }
+.foot-tag { font-size: 13px; color: var(--ink-3); margin-top: 8px; }
+.foot-nav { display: flex; gap: 22px; font-size: 13px; color: var(--ink-2); }
+.foot-nav a:hover { color: var(--ink); }
+
+/* ---------------------------------------------------------------- reveals */
+
+.reveal { opacity: 0; transform: translateY(26px); }
+.reveal.in {
+  opacity: 1;
+  transform: none;
+  transition: opacity 0.9s var(--ease), transform 0.9s var(--ease);
+}
+
+/* ------------------------------------------------------------- responsive */
+
+@media (max-width: 960px) {
+  .hero-grid { grid-template-columns: 1fr; }
+  .float-card { justify-self: start; }
+  .feat-grid, .skies, .plans { grid-template-columns: 1fr; }
+  section { padding: 80px 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .reveal { opacity: 1; transform: none; }
+  .scroll-cue::after { animation: none; }
+  * { transition-duration: 0.01ms !important; }
+}
+</style>
+</head>
+<body>
+
+<canvas id="sky" aria-hidden="true"></canvas>
+
+<header class="header" id="header">
+  <div class="header-inner">
+    <a class="brand" href="#top" aria-label="Meridian">
+      <svg width="26" height="26" viewBox="0 0 96 96" fill="none" aria-hidden="true">
+        <g stroke="#f4efe6" stroke-width="2.6" opacity="0.85" stroke-linecap="round">
+          <circle cx="48" cy="48" r="34" />
+          <ellipse cx="48" cy="48" rx="24.5" ry="34" />
+          <ellipse cx="48" cy="48" rx="13.5" ry="34" />
+          <path d="M48 14v68" />
+        </g>
+        <path d="M48 14 A 15 34 0 0 1 48 82" stroke="#f0c273" stroke-width="3.2" stroke-linecap="round" />
+      </svg>
+      Meridian
+    </a>
+    <nav class="header-nav">
+      <a href="#product">Product</a>
+      <a href="#features">Features</a>
+      <a href="#pricing">Pricing</a>
+      <a class="pill sm" href="#pricing">Start free</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ================================================================ hero -->
+  <section class="hero" id="hero">
+    <div class="wrap" style="width: 100%;">
+      <div class="hero-grid">
+        <div>
+          <span class="kicker">Profit analytics for Shopify</span>
+          <h1>
+            Shopify reports gross sales.
+            <strong>Meridian reports what is&nbsp;left.</strong>
+          </h1>
+          <p class="hero-sub">
+            Meridian imports your orders, products, cost per item and
+            fulfilments, applies your own payment, shipping, pick-and-pack and
+            overhead rules, and gives every order and product a true net profit
+            figure.
+          </p>
+          <div class="hero-ctas">
+            <a class="pill" href="#pricing">Start free — 14-day trial</a>
+            <a class="chip" href="#product">See the product</a>
+          </div>
+          <div class="hero-chips" aria-label="What's inside">
+            <a class="chip" href="#features">Profit per order</a>
+            <a class="chip" href="#features">Products</a>
+            <a class="chip" href="#features">Pricing</a>
+            <a class="chip" href="#features">Fulfilment</a>
+            <a class="chip" href="#skies">Two skies</a>
+          </div>
+        </div>
+
+        <aside class="float-card" data-drift aria-label="Sample: tonight's net profit">
+          <div class="float-kicker">Good evening, Northwind Supply</div>
+          <div class="float-amount">$207,749</div>
+          <div class="float-meta">
+            <span class="float-delta">↑ 35%</span>
+            <span>net profit kept · last 30 days</span>
+          </div>
+          <svg class="spark" viewBox="0 0 300 54" preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+              <linearGradient id="fs" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#f0c273" stop-opacity="0.4" />
+                <stop offset="100%" stop-color="#f0c273" stop-opacity="0" />
+              </linearGradient>
+            </defs>
+            <path d="M0,44 L20,40 L40,42 L60,34 L80,37 L100,30 L120,33 L140,22 L160,28 L180,18 L200,24 L220,14 L240,19 L260,10 L280,14 L300,6 L300,54 L0,54 Z" fill="url(#fs)" />
+            <path d="M0,44 L20,40 L40,42 L60,34 L80,37 L100,30 L120,33 L140,22 L160,28 L180,18 L200,24 L220,14 L240,19 L260,10 L280,14 L300,6" fill="none" stroke="#f0c273" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <a class="pill" href="#features">Where the money went</a>
+        </aside>
+      </div>
+    </div>
+    <span class="scroll-cue" aria-hidden="true">The sun follows your scroll</span>
+  </section>
+
+  <!-- ============================================================= product -->
+  <section id="product">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="kicker">The overview</span>
+        <h2>Opens with the number you<br /><strong>actually came for.</strong></h2>
+        <p>
+          A greeting in your own timezone, the profit you kept standing in
+          sunlight, and every figure beneath it fully costed. No gross-sales
+          theatre.
+        </p>
+      </div>
+      <div class="perspective">
+        <figure class="frame" data-tilt style="margin-left: 0; margin-right: 0;">
+          <div class="frame-cap" aria-hidden="true">
+            <span class="dots"><i></i><i></i><i></i></span>
+            <span>meridian · overview — live demo data</span>
+          </div>
+          <img src="assets/overview-top2.jpg" alt="Meridian's overview: a twilight dashboard greeting Northwind Supply Co. with $207,749 net profit kept" loading="lazy" />
+        </figure>
+      </div>
+      <div class="ribbon reveal" aria-label="The costs between revenue and profit">
+        <span class="chip">Net revenue $521K</span>
+        <span class="chip neg">− COGS $208.4K</span>
+        <span class="chip neg">− Shipping $32K</span>
+        <span class="chip neg">− Pick &amp; pack $6.7K</span>
+        <span class="chip neg">− Fees $17.7K</span>
+        <span class="chip neg">− Overhead $48.5K</span>
+        <span class="chip gold">= Net profit $207.7K</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ features -->
+  <section id="features">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="kicker">Four instruments</span>
+        <h2>Every cost between booked revenue<br /><strong>and kept profit.</strong></h2>
+        <p>
+          Costs are applied in the order they hit the P&amp;L, and anything
+          estimated is flagged as estimated — so you can always tell a measured
+          number from an assumed one.
+        </p>
+      </div>
+
+      <div class="feat-grid">
+        <article class="feat reveal">
+          <div class="feat-body">
+            <span class="feat-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18l-1.5 12.5a2 2 0 0 1-2 1.5H6.5a2 2 0 0 1-2-1.5Z"/><path d="M8.5 6V4.5a3.5 3.5 0 0 1 7 0V6"/></svg>
+            </span>
+            <h3>Every order, fully costed</h3>
+            <p>
+              Revenue, COGS, shipping, payment fees, ad spend and overhead —
+              resolved per order, to the cent, with estimated costs carrying an
+              amber flag.
+            </p>
+          </div>
+          <div class="feat-shot"><img src="assets/orders.jpg" alt="Profit per order: KPI tiles and a month of gold daily-profit bars" loading="lazy" /></div>
+        </article>
+
+        <article class="feat reveal">
+          <div class="feat-body">
+            <span class="feat-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8.5 12 3 3 8.5v7L12 21l9-5.5Z"/><path d="M3 8.5 12 14l9-5.5M12 14v7"/></svg>
+            </span>
+            <h3>What to scale, what to kill</h3>
+            <p>
+              Products classified as carrying the business or quietly bleeding —
+              and a loss leader only counts as strategic when downstream profit
+              genuinely covers the loss.
+            </p>
+          </div>
+          <div class="feat-shot"><img src="assets/products.jpg" alt="Products ranked by contribution profit with gold bars" loading="lazy" /></div>
+        </article>
+
+        <article class="feat reveal">
+          <div class="feat-body">
+            <span class="feat-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 13.5 13 21a2 2 0 0 1-2.8 0l-7-7A2 2 0 0 1 2.6 12V5a2 2 0 0 1 2-2h7a2 2 0 0 1 1.4.6l7.5 7.5a2 2 0 0 1 0 2.4Z"/><circle cx="7.5" cy="7.5" r="1.3"/></svg>
+            </span>
+            <h3>Prices fitted to your own history</h3>
+            <p>
+              A demand curve fitted to each variant's own price points — never an
+              invented elasticity. Moves are capped at 25% and floored at a 15%
+              margin.
+            </p>
+          </div>
+          <div class="feat-shot"><img src="assets/pricing.jpg" alt="Pricing recommendations with confidence ratings and modelled upside" loading="lazy" /></div>
+        </article>
+
+        <article class="feat reveal">
+          <div class="feat-body">
+            <span class="feat-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8h11v9H2zM13 11h4.5l3.5 3.5V17h-8z"/><circle cx="6" cy="18.5" r="1.8"/><circle cx="17" cy="18.5" r="1.8"/></svg>
+            </span>
+            <h3>The day your warehouse falls behind</h3>
+            <p>
+              A 14-day demand forecast against the throughput your team has
+              actually demonstrated — with alerts before the backlog breaks your
+              shipping promise.
+            </p>
+          </div>
+          <div class="feat-shot"><img src="assets/fulfilment.jpg" alt="Fulfilment capacity: backlog, throughput and days until the ceiling" loading="lazy" /></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- =============================================================== skies -->
+  <section id="skies" class="tight">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="kicker">Two skies</span>
+        <h2>Dusk by default.<br /><strong>Daybreak when you want it.</strong></h2>
+      </div>
+      <div class="skies">
+        <figure class="reveal">
+          <div class="frame"><img src="assets/overview-top2.jpg" alt="The overview at dusk" loading="lazy" /></div>
+          <figcaption>Dusk</figcaption>
+        </figure>
+        <figure class="reveal">
+          <div class="frame"><img src="assets/overview-light2.jpg" alt="The overview at daybreak" loading="lazy" /></div>
+          <figcaption>Daybreak</figcaption>
+        </figure>
+      </div>
+
+      <div class="trust reveal">
+        <span class="trust-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2.5"/><path d="M8 10V7.5a4 4 0 0 1 8 0V10"/></svg>
+          Read-only scopes — no write access requested
+        </span>
+        <span class="trust-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19"/></svg>
+          Billed by Shopify, on your Shopify invoice
+        </span>
+        <span class="trust-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-11"/></svg>
+          Uninstalling cancels the subscription with it
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================= pricing -->
+  <section id="pricing">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="kicker">Pricing</span>
+        <h2>Fourteen days free.<br /><strong>Then priced by your volume.</strong></h2>
+      </div>
+
+      <div class="plans">
+        <article class="plan reveal">
+          <div class="plan-name">Starter</div>
+          <div class="plan-price">$49<small> /month</small></div>
+          <p class="plan-blurb">Up to 1,000 orders / month</p>
+          <ul>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-11"/></svg>True profit per order</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-11"/></svg>Product margin analysis</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-11"/></svg>Revenue and profit by channel</li>
+          </ul>
+          <div class="plan-foot"><a class="chip" href="https://apps.shopify.com/meridian-profit">Start with Starter</a></div>
+        </article>
+
+        <article class="plan featured reveal">
+          <div class="plan-name">Growth <span class="tag">Most stores</span></div>
+          <div class="plan-price">$149<small> /month</small></div>
+          <p class="plan-blurb">Up to 10,000 orders / month</p>
+          <ul>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-11"/></svg>Everything in Starter</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-11"/></svg>Pricing recommendations</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-11"/></svg>Fulfilment capacity alerts</li>
+          </ul>
+          <div class="plan-foot"><a class="pill" href="https://apps.shopify.com/meridian-profit" style="width: 100%; justify-content: center;">Start free trial</a></div>
+        </article>
+
+        <article class="plan reveal">
+          <div class="plan-name">Scale</div>
+          <div class="plan-price">$399<small> /month</small></div>
+          <p class="plan-blurb">Unlimited orders</p>
+          <ul>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-11"/></svg>Everything in Growth</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-11"/></svg>Multi-location capacity modelling</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-11"/></svg>Cohort LTV and payback curves</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-11"/></svg>Priority support</li>
+          </ul>
+          <div class="plan-foot"><a class="chip" href="https://apps.shopify.com/meridian-profit">Start with Scale</a></div>
+        </article>
+      </div>
+
+      <p class="pricing-note reveal">
+        Every plan starts with a 14-day free trial. Billing is handled entirely
+        by Shopify — Meridian never sees a card number.
+      </p>
+      <div class="pricing-cta reveal">
+        <a class="pill" href="https://apps.shopify.com/meridian-profit">Install from the Shopify App Store</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap foot-inner">
+    <div>
+      <a class="brand" href="#top" aria-label="Meridian">
+        <svg width="24" height="24" viewBox="0 0 96 96" fill="none" aria-hidden="true">
+          <g stroke="#f4efe6" stroke-width="2.6" opacity="0.85" stroke-linecap="round">
+            <circle cx="48" cy="48" r="34" />
+            <ellipse cx="48" cy="48" rx="24.5" ry="34" />
+            <ellipse cx="48" cy="48" rx="13.5" ry="34" />
+            <path d="M48 14v68" />
+          </g>
+          <path d="M48 14 A 15 34 0 0 1 48 82" stroke="#f0c273" stroke-width="3.2" stroke-linecap="round" />
+        </svg>
+        Meridian
+      </a>
+      <p class="foot-tag">The sun at its highest. Your numbers at their clearest.</p>
+    </div>
+    <nav class="foot-nav">
+      <a href="/privacy">Privacy</a>
+      <a href="/support">Support</a>
+      <a href="#pricing">Pricing</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+/*
+ * The sky. A fragment-shader twilight whose sun crosses the meridian as the
+ * visitor scrolls. Everything degrades: no WebGL → the painted CSS scene; the
+ * shader itself renders one static frame under reduced motion.
+ */
+(function () {
+  "use strict";
+
+  var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ------------------------------------------------------------ header */
+  var header = document.getElementById("header");
+  function headerState() {
+    header.classList.toggle("scrolled", window.scrollY > 40);
+  }
+  headerState();
+
+  /* ----------------------------------------------------------- reveals */
+  var revealed = document.querySelectorAll(".reveal");
+  if ("IntersectionObserver" in window && !reduced) {
+    var io = new IntersectionObserver(
+      function (entries) {
+        entries.forEach(function (e) {
+          if (e.isIntersecting) {
+            e.target.classList.add("in");
+            io.unobserve(e.target);
+          }
+        });
+      },
+      { threshold: 0.12, rootMargin: "0px 0px -8% 0px" }
+    );
+    revealed.forEach(function (el) { io.observe(el); });
+  } else {
+    revealed.forEach(function (el) { el.classList.add("in"); });
+  }
+
+  /* ------------------------------------------------------------ shader */
+  var canvas = document.getElementById("sky");
+  var gl = canvas.getContext("webgl", { antialias: false, alpha: false, powerPreference: "low-power" });
+
+  var VERT = "attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}";
+
+  var FRAG = [
+    "precision mediump float;",
+    "uniform vec2 uRes;",
+    "uniform float uTime;",
+    "uniform float uProg;",
+
+    "float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}",
+    "float noise(vec2 p){vec2 i=floor(p);vec2 f=fract(p);vec2 u=f*f*(3.-2.*f);",
+    "return mix(mix(hash(i),hash(i+vec2(1.,0.)),u.x),mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.,1.)),u.x),u.y);}",
+    "float fbm(vec2 p){float v=0.;float a=.5;for(int i=0;i<4;i++){v+=a*noise(p);p*=2.03;a*=.55;}return v;}",
+
+    "void main(){",
+    "vec2 uv=gl_FragCoord.xy/uRes;",
+    "float y=uv.y;",
+
+    // sky ramp: zenith indigo -> periwinkle haze -> warm veil
+    "vec3 zenith=vec3(0.078,0.102,0.200);",
+    "vec3 upper=vec3(0.137,0.173,0.322);",
+    "vec3 mid=vec3(0.227,0.275,0.443);",
+    "vec3 haze=vec3(0.365,0.392,0.576);",
+    "vec3 veil=vec3(0.541,0.459,0.565);",
+    "vec3 emberC=vec3(0.753,0.541,0.431);",
+
+    "vec3 col=mix(emberC,veil,smoothstep(0.0,0.16,y));",
+    "col=mix(col,haze,smoothstep(0.10,0.34,y));",
+    "col=mix(col,mid,smoothstep(0.28,0.55,y));",
+    "col=mix(col,upper,smoothstep(0.50,0.78,y));",
+    "col=mix(col,zenith,smoothstep(0.74,1.0,y));",
+
+    // the sun: rises from below the horizon to its meridian as uProg 0->1
+    "float pr=clamp(uProg,0.,1.);",
+    "float e=1.-(1.-pr)*(1.-pr);",
+    "vec2 sun=vec2(mix(0.24,0.5,pr),mix(-0.06,0.56,e));",
+    "vec2 d=uv-sun;d.x*=uRes.x/uRes.y;",
+    "float dist=length(d);",
+    "float disc=smoothstep(0.030,0.026,dist);",
+    "float bloom=exp(-dist*5.2)*0.55+exp(-dist*1.7)*0.28;",
+    "vec3 sunCol=vec3(1.0,0.82,0.55);",
+    "col+=sunCol*bloom*(0.5+0.5*pr);",
+    "col=mix(col,vec3(1.0,0.94,0.82),disc);",
+
+    // clouds: two drifting fbm bands, lit from the sun's side
+    "float t=uTime*0.012;",
+    "float band=smoothstep(0.05,0.32,y)*smoothstep(0.85,0.42,y);",
+    "float c1=fbm(vec2(uv.x*3.4+t,uv.y*7.2-t*0.4));",
+    "float c2=fbm(vec2(uv.x*6.5-t*0.7,uv.y*11.0+t*0.25));",
+    "float cloud=smoothstep(0.48,0.78,c1*0.72+c2*0.38)*band;",
+    "float lit=exp(-dist*2.4);",
+    "vec3 cloudCol=mix(vec3(0.30,0.31,0.47),vec3(0.95,0.66,0.47),clamp(lit*1.6,0.,1.));",
+    "col=mix(col,cloudCol,cloud*0.5);",
+
+    // horizon glow strengthens as the sun climbs
+    "col+=vec3(0.906,0.682,0.471)*exp(-abs(y-0.10)*9.0)*(0.12+0.30*pr);",
+
+    // grain
+    "col+=(hash(gl_FragCoord.xy+uTime)-0.5)*0.02;",
+
+    "gl_FragColor=vec4(col,1.0);",
+    "}"
+  ].join("\n");
+
+  var program = null, uRes, uTime, uProg;
+
+  function makeShader(type, src) {
+    var s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) return null;
+    return s;
+  }
+
+  if (gl) {
+    var vs = makeShader(gl.VERTEX_SHADER, VERT);
+    var fs = makeShader(gl.FRAGMENT_SHADER, FRAG);
+    if (vs && fs) {
+      program = gl.createProgram();
+      gl.attachShader(program, vs);
+      gl.attachShader(program, fs);
+      gl.linkProgram(program);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) program = null;
+    }
+  }
+
+  if (program) {
+    gl.useProgram(program);
+    var buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    var loc = gl.getAttribLocation(program, "p");
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    uRes = gl.getUniformLocation(program, "uRes");
+    uTime = gl.getUniformLocation(program, "uTime");
+    uProg = gl.getUniformLocation(program, "uProg");
+  } else {
+    canvas.style.display = "none";
+  }
+
+  function sizeCanvas() {
+    if (!program) return;
+    var dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    canvas.width = Math.round(innerWidth * dpr);
+    canvas.height = Math.round(innerHeight * dpr);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+  }
+  sizeCanvas();
+
+  /* --------------------------------------------- scroll-driven everything */
+  var tiltEls = document.querySelectorAll("[data-tilt]");
+  var driftEls = document.querySelectorAll("[data-drift]");
+  var docH = 1, vh = innerHeight;
+
+  function measure() {
+    vh = innerHeight;
+    docH = Math.max(1, document.documentElement.scrollHeight - vh);
+  }
+  measure();
+
+  var progress = 0, target = 0, start = performance.now();
+  var lastTick = 0;
+
+  function frame(now) {
+    lastTick = now;
+    var sy = window.scrollY;
+    target = sy / docH;
+    // critically damped chase so the sun glides rather than jitters
+    progress += (target - progress) * 0.075;
+
+    if (program) {
+      gl.uniform2f(uRes, canvas.width, canvas.height);
+      gl.uniform1f(uTime, reduced ? 40.0 : (now - start) / 1000);
+      gl.uniform1f(uProg, progress);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+
+    tiltEls.forEach(function (el) {
+      var r = el.getBoundingClientRect();
+      var t = Math.min(1, Math.max(0, (vh - r.top) / (vh * 0.85)));
+      var rx = (1 - t) * 9;
+      el.style.transform = "rotateX(" + rx.toFixed(2) + "deg) translateY(" + ((1 - t) * 30).toFixed(1) + "px)";
+      el.style.opacity = String(Math.min(1, 0.25 + t));
+    });
+
+    driftEls.forEach(function (el) {
+      el.style.transform = "translateY(" + (sy * -0.06).toFixed(1) + "px)";
+    });
+
+    headerState();
+
+    if (!reduced) requestAnimationFrame(frame);
+  }
+
+  // One synchronous frame no matter what: throttled or occluded contexts may
+  // never grant a rAF, and an undrawn canvas would sit black over the scene.
+  // frame() schedules its own next frame, so this also starts the loop.
+  if (reduced) progress = target = 0.35;
+  frame(performance.now());
+
+  // Where rAF is throttled to nothing (occluded windows, aggressive battery
+  // savers), scrolling still repaints: drive frames from the event instead.
+  addEventListener("scroll", function () {
+    var now = performance.now();
+    if (now - lastTick > 120) frame(now);
+  }, { passive: true });
+
+  // Deterministic settle for capture tooling: jump the damped chase to its
+  // target and paint one frame.
+  window.__skySettle = function () {
+    measure();
+    target = window.scrollY / docH;
+    progress = target;
+    // IntersectionObserver can stall entirely in occluded windows — reveal
+    // everything so a capture never freezes a section at opacity 0.
+    revealed.forEach(function (el) { el.classList.add("in"); });
+    frame(performance.now());
+  };
+
+  addEventListener("resize", function () { sizeCanvas(); measure(); }, { passive: true });
+  addEventListener("load", measure);
+})();
+</script>
+
+</body>
+</html>

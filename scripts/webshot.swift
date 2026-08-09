@@ -29,6 +29,16 @@ let theme = args.count > 7 ? args[7] : ""
 // Optional pointer position, "x,y" in -1...1, for capturing pointer-driven
 // depth. A still cannot hover, so the spatial state has to be posed.
 let pointer = args.count > 8 ? args[8] : ""
+/*
+ * Optional probe: a JS expression evaluated after the page settles, whose
+ * result is printed instead of a snapshot being written.
+ *
+ * The in-app browser pane reports a zero-width viewport when it is not laid
+ * out, which silently turns every geometry measurement into nonsense —
+ * `scrollWidth - clientWidth` becomes `scrollWidth - 0`. This gives layout
+ * questions a real window of a known size to be answered against.
+ */
+let probe = ProcessInfo.processInfo.environment["WEBSHOT_PROBE"] ?? ""
 
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
@@ -126,6 +136,24 @@ let delegate = Delegate {
     DispatchQueue.main.asyncAfter(deadline: .now() + waitMs / 1000) {
         webView.evaluateJavaScript(freezeScript) { _, _ in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                if !probe.isEmpty {
+                    webView.evaluateJavaScript(probe) { value, error in
+                        if let error {
+                            print("probe failed: \(error.localizedDescription)")
+                            exit(1)
+                        }
+                        if let data = try? JSONSerialization.data(
+                            withJSONObject: value ?? NSNull(),
+                            options: [.prettyPrinted, .fragmentsAllowed]
+                        ), let text = String(data: data, encoding: .utf8) {
+                            print(text)
+                        } else {
+                            print(String(describing: value ?? "nil"))
+                        }
+                        exit(0)
+                    }
+                    return
+                }
                 let config = WKSnapshotConfiguration()
                 config.rect = NSRect(x: 0, y: 0, width: width, height: height)
                 webView.takeSnapshot(with: config) { image, error in

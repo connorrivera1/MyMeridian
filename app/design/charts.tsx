@@ -43,7 +43,7 @@ function useMeasuredWidth<T extends HTMLElement>(fallback = 720) {
 /* -------------------------------------------------------------- geometry */
 
 /** Bar path with the data-end rounded and the baseline end square. */
-function barPath(x: number, y: number, w: number, h: number, r = 4): string {
+function barPath(x: number, y: number, w: number, h: number, r = 0): string {
   if (h <= 0) return "";
   const radius = Math.min(r, w / 2, h);
 
@@ -60,7 +60,7 @@ function barPath(x: number, y: number, w: number, h: number, r = 4): string {
   ].join(" ");
 }
 
-function barPathDown(x: number, y: number, w: number, h: number, r = 4): string {
+function barPathDown(x: number, y: number, w: number, h: number, r = 0): string {
   if (h <= 0) return "";
   const radius = Math.min(r, w / 2, h);
   return [
@@ -248,7 +248,7 @@ export function TimeSeriesChart({
                 x2="0"
                 y2="1"
               >
-                <stop offset="0%" stopColor={s.color} stopOpacity={0.4} />
+                <stop offset="0%" stopColor={s.color} stopOpacity={0.16} />
                 <stop offset="100%" stopColor={s.color} stopOpacity={0} />
               </linearGradient>
             ))}
@@ -285,10 +285,9 @@ export function TimeSeriesChart({
             )}
             fill="none"
             stroke={s.color}
-            strokeWidth={2.75}
+            strokeWidth={1.6}
             strokeLinejoin="round"
             strokeLinecap="round"
-            style={{ filter: `drop-shadow(0 3px 10px color-mix(in srgb, ${s.color} 55%, transparent))` }}
           />
         ))}
 
@@ -572,16 +571,16 @@ export function ProfitBridge({
 
         <defs>
           <linearGradient id={`wf-struct-${gradId}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--mark-structure)" stopOpacity={1} />
-            <stop offset="100%" stopColor="var(--mark-structure)" stopOpacity={0.45} />
+            <stop offset="0%" stopColor="var(--mark-structure)" stopOpacity={0.85} />
+            <stop offset="100%" stopColor="var(--mark-structure)" stopOpacity={0.85} />
           </linearGradient>
           <linearGradient id={`wf-cost-${gradId}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--mark-cost)" stopOpacity={0.95} />
-            <stop offset="100%" stopColor="var(--mark-cost)" stopOpacity={0.5} />
+            <stop offset="0%" stopColor="var(--mark-cost)" stopOpacity={0.6} />
+            <stop offset="100%" stopColor="var(--mark-cost)" stopOpacity={0.6} />
           </linearGradient>
           <linearGradient id={`wf-result-${gradId}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--accent-2)" stopOpacity={1} />
-            <stop offset="100%" stopColor="var(--accent)" stopOpacity={0.75} />
+            <stop offset="0%" stopColor="var(--accent)" stopOpacity={1} />
+            <stop offset="100%" stopColor="var(--accent)" stopOpacity={1} />
           </linearGradient>
         </defs>
 
@@ -609,9 +608,9 @@ export function ProfitBridge({
                   animationDelay: `${i * 70}ms`,
                   // only the result glows — costs stay matte so the eye lands
                   // on what is left rather than on what was spent
-                  ...(bar.step.kind === "total"
-                    ? { filter: "drop-shadow(0 0 16px var(--accent-glow))" }
-                    : null),
+                  // No bloom: the result bar is already the only warm
+                  // mark in the chart, and a glow reads as a different design
+                  // language beside hairline rules.
                 }}
                 d={
                   bar.to >= bar.from
@@ -730,9 +729,9 @@ export function HorizontalBars({
             </div>
             <div
               style={{
-                height: 11,
-                background: "var(--surface-3)",
-                borderRadius: 6,
+                height: 6,
+                background: "var(--rule)",
+                borderRadius: 0,
                 position: "relative",
                 overflow: "hidden",
                 boxShadow: "inset 0 1px 0 var(--glass-edge)",
@@ -748,9 +747,8 @@ export function HorizontalBars({
                   bottom: 0,
                   // gradient + glow so the bar carries the same energy as the
                   // rest of the surface rather than reading as a hairline
-                  background: `linear-gradient(90deg, color-mix(in srgb, ${color} 62%, transparent), ${color})`,
-                  borderRadius: 6,
-                  boxShadow: `0 0 14px -4px ${color}`,
+                  background: color,
+                  borderRadius: 0,
                   animationDelay: `${Math.min(rows.indexOf(row) * 40, 600)}ms`,
                   transformOrigin: negative ? "right center" : "left center",
                 }}
@@ -924,9 +922,8 @@ export function CapacityChart({
           d={linePath(combined.map((c, i) => ({ x: xAt(i), y: yAt(c.backlog) })))}
           fill="none"
           stroke="var(--delta-down)"
-          strokeWidth={2.75}
+          strokeWidth={1.6}
           strokeLinejoin="round"
-          style={{ filter: "drop-shadow(0 3px 10px color-mix(in srgb, var(--delta-down) 55%, transparent))" }}
         />
         <path
           className="draw"
@@ -934,9 +931,8 @@ export function CapacityChart({
           d={linePath(combined.map((c, i) => ({ x: xAt(i), y: yAt(c.inbound) })))}
           fill="none"
           stroke="var(--mark-structure)"
-          strokeWidth={2.75}
+          strokeWidth={1.6}
           strokeLinejoin="round"
-          style={{ filter: "drop-shadow(0 3px 10px color-mix(in srgb, var(--mark-structure) 55%, transparent))" }}
         />
 
         {hoverIndex !== null && (
@@ -1094,10 +1090,9 @@ export function PaybackChart({
               )}
               fill="none"
               stroke={s.color}
-              strokeWidth={2.75}
+              strokeWidth={1.6}
               strokeLinejoin="round"
               strokeLinecap="round"
-              style={{ filter: `drop-shadow(0 3px 10px color-mix(in srgb, ${s.color} 55%, transparent))` }}
             />
             {s.points.map((p, pi) => (
               <circle

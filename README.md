@@ -151,7 +151,9 @@ and must never be reachable there.
 | `npm run shopify:dev` | Run against a real store via the Shopify CLI |
 | `npm run dev` | Dev server (demo / no Shopify) |
 | `npm run db:migrate` | Apply migrations |
-| `npm test` | Test suite (382 tests) |
+| `npm test` | Test suite (387 tests) |
+| `npm run test:coverage` | Tests with coverage thresholds enforced |
+| `npm run ci` | Everything CI runs: typecheck, coverage, build |
 | `npm run typecheck` | Types |
 | `npm run db:reset` | Drop, migrate, re-seed |
 | `npm run db:seed` | Re-seed the demo store |
@@ -159,6 +161,33 @@ and must never be reachable there.
 | `npx tsx scripts/elasticity-accuracy.ts --sweep` | Elasticity recovery vs the seed's known values |
 
 ---
+
+## Guarding main
+
+This repository has **no git remote**, so there is no CI service and no
+pull-request review — and it has more than one writer, since an agent system
+also commits here. The gate that actually protects `main` is a pre-commit hook,
+and hooks are not cloned. Enable it once per checkout:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+It runs typecheck and the test suite when any `.ts`, `.tsx`, `.css` or `.json`
+file is staged, and refuses the commit if either fails. Docs-only commits skip
+it. To bypass deliberately: `git commit --no-verify`.
+
+`.github/workflows/ci.yml` runs the fuller set — typecheck, coverage
+thresholds, build, a from-empty migration apply against a real Postgres, and a
+dependency audit. **Nothing runs it yet**; it is committed ready for the day a
+remote exists.
+
+Coverage is measured over `app/engine`, `app/lib` and `app/data` — the code the
+suite actually targets. `.tsx` is excluded because no component is ever
+rendered by a test; that is a real gap to close by writing component and
+end-to-end tests, not by letting them dilute the one number that means
+something. Thresholds are floors set just under the current measurement, so the
+build fails on regression rather than on ambition.
 
 ## Architecture
 

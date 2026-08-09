@@ -1,0 +1,37 @@
+#!/bin/sh
+#
+# The gate that actually protects `main` today.
+#
+# This repository has no remote, so there is no CI service and no pull-request
+# review. It also has more than one writer: an agent system commits here as
+# Connor. Without this hook the only thing standing between a type error and
+# `main` is someone remembering to run `npm run typecheck` by hand.
+#
+# Deliberately typecheck + tests, not the full `npm run ci`: coverage and the
+# production build add ~30s, which is enough friction that people start passing
+# --no-verify, and a bypassed hook protects nothing. CI runs the full set.
+#
+# Emergency escape hatch: git commit --no-verify
+
+set -e
+
+# Nothing to check if no source is staged — docs-only commits stay instant.
+if ! git diff --cached --name-only --diff-filter=ACMR | grep -qE '\.(ts|tsx|css|json)$'; then
+  exit 0
+fi
+
+printf '\033[2m» pre-commit: typecheck + tests\033[0m\n'
+
+if ! npm run --silent typecheck; then
+  printf '\033[31m✗ typecheck failed — commit aborted\033[0m\n'
+  printf '  Fix it, or bypass deliberately with: git commit --no-verify\n'
+  exit 1
+fi
+
+if ! npx vitest run --silent; then
+  printf '\033[31m✗ tests failed — commit aborted\033[0m\n'
+  printf '  Fix it, or bypass deliberately with: git commit --no-verify\n'
+  exit 1
+fi
+
+printf '\033[32m✓ pre-commit passed\033[0m\n'

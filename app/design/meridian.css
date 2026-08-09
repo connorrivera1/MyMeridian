@@ -141,6 +141,17 @@
   --font: "Satoshi", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
     sans-serif;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  /* expo.out — the long tail is what makes a movement read as expensive rather
+     than merely fast. Reserved for entrances and the sliding range indicator. */
+  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  /* A small overshoot for press-release, so a button springs back rather than
+     stopping dead. Kept mild: past ~1.6 on the third handle it reads as bouncy. */
+  --ease-spring: cubic-bezier(0.34, 1.42, 0.64, 1);
+
+  /* Micro-interactions live in 150-300ms. Anything slower stops feeling like a
+     response to the pointer and starts feeling like a wait. */
+  --tap: 140ms;
+  --micro: 220ms;
 }
 
 /* Daybreak — the same scene a few hours later. Warm ivory paper, pale sky at
@@ -693,6 +704,68 @@ code {
   .mark.spinning .meridian-c { animation: globe-sweep-c 0.72s linear both; }
 }
 
+/* ------------------------------------------------------- ambient light */
+
+/*
+ * Two slow-drifting blooms in the upper sky.
+ *
+ * A gradient alone is static, and a static sky is what makes a long dashboard
+ * session feel like a screenshot. These move far too slowly to notice directly
+ * — a full cycle is around a minute — but they keep the scene alive in
+ * peripheral vision, which is the whole trick behind a "lit" interface.
+ *
+ * Both live on `.app-shell`, whose stacking context sits above the fixed sky
+ * and below the content, so they read as part of the atmosphere and never
+ * interfere with a pointer. They animate `transform` and `opacity` only.
+ */
+.app-shell::before,
+.app-shell::after {
+  content: "";
+  position: fixed;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: 50%;
+  filter: blur(52px);
+  opacity: 0.9;
+}
+
+.app-shell::before {
+  width: 46rem;
+  height: 30rem;
+  top: -12rem;
+  right: -8rem;
+  background: radial-gradient(closest-side, rgba(240, 194, 115, 0.32), transparent 70%);
+}
+
+.app-shell::after {
+  width: 38rem;
+  height: 26rem;
+  top: 22%;
+  left: -14rem;
+  background: radial-gradient(closest-side, rgba(157, 177, 232, 0.26), transparent 70%);
+}
+
+:root[data-theme="light"] .app-shell::before {
+  background: radial-gradient(closest-side, rgba(194, 141, 51, 0.13), transparent 70%);
+}
+:root[data-theme="light"] .app-shell::after {
+  background: radial-gradient(closest-side, rgba(77, 104, 184, 0.1), transparent 70%);
+}
+
+@keyframes drift-a {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(-3rem, 2rem, 0) scale(1.12); }
+}
+@keyframes drift-b {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(2.5rem, -2rem, 0) scale(0.92); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .app-shell::before { animation: drift-a 64s ease-in-out infinite; }
+  .app-shell::after  { animation: drift-b 78s ease-in-out infinite; }
+}
+
 /* ------------------------------------------------------------------ layout */
 
 .app-shell {
@@ -775,10 +848,17 @@ code {
 /* The active page is the lit meridian: a frosted pill with a short arc of
    sunlight standing at its left edge. */
 .nav-link[aria-current="page"] {
-  background: rgba(244, 239, 230, 0.12);
+  background: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--accent) 18%, transparent),
+    rgba(244, 239, 230, 0.1) 48%,
+    rgba(244, 239, 230, 0.05)
+  );
   color: var(--ink-primary);
   font-weight: 540;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.13);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.15),
+    0 6px 20px -12px var(--accent-glow);
 }
 
 :root[data-theme="light"] .nav-link[aria-current="page"] {
@@ -786,6 +866,8 @@ code {
   box-shadow: inset 0 0 0 1px rgba(38, 43, 74, 0.1);
 }
 
+/* The lit meridian marking the current page. It grows from the centre out on
+   arrival, so navigating reads as the light moving to the new row. */
 .nav-link[aria-current="page"]::before {
   content: "";
   position: absolute;
@@ -797,7 +879,24 @@ code {
   border-radius: 3px;
   background: var(--accent);
   box-shadow: 0 0 12px var(--accent-glow);
+  transform-origin: center;
 }
+
+@media (prefers-reduced-motion: no-preference) {
+  .nav-link[aria-current="page"]::before {
+    animation: mark-in 420ms var(--ease-expo) both;
+  }
+}
+
+@keyframes mark-in {
+  from { transform: translateY(-50%) scaleY(0); opacity: 0; }
+  to   { transform: translateY(-50%) scaleY(1); opacity: 1; }
+}
+
+/* Inactive rows slide their label a touch on hover — the row is a target, and
+   a target that acknowledges the pointer feels clickable before it is clicked. */
+.nav-link:not([aria-current="page"]):hover { transform: translateX(2px); }
+.nav-link { transition: background var(--micro) ease, color var(--micro) ease, transform var(--micro) var(--ease-out); }
 
 .nav-link svg { width: 16px; height: 16px; flex: none; opacity: 0.72; }
 .nav-link[aria-current="page"] svg { opacity: 1; color: var(--accent); }
@@ -969,8 +1068,31 @@ code {
   letter-spacing: -0.034em;
   line-height: 0.98;
   font-variant-numeric: tabular-nums;
+  /* Lit from above: a gradient from cream into gold across the glyphs, so the
+     figure catches the same light as the sky behind it. `color` stays declared
+     as the fallback for any engine that will not clip a background to text. */
   color: var(--ink-primary);
-  text-shadow: 0 0 60px color-mix(in srgb, var(--accent) 42%, transparent);
+  /* Ends on --accent-soft, not --accent. At the weakest edge of the scrim the
+     full accent measures 2.93:1 against the sun's glow — just under the 3.0
+     that large text needs — and the lighter gold clears it at 3.55:1 while
+     looking identical at a glance. */
+  background: linear-gradient(
+    172deg,
+    var(--ink-primary) 10%,
+    #f9e4bb 58%,
+    var(--accent-soft) 98%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 42px color-mix(in srgb, var(--accent) 34%, transparent));
+}
+
+:root[data-theme="light"] .greet-amount {
+  background: linear-gradient(172deg, var(--ink-primary) 20%, #6b4d0c 80%, var(--accent) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  filter: none;
 }
 
 :root[data-theme="light"] .greet-amount { text-shadow: none; }
@@ -1025,11 +1147,47 @@ code {
   border-color: rgba(38, 43, 74, 0.14);
 }
 
+/* Interactive chips borrow the button's sweep so the two read as one family.
+   Static chips (the cost ribbon, the stat chips) get none of this — motion is
+   a promise of interactivity and it should not be made falsely. */
+a.chip,
+button.chip {
+  position: relative;
+  isolation: isolate;
+}
+
+a.chip::before,
+button.chip::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.2) 48%,
+    rgba(255, 255, 255, 0.3) 50%,
+    rgba(255, 255, 255, 0.2) 52%,
+    transparent 80%
+  );
+  transform: translateX(-100%);
+  opacity: 0;
+  transition: transform 620ms var(--ease-expo), opacity 160ms ease;
+}
+
 a.chip:hover,
 button.chip:hover {
   background: rgba(244, 239, 230, 0.18);
   transform: translateY(-1px);
 }
+
+a.chip:hover::before,
+button.chip:hover::before { transform: translateX(100%); opacity: 1; }
+
+a.chip:active,
+button.chip:active { transform: translateY(0) scale(0.97); transition-duration: var(--tap); }
 
 :root[data-theme="light"] a.chip:hover,
 :root[data-theme="light"] button.chip:hover {
@@ -1069,14 +1227,32 @@ a.chip.solid:hover,
 
 .card:hover {
   border-color: var(--border-strong);
+  box-shadow:
+    inset 0 1px 0 var(--glass-edge),
+    0 30px 70px -30px rgba(8, 10, 26, 0.8);
 }
 
+/* A short bar of sunlight before each card title, so a stack of cards has a
+   rhythm instead of reading as one long column of text. */
 .card-head {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: 12px;
   padding: 20px 22px;
   border-bottom: 1px solid var(--border);
+}
+
+.card-head::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 22px;
+  width: 3px;
+  height: 17px;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 25%, transparent));
+  box-shadow: 0 0 14px -2px var(--accent-glow);
 }
 
 .card-title {
@@ -1127,6 +1303,11 @@ a.chip.solid:hover,
 .tile {
   --tile: var(--series-1);
   position: relative;
+  /* Guarantees a stacking context at rest, so the hover bloom's negative
+     z-index is always resolved against this tile rather than against an
+     ancestor. Without it the bloom is only correctly placed while the hover
+     transform happens to be creating a context. */
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   gap: 9px;
@@ -1134,7 +1315,7 @@ a.chip.solid:hover,
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background:
-    radial-gradient(22rem 10rem at 88% -18%, color-mix(in srgb, var(--tile) 10%, transparent), transparent 70%),
+    radial-gradient(24rem 11rem at 92% -14%, color-mix(in srgb, var(--tile) 18%, transparent), transparent 68%),
     var(--glass);
   backdrop-filter: blur(28px) saturate(140%);
   -webkit-backdrop-filter: blur(28px) saturate(140%);
@@ -1143,10 +1324,68 @@ a.chip.solid:hover,
   transition: transform 0.24s var(--ease-out), box-shadow 0.24s ease, border-color 0.24s ease;
 }
 
-.tile:hover {
-  transform: translateY(-2px);
-  border-color: var(--border-strong);
+/*
+ * On hover the tile lifts and its own hue blooms from the top corner — the
+ * instrument lighting up under attention. `--tile` already carries that hue, so
+ * the effect is per-tile without a single extra colour token.
+ *
+ * The bloom is a second background layer whose opacity animates. Animating a
+ * gradient's colour stops would repaint every frame; animating the opacity of a
+ * layer that already exists composites.
+ */
+/*
+ * The lit rim: a hairline of the tile's own hue along the top edge, falling
+ * off to nothing. At rest, not on hover — this is what makes a row of tiles
+ * read as a set of instruments rather than as rectangles, and it has to be
+ * there when the merchant is only looking.
+ */
+.tile::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  z-index: 1;
+  height: 2.5px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--tile) 95%, transparent),
+    color-mix(in srgb, var(--tile) 45%, transparent) 40%,
+    transparent 80%
+  );
 }
+
+.tile::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(
+    26rem 13rem at 88% -12%,
+    color-mix(in srgb, var(--tile) 22%, transparent),
+    transparent 70%
+  );
+  opacity: 0;
+  transition: opacity 320ms ease;
+}
+
+.tile:hover {
+  transform: translateY(-3px);
+  border-color: color-mix(in srgb, var(--tile) 34%, var(--border-strong));
+  box-shadow:
+    inset 0 1px 0 var(--glass-edge),
+    0 26px 60px -28px rgba(8, 10, 26, 0.8);
+}
+
+.tile:hover::after { opacity: 1; }
+
+/* The figure leans in fractionally. Scaling the whole tile would soften its
+   text; scaling only the number keeps every glyph crisp. */
+.tile .tile-value {
+  transition: transform 320ms var(--ease-out);
+  transform-origin: left center;
+}
+.tile:hover .tile-value { transform: scale(1.03); }
 
 .tile-head { display: flex; align-items: center; gap: 10px; }
 
@@ -1157,9 +1396,15 @@ a.chip.solid:hover,
   display: grid;
   place-items: center;
   border-radius: 999px;
-  background: rgba(244, 239, 230, 0.08);
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--tile) 32%, transparent),
+    color-mix(in srgb, var(--tile) 8%, transparent)
+  );
   color: var(--tile);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--tile) 36%, transparent),
+    0 0 18px -6px color-mix(in srgb, var(--tile) 65%, transparent);
 }
 
 :root[data-theme="light"] .tile-icon {
@@ -1269,8 +1514,16 @@ a.chip.solid:hover,
 }
 /* the arrow is the redundant channel that keeps this readable without colour */
 .delta svg { width: 11px; height: 11px; stroke-width: 2.6; flex: none; }
-.delta.up { color: var(--delta-up); background: var(--delta-up-wash); }
-.delta.down { color: var(--delta-down); background: var(--delta-down-wash); }
+.delta.up {
+  color: var(--delta-up);
+  background: linear-gradient(140deg, color-mix(in srgb, var(--delta-up) 24%, transparent), var(--delta-up-wash));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--delta-up) 26%, transparent);
+}
+.delta.down {
+  color: var(--delta-down);
+  background: linear-gradient(140deg, color-mix(in srgb, var(--delta-down) 24%, transparent), var(--delta-down-wash));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--delta-down) 26%, transparent);
+}
 .delta.flat { color: var(--ink-muted); background: var(--surface-3); }
 
 .money.neg { color: var(--delta-down); }
@@ -1320,8 +1573,29 @@ a.chip.solid:hover,
 :root[data-theme="light"] .badge.serious { background: rgba(176, 73, 29, 0.08); border-color: rgba(176, 73, 29, 0.24); }
 :root[data-theme="light"] .badge.critical { background: rgba(192, 53, 64, 0.08); border-color: rgba(192, 53, 64, 0.22); }
 
-/* buttons */
+/* ------------------------------------------------------------------ buttons
+ *
+ * Every control in the app is built from this one shape, so the interaction
+ * budget is spent here rather than sprinkled around.
+ *
+ * Four channels, in the order the pointer meets them:
+ *
+ *   1. Lift        — 1px, the smallest movement that still reads as response.
+ *   2. Sheen       — a specular sweep across the surface on hover. This is what
+ *                    makes glass read as glass: real frosted panels catch a
+ *                    moving light source. It is a `transform` on a masked
+ *                    pseudo-element, so it composites and never triggers layout.
+ *   3. Bloom       — the accent's own light behind the pill, brought up on
+ *                    hover so the primary action looks lit from within.
+ *   4. Press       — scale(0.97) with a mild overshoot on release. The spring
+ *                    back is what sells it as a physical object.
+ *
+ * Only `transform`, `opacity` and colour animate. Nothing here moves width,
+ * height or position, so none of it can cause a layout pass.
+ */
 .btn {
+  position: relative;
+  isolation: isolate;
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -1336,7 +1610,51 @@ a.chip.solid:hover,
   font-weight: 500;
   letter-spacing: 0.004em;
   cursor: pointer;
-  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+  transform: translateZ(0);
+  transition:
+    background var(--micro) ease,
+    color var(--micro) ease,
+    border-color var(--micro) ease,
+    box-shadow var(--micro) ease,
+    transform var(--micro) var(--ease-spring);
+}
+
+/*
+ * The sweep. Parked off the left edge; hover drives it across.
+ *
+ * Clipped by its own `border-radius: inherit` rather than `overflow: hidden` on
+ * the button — the button also carries an outside glow, and a clipping parent
+ * would cut it off at the border box.
+ */
+.btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.16) 45%,
+    rgba(255, 255, 255, 0.28) 50%,
+    rgba(255, 255, 255, 0.16) 55%,
+    transparent 80%
+  );
+  transform: translateX(-100%);
+  opacity: 0;
+  transition: transform 620ms var(--ease-expo), opacity 160ms ease;
+}
+
+:root[data-theme="light"] .btn::before {
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.5) 48%,
+    rgba(255, 255, 255, 0.75) 50%,
+    rgba(255, 255, 255, 0.5) 52%,
+    transparent 80%
+  );
 }
 
 :root[data-theme="light"] .btn {
@@ -1344,9 +1662,27 @@ a.chip.solid:hover,
   background: rgba(255, 253, 248, 0.55);
 }
 
-.btn:hover { background: rgba(244, 239, 230, 0.16); transform: translateY(-1px); }
+.btn:hover {
+  background: rgba(244, 239, 230, 0.16);
+  border-color: rgba(255, 255, 255, 0.28);
+  transform: translateY(-1px);
+}
+.btn:hover::before { transform: translateX(100%); opacity: 1; }
 :root[data-theme="light"] .btn:hover { background: rgba(255, 253, 248, 0.9); }
-.btn:active { transform: translateY(0); }
+
+/* The press. Faster than the release on purpose — a control should meet the
+   finger immediately and take its time coming back. */
+.btn:active {
+  transform: translateY(0) scale(0.97);
+  transition-duration: var(--tap);
+}
+
+/* Icons lead the label by a hair on hover, so the button feels like it is
+   already going where it points. */
+.btn svg {
+  transition: transform var(--micro) var(--ease-out);
+}
+.btn:hover svg { transform: translateX(1.5px); }
 
 /* The solid pill: in dusk it is the one white object in the scene, exactly the
    reference's "Start Exercise". In daylight it inverts to indigo. Doubly
@@ -1357,12 +1693,28 @@ a.chip.solid:hover,
   border-color: transparent;
   color: var(--pill-ink);
   font-weight: 580;
-  box-shadow: 0 12px 32px -12px rgba(8, 10, 26, 0.65);
+  /* The trailing zero-spread glow is the resting state of the bloom below, so
+     the two shadows interpolate rather than pop in. */
+  box-shadow:
+    0 12px 32px -12px rgba(8, 10, 26, 0.65),
+    0 0 0 0 var(--accent-glow);
 }
+
+/*
+ * The bloom — the accent's own light spreading from behind the pill.
+ *
+ * A box-shadow rather than a pseudo-element: shadows paint only outside the
+ * border box, so the glow can never wash over the opaque pill face or dull the
+ * label. A radial pseudo-element large enough to be visible around the edges
+ * would necessarily also cover the middle.
+ */
 .btn.primary:hover {
   background: #ffffff;
   color: var(--pill-ink);
   transform: translateY(-1px);
+  box-shadow:
+    0 18px 42px -14px rgba(8, 10, 26, 0.72),
+    0 0 26px 3px var(--accent-glow);
 }
 :root[data-theme="light"] .btn.primary:hover { background: #2e365e; color: var(--pill-ink); }
 
@@ -1402,7 +1754,47 @@ a.chip.solid:hover,
 }
 
 /* segmented — the range chips. The active window is the solid pill. */
+/*
+ * The range control, with a pill that travels between segments.
+ *
+ * The indicator is one element on the container, moved with `transform` — so
+ * changing range slides the pill from where it was to where it is, which reads
+ * as one object moving rather than two objects blinking. That is the whole
+ * difference between a segmented control that feels designed and one that
+ * feels like four links.
+ *
+ * Position comes from `:has()` on the active child, so it needs no JavaScript
+ * and is correct in server-rendered HTML on first paint. The four segments are
+ * an equal-width grid precisely so the offset is a clean multiple of 100% —
+ * with intrinsic widths ("7 days" vs "6 months") the travel distance could not
+ * be expressed in CSS at all.
+ *
+ * Without `:has()` support the pill simply never moves from the first segment,
+ * so each link keeps its own readable resting style as the fallback below.
+ */
+/*
+ * The range control, with a pill that travels between segments.
+ *
+ * Moving one object beats blinking two: changing range slides the pill from
+ * where it was to where it is, which is the difference between a segmented
+ * control that feels designed and one that feels like four links.
+ *
+ * The pill's geometry is measured, not assumed. A first attempt positioned it
+ * with `:has()` and equal grid tracks, which failed twice: a block-level grid
+ * collapsed the whole control to 19px inside its flex parent, and `1fr` tracks
+ * in a shrink-to-fit grid do not equalise — the segments measured 64/74/74/81,
+ * so no fixed multiple of 100% could ever line up. Labels are natural language
+ * ("7 days" against "6 months"), so their widths were never going to agree.
+ *
+ * So layout stays `inline-flex`, sized by its content, and the layout effect in
+ * app.layout.tsx publishes the active link's offset and width as custom
+ * properties. Progressive by construction: until that runs, `data-sliding` is
+ * absent, the pill stays hidden and each link keeps its own resting pill — so
+ * server-rendered HTML and the pre-hydration frame both show the current range
+ * correctly, and the slide is an enhancement rather than a dependency.
+ */
 .segmented {
+  position: relative;
   display: inline-flex;
   padding: 4px;
   gap: 3px;
@@ -1418,21 +1810,59 @@ a.chip.solid:hover,
   border-color: rgba(38, 43, 74, 0.13);
 }
 
+.segmented::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  width: var(--pill-w, 0);
+  border-radius: 999px;
+  background: var(--pill);
+  box-shadow: 0 6px 18px -8px rgba(8, 10, 26, 0.7);
+  opacity: 0;
+  transform: translateX(var(--pill-x, 0));
+  /* `transform` carries the travel; `width` only changes because the labels
+     differ in length, and on an absolutely positioned box it costs nothing
+     outside itself. */
+  transition:
+    transform 420ms var(--ease-expo),
+    width 420ms var(--ease-expo),
+    opacity 200ms ease;
+}
+
+.segmented[data-sliding="true"]::before { opacity: 1; }
+
 .segmented a {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  white-space: nowrap;
   padding: 5px 14px;
   border-radius: 999px;
   font-size: 12.5px;
   font-weight: 490;
   color: var(--ink-secondary);
   letter-spacing: 0.004em;
-  transition: background 0.18s ease, color 0.18s ease;
+  transition: background 180ms ease, color 180ms ease, transform var(--tap) var(--ease-out);
 }
 .segmented a:hover { color: var(--ink-primary); }
+.segmented a:active { transform: scale(0.96); }
+
+/* Pre-hydration fallback: the active link wears the pill itself. */
 .segmented a[aria-current="true"] {
   background: var(--pill);
   color: var(--pill-ink);
   font-weight: 580;
   box-shadow: 0 6px 18px -8px rgba(8, 10, 26, 0.7);
+}
+
+/* Once the travelling pill is live it owns the background, and the label keeps
+   only its ink — otherwise two pills are visible for the length of the slide. */
+.segmented[data-sliding="true"] a[aria-current="true"] {
+  background: none;
+  box-shadow: none;
 }
 
 /* tables */
@@ -1749,4 +2179,508 @@ table.data .primary-cell { font-weight: 510; color: var(--ink-primary); letter-s
   border-radius: 10px;
   padding: 13px 15px;
   background: var(--surface-3);
+}
+
+/* =========================================================================
+ * EDITORIAL PASS — the broadsheet
+ *
+ * Everything below deliberately overrides the glass system above.
+ *
+ * The glass-card look — blurred panels, gradient headlines, a glow on every
+ * control, six identical rounded rectangles in an even grid — is the single
+ * most machine-generated aesthetic in circulation. It reads as generated
+ * because every element gets the same treatment: uniform radius, uniform
+ * elevation, uniform emphasis. Nothing is subordinated to anything.
+ *
+ * This is a profit tool, so the tradition to borrow from is financial print:
+ * the annual report and the broadsheet. Depth comes from line weight and
+ * typographic hierarchy rather than from blur and shadow. Rules organise the
+ * page. Numerals are the subject, not decoration on a card. Space is the main
+ * material, and the sky shows through it rather than being hidden behind
+ * frosted panels.
+ *
+ * Rules of this pass:
+ *   - Hairlines instead of borders-around-boxes. A rule separates; a box
+ *     encloses, and enclosing everything flattens hierarchy.
+ *   - Radius near zero. Rounded corners on everything is the tell.
+ *   - No gradient text, no glow. Gold is a rule, a mark, an underline — never
+ *     a fill on a headline.
+ *   - Scale contrast does the work: 11px tracked-out small caps against a
+ *     96px figure, and very little in between.
+ *   - Sections are numbered, as a report's are.
+ * ====================================================================== */
+
+:root {
+  --rule: rgba(244, 239, 230, 0.16);
+  --rule-strong: rgba(244, 239, 230, 0.32);
+  --radius: 3px;
+  --radius-sm: 2px;
+}
+
+:root[data-theme="light"] {
+  --rule: rgba(38, 43, 74, 0.18);
+  --rule-strong: rgba(38, 43, 74, 0.38);
+}
+
+/* The field quietens down: the sky is a backdrop for type, not a light show. */
+.app-shell::before,
+.app-shell::after { opacity: 0.5; }
+
+/* ------------------------------------------------------------- masthead */
+
+.greet { padding: 46px 0 0; }
+
+.greet-kicker {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin: 0 0 26px;
+}
+
+/* The rule runs to the end of the measure — a masthead device, not a chip. */
+.greet-kicker::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--rule);
+}
+
+.greet-title {
+  font-size: clamp(30px, 3.1vw, 42px);
+  font-weight: 330;
+  letter-spacing: -0.02em;
+  line-height: 1.08;
+  margin: 0;
+  color: var(--ink-secondary);
+}
+
+.greet-title .greet-shop {
+  display: inline;
+  color: var(--ink-primary);
+  font-weight: 420;
+}
+
+/* The figure. No gradient, no glow — at this size the numerals are the
+   graphic, and anything applied to them is decoration on top of the subject. */
+.greet-figure-row {
+  display: flex;
+  align-items: last baseline;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin-top: 18px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--rule-strong);
+}
+
+.greet-amount {
+  font-size: clamp(64px, 8.4vw, 116px);
+  font-weight: 280;
+  letter-spacing: -0.045em;
+  line-height: 0.86;
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--ink-primary);
+  background: none;
+  -webkit-text-fill-color: currentColor;
+  filter: none;
+  text-shadow: none;
+}
+
+.greet-caption {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+/* Stat chips become a ledger strip: figures separated by rules, not pills. */
+.greet-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0;
+  margin-top: 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.greet-meta .chip {
+  border: none;
+  border-right: 1px solid var(--rule);
+  border-radius: 0;
+  background: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  padding: 16px 26px 16px 0;
+  margin-right: 26px;
+  font-size: 14px;
+  font-weight: 440;
+  color: var(--ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.greet-meta .chip:last-of-type { border-right: none; }
+
+/* The one call to action keeps its solidity, but squared off. */
+.greet-meta .chip.solid,
+:root[data-theme="light"] .greet-meta .chip.solid {
+  align-self: center;
+  margin-left: auto;
+  margin-right: 0;
+  padding: 11px 22px;
+  border-radius: 2px;
+  background: var(--pill);
+  color: var(--pill-ink);
+  font-size: 12px;
+  font-weight: 620;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow: none;
+}
+
+/* --------------------------------------------------------- ledger figures */
+
+/*
+ * The KPI row, rebuilt as a ledger.
+ *
+ * Six identical cards in an even grid is the shape that makes a dashboard look
+ * generated: every figure claims equal importance, so none of them has any.
+ * A ruled strip subordinates them to the headline figure above and lets the eye
+ * run along a baseline instead of hopping between boxes.
+ */
+.grid.cols-3,
+.grid.cols-4 {
+  display: grid;
+  gap: 0;
+  border-top: 1px solid var(--rule);
+}
+
+.grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.tile {
+  border: none;
+  border-right: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  border-radius: 0;
+  background: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+  isolation: auto;
+  padding: 22px 26px 18px 0;
+  gap: 0;
+  transition: none;
+}
+
+.tile:nth-child(3n) { border-right: none; }
+.tile::before, .tile::after { content: none; }
+.tile:hover { transform: none; box-shadow: none; border-color: var(--rule); }
+.tile:hover .tile-value { transform: none; }
+
+/* The label leads, in the report's voice. */
+.tile-head { gap: 0; margin-bottom: 14px; }
+.tile-icon { display: none; }
+
+.tile-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.tile-value {
+  font-size: 34px;
+  font-weight: 320;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums lining-nums;
+  margin-bottom: 10px;
+}
+
+.tile-meta { font-size: 11.5px; min-height: 0; }
+
+/* The trend sits as a hairline under the figure, not as a filled glow. */
+.tile-spark { margin: 16px 26px 0 0; opacity: 0.6; }
+
+/* Deltas: a mark and a number, not a badge. */
+.delta {
+  background: none !important;
+  box-shadow: none !important;
+  padding: 0;
+  border-radius: 0;
+  font-size: 11.5px;
+  font-weight: 620;
+  letter-spacing: 0.02em;
+}
+
+/* ------------------------------------------------------------- sections */
+
+/*
+ * Cards lose their walls. A rule and a numbered head is enough to say "new
+ * section", and it leaves the sky visible between them instead of stacking
+ * frosted slabs down the page.
+ */
+.card {
+  background: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: none;
+  border-top: 1px solid var(--rule-strong);
+  border-radius: 0;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.card:hover { border-color: var(--rule-strong); box-shadow: none; }
+
+.card-head {
+  align-items: baseline;
+  padding: 26px 0 18px;
+  border-bottom: 1px solid var(--rule);
+}
+
+/* Section numerals, counted by the page itself. */
+.page-enter { counter-reset: section; }
+
+.card-head::before {
+  counter-increment: section;
+  content: counter(section, decimal-leading-zero);
+  position: static;
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--accent);
+  margin-right: 16px;
+}
+
+.card-title {
+  font-size: 20px;
+  font-weight: 380;
+  letter-spacing: -0.014em;
+}
+
+.card-hint { font-size: 12.5px; max-width: 58ch; }
+.card-body { padding: 22px 0; }
+.card-body.flush { padding: 0; }
+
+/* Tables become ledgers: no fills, rules only, figures aligned. */
+table.data th {
+  background: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  padding: 14px 18px 10px 0;
+  font-size: 9.5px;
+  letter-spacing: 0.2em;
+  border-bottom: 1px solid var(--rule-strong);
+}
+
+table.data td {
+  padding: 13px 18px 13px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+table.data tbody tr:hover td { background: none; color: var(--ink-primary); }
+table.data .right { padding-right: 0; }
+
+/* Banners and alerts: a marginal rule, the way a report flags a note. */
+.banner,
+.alert {
+  background: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: none;
+  border-left: 2px solid var(--accent);
+  border-radius: 0;
+  box-shadow: none;
+  padding: 4px 0 4px 20px;
+}
+
+.alert { border-left-color: var(--rule-strong); border-bottom: 1px solid var(--rule); padding: 18px 0 18px 20px; }
+.alert.critical { border-left-color: var(--status-critical); }
+.alert.warning { border-left-color: var(--status-warning); }
+
+/* ------------------------------------------------------------- controls */
+
+/*
+ * Buttons stop glowing. A rule and an inversion on hover is a stronger, older
+ * device than a bloom, and it does not date.
+ */
+.btn {
+  border-radius: 2px;
+  background: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid var(--rule-strong);
+  box-shadow: none;
+  font-size: 11px;
+  font-weight: 620;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 9px 18px;
+}
+
+.btn::before { content: none; }
+
+.btn:hover {
+  background: var(--ink-primary);
+  color: var(--plane);
+  border-color: var(--ink-primary);
+  transform: none;
+}
+
+.btn:hover svg { transform: none; }
+
+.btn.primary,
+:root[data-theme="light"] .btn.primary {
+  background: var(--pill);
+  color: var(--pill-ink);
+  border-color: var(--pill);
+  box-shadow: none;
+}
+
+.btn.primary:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: none;
+  transform: none;
+}
+
+/* The range control: a rule of options, with the current one underscored. */
+.segmented {
+  background: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  gap: 0;
+}
+
+.segmented::before {
+  top: auto;
+  bottom: -1px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.segmented a {
+  padding: 8px 16px;
+  border-radius: 0;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.segmented a[aria-current="true"],
+.segmented[data-sliding="true"] a[aria-current="true"] {
+  background: none;
+  box-shadow: none;
+  color: var(--ink-primary);
+  font-weight: 700;
+}
+
+/* Sidebar: a column rule rather than a frosted panel. */
+.sidebar {
+  background: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-right: 1px solid var(--rule);
+}
+
+.nav-link {
+  border-radius: 0;
+  padding: 9px 0 9px 16px;
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+}
+
+.nav-link[aria-current="page"] {
+  background: none;
+  box-shadow: none;
+  color: var(--ink-primary);
+  font-weight: 600;
+}
+
+.nav-link[aria-current="page"]::before {
+  left: 0;
+  width: 2px;
+  height: 100%;
+  top: 0;
+  transform: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.nav-link:not([aria-current="page"]):hover { transform: none; background: none; color: var(--ink-primary); }
+.nav-link:hover { background: none; }
+
+/* Chips outside the ledger strip: squared, ruled, quiet. */
+.chip {
+  border-radius: 2px;
+  background: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid var(--rule);
+  font-size: 11.5px;
+}
+.chip::before { content: none; }
+a.chip:hover, button.chip:hover { background: none; border-color: var(--rule-strong); transform: none; }
+
+.page-head { padding: 46px 0 8px; }
+.page-title { font-size: clamp(30px, 3.1vw, 42px); font-weight: 330; }
+.page-subtitle { font-size: 12.5px; }
+.content { padding: 0 40px 80px; gap: 0; }
+.page-enter { gap: 0; }
+.topbar { padding: 18px 40px 0; margin-bottom: -52px; }
+
+/* The scrim was there to rescue muted ink over the bright horizon. With the
+   sky quietened and type this large it is no longer earning its keep. */
+.sky-text::before { content: none; }
+
+/* --------------------------------------------------------------- the field
+ *
+ * The sky loses its sunset.
+ *
+ * With the glass panels gone, type sits directly on the backdrop, and the old
+ * scene ran to a bright peach horizon that measured 1.45:1 against muted ink —
+ * unreadable. Glass had been hiding that all along.
+ *
+ * So the app's sky is now the moment *after* the sun goes down: deep indigo
+ * falling to a warm plum, with only a rumour of gold at the very bottom edge.
+ * Every stop is dark enough that cream ink clears AA on bare sky, which is what
+ * lets the panels stay gone. The full sunset still belongs to the landing page,
+ * where the type is large and the scrims are doing the work.
+ */
+body::before {
+  background:
+    radial-gradient(90rem 30rem at 78% 104%, rgba(240, 194, 115, 0.1), transparent 62%),
+    linear-gradient(
+      180deg,
+      #12172e 0%,
+      #171e3a 26%,
+      #222a4a 52%,
+      #313455 74%,
+      #413a5c 90%,
+      #4d4260 100%
+    );
+}
+
+:root[data-theme="light"] body::before {
+  background:
+    radial-gradient(90rem 32rem at 50% -14%, rgba(222, 229, 242, 0.85), transparent 60%),
+    linear-gradient(180deg, #f7f4ed 0%, #f2efe6 46%, #ece7db 78%, #e6ded0 100%);
 }

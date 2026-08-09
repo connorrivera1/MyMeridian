@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import {
   Link,
   NavLink,
@@ -199,6 +199,9 @@ export default function AppLayout() {
   const { shopName, shopDomain, isDemo, preset, alertCount, plan, sync } =
     useLoaderData<typeof loader>();
   const location = useLocation();
+  // Re-measured whenever the selected range changes, which is the only thing
+  // that moves the pill between navigations.
+  const rangeRef = useTravellingPill(preset);
 
   // Keep whatever else the merchant has narrowed to. Rebuilding the query
   // string from scratch here silently dropped an active sort and channel
@@ -274,7 +277,12 @@ export default function AppLayout() {
             as large type directly on the sky below it. */}
         <header className="topbar">
           <div className="topbar-actions">
-            <div className="segmented" role="group" aria-label="Date range">
+            <div
+              className="segmented"
+              role="group"
+              aria-label="Date range"
+              ref={rangeRef}
+            >
               {(Object.keys(RANGE_PRESETS) as RangePreset[]).map((key) => (
                 <NavLink
                   key={key}
@@ -337,6 +345,54 @@ export default function AppLayout() {
  * reproduced here because the script that makes it meaningful now lives in the
  * head.
  */
+/**
+ * Publishes the active range link's geometry so the pill can travel to it.
+ *
+ * The pill's position cannot be expressed in CSS: the labels are natural
+ * language, so the four segments are genuinely different widths ("7 days"
+ * against "6 months"), and no `:has()` rule can encode an offset that varies
+ * with text. Measuring is the only correct answer.
+ *
+ * `useLayoutEffect` rather than `useEffect` so the properties are written
+ * before the browser paints — with the latter, the pill would be visible for
+ * one frame at its previous position after every range change.
+ *
+ * Setting `data-sliding` is what switches the CSS from the per-link fallback
+ * pill to the travelling one, so the control is always correctly marked:
+ * server-rendered HTML shows the classic pill, and it upgrades on hydration.
+ *
+ * A ResizeObserver covers the two ways the geometry moves without a
+ * navigation: the variable font finishing loading (every label reflows) and
+ * the window resizing.
+ */
+function useTravellingPill(activeKey: string) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const place = () => {
+      const active = el.querySelector<HTMLElement>('[aria-current="true"]');
+      if (!active) {
+        el.removeAttribute("data-sliding");
+        return;
+      }
+      el.style.setProperty("--pill-x", `${active.offsetLeft}px`);
+      el.style.setProperty("--pill-w", `${active.offsetWidth}px`);
+      el.dataset.sliding = "true";
+    };
+
+    place();
+
+    const observer = new ResizeObserver(place);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [activeKey]);
+
+  return ref;
+}
+
 function AppBridgeNavigation() {
   const navigate = useNavigate();
 

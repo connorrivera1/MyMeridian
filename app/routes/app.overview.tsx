@@ -212,7 +212,7 @@ export default function Overview() {
             so the greeting has to BE the h1 — otherwise this page starts at h2
             and has no top-level heading at all. */}
         <h1 className="greet-title">
-          {data.greeting}
+          {data.greeting}{" "}
           <span className="greet-shop">{data.shopName}</span>
         </h1>
         <div className="greet-figure-row">

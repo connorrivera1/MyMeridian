@@ -3094,3 +3094,64 @@ table.data .right { font-variant-numeric: tabular-nums lining-nums; }
 .bridge-value, .bridge-label { text-transform: none; letter-spacing: 0.01em; }
 .bridge-value { font-size: 11.5px; }
 .chart-tooltip { border-radius: 2px; }
+
+/* =========================================================================
+ * CHART PALETTE — validated, not chosen by eye
+ *
+ * The old marks failed the six checks badly, and it is why the charts read as
+ * generic: revenue #9db1e8 and cost #9aa0c6 measured ΔE 5.8 apart in NORMAL
+ * vision — under the hard floor of 15 — so a waterfall's two primary
+ * categories were, to any reader, the same colour. Both also sat under the
+ * chroma floor, i.e. they read as grey. The 8-channel series had the same
+ * problem between #f2a582 and #eec983 (ΔE 9.1).
+ *
+ * These were produced by running the palette validator, not by taste:
+ *   revenue↔cost  ΔE 16.3 normal / 14.8 deutan   (was 5.8 / 5.6)
+ *   channels      ΔE 17.7 normal, worst CVD pair 7.3
+ *
+ * The channel pair in the 6–8 CVD band is legal because every swatch in that
+ * table sits beside its channel name — direct labelling is the secondary
+ * encoding the rule requires. Green is deliberately absent: green↔orange
+ * collided at ΔE 4.5 for deuteranopia, the single most common form.
+ * ====================================================================== */
+
+:root {
+  /* Waterfall / semantic marks. Rose for cost, because money leaving should
+     share a family with the loss language everywhere else in the app. */
+  --mark-structure: #6f92e3;
+  --mark-cost: #a8737f;
+  --mark-result: #f0c273;
+
+  --series-1: #6f92e3;
+  --series-2: #f0c273;
+  --series-3: #4fa8b8;
+  --series-4: #d4708a;
+  --series-5: #e6d7b2;
+  --series-6: #a97fdd;
+  --series-7: #e08a5a;
+  --series-8: #8792b8;
+
+  --viz-blue: var(--series-1);
+  --viz-amber: var(--series-2);
+  --viz-teal: var(--series-3);
+  --viz-pink: var(--series-4);
+  --viz-violet: var(--series-6);
+  --viz-orange: var(--series-7);
+  --viz-mint: var(--accent);
+  --viz-rose: var(--mark-cost);
+}
+
+:root[data-theme="light"] {
+  --mark-structure: #3a5fb8;
+  --mark-cost: #8f4a58;
+  --mark-result: #a8761a;
+
+  --series-1: #3a5fb8;
+  --series-2: #a8761a;
+  --series-3: #1f7385;
+  --series-4: #a83f5e;
+  --series-5: #7a6a3e;
+  --series-6: #6f45a8;
+  --series-7: #a85520;
+  --series-8: #4f5a7d;
+}

@@ -597,9 +597,10 @@ export function ProfitBridge({
                   x2={x}
                   y1={yAt(bars[i - 1]!.to)}
                   y2={yAt(bars[i - 1]!.to)}
-                  stroke="var(--border-strong)"
+                  // Solid, not dashed: a dashed rule reads as a projection
+                  // or a threshold, and this is only a connector.
+                  stroke="var(--rule)"
                   strokeWidth={1}
-                  strokeDasharray="2 2"
                 />
               )}
               <path
@@ -785,18 +786,50 @@ export function Sparkline({
     y: height - ((v - min) / span) * (height - 4) - 2,
   }));
 
+  const last = points[points.length - 1];
+  // The extreme, marked. Tufte's sparkline convention: the line carries shape,
+  // one marked point carries position, and nothing else competes.
+  const peakIndex = values.indexOf(max);
+  const peak = points[peakIndex];
+
   return (
     <svg width={width} height={height} className="chart" aria-hidden="true">
+      {/* A hairline at the series' own minimum gives the shape something to be
+          read against; without it a sparkline is a squiggle at an unknown
+          altitude. */}
+      <line
+        x1={0}
+        x2={width}
+        y1={height - 2}
+        y2={height - 2}
+        stroke="var(--rule)"
+        strokeWidth={1}
+      />
       <path
         className="draw"
         pathLength={1}
         d={linePath(points)}
         fill="none"
         stroke={color}
-        strokeWidth={1.5}
+        strokeWidth={1.25}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+      {peak && peakIndex !== values.length - 1 && (
+        <circle cx={peak.x} cy={peak.y} r={1.75} fill={color} opacity={0.5} />
+      )}
+      {last && (
+        <circle
+          cx={last.x}
+          cy={last.y}
+          r={2.75}
+          fill={color}
+          // A 2px surface ring rather than a stroke around the mark, so the
+          // dot separates from the line without gaining a border.
+          stroke="var(--plane)"
+          strokeWidth={2}
+        />
+      )}
     </svg>
   );
 }

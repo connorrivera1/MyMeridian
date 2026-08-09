@@ -169,7 +169,8 @@ export function TimeSeriesChart({
     return <div className="empty">No data in this range.</div>;
   }
 
-  const pad = { top: 12, right: 14, bottom: 26, left: 52 };
+  // Right padding leaves room for the end-labels rather than clipping them.
+  const pad = { top: 12, right: series.length <= 4 ? 96 : 14, bottom: 26, left: 52 };
   const plotW = Math.max(1, width - pad.left - pad.right);
   const plotH = Math.max(1, height - pad.top - pad.bottom);
 
@@ -291,6 +292,42 @@ export function TimeSeriesChart({
           />
         ))}
 
+        {/*
+          * Direct labels at the line ends.
+          *
+          * A legend alone makes the reader hold a colour in working memory and
+          * carry it across the plot; naming each line where it finishes means
+          * identity never depends on colour at all, which is also what keeps
+          * this readable for a colourblind reader. Only for four series or
+          * fewer — past that the labels collide and the legend has to carry it.
+          *
+          * Nudged apart when two lines finish within a label's height of each
+          * other, so the two names never overlap.
+          */}
+        {series.length <= 4 &&
+          (() => {
+            const ends = series
+              .map((s) => ({ s, y: yAt(data[data.length - 1]?.values[s.key] ?? 0) }))
+              .sort((a, b) => a.y - b.y);
+            let previous = -Infinity;
+            return ends.map(({ s, y }) => {
+              const placed = Math.max(y, previous + 12);
+              previous = placed;
+              return (
+                <text
+                  key={`end-${s.key}`}
+                  x={width - pad.right + 4}
+                  y={placed + 3}
+                  textAnchor="start"
+                  className="series-end-label"
+                  style={{ fill: s.color }}
+                >
+                  {s.label}
+                </text>
+              );
+            });
+          })()}
+
         {hoverIndex !== null && point && (
           <>
             <line
@@ -307,7 +344,7 @@ export function TimeSeriesChart({
                 cy={yAt(point.values[s.key] ?? 0)}
                 r={4.5}
                 fill={s.color}
-                stroke="var(--surface-1)"
+                stroke="var(--plane)"
                 strokeWidth={2}
               />
             ))}
@@ -934,39 +971,107 @@ export function CapacityChart({
           textAnchor="end"
           style={{ fill: "var(--status-warning)", fontWeight: 650 }}
         >
-          capacity {Math.round(capacity)}/day
+          CAPACITY {Math.round(capacity)}/DAY
         </text>
 
-        {/* forecast region */}
+        {/*
+          * The projected half.
+          *
+          * A faint grey box was the only thing separating measurement from
+          * forecast, which asks the reader to remember that the right-hand
+          * third of every line is a guess. Now the boundary is a labelled rule
+          * and the projected span of each line is dashed — dashing is exactly
+          * right here, where the anti-pattern is dashing something that is not
+          * a projection.
+          */}
         {firstForecast < combined.length && (
-          <rect
-            x={xAt(firstForecast)}
-            y={pad.top}
-            width={width - pad.right - xAt(firstForecast)}
-            height={plotH}
-            fill="var(--ink-muted)"
-            opacity={0.06}
-          />
+          <>
+            <rect
+              x={xAt(firstForecast)}
+              y={pad.top}
+              width={width - pad.right - xAt(firstForecast)}
+              height={plotH}
+              fill="var(--ink-muted)"
+              opacity={0.045}
+            />
+            <line
+              x1={xAt(firstForecast)}
+              x2={xAt(firstForecast)}
+              y1={pad.top}
+              y2={pad.top + plotH}
+              stroke="var(--rule-strong)"
+              strokeWidth={1}
+            />
+            <text
+              x={xAt(firstForecast) + 6}
+              y={pad.top + 9}
+              textAnchor="start"
+              className="forecast-label"
+            >
+              projected
+            </text>
+          </>
         )}
 
+        {/* Measured backlog, solid to the forecast boundary. */}
         <path
           className="draw"
           pathLength={1}
-          d={linePath(combined.map((c, i) => ({ x: xAt(i), y: yAt(c.backlog) })))}
+          d={linePath(
+            combined
+              .slice(0, firstForecast)
+              .map((c, i) => ({ x: xAt(i), y: yAt(c.backlog) })),
+          )}
           fill="none"
           stroke="var(--delta-down)"
           strokeWidth={1.6}
           strokeLinejoin="round"
         />
+        {/* Projected backlog, dashed. Starts one point early so the two halves
+            join rather than leaving a gap at the boundary. */}
+        {firstForecast > 0 && firstForecast < combined.length && (
+          <path
+            d={linePath(
+              combined
+                .slice(firstForecast - 1)
+                .map((c, i) => ({ x: xAt(firstForecast - 1 + i), y: yAt(c.backlog) })),
+            )}
+            fill="none"
+            stroke="var(--delta-down)"
+            strokeWidth={1.6}
+            strokeDasharray="4 4"
+            strokeLinejoin="round"
+            opacity={0.85}
+          />
+        )}
         <path
           className="draw"
           pathLength={1}
-          d={linePath(combined.map((c, i) => ({ x: xAt(i), y: yAt(c.inbound) })))}
+          d={linePath(
+            combined
+              .slice(0, firstForecast)
+              .map((c, i) => ({ x: xAt(i), y: yAt(c.inbound) })),
+          )}
           fill="none"
           stroke="var(--mark-structure)"
           strokeWidth={1.6}
           strokeLinejoin="round"
         />
+        {firstForecast > 0 && firstForecast < combined.length && (
+          <path
+            d={linePath(
+              combined
+                .slice(firstForecast - 1)
+                .map((c, i) => ({ x: xAt(firstForecast - 1 + i), y: yAt(c.inbound) })),
+            )}
+            fill="none"
+            stroke="var(--mark-structure)"
+            strokeWidth={1.6}
+            strokeDasharray="4 4"
+            strokeLinejoin="round"
+            opacity={0.85}
+          />
+        )}
 
         {hoverIndex !== null && (
           <line
@@ -1052,7 +1157,8 @@ export function PaybackChart({
     return <div className="empty">Not enough customer history yet.</div>;
   }
 
-  const pad = { top: 14, right: 16, bottom: 28, left: 54 };
+  // Right gutter carries the cohort labels rather than clipping them.
+  const pad = { top: 14, right: 104, bottom: 28, left: 54 };
   const plotW = Math.max(1, width - pad.left - pad.right);
   const plotH = Math.max(1, height - pad.top - pad.bottom);
 
@@ -1103,12 +1209,12 @@ export function PaybackChart({
               strokeDasharray="5 4"
             />
             <text
-              x={width - pad.right}
-              y={yAt(cacCents) - 5}
-              textAnchor="end"
-              style={{ fill: "var(--status-critical)", fontWeight: 600 }}
+              x={pad.left + 4}
+              y={yAt(cacCents) - 6}
+              textAnchor="start"
+              style={{ fill: "var(--status-critical)", fontWeight: 650 }}
             >
-              CAC {formatMoney(cacCents, "USD", { decimals: false })}
+              CAC {formatMoney(cacCents, "USD", { decimals: false })} — BREAK EVEN
             </text>
           </>
         )}
@@ -1136,7 +1242,7 @@ export function PaybackChart({
                 cy={yAt(p.valueCents)}
                 r={hover?.series === si && hover?.index === pi ? 6 : 4}
                 fill={s.color}
-                stroke="var(--surface-1)"
+                stroke="var(--plane)"
                 strokeWidth={2}
                 onMouseEnter={() => setHover({ series: si, index: pi })}
                 onMouseLeave={() => setHover(null)}
@@ -1145,10 +1251,29 @@ export function PaybackChart({
           </g>
         ))}
 
+        {/* Each cohort named where it ends: identity never depends on colour. */}
+        {visible.length <= 4 &&
+          visible.map((s) => {
+            const end = s.points[s.points.length - 1];
+            if (!end) return null;
+            return (
+              <text
+                key={`lbl-${s.label}`}
+                x={xAt(end.day) + 8}
+                y={yAt(end.valueCents) + 3}
+                textAnchor="start"
+                className="series-end-label"
+                style={{ fill: s.color }}
+              >
+                {s.label}
+              </text>
+            );
+          })}
+
         {[0, 30, 60, 90].map((day) =>
           day <= maxDay ? (
             <text key={day} x={xAt(day)} y={height - 8} textAnchor="middle">
-              day {day}
+              DAY {day}
             </text>
           ) : null,
         )}

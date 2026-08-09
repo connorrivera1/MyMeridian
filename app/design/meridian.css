@@ -3155,3 +3155,22 @@ table.data .right { font-variant-numeric: tabular-nums lining-nums; }
   --series-7: #a85520;
   --series-8: #4f5a7d;
 }
+
+/* Direct labels at the end of a line. Set in the series' own colour because
+   the mark beside them carries identity — but kept small and tracked so they
+   read as annotation on the plot, not as a second axis. */
+.chart .series-end-label {
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* The measured/projected boundary marker. */
+.chart .forecast-label {
+  font-size: 8.5px;
+  font-weight: 650;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  fill: var(--ink-muted);
+}

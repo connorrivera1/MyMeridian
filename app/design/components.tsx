@@ -562,6 +562,11 @@ export function Delta({
   return (
     <span className={`delta ${good ? "up" : "down"}`}>
       {rising ? <IconArrowUp className="delta-icon" /> : <IconArrowDown className="delta-icon" />}
+      {/* The arrow glyph and the wash colour are the two visual channels, but
+          both are invisible to a screen reader — the icons are aria-hidden and
+          the figure is absolute-valued, so this announced a bare "12%" with no
+          direction. */}
+      <span className="sr-only">{rising ? "up " : "down "}</span>
       {formatPercent(Math.abs(rounded), Math.abs(rounded) >= 0.1 ? 0 : 1)}
       {suffix ? ` ${suffix}` : ""}
     </span>

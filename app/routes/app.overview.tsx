@@ -204,14 +204,17 @@ export default function Overview() {
     <>
       {/* The opening move, straight on the sky: the merchant is greeted by
           name, and the number they came for stands under it in sunlight. */}
-      <section className="greet" aria-label="Net profit summary">
+      <section className="greet sky-text" aria-label="Net profit summary">
         <p className="greet-kicker">
           {data.kickerDate} · last {data.rangeLabel}
         </p>
-        <h2 className="greet-title">
+        {/* The overview suppresses RouteTitle's h1 in favour of the greeting,
+            so the greeting has to BE the h1 — otherwise this page starts at h2
+            and has no top-level heading at all. */}
+        <h1 className="greet-title">
           {data.greeting}
           <span className="greet-shop">{data.shopName}</span>
-        </h2>
+        </h1>
         <div className="greet-figure-row">
           <div className="greet-amount">
             <AnimatedMoney

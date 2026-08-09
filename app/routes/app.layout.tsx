@@ -208,6 +208,11 @@ export default function AppLayout() {
 
   const shell = (
     <div className="app-shell">
+      {/* Eight nav items render before the content on every page; without this
+          a keyboard user tabs the whole sidebar on each navigation. */}
+      <a className="skip-link" href="#content">
+        Skip to content
+      </a>
       <aside className="sidebar">
         <div className="brand">
           <BrandMark />
@@ -281,14 +286,14 @@ export default function AppLayout() {
           </div>
         </header>
 
-        <div className="content">
+        <main className="content" id="content">
           <RouteTitle />
           <SyncBanner sync={sync} isDemo={isDemo} />
           {/* keyed on the path so the entrance cascade replays per page */}
           <div key={location.pathname} className="page-enter">
             <Outlet />
           </div>
-        </div>
+        </main>
       </div>
     </div>
   );
@@ -389,7 +394,7 @@ function RouteTitle() {
   const entry = TITLES[pathname] ?? TITLES["/app"]!;
 
   return (
-    <div className="page-head">
+    <div className="page-head sky-text">
       <h1 className="page-title">{entry.title}</h1>
       <p className="page-subtitle">{entry.subtitle}</p>
     </div>

@@ -37,11 +37,13 @@
   --glow: #e7ae78;
 
   --ink: #f4efe6;
-  --ink-2: rgba(244, 239, 230, 0.75);
-  --ink-3: rgba(244, 239, 230, 0.55);
+  --ink-2: rgba(244, 239, 230, 0.8);
+  --ink-3: rgba(244, 239, 230, 0.68);
 
-  --glass: rgba(21, 26, 51, 0.5);
-  --glass-strong: rgba(18, 23, 46, 0.72);
+  /* Opacity is a legibility floor, not a taste setting — see meridian.css.
+     At 0.5 the muted ink measured 2.60:1 over the sun's glow. */
+  --glass: rgba(21, 26, 51, 0.72);
+  --glass-strong: rgba(18, 23, 46, 0.88);
   --edge: rgba(255, 255, 255, 0.14);
   --border: rgba(244, 239, 230, 0.14);
 
@@ -111,6 +113,50 @@ a { color: inherit; text-decoration: none; }
 img { max-width: 100%; display: block; }
 
 .wrap { max-width: 1180px; margin: 0 auto; padding: 0 28px; position: relative; }
+
+/* --------------------------------------------------------------- sky text */
+
+/*
+ * Text on bare sky needs its own haze. The shader's sun is brightest low on
+ * the page, exactly where the pricing note and the figure captions sit — that
+ * note measured 1.35:1, the worst contrast anywhere in this project. No ink
+ * colour fixes it; the backdrop has to come down.
+ */
+.sky-text { position: relative; isolation: isolate; }
+
+/*
+ * Generous insets and a wide blur on purpose: at a tighter radius the haze
+ * resolves into a visible dark slab behind the text, which is exactly the
+ * web-form chrome this design avoids. Pushed this far out, the edges fall
+ * outside the text's optical bounds and it reads as depth in the sky.
+ */
+.sky-text::before {
+  content: "";
+  position: absolute;
+  inset: -70px -16% -60px -14%;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: 50%;
+  background: radial-gradient(
+    68% 108% at 30% 50%,
+    rgba(11, 15, 33, 0.88) 0%,
+    rgba(11, 15, 33, 0.8) 40%,
+    rgba(11, 15, 33, 0.42) 68%,
+    rgba(11, 15, 33, 0) 92%
+  );
+  filter: blur(46px);
+}
+
+/* Centred blocks fade from the middle out instead. */
+.sky-text.centered::before {
+  inset: -54px -12%;
+  background: radial-gradient(
+    62% 130% at 50% 50%,
+    rgba(11, 15, 33, 0.9) 0%,
+    rgba(11, 15, 33, 0.8) 44%,
+    rgba(11, 15, 33, 0) 86%
+  );
+}
 
 /* ------------------------------------------------------------------ header */
 
@@ -512,7 +558,7 @@ footer {
   <section class="hero" id="hero">
     <div class="wrap" style="width: 100%;">
       <div class="hero-grid">
-        <div>
+        <div class="sky-text">
           <span class="kicker">Profit analytics for Shopify</span>
           <h1>
             Shopify reports gross sales.
@@ -564,7 +610,7 @@ footer {
   <!-- ============================================================= product -->
   <section id="product">
     <div class="wrap">
-      <div class="sec-head reveal">
+      <div class="sec-head reveal sky-text">
         <span class="kicker">The overview</span>
         <h2>Opens with the number you<br /><strong>actually came for.</strong></h2>
         <p>
@@ -597,7 +643,7 @@ footer {
   <!-- ============================================================ features -->
   <section id="features">
     <div class="wrap">
-      <div class="sec-head reveal">
+      <div class="sec-head reveal sky-text">
         <span class="kicker">Four instruments</span>
         <h2>Every cost between booked revenue<br /><strong>and kept profit.</strong></h2>
         <p>
@@ -674,18 +720,18 @@ footer {
   <!-- =============================================================== skies -->
   <section id="skies" class="tight">
     <div class="wrap">
-      <div class="sec-head reveal">
+      <div class="sec-head reveal sky-text">
         <span class="kicker">Two skies</span>
         <h2>Dusk by default.<br /><strong>Daybreak when you want it.</strong></h2>
       </div>
       <div class="skies">
         <figure class="reveal">
           <div class="frame"><img src="assets/overview-top2.jpg" alt="The overview at dusk" loading="lazy" /></div>
-          <figcaption>Dusk</figcaption>
+          <figcaption class="sky-text centered">Dusk</figcaption>
         </figure>
         <figure class="reveal">
           <div class="frame"><img src="assets/overview-light2.jpg" alt="The overview at daybreak" loading="lazy" /></div>
-          <figcaption>Daybreak</figcaption>
+          <figcaption class="sky-text centered">Daybreak</figcaption>
         </figure>
       </div>
 
@@ -709,7 +755,7 @@ footer {
   <!-- ============================================================= pricing -->
   <section id="pricing">
     <div class="wrap">
-      <div class="sec-head reveal">
+      <div class="sec-head reveal sky-text">
         <span class="kicker">Pricing</span>
         <h2>Fourteen days free.<br /><strong>Then priced by your volume.</strong></h2>
       </div>
@@ -753,7 +799,7 @@ footer {
         </article>
       </div>
 
-      <p class="pricing-note reveal">
+      <p class="pricing-note reveal sky-text centered">
         Every plan starts with a 14-day free trial. Billing is handled entirely
         by Shopify — Meridian never sees a card number.
       </p>
@@ -957,9 +1003,13 @@ footer {
   function frame(now) {
     lastTick = now;
     var sy = window.scrollY;
-    target = sy / docH;
-    // critically damped chase so the sun glides rather than jitters
-    progress += (target - progress) * 0.075;
+    // Under reduced motion the sun holds at a fixed point in its arc rather
+    // than tracking the scroll.
+    if (!reduced) {
+      target = sy / docH;
+      // critically damped chase so the sun glides rather than jitters
+      progress += (target - progress) * 0.075;
+    }
 
     if (program) {
       gl.uniform2f(uRes, canvas.width, canvas.height);
@@ -968,17 +1018,23 @@ footer {
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
 
-    tiltEls.forEach(function (el) {
-      var r = el.getBoundingClientRect();
-      var t = Math.min(1, Math.max(0, (vh - r.top) / (vh * 0.85)));
-      var rx = (1 - t) * 9;
-      el.style.transform = "rotateX(" + rx.toFixed(2) + "deg) translateY(" + ((1 - t) * 30).toFixed(1) + "px)";
-      el.style.opacity = String(Math.min(1, 0.25 + t));
-    });
+    // Parallax and tilt are motion, so they stop entirely under reduced
+    // motion. The earlier version only skipped the idle rAF loop, which meant
+    // the sky still slid and frames still tilted on every scroll — the exact
+    // vestibular trigger the preference exists to prevent.
+    if (!reduced) {
+      tiltEls.forEach(function (el) {
+        var r = el.getBoundingClientRect();
+        var t = Math.min(1, Math.max(0, (vh - r.top) / (vh * 0.85)));
+        var rx = (1 - t) * 9;
+        el.style.transform = "rotateX(" + rx.toFixed(2) + "deg) translateY(" + ((1 - t) * 30).toFixed(1) + "px)";
+        el.style.opacity = String(Math.min(1, 0.25 + t));
+      });
 
-    driftEls.forEach(function (el) {
-      el.style.transform = "translateY(" + (sy * -0.06).toFixed(1) + "px)";
-    });
+      driftEls.forEach(function (el) {
+        el.style.transform = "translateY(" + (sy * -0.06).toFixed(1) + "px)";
+      });
+    }
 
     headerState();
 

@@ -151,7 +151,7 @@ and must never be reachable there.
 | `npm run shopify:dev` | Run against a real store via the Shopify CLI |
 | `npm run dev` | Dev server (demo / no Shopify) |
 | `npm run db:migrate` | Apply migrations |
-| `npm test` | Test suite (121 tests) |
+| `npm test` | Test suite (382 tests) |
 | `npm run typecheck` | Types |
 | `npm run db:reset` | Drop, migrate, re-seed |
 | `npm run db:seed` | Re-seed the demo store |

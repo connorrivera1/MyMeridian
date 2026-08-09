@@ -992,7 +992,6 @@ code {
     rgba(11, 15, 33, 0.42) 68%,
     rgba(11, 15, 33, 0) 92%
   );
-  filter: blur(44px);
 }
 
 /* Daybreak already clears AA on bare sky, so its veil is lighter — present for

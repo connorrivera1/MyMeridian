@@ -599,6 +599,11 @@ two files was changed.
    the banner appeared. `fly mpg create` / `fly mpg attach` are the managed
    equivalents.
 
+   **Decided 2026-08-08: Fly Managed Postgres (`fly mpg`), same region as the
+   app (`iad`).** See §12 for the reasoning, the commands, and the restore
+   procedure. §5's `fly postgres create/attach` lines are superseded — do not
+   run them.
+
 Two further things were confirmed while the image was up, both of which back
 claims made elsewhere in this file: the container idles at **51 MiB** serving
 requests, so §4's 1024 MB VM has room, and booting with
@@ -638,3 +643,113 @@ NODE_ENV=production` — so §4's comment on that line is accurate.
 
 Nothing in this session touched a Fly account, a Shopify secret, or the Partner
 Dashboard. §5 steps 2 through 6 are unchanged and remain Connor's to run.
+
+---
+
+## 12. Database: the decision, and disaster recovery
+
+**Decided 2026-08-08. Fly Managed Postgres (`fly mpg`), region `iad`, matching
+`fly.toml`'s `primary_region`.** This section supersedes §5's
+`fly postgres create/attach`.
+
+### Why
+
+Three things drove it, in order of weight.
+
+1. **Latency dominates, because the backfill is round-trip-bound.**
+   `importOneOrder` performs roughly six sequential writes per order
+   (`app/lib/backfill.server.ts`), 25 orders per page — about 150 sequential
+   round-trips per page, and ~120,000 for a 20,000-order import. That makes
+   network distance the single largest factor in import time:
+
+   | Round trip | Pure DB latency for a 20k-order import |
+   |---|---|
+   | ~1 ms (same region) | ~2 minutes |
+   | ~15 ms (off-platform, region-matched) | ~30 minutes |
+   | ~30 ms (region-mismatched) | ~1 hour |
+
+   `backfillIsStale` declares a run abandoned after **one hour**, so a distant
+   database does not merely slow large imports — it can make them self-abort.
+   Co-locating the database with the app is worth more here than any feature
+   difference between providers. (The N+1 write pattern is the real defect;
+   latency is a multiplier on it. Fixing it is tracked separately.)
+
+2. **The requirement is backups, not a platform.** The gap this closes is that
+   nothing backed the database up at all. Managed Postgres gives automated
+   backups and point-in-time recovery as a property of the service.
+
+3. **Nothing here needs a BaaS.** The app is plain Postgres — no extensions,
+   and the eleven raw-SQL sites use only standard features (`AT TIME ZONE`,
+   `date_trunc`, casts), so it is portable to any provider. Tenant isolation is
+   done in application code and every query is shop-scoped, so row-level
+   security would be redundant machinery to maintain. Supabase and Neon were
+   both considered and would both work; Neon's branching is the one feature
+   with real pull here, because it would give the integration tests a database
+   to run against. Revisit if leaving Fly.
+
+### Provisioning
+
+Requires a logged-in flyctl (`fly auth login`) and starts billing.
+
+```
+fly mpg create --name meridian-db --region iad
+fly mpg attach meridian-db --app meridian-profit   # sets DATABASE_URL
+```
+
+`fly.toml`'s `release_command = "npx prisma migrate deploy"` applies the schema
+on first deploy. **Verified 2026-08-08** against a throwaway PostgreSQL 16
+cluster: all six migrations apply cleanly to an empty database,
+`prisma migrate diff` reports no drift between the migrations and
+`schema.prisma`, the seed's full recompute runs the chunked raw-SQL `UPDATE`
+path successfully, and the analytics read path completes over 12,379 orders and
+19,532 line items in ~1.4 s at a ~49 MB peak footprint. Nothing in the
+migration path is unproven any more.
+
+If a connection pooler is used later, Prisma needs `directUrl` in
+`schema.prisma` pointing at the direct (non-pooled) endpoint, or
+`migrate deploy` will fail against a transaction-mode pooler.
+
+### RTO / RPO
+
+State them honestly, because half the data is not reconstructible.
+
+| | Value |
+|---|---|
+| **RPO — Shopify-derived data** | Backup interval. Also re-derivable by re-running the backfill: shop profile, products, variants, unit costs, customers, orders, line items, refunds, fulfilments, capacity days. |
+| **RPO — merchant-entered data** | **Backup interval, and nothing else.** Not reconstructible from Shopify at any price. |
+| **RTO** | Restore time of the managed snapshot, plus a redeploy. Minutes, not the previously-unbounded "recreate and hope every merchant notices the banner". |
+
+**What a restore must recover, because re-importing cannot:**
+
+- `CostRule` — the merchant's shipping, pick-pack, payment and overhead
+  figures. This is the dangerous one: `provision.server.ts` writes defaults for
+  a store that has none, so losing it fails **silently** — every profit figure
+  is quietly wrong rather than visibly missing.
+- `PriceChange` — the price history the elasticity model is fitted to.
+  `sync.server.ts` says it directly: it cannot be reconstructed.
+- `Connector` — credentials and configuration.
+- Order history older than 60 days for a store without `read_all_orders`, and
+  anything beyond `MAX_ORDERS` (20,000).
+
+### Restore procedure
+
+1. `fly mpg list` — find the cluster and confirm the backup/PITR window.
+2. Restore to a new cluster at the chosen timestamp (`fly mpg restore`; check
+   `fly mpg restore --help` for the current flag spelling before relying on it).
+3. `fly mpg attach <restored> --app meridian-profit` to repoint `DATABASE_URL`.
+4. `fly deploy` — `release_command` runs `prisma migrate deploy`, which is a
+   no-op if the snapshot is already at the current migration.
+5. **Verify before announcing recovery.** Check `CostRule` first, since its
+   loss is the silent one:
+   ```
+   select "shopId", kind, "percentRate", "fixedPerOrder", "updatedAt"
+     from "CostRule" order by "shopId", kind;
+   ```
+   Then confirm order counts per shop against what the merchant expects, and
+   re-run a recompute so materialised profit matches the restored rules.
+6. Only re-run a backfill for shops with a genuine gap — it is expensive and,
+   above `MAX_ORDERS`, incomplete.
+
+**Untested.** This procedure is written from the product's behaviour, not from
+a rehearsal. Do a restore drill on a throwaway cluster before relying on it;
+an unrehearsed restore procedure is a hypothesis, not a plan.

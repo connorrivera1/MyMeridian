@@ -9,6 +9,29 @@ import { addDocumentResponseHeaders } from "./shopify.server";
 
 const ABORT_DELAY = 5000;
 
+/**
+ * Transport and content-sniffing hardening.
+ *
+ * Deliberately narrow. Three headers that cannot interact with the embedded
+ * iframe, and nothing else:
+ *
+ *  - `X-Frame-Options` is NOT set. It would forbid framing outright and break
+ *    the admin embed; Shopify's own `frame-ancestors` directive, applied by
+ *    `addDocumentResponseHeaders` just above, is the correct control and is
+ *    strictly more expressive.
+ *  - `Content-Security-Policy` is NOT touched here for the same reason —
+ *    Shopify owns that header, and overwriting it drops frame-ancestors.
+ *  - HSTS carries neither `preload` nor `includeSubDomains`: the app is served
+ *    from one host behind Fly's edge (`force_https` in fly.toml), and claiming
+ *    subdomains this deployment does not control would be a promise the
+ *    operator cannot keep.
+ */
+function addSecurityHeaders(headers: Headers) {
+  headers.set("Strict-Transport-Security", "max-age=31536000");
+  headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+}
+
 export default function handleRequest(
   request: Request,
   responseStatusCode: number,
@@ -18,6 +41,7 @@ export default function handleRequest(
   // Shopify requires the embedded app to send frame-ancestors headers naming
   // the merchant's admin, otherwise the iframe is blocked.
   addDocumentResponseHeaders(request, responseHeaders);
+  addSecurityHeaders(responseHeaders);
 
   const userAgent = request.headers.get("user-agent");
   const waitForAll = userAgent && isbot(userAgent);

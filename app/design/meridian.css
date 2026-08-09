@@ -888,9 +888,19 @@ code {
   }
 }
 
+/*
+ * The mark grows from the middle of its own row.
+ *
+ * This used to end on `translateY(-50%)`, which was right when the mark was a
+ * centred 16px stub positioned at `top: 50%`. The editorial pass made it full
+ * height and anchored it at `top: 0` — and because the animation fills `both`,
+ * that leftover -50% kept shifting the finished mark up by half a row, so it
+ * straddled the tab above the active one instead of covering the active one.
+ * A transform in a keyframe outlives the rule it was written for.
+ */
 @keyframes mark-in {
-  from { transform: translateY(-50%) scaleY(0); opacity: 0; }
-  to   { transform: translateY(-50%) scaleY(1); opacity: 1; }
+  from { transform: scaleY(0); opacity: 0; }
+  to   { transform: scaleY(1); opacity: 1; }
 }
 
 /* Inactive rows slide their label a touch on hover — the row is a target, and
@@ -2617,10 +2627,12 @@ table.data .right { padding-right: 0; }
 
 .nav-link[aria-current="page"]::before {
   left: 0;
-  width: 2px;
-  height: 100%;
   top: 0;
+  bottom: 0;
+  height: auto;
+  width: 2px;
   transform: none;
+  transform-origin: center;
   border-radius: 0;
   box-shadow: none;
 }
@@ -2816,3 +2828,182 @@ table.data td { border-image: none; }
   .app-shell::before,
   .app-shell::after { transform: none !important; }
 }
+
+/* =========================================================================
+ * CONSISTENCY SWEEP
+ *
+ * The editorial pass was applied globally but verified on two screens out of
+ * nine, and the other seven carried the difference. Everything below is a
+ * defect found by walking every route at 1470px, not a new idea.
+ *
+ * The root causes were all one mistake repeated: rules written for the shape
+ * of the Overview, without checking the shapes elsewhere.
+ * ====================================================================== */
+
+/* --- 1. Column collisions -------------------------------------------------
+ *
+ * Cells had `padding-left: 0` so the first column could sit flush to the
+ * measure, and right-aligned cells additionally had `padding-right: 0`. Put
+ * together, a right-aligned figure and the next column's text had no space
+ * between them at all: "MONTHLY PROFIT" + "BASIS" rendered as one word, and
+ * "+$2,042" fused to "Fitted demand curve".
+ *
+ * The gutter belongs on the right of every cell, removed only on the last —
+ * which keeps the flush left edge that was wanted without ever closing the gap
+ * between two columns.
+ */
+table.data th,
+table.data td {
+  padding-right: 30px;
+  padding-left: 0;
+}
+
+table.data th:last-child,
+table.data td:last-child { padding-right: 0; }
+
+/* Right-aligned columns keep the gutter. Only the last may give it up. */
+table.data .right { padding-right: 30px; }
+table.data th.right:last-child,
+table.data td.right:last-child { padding-right: 0; }
+
+/* Numeric columns hold their own width so headers and figures stay stacked. */
+table.data .right { font-variant-numeric: tabular-nums lining-nums; }
+
+/* --- 2. Badges ------------------------------------------------------------
+ *
+ * `high`, `low`, `No spend` were still rounded lowercase pills — the one place
+ * the old vocabulary survived, which is why they read as pasted in from a
+ * different app. They are annotations in a report, so they take the same
+ * tracked small caps as every other label and lose their fill.
+ */
+.badge {
+  border-radius: 0;
+  background: none !important;
+  border: none;
+  border-left: 2px solid currentColor;
+  padding: 2px 0 2px 8px;
+  font-size: 9.5px;
+  font-weight: 650;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.badge-dot { display: none; }
+
+/* The alert count keeps a fill — it is a count, not a label, and it has to
+   survive being glanced at. Squared to match. */
+.nav-badge {
+  border-radius: 2px;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  box-shadow: none;
+}
+
+/* --- 3. Inputs and focus --------------------------------------------------
+ * The fields kept a 13px radius against a design that had gone square, and the
+ * focus ring was a rounded rectangle floating 2px off its target.
+ */
+.field-input {
+  border-radius: 2px;
+  border-color: var(--rule-strong);
+  background: rgba(244, 239, 230, 0.04);
+}
+
+:root[data-theme="light"] .field-input { background: rgba(38, 43, 74, 0.03); }
+
+.field-input:focus {
+  border-color: var(--accent);
+  box-shadow: inset 0 -2px 0 var(--accent);
+  background: rgba(244, 239, 230, 0.07);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 0;
+}
+
+/* --- 4. Vertical rhythm ---------------------------------------------------
+ *
+ * Sections were spaced by whatever their content happened to be, so two
+ * columns of the same page ended at different heights and the numbered heads
+ * stopped lining up. One rhythm, set here, applied to every section.
+ */
+.page-enter > * { margin-top: 52px; }
+.page-enter > *:first-child { margin-top: 0; }
+.page-enter > .banner + * { margin-top: 40px; }
+
+.card-body { padding: 24px 0 6px; }
+.card-body.flush { padding: 0; }
+
+/* Grids inside a section share the section's rhythm rather than inventing
+   their own. */
+.grid { gap: 0 44px; }
+.grid.cols-2 > * { padding-bottom: 12px; }
+
+/* --- 5. Legend and small marks -------------------------------------------
+ * Round swatches against square everything else. */
+.legend-swatch { border-radius: 0; width: 8px; height: 8px; }
+.legend { padding: 18px 0 0; gap: 8px 26px; }
+.estimate-flag { border-radius: 0; width: 4px; height: 4px; box-shadow: none; }
+
+/* --- 6. Stat blocks -------------------------------------------------------
+ * The secondary pages use .stat rather than .tile, and it never received the
+ * ledger treatment, so those pages had a different figure style from the
+ * Overview. */
+.stat { padding: 22px 30px 18px 0; gap: 0; }
+
+.stat-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin-bottom: 14px;
+}
+
+.stat-label svg { display: none; }
+
+.stat-value {
+  font-size: 34px;
+  font-weight: 320;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums lining-nums;
+  margin-bottom: 10px;
+}
+
+.stat-value.sm { font-size: 22px; font-weight: 380; }
+.stat-meta { font-size: 11.5px; }
+.stat-hero { padding: 22px 30px 18px 0; }
+.stat-hero .stat-value { font-size: 52px; font-weight: 300; }
+
+/* --- 7. Secondary actions -------------------------------------------------
+ * "Dismiss" was a bare link beside a bordered "Accept", so a destructive
+ * choice and a constructive one had no shared shape. Both are buttons; only
+ * their weight differs. */
+.btn.ghost {
+  background: none;
+  border-color: transparent;
+  color: var(--ink-muted);
+}
+
+.btn.ghost:hover {
+  background: none;
+  color: var(--ink-primary);
+  border-color: var(--rule-strong);
+}
+
+/* --- 8. Empty and null ----------------------------------------------------
+ * An em-dash standing in for a figure was inheriting body size, so it sat at a
+ * different optical weight in every table. */
+.empty { padding: 40px 0; text-align: left; font-size: 12.5px; }
+
+/* The leading space in " /month" is a text node, and text nodes collapse
+   against a preceding inline-block figure at these sizes. An explicit gap is
+   the only reliable way to keep the unit off the numeral. */
+.stat-value + .muted.tiny,
+.stat-value .muted.tiny { margin-left: 6px; }
+.plan-price small,
+.stat-value ~ .tiny { margin-left: 6px; }

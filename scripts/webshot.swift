@@ -137,7 +137,22 @@ let delegate = Delegate {
         webView.evaluateJavaScript(freezeScript) { _, _ in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 if !probe.isEmpty {
-                    webView.evaluateJavaScript(probe) { value, error in
+                    // callAsyncJavaScript rather than evaluateJavaScript: the
+                    // latter cannot return a Promise, and any probe that has to
+                    // sample over time — frame timing, most obviously — is
+                    // necessarily async.
+                    webView.callAsyncJavaScript(
+                        "return await (async () => { \(probe) })()",
+                        arguments: [:],
+                        in: nil,
+                        in: .page
+                    ) { result in
+                        let value: Any?
+                        let error: Error?
+                        switch result {
+                        case .success(let v): value = v; error = nil
+                        case .failure(let e): value = nil; error = e
+                        }
                         if let error {
                             print("probe failed: \(error.localizedDescription)")
                             exit(1)

@@ -49,8 +49,12 @@
 
   --gold: #f0c273;
   --gold-dim: rgba(240, 194, 115, 0.16);
-  --ember-neg: #ee8570;
-  --peri: #9db1e8;
+  /* The validated marks, identical to the app — see the chart palette note in
+     meridian.css. The previous --peri/#9db1e8 was half of the pair that
+     measured ΔE 5.8 apart in normal vision. */
+  --cost: #a8737f;
+  --peri: #6f92e3;
+  --ember-neg: #a8737f;
 
   --pill: #f6f1e7;
   --pill-ink: #232a4d;
@@ -520,7 +524,7 @@ section.tight { padding: 70px 0; }
 .ribbon { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 30px; }
 .ribbon .chip { pointer-events: none; font-variant-numeric: tabular-nums; }
 .ribbon .chip.gold { background: var(--gold-dim); border-color: rgba(240, 194, 115, 0.35); color: var(--gold); font-weight: 560; }
-.ribbon .chip.neg { color: var(--ember-neg); }
+.ribbon .chip.neg { color: var(--cost); }
 
 /* two skies */
 .skies { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; margin-top: 54px; align-items: start; }
@@ -732,7 +736,12 @@ footer {
               </linearGradient>
             </defs>
             <path d="M0,44 L20,40 L40,42 L60,34 L80,37 L100,30 L120,33 L140,22 L160,28 L180,18 L200,24 L220,14 L240,19 L260,10 L280,14 L300,6 L300,54 L0,54 Z" fill="url(#fs)" />
-            <path d="M0,44 L20,40 L40,42 L60,34 L80,37 L100,30 L120,33 L140,22 L160,28 L180,18 L200,24 L220,14 L240,19 L260,10 L280,14 L300,6" fill="none" stroke="#f0c273" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            <!-- A baseline to be read against, and a marked endpoint: the same
+                 two aids the app's sparklines carry, so the figure in the
+                 marketing card and the figure in the product read alike. -->
+            <line x1="0" y1="53" x2="300" y2="53" stroke="rgba(244,239,230,0.16)" stroke-width="1" />
+            <path d="M0,44 L20,40 L40,42 L60,34 L80,37 L100,30 L120,33 L140,22 L160,28 L180,18 L200,24 L220,14 L240,19 L260,10 L280,14 L300,6" fill="none" stroke="#f0c273" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+            <circle cx="298" cy="6" r="3" fill="#f0c273" stroke="#151a33" stroke-width="2" />
           </svg>
           <a class="pill" href="#features">Where the money went</a>
         </aside>
@@ -1100,11 +1109,17 @@ footer {
     "                 mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),f.x),f.y),f.z);",
     "}",
 
+    // Three octaves, not five. Each octave is eight hash evaluations, and at
+    // the resolution this renders the top two contributed detail finer than a
+    // pixel — they cost a third of the frame and could not be seen.
     "float fbm(vec3 p){",
     "  float v=0.0, a=0.5;",
-    "  for(int i=0;i<5;i++){ v+=a*noise(p); p*=2.02; a*=0.5; }",
+    "  for(int i=0;i<3;i++){ v+=a*noise(p); p*=2.02; a*=0.5; }",
     "  return v;",
     "}",
+    // The erosion detail needs even less; two octaves is enough to break an
+    // edge up.
+    "float fbm2(vec3 p){ return 0.5*noise(p) + 0.25*noise(p*2.03); }",
 
     /*
      * Density of the cloud slab.
@@ -1120,7 +1135,7 @@ footer {
     "  vec3 q = p + vec3(uTime*0.035, 0.0, uTime*0.012);",
     "  float base = fbm(q*0.55);",
     "  base = base - 0.44;",
-    "  base -= 0.16*fbm(q*2.3);",
+    "  base -= 0.16*fbm2(q*2.3);",
     "  float shape = smoothstep(0.0,0.28,h) * smoothstep(1.0,0.55,h);",
     "  return clamp(base,0.0,1.0) * shape * 1.5;",
     "}",
@@ -1162,8 +1177,10 @@ footer {
     "    t = max(t, 0.0);",
     "    float trans = 1.0;",
     "    vec3 scattered = vec3(0.0);",
-    "    const int STEPS = 34;",
-    "    float stepLen = 0.16;",
+    // Eighteen steps with a longer stride and a faster ramp. The slab is thin
+    // and the noise is soft, so the marcher was oversampling it.
+    "    const int STEPS = 18;",
+    "    float stepLen = 0.28;",
     "    for (int i = 0; i < STEPS; i++) {",
     "      if (trans < 0.02) break;",
     "      vec3 pos = ro + rd * t;",
@@ -1173,11 +1190,13 @@ footer {
     // Self-shadowing: march a short way toward the sun and accumulate what
     // the sample sits behind.
     "        float shadow = 0.0;",
-    "        const int LIGHT_STEPS = 4;",
+    // Two shadow taps at a wider spacing. Self-shadowing needs to know roughly
+    // how much cloud is between this sample and the sun, not precisely.
+    "        const int LIGHT_STEPS = 2;",
     "        for (int j = 1; j <= LIGHT_STEPS; j++) {",
-    "          shadow += density(pos + sunDir * (float(j)*0.16));",
+    "          shadow += density(pos + sunDir * (float(j)*0.42));",
     "        }",
-    "        float light = exp(-shadow*0.72);",
+    "        float light = exp(-shadow*1.05);",
     // Warm where lit, cool indigo in shadow — the two-colour split is what
     // reads as sunset rather than as grey cloud tinted orange.
     "        vec3 lit  = mix(vec3(0.16,0.175,0.28), vec3(0.86,0.66,0.46), light);",
@@ -1186,7 +1205,7 @@ footer {
     "        scattered += lit * absorb * trans;",
     "        trans *= exp(-absorb*1.35);",
     "      }",
-    "      t += stepLen * (1.0 + float(i)*0.035);",
+    "      t += stepLen * (1.0 + float(i)*0.09);",
     "    }",
     "    col = col * trans + scattered;",
     "  }",
@@ -1249,14 +1268,61 @@ footer {
     canvas.style.display = "none";
   }
 
+  /*
+   * Render scale, and the governor that owns it.
+   *
+   * This is a per-pixel raymarch, so cost is linear in buffer area and nothing
+   * else moves the needle as much. The original ran at devicePixelRatio 1.5 —
+   * 3 megapixels of volumetric marching per frame, which no GPU was ever going
+   * to hold. It renders small and is stretched by CSS; the scene is soft enough
+   * that the difference is invisible, and banding is already handled by the
+   * grain in the shader.
+   *
+   * Because I cannot test this on every machine, the quality is not a guess: it
+   * measures itself. If frames are consistently slow it steps the buffer down,
+   * and if it is still slow at the floor it gives up entirely and reveals the
+   * painted CSS scene, which is complete on its own.
+   */
+  var SCALES = [0.42, 0.3, 0.22];
+  var scaleIndex = 0;
+
   function sizeCanvas() {
     if (!program) return;
-    var dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-    canvas.width = Math.round(innerWidth * dpr);
-    canvas.height = Math.round(innerHeight * dpr);
+    var scale = SCALES[scaleIndex];
+    canvas.width = Math.max(1, Math.round(innerWidth * scale));
+    canvas.height = Math.max(1, Math.round(innerHeight * scale));
     gl.viewport(0, 0, canvas.width, canvas.height);
   }
   sizeCanvas();
+
+  // Frame-time sampling. Only long stretches count: a single slow frame is a
+  // GC pause or a tab switch, not a verdict on the hardware.
+  var slowFrames = 0, sampled = 0, lastFrameAt = 0;
+
+  function governor(now) {
+    if (lastFrameAt) {
+      var dt = now - lastFrameAt;
+      sampled++;
+      if (dt > 34) slowFrames++;      // slower than ~30fps
+      if (sampled === 45) {
+        if (slowFrames > 22) {         // more than half the window was slow
+          if (scaleIndex < SCALES.length - 1) {
+            scaleIndex++;
+            sizeCanvas();
+          } else {
+            // Out of headroom. Stop drawing and let the painted scene stand.
+            canvas.style.display = "none";
+            program = null;
+            return false;
+          }
+        }
+        sampled = 0;
+        slowFrames = 0;
+      }
+    }
+    lastFrameAt = now;
+    return true;
+  }
 
   /* --------------------------------------------- scroll-driven everything */
   var tiltEls = document.querySelectorAll("[data-tilt]");
@@ -1281,6 +1347,11 @@ footer {
       target = sy / docH;
       // critically damped chase so the sun glides rather than jitters
       progress += (target - progress) * 0.075;
+    }
+
+    if (program && !governor(now)) {
+      // Shader retired; the CSS scene is the sky from here.
+      return;
     }
 
     if (program) {
@@ -1328,9 +1399,12 @@ footer {
 
   // Where rAF is throttled to nothing (occluded windows, aggressive battery
   // savers), scrolling still repaints: drive frames from the event instead.
+  // No scroll-driven frame here. It existed as a fallback for contexts that
+  // throttle rAF to nothing, but while the loop is alive it only adds work
+  // during the exact frames that are already the busiest — which is what makes
+  // scrolling feel like it is catching.
   addEventListener("scroll", function () {
-    var now = performance.now();
-    if (now - lastTick > 120) frame(now);
+    if (!program && !reduced) frame(performance.now());
   }, { passive: true });
 
   // Deterministic settle for capture tooling: jump the damped chase to its

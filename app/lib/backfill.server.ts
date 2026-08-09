@@ -7,6 +7,7 @@ import {
   fulfillmentDidShip,
   reconcileFirstOrdersForShop,
 } from "~/lib/sync.server";
+import { withOrderLock } from "~/lib/order-lock.server";
 import { generatePricingRecommendations } from "~/lib/pricing.server";
 import { recomputeShopProfitability } from "~/lib/recompute.server";
 import { capabilitiesForShop, type Capabilities } from "~/lib/scopes";
@@ -1341,11 +1342,9 @@ async function importOneOrder(
     : [];
   const variantByGid = new Map(variants.map((v) => [v.shopifyId, v]));
 
-  await prisma.orderLineItem.deleteMany({ where: { orderId: order.id } });
-
-  if (node.lineItems.nodes.length > 0) {
-    await prisma.orderLineItem.createMany({
-      data: node.lineItems.nodes.map((item) => {
+  // Mapped before the lock is taken — see order-lock: the critical section
+  // should contain writes and nothing else.
+  const lineItemRows = node.lineItems.nodes.map((item) => {
         const variant = item.variant?.id
           ? variantByGid.get(item.variant.id)
           : undefined;
@@ -1368,18 +1367,32 @@ async function importOneOrder(
           unitCost: String(variant?.unitCost ?? "0"),
           refundedQty: refundedQtyByLineItem.get(item.id) ?? 0,
         };
-      }),
-    });
-  }
+  });
 
-  // --- fulfilments ---
-  await prisma.fulfillment.deleteMany({ where: { orderId: order.id } });
+  const fulfillmentRows = node.fulfillments?.length
+    ? fulfillmentRowsForOrder(shopId, order.id, node.fulfillments)
+    : [];
 
-  if (node.fulfillments?.length) {
-    await prisma.fulfillment.createMany({
-      data: fulfillmentRowsForOrder(shopId, order.id, node.fulfillments),
-    });
-  }
+  /*
+   * Both collections in one critical section, not two.
+   *
+   * The import runs concurrently with live webhooks by design — `afterAuth`
+   * starts it without awaiting — so this races `syncOrderFromShopify` on
+   * exactly these rows. Taking the lock once for both keeps an order's line
+   * items and its fulfilments consistent with each other, and halves the
+   * lock traffic versus locking per collection.
+   */
+  await withOrderLock(order.id, async (tx) => {
+    await tx.orderLineItem.deleteMany({ where: { orderId: order.id } });
+    if (lineItemRows.length > 0) {
+      await tx.orderLineItem.createMany({ data: lineItemRows });
+    }
+
+    await tx.fulfillment.deleteMany({ where: { orderId: order.id } });
+    if (fulfillmentRows.length > 0) {
+      await tx.fulfillment.createMany({ data: fulfillmentRows });
+    }
+  });
 }
 
 /**

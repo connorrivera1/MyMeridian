@@ -38,6 +38,24 @@ const prismaMock = {
   fulfillment: { deleteMany: vi.fn(async () => ({})), createMany: vi.fn(async () => ({})) },
 };
 
+/*
+ * `withOrderLock` wraps the order's destructive writes in a transaction that
+ * takes a Postgres advisory lock. A mock cannot emulate either — there is no
+ * isolation and nothing to contend with — so the callback simply receives this
+ * same client and the lock statement is a no-op. That keeps these tests
+ * asserting what they were written to assert: the queries the import issues.
+ *
+ * The serialisation itself is therefore NOT covered here, and cannot be
+ * without a real database. See order-lock.server.ts.
+ */
+Object.assign(prismaMock, {
+  $transaction: (arg: unknown) =>
+    typeof arg === "function"
+      ? (arg as (tx: unknown) => unknown)(prismaMock)
+      : Promise.all(arg as unknown[]),
+  $executeRaw: vi.fn(async () => 0),
+});
+
 vi.mock("~/db.server", () => ({ default: prismaMock }));
 vi.mock("~/data/analytics.server", () => ({
   invalidateAnalyticsCache: vi.fn(),

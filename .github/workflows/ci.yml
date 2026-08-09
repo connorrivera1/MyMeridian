@@ -45,14 +45,13 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Test with coverage thresholds
-        run: npm run test:coverage
-
-      - name: Build
-        run: npm run build
-
+      # Deliberately before the integration tests: they need this schema, and
+      # DATABASE_URL is scoped to this step so the unit suite above still runs
+      # with no database at all — that skip path is what every developer
+      # without one relies on, and it should be exercised here too.
+      #
       # Migrations have never been applied to a production database, so the
-      # deploy's release_command is the first thing that would ever run them.
+      # deploy's release_command would be the first thing to ever run them.
       # This proves they still apply cleanly to an empty database on every
       # change, rather than finding out during a deploy.
       - name: Migrations apply cleanly from empty
@@ -64,6 +63,20 @@ jobs:
             --from-schema-datasource prisma/schema.prisma \
             --to-schema-datamodel prisma/schema.prisma \
             --exit-code
+
+      - name: Test with coverage thresholds
+        run: npm run test:coverage
+
+      # Concurrency is invisible through a mocked Prisma: the delete-then-
+      # recreate race passes whether or not the advisory lock is there, which
+      # is exactly why this one needs a real server.
+      - name: Integration tests against a real Postgres
+        env:
+          MERIDIAN_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/meridian_ci
+        run: npx vitest run app/lib/order-lock.integration.test.ts
+
+      - name: Build
+        run: npm run build
 
     services:
       postgres:

@@ -26,8 +26,18 @@ const fulfillmentUpdate = vi.fn();
 const fulfillmentCount = vi.fn();
 let fulfillmentRows: any[] = [];
 
-vi.mock("~/db.server", () => ({
-  default: {
+vi.mock("~/db.server", () => {
+  /*
+   * `withOrderLock` wraps the line-item rewrite in a transaction that takes a
+   * Postgres advisory lock. A mock has neither isolation nor contention, so the
+   * callback receives this same client and the lock statement is a no-op —
+   * which keeps these tests asserting what they were written to assert: the
+   * queries the sync issues.
+   *
+   * The serialisation itself is therefore NOT covered here, and cannot be
+   * without a real database. See order-lock.server.ts.
+   */
+  const client: Record<string, unknown> = {
     order: {
       count: (...args: unknown[]) => orderCount(...args),
       upsert: (...args: unknown[]) => orderUpsert(...args),
@@ -52,8 +62,16 @@ vi.mock("~/db.server", () => ({
       count: (...args: unknown[]) => fulfillmentCount(...args),
     },
     variant: { findMany: vi.fn().mockResolvedValue([]) },
-  },
-}));
+  };
+
+  client.$transaction = (arg: unknown) =>
+    typeof arg === "function"
+      ? (arg as (tx: unknown) => unknown)(client)
+      : Promise.all(arg as unknown[]);
+  client.$executeRaw = vi.fn(async () => 0);
+
+  return { default: client };
+});
 
 const { syncOrderFromShopify, syncFulfillmentFromShopify } = await import("./sync.server");
 

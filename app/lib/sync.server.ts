@@ -1,6 +1,7 @@
 import { Channel } from "@prisma/client";
 
 import prisma from "~/db.server";
+import { withOrderLock } from "~/lib/order-lock.server";
 
 /**
  * Translation layer between Shopify's webhook payloads and Meridian's schema.
@@ -347,12 +348,9 @@ async function syncLineItems(shopId: string, orderId: string, payload: Payload) 
   });
   const variantByGid = new Map(variants.map((v) => [v.shopifyId, v]));
 
-  await prisma.orderLineItem.deleteMany({ where: { orderId } });
-
-  if (lineItems.length === 0) return;
-
-  await prisma.orderLineItem.createMany({
-    data: lineItems.map((item) => {
+  // Built before the lock is taken: this is pure mapping, and every statement
+  // inside the critical section is time a competing writer spends waiting.
+  const rows = lineItems.map((item) => {
       const variant = item.variant_id
         ? variantByGid.get(gid("ProductVariant", item.variant_id))
         : undefined;
@@ -378,7 +376,15 @@ async function syncLineItems(shopId: string, orderId: string, payload: Payload) 
         unitCost: decimal(variant?.unitCost ?? "0", "0.0000"),
         refundedQty: refundedByLineItem.get(String(item.id)) ?? 0,
       };
-    }),
+  });
+
+  // Delete and recreate atomically, serialised per order. See order-lock for
+  // why both halves are required.
+  await withOrderLock(orderId, async (tx) => {
+    await tx.orderLineItem.deleteMany({ where: { orderId } });
+    if (rows.length > 0) {
+      await tx.orderLineItem.createMany({ data: rows });
+    }
   });
 }
 

@@ -27,7 +27,7 @@ import {
   IconSettings,
   Splash,
 } from "~/design/components";
-import { loadShopAnalytics, resolveRange } from "~/data/analytics.server";
+import { loadCapacityAnalysis, resolveRange } from "~/data/analytics.server";
 import { requireShopContext } from "~/lib/auth.server";
 import { planAllows, resolvePlan } from "~/lib/plan.server";
 import { parseRangePreset, RANGE_PRESETS, type RangePreset } from "~/lib/ranges";
@@ -55,14 +55,18 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const importing =
     !isDemo && (shop.syncStatus === "RUNNING" || shop.syncStatus === "PENDING");
 
+  // Capacity only — deliberately not `loadShopAnalytics`. This runs on every
+  // navigation, and the badge needs an integer that `CapacityDay` rows alone
+  // can produce; building the whole profit engine for it made the shell as
+  // expensive as the heaviest screen. See loadCapacityAnalysis.
   const alertCount = importing || !planAllows(plan, "capacity")
     ? 0
     : (
-        await loadShopAnalytics(
+        await loadCapacityAnalysis(
           shop,
           resolveRange(shop, preset, { anchorToData: isDemo }),
         )
-      ).capacity.alerts.filter(
+      ).alerts.filter(
         (a) => a.severity === "CRITICAL" || a.severity === "WARNING",
       ).length;
 

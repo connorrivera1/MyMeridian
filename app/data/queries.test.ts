@@ -14,16 +14,24 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 
 const orderFindMany = vi.fn();
+const orderCount = vi.fn(async (..._args: unknown[]) => 0);
 const fulfillmentGroupBy = vi.fn();
 
 vi.mock("~/db.server", () => ({
   default: {
-    order: { findMany: (...args: unknown[]) => orderFindMany(...args) },
+    order: {
+      findMany: (...args: unknown[]) => orderFindMany(...args),
+      // The guard that refuses an oversized window counts before hydrating.
+      // Default to a count these tests are comfortably under; the guard has
+      // its own cases below.
+      count: (...args: unknown[]) => orderCount(...args),
+    },
     fulfillment: { groupBy: (...args: unknown[]) => fulfillmentGroupBy(...args) },
   },
 }));
 
-const { loadCohortRows, loadEngineOrders } = await import("./queries.server");
+const { loadCohortRows, loadEngineOrders, WindowTooLargeError } =
+  await import("./queries.server");
 
 const RANGE = {
   from: new Date("2026-07-01T00:00:00.000Z"),
@@ -406,5 +414,63 @@ describe("loadCohortRows column projection", () => {
         adCostCents: 500,
       },
     ]);
+  });
+});
+
+/*
+ * The window guard.
+ *
+ * `loadEngineOrders` deliberately has no `take` — a profit total computed from
+ * a truncated set of orders is a wrong answer, not a smaller one. So the only
+ * safe response to a window too large to hydrate is to refuse it, because the
+ * alternative is an OOM, and with one machine running that takes the app down
+ * for every merchant rather than for the one who picked the range.
+ */
+describe("loadEngineOrders window guard", () => {
+  it("refuses a window with more orders than it will hydrate", async () => {
+    orderCount.mockResolvedValueOnce(60_001);
+
+    await expect(loadEngineOrders("shop_1", RANGE)).rejects.toBeInstanceOf(
+      WindowTooLargeError,
+    );
+
+    // Refused before hydrating, which is the entire point — a guard that runs
+    // after the findMany has already spent the memory it was guarding.
+    expect(orderFindMany).not.toHaveBeenCalled();
+  });
+
+  it("carries the numbers a merchant needs to act on", async () => {
+    orderCount.mockResolvedValueOnce(75_000);
+
+    const failure = await loadEngineOrders("shop_1", RANGE).catch((e) => e);
+
+    expect(failure).toBeInstanceOf(WindowTooLargeError);
+    expect(failure.orderCount).toBe(75_000);
+    expect(failure.limit).toBe(60_000);
+    // Says what to do, not just that something is wrong.
+    expect(failure.message).toMatch(/75,000/);
+    expect(failure.message).toMatch(/shorter range/i);
+  });
+
+  it("counts against the same shop and window it would hydrate", async () => {
+    orderCount.mockResolvedValueOnce(0);
+    orderFindMany.mockResolvedValueOnce([]);
+    fulfillmentGroupBy.mockResolvedValueOnce([]);
+
+    await loadEngineOrders("shop_1", RANGE);
+
+    // A count scoped more loosely than the row query would refuse windows that
+    // are actually fine, and one scoped more tightly would let a big one past.
+    expect(orderCount).toHaveBeenCalledWith({
+      where: { shopId: "shop_1", processedAt: { gte: RANGE.from, lte: RANGE.to } },
+    });
+  });
+
+  it("lets a window at the limit through", async () => {
+    orderCount.mockResolvedValueOnce(60_000);
+    orderFindMany.mockResolvedValueOnce([]);
+    fulfillmentGroupBy.mockResolvedValueOnce([]);
+
+    await expect(loadEngineOrders("shop_1", RANGE)).resolves.toEqual([]);
   });
 });

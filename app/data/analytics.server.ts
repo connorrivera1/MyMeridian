@@ -263,6 +263,44 @@ export async function loadPeriodProfit(
   return value;
 }
 
+/**
+ * The capacity analysis alone, with none of the profit engine behind it.
+ *
+ * `analyseCapacity` reads `CapacityDay` rows and two shop settings. It does not
+ * look at an order, a line item, a cost rule or a cohort — so the alert count in
+ * the sidebar badge, which is all the app shell wants, never needed any of that
+ * work.
+ *
+ * It was getting it anyway. The layout loader called `loadShopAnalytics` on
+ * every navigation, which hydrates every order and line item in the window into
+ * Node and runs the profit, product, channel and campaign engines over them, to
+ * read `.capacity.alerts.length` off the result. That made the most expensive
+ * path in the product a property of the *shell* rather than of the one screen
+ * that needs it: a store large enough to strain the analytics build strained it
+ * on Settings, on Plan, on every page — including the Settings page that holds
+ * the retry control it would need to recover.
+ *
+ * `CapacityDay` is one row per day, so a 365-day window is 365 small rows
+ * against a hydrated order graph of tens of thousands. No cache: the query is
+ * already cheaper than the bookkeeping would be.
+ */
+export async function loadCapacityAnalysis(
+  shop: Shop,
+  range: DateRange,
+): Promise<CapacityAnalysis> {
+  // A full build for this window has already done this exact work.
+  const stamp = shop.lastComputedAt?.getTime() ?? 0;
+  const full = cache.get(cacheKey(shop.id, range, stamp));
+  if (full && Date.now() - full.at < CACHE_TTL_MS) return full.value.capacity;
+
+  const capacityDays = await loadCapacityDays(shop.id, range);
+
+  return analyseCapacity(capacityDays, {
+    slaDays: shop.fulfillmentSlaDays,
+    today: range.to,
+  });
+}
+
 export function invalidateAnalyticsCache() {
   cache.clear();
   periodCache.clear();

@@ -49,10 +49,59 @@ export async function loadCostRules(shopId: string): Promise<CostRuleSet> {
   return toCostRuleSet(rules);
 }
 
+/**
+ * The point at which a window is refused rather than hydrated.
+ *
+ * `loadEngineOrders` has no `take`, and that is correct: a profit total
+ * computed from a truncated set of orders is not a smaller answer, it is a
+ * wrong one, and this product's whole claim is that the number is true. So the
+ * choice when a window is too big is between refusing it and running out of
+ * memory — and running out of memory is strictly worse, because
+ * `min_machines_running = 1` means an OOM takes the app down for every
+ * merchant, not just the one who asked.
+ *
+ * Measured on the seeded store (12,379 orders): a 180-day build retains ~80 MB.
+ * At 60,000 orders that extrapolates to roughly 390 MB in a 1024 MB VM, which
+ * is where one build starts to threaten the process.
+ *
+ * In practice this should never fire: `MAX_ORDERS` caps the import at 20,000.
+ * It exists because that cap is an environment variable — raising
+ * `MERIDIAN_MAX_BACKFILL_ORDERS` without also raising the VM would otherwise
+ * re-create the OOM silently, and this turns that into a legible error.
+ */
+const MAX_ENGINE_ORDERS = (() => {
+  const configured = Number(process.env.MERIDIAN_MAX_ANALYTICS_ORDERS);
+  return Number.isFinite(configured) && configured > 0 ? configured : 60_000;
+})();
+
+export class WindowTooLargeError extends Error {
+  constructor(
+    readonly orderCount: number,
+    readonly limit: number,
+  ) {
+    super(
+      `This date range covers ${orderCount.toLocaleString()} orders, above the ` +
+        `${limit.toLocaleString()} this instance will analyse at once. ` +
+        `Choose a shorter range, or raise MERIDIAN_MAX_ANALYTICS_ORDERS and the ` +
+        `instance's memory together.`,
+    );
+    this.name = "WindowTooLargeError";
+  }
+}
+
 export async function loadEngineOrders(
   shopId: string,
   range: DateRange,
 ): Promise<EngineOrder[]> {
+  // A count is an index-only scan against @@index([shopId, processedAt]) —
+  // cheap next to the hydration it guards.
+  const count = await prisma.order.count({
+    where: { shopId, processedAt: { gte: range.from, lte: range.to } },
+  });
+  if (count > MAX_ENGINE_ORDERS) {
+    throw new WindowTooLargeError(count, MAX_ENGINE_ORDERS);
+  }
+
   // The engine wants two totals per order, not the fulfilment rows themselves,
   // so the sum is done in Postgres. A store that splits shipments has several
   // fulfilments per order and this is the difference between hydrating one row

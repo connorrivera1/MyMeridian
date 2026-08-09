@@ -19,13 +19,16 @@ guard args.count >= 5,
       let width = Double(args[3]),
       let height = Double(args[4])
 else {
-    print("usage: swift webshot.swift <url> <out.png> <width> <height> [waitMs] [scrollY]")
+    print("usage: swift webshot.swift <url> <out.png> <width> <height> [waitMs] [scrollY] [theme] [px,py]")
     exit(64)
 }
 let outPath = args[2]
 let waitMs = args.count > 5 ? (Double(args[5]) ?? 1600) : 1600
 let scrollY = args.count > 6 ? (Double(args[6]) ?? 0) : 0
 let theme = args.count > 7 ? args[7] : ""
+// Optional pointer position, "x,y" in -1...1, for capturing pointer-driven
+// depth. A still cannot hover, so the spatial state has to be posed.
+let pointer = args.count > 8 ? args[8] : ""
 
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
@@ -56,6 +59,11 @@ window.orderBack(nil)
 let freezeScript = """
 (function () {
   if ("THEME".length) document.documentElement.dataset.theme = "THEME";
+  if ("POINTER".length) {
+    var pv = "POINTER".split(",");
+    document.documentElement.style.setProperty("--px", pv[0]);
+    document.documentElement.style.setProperty("--py", pv[1] || "0");
+  }
   // The splash rides its own React timers; frozen mid-sequence it would sit
   // over every capture, so it goes.
   document.querySelector(".splash")?.remove();
@@ -85,6 +93,7 @@ let freezeScript = """
 """
 .replacingOccurrences(of: "SCROLL_Y", with: String(scrollY))
 .replacingOccurrences(of: "THEME", with: theme)
+.replacingOccurrences(of: "POINTER", with: pointer)
 
 final class Delegate: NSObject, WKNavigationDelegate {
     let onFinish: () -> Void

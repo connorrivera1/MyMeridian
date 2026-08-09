@@ -2684,3 +2684,135 @@ body::before {
     radial-gradient(90rem 32rem at 50% -14%, rgba(222, 229, 242, 0.85), transparent 60%),
     linear-gradient(180deg, #f7f4ed 0%, #f2efe6 46%, #ece7db 78%, #e6ded0 100%);
 }
+
+/* =========================================================================
+ * SPATIAL PASS — depth without glass
+ *
+ * The brief is minimal *and* spatial, and those pull against each other in the
+ * usual vocabulary: every spatial-UI reference reaches for frosted panels, and
+ * frosted panels are precisely what the broadsheet pass removed. So depth here
+ * is built from the things minimalism already has — light, distance and
+ * parallax — rather than from material.
+ *
+ * Three planes, and they move at different rates:
+ *
+ *   FIELD    the sky, furthest back. Drifts against the pointer.
+ *   RULES    the page's structure, mid-depth. Catches a specular highlight
+ *            wherever the light currently is.
+ *   TYPE     the content, nearest. Leads the parallax.
+ *
+ * The whole effect is driven by two custom properties, --px and --py, which a
+ * single listener in the layout keeps pointed at the cursor. Nothing here reads
+ * layout or writes it; every rule below moves `transform`, `opacity` or a
+ * gradient position, so the entire depth system composites.
+ *
+ * Deliberately tiny: 1.2 degrees of rotation and a few pixels of travel. Enough
+ * that the page feels like it occupies space, small enough that nobody notices
+ * it happening — which is the difference between spatial and gimmicky.
+ * ====================================================================== */
+
+:root {
+  /* Pointer position, -1 to 1 on each axis, 0 at centre. The layout's
+     SpatialField publishes these; the defaults keep the page correct with no
+     JavaScript at all. */
+  --px: 0;
+  --py: 0;
+  --depth: 1;
+}
+
+/* The stage. Perspective lives on the shell so every plane inside shares one
+   vanishing point — per-element perspective gives each its own, and the page
+   stops reading as a single space. */
+.app-shell {
+  perspective: 1600px;
+  perspective-origin: calc(50% + var(--px) * 12%) calc(50% + var(--py) * 12%);
+}
+
+/*
+ * FIELD. The sky counter-moves, which is what actually sells the depth: a
+ * backdrop that tracks the pointer reads as a sticker, one that lags reads as
+ * distance.
+ */
+body::before {
+  transform: translate3d(calc(var(--px) * -14px), calc(var(--py) * -10px), 0) scale(1.04);
+  transition: transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* The two blooms are the light source, so they follow the pointer further and
+   faster than anything else. */
+.app-shell::before {
+  transform: translate3d(calc(var(--px) * 46px), calc(var(--py) * 34px), 0);
+  transition: transform 900ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.app-shell::after {
+  transform: translate3d(calc(var(--px) * -34px), calc(var(--py) * -26px), 0);
+  transition: transform 1100ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Under reduced motion the blooms keep their slow ambient drift and stop
+   tracking the pointer entirely. */
+@media (prefers-reduced-motion: no-preference) {
+  .app-shell::before { animation: drift-a 64s ease-in-out infinite; }
+  .app-shell::after  { animation: drift-b 78s ease-in-out infinite; }
+}
+
+/*
+ * TYPE. The content plane tilts fractionally toward the pointer and stands
+ * forward in z. `transform-style: preserve-3d` matters: without it the
+ * translateZ below is flattened and the plane merely scales.
+ */
+.content {
+  transform-style: preserve-3d;
+  transform:
+    rotateX(calc(var(--py) * -1.2deg))
+    rotateY(calc(var(--px) * 1.2deg))
+    translateZ(24px);
+  transition: transform 600ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
+}
+
+/* The masthead sits nearest of all — the one element allowed to break the
+   plane, so the headline figure reads as closest to the reader. */
+.greet { transform: translateZ(38px); }
+
+/*
+ * RULES. Every hairline carries a highlight that brightens where the light
+ * currently falls, so the page's structure responds to the pointer the way a
+ * ruled surface would to a real lamp. The gradient's centre is driven straight
+ * from --px, so no element needs its own listener.
+ */
+.greet-figure-row,
+.card,
+.card-head,
+.grid.cols-3,
+.tile {
+  border-image: linear-gradient(
+      90deg,
+      transparent,
+      var(--rule-strong) calc(50% + var(--px) * 34%),
+      transparent
+    )
+    1;
+}
+
+/* border-image replaces the border colour wholesale, so anything that needs a
+   solid rule opts back out. */
+.alert,
+.banner,
+.segmented,
+.sidebar,
+table.data th,
+table.data td { border-image: none; }
+
+/* The sidebar is the fixed frame of reference — it stays put while the content
+   plane moves against it, which is what gives the movement something to be
+   measured against. */
+.sidebar { transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .content,
+  .greet,
+  body::before,
+  .app-shell::before,
+  .app-shell::after { transform: none !important; }
+}

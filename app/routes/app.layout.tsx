@@ -202,6 +202,7 @@ export default function AppLayout() {
   // Re-measured whenever the selected range changes, which is the only thing
   // that moves the pill between navigations.
   const rangeRef = useTravellingPill(preset);
+  useSpatialField();
 
   // Keep whatever else the merchant has narrowed to. Rebuilding the query
   // string from scratch here silently dropped an active sort and channel
@@ -345,6 +346,69 @@ export default function AppLayout() {
  * reproduced here because the script that makes it meaningful now lives in the
  * head.
  */
+/**
+ * Publishes the pointer's position as `--px` / `--py`, in the range -1 to 1.
+ *
+ * One listener for the entire depth system. Every spatial rule in the
+ * stylesheet — the sky's counter-drift, the two light blooms, the tilt of the
+ * content plane, the highlight travelling along each hairline — reads these two
+ * properties, so there is exactly one source of truth for "where is the light",
+ * and adding a new depth-aware element costs no JavaScript at all.
+ *
+ * Written on a rAF tick rather than per event: pointermove fires far faster
+ * than the compositor can use, and setting a custom property on the root
+ * invalidates style for the document. Coalescing to one write per frame is the
+ * difference between a smooth plane and a busy main thread.
+ *
+ * Pointer-only and motion-aware. On a touch device there is no persistent
+ * pointer to track, and under `prefers-reduced-motion` a page that tilts as you
+ * move is exactly what the preference exists to prevent — in both cases the
+ * properties keep their neutral defaults and the page renders flat.
+ */
+function useSpatialField() {
+  useEffect(() => {
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const fine = window.matchMedia("(hover: hover) and (pointer: fine)");
+    if (reduced.matches || !fine.matches) return;
+
+    const root = document.documentElement;
+    let x = 0;
+    let y = 0;
+    let frame = 0;
+
+    const write = () => {
+      frame = 0;
+      root.style.setProperty("--px", x.toFixed(4));
+      root.style.setProperty("--py", y.toFixed(4));
+    };
+
+    const onMove = (event: PointerEvent) => {
+      x = (event.clientX / window.innerWidth) * 2 - 1;
+      y = (event.clientY / window.innerHeight) * 2 - 1;
+      if (!frame) frame = requestAnimationFrame(write);
+    };
+
+    // Returning to centre when the pointer leaves keeps the page from holding
+    // a tilt nothing is causing any more.
+    const onLeave = () => {
+      x = 0;
+      y = 0;
+      if (!frame) frame = requestAnimationFrame(write);
+    };
+
+    window.addEventListener("pointermove", onMove, { passive: true });
+    document.addEventListener("pointerleave", onLeave);
+
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      window.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerleave", onLeave);
+      root.style.removeProperty("--px");
+      root.style.removeProperty("--py");
+    };
+  }, []);
+}
+
 /**
  * Publishes the active range link's geometry so the pill can travel to it.
  *

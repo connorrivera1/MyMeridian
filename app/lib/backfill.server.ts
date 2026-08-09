@@ -74,6 +74,58 @@ const MAX_ORDERS = (() => {
 
 const MAX_THROTTLE_RETRIES = 6;
 
+/**
+ * Errors that deserve another attempt even though Shopify did not say
+ * THROTTLED.
+ *
+ * Retrying only on THROTTLED meant a single 502 from Shopify's edge, or one
+ * dropped socket, marked the whole shop FAILED — and nothing in the app ever
+ * retries a failed import on its own. A merchant who installed during a
+ * Shopify blip got a partial store and a banner, and had to notice the banner
+ * to recover. Shopify's own guidance is to retry 5xx.
+ *
+ * Deliberately narrow: 5xx, and the transport-level failures that mean the
+ * request never landed. A 4xx other than 429 is a request we got wrong, and
+ * repeating it verbatim would just fail six more times.
+ *
+ * The status is read from structured fields only, never matched out of the
+ * message. A first attempt at this scanned the message for a 5xx-shaped
+ * number, which is far too eager — an error quoting an order name, a variant
+ * id or a price could contain "502" and buy itself a minute of backoff before
+ * failing anyway. Only the phrases below, which have no other meaning, are
+ * matched textually.
+ */
+function isTransient(error: unknown): boolean {
+  const candidate = error as {
+    response?: { status?: number; code?: number };
+    status?: number;
+    statusCode?: number;
+    code?: string | number;
+  };
+
+  const status =
+    candidate?.response?.status ??
+    candidate?.response?.code ??
+    candidate?.status ??
+    candidate?.statusCode ??
+    (typeof candidate?.code === "number" ? candidate.code : undefined);
+  if (typeof status === "number" && status >= 500 && status <= 599) return true;
+
+  const code = typeof candidate?.code === "string" ? candidate.code : "";
+  if (/^(ECONNRESET|ETIMEDOUT|ECONNREFUSED|EPIPE|EAI_AGAIN|ENOTFOUND|EHOSTUNREACH)$/.test(code)) {
+    return true;
+  }
+
+  // The Shopify client's own retriable classes.
+  const name = (error as { constructor?: { name?: string } })?.constructor?.name;
+  if (name === "HttpInternalError" || name === "HttpRetriableError") return true;
+
+  const message = error instanceof Error ? error.message : "";
+  return /socket hang up|network error|fetch failed|ECONNRESET|ETIMEDOUT/i.test(
+    message,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // GraphQL plumbing
 // ---------------------------------------------------------------------------
@@ -123,6 +175,7 @@ export async function gql<T>(
 ): Promise<T> {
   for (let attempt = 0; attempt <= MAX_THROTTLE_RETRIES; attempt++) {
     let errors: GraphQLError[];
+    let transient = false;
 
     try {
       const response = await admin.graphql(query, { variables });
@@ -143,13 +196,14 @@ export async function gql<T>(
         throw error;
       }
       errors = graphQLErrorsFrom(error);
+      transient = isTransient(error);
     }
 
     const throttled = errors.some(
       (error) => error.extensions?.code === "THROTTLED",
     );
 
-    if (throttled && attempt < MAX_THROTTLE_RETRIES) {
+    if ((throttled || transient) && attempt < MAX_THROTTLE_RETRIES) {
       // The cost bucket refills at a fixed rate; backing off is the only
       // correct response. Exponential, because a busy store will throttle
       // repeatedly and hammering it just burns the bucket again.
@@ -168,7 +222,7 @@ export async function gql<T>(
     throw new Error(`Shopify GraphQL: ${message}`);
   }
 
-  throw new Error("Shopify GraphQL: still throttled after retries.");
+  throw new Error("Shopify GraphQL: still failing after retries.");
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

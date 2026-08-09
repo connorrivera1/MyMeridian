@@ -140,3 +140,74 @@ describe("gql field-error classification", () => {
     expect(admin.calls()).toBe(1);
   });
 });
+
+/**
+ * Retrying only on THROTTLED meant one 502 from Shopify's edge, or a single
+ * dropped socket, marked the whole shop FAILED — and nothing in the app ever
+ * retries a failed import by itself. A merchant who installed during a Shopify
+ * blip got a partial store and a banner they had to notice.
+ */
+describe("gql: transient transport failures", () => {
+  /** What the Shopify client raises for a 5xx. */
+  function httpError(status: number) {
+    const error = new Error(`Received an error response (${status})`);
+    Object.assign(error, { response: { status } });
+    return error;
+  }
+
+  function socketError(code: string) {
+    const error = new Error("socket hang up");
+    Object.assign(error, { code });
+    return error;
+  }
+
+  it("retries a 5xx and succeeds on the next attempt", async () => {
+    const admin = adminThatThrows([httpError(502), { shop: { id: "gid://1" } }]);
+
+    await expect(settle(gql(admin, "query {}"))).resolves.toEqual({
+      shop: { id: "gid://1" },
+    });
+    expect(admin.calls()).toBe(2);
+  });
+
+  it("retries a dropped connection", async () => {
+    const admin = adminThatThrows([
+      socketError("ECONNRESET"),
+      { shop: { id: "gid://1" } },
+    ]);
+
+    await expect(settle(gql(admin, "query {}"))).resolves.toEqual({
+      shop: { id: "gid://1" },
+    });
+    expect(admin.calls()).toBe(2);
+  });
+
+  it("gives up after the retry budget rather than looping forever", async () => {
+    const admin = adminThatThrows(Array.from({ length: 12 }, () => httpError(503)));
+
+    await expect(settle(gql(admin, "query {}"))).rejects.toThrow(/503/);
+    // The initial attempt plus MAX_THROTTLE_RETRIES.
+    expect(admin.calls()).toBe(7);
+  });
+
+  it("does not retry a 4xx — repeating a request we got wrong just fails again", async () => {
+    const admin = adminThatThrows([httpError(422), { shop: { id: "gid://1" } }]);
+
+    await expect(settle(gql(admin, "query {}"))).rejects.toThrow(/422/);
+    expect(admin.calls()).toBe(1);
+  });
+
+  /**
+   * The first cut of `isTransient` scanned the message for a 5xx-shaped number.
+   * An error quoting an order name or a price can carry one, and would buy
+   * itself a minute of backoff before failing anyway.
+   */
+  it("does not treat a 5xx-shaped number inside a message as a transport failure", async () => {
+    const admin = adminThatThrows([
+      graphqlQueryError([{ message: "Order #502 could not be processed" }]),
+    ]);
+
+    await expect(settle(gql(admin, "query {}"))).rejects.toThrow(/#502/);
+    expect(admin.calls()).toBe(1);
+  });
+});

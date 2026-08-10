@@ -1,0 +1,223 @@
+/*
+ * Shared styling for the standalone legal documents (privacy.html, terms.html).
+ *
+ * Deliberately NOT the landing page's scene. These pages are read, not
+ * browsed: no shader, no sky, no reveals, no hover lifts. They inherit the
+ * tokens, the type and the gold accent so they belong to the same product,
+ * and nothing else — a raymarched cloudscape behind a privacy policy is
+ * exactly the "too much" the landing page was just cured of.
+ *
+ * The font stack matches the landing page's: Satoshi is licensed under the
+ * Fontshare FFL, which forbids serving the file, so the site renders in the
+ * reader's system UI face by design. See listing.test.ts, which fails the
+ * build if the binary ever reappears in the tree.
+ */
+
+:root {
+  --ground: #10142a;
+  --raised: #151a33;
+  --ink: #f4efe6;
+  --ink-2: rgba(244, 239, 230, 0.8);
+  --ink-3: rgba(244, 239, 230, 0.62);
+  --gold: #f0c273;
+  --gold-dim: rgba(240, 194, 115, 0.16);
+  --border: rgba(244, 239, 230, 0.14);
+  --font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "Helvetica Neue", Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+html, body { margin: 0; padding: 0; }
+
+body {
+  background: var(--ground);
+  color: var(--ink-2);
+  font-family: var(--font);
+  font-size: 15.5px;
+  line-height: 1.72;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; }
+a:hover { color: var(--ink); }
+::selection { background: var(--gold-dim); color: var(--ink); }
+
+.wrap { max-width: 760px; margin: 0 auto; padding: 0 28px; }
+
+/* ------------------------------------------------------------------ header */
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(16, 20, 42, 0.86);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
+}
+.header-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 15px 28px;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--ink);
+  text-decoration: none;
+}
+.header-nav {
+  margin-left: auto;
+  display: flex;
+  gap: 22px;
+  font-size: 13.5px;
+}
+.header-nav a { color: var(--ink-3); text-decoration: none; }
+.header-nav a:hover,
+.header-nav a[aria-current="page"] { color: var(--ink); }
+
+/* -------------------------------------------------------------------- page */
+
+main { padding: 68px 0 90px; }
+
+.doc-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.doc-kicker::before {
+  content: "";
+  width: 22px;
+  height: 1px;
+  background: var(--gold);
+}
+
+h1 {
+  margin: 18px 0 0;
+  font-size: clamp(32px, 4.4vw, 46px);
+  font-weight: 300;
+  letter-spacing: -0.028em;
+  line-height: 1.1;
+  color: var(--ink);
+}
+
+.doc-meta {
+  margin: 18px 0 0;
+  font-size: 13.5px;
+  color: var(--ink-3);
+}
+
+.lede {
+  margin: 26px 0 0;
+  font-size: 17px;
+  line-height: 1.7;
+  color: var(--ink-2);
+}
+
+h2 {
+  margin: 54px 0 0;
+  padding-top: 26px;
+  border-top: 1px solid var(--border);
+  font-size: 21px;
+  font-weight: 460;
+  letter-spacing: -0.012em;
+  color: var(--ink);
+}
+
+h3 {
+  margin: 30px 0 0;
+  font-size: 16px;
+  font-weight: 560;
+  color: var(--ink);
+}
+
+p { margin: 14px 0 0; }
+ul { margin: 14px 0 0; padding-left: 20px; }
+li { margin: 8px 0 0; }
+li::marker { color: var(--ink-3); }
+
+strong { color: var(--ink); font-weight: 560; }
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.88em;
+  padding: 1.5px 5px;
+  border-radius: 4px;
+  background: rgba(244, 239, 230, 0.07);
+  color: var(--ink);
+}
+
+/* A table for the plan/price facts, kept to the same rules as the app's. */
+table {
+  width: 100%;
+  margin-top: 18px;
+  border-collapse: collapse;
+  font-size: 14.5px;
+  font-variant-numeric: tabular-nums;
+}
+th, td { text-align: left; padding: 10px 14px 10px 0; border-bottom: 1px solid var(--border); }
+th { font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3); }
+td:last-child, th:last-child { padding-right: 0; text-align: right; }
+
+/*
+ * Unfilled facts, marked so they cannot be published by accident.
+ *
+ * A legal document is the one place a plausible-looking placeholder is worse
+ * than an obvious hole: "Meridian Ltd" reads as true and would be a false
+ * statement about who the merchant is contracting with. These are loud on
+ * purpose, and `npm run check:legal` fails while any remain.
+ */
+.todo {
+  background: rgba(240, 194, 115, 0.18);
+  border-bottom: 1px dashed var(--gold);
+  color: var(--gold);
+  padding: 0 4px;
+  border-radius: 3px;
+  font-weight: 560;
+}
+
+.note {
+  margin-top: 26px;
+  padding: 18px 20px;
+  border-left: 2px solid var(--gold);
+  background: rgba(240, 194, 115, 0.06);
+  font-size: 14.5px;
+  color: var(--ink-2);
+}
+
+/* ------------------------------------------------------------------ footer */
+
+footer {
+  border-top: 1px solid var(--border);
+  padding: 40px 0 54px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.foot-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 28px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  align-items: center;
+  justify-content: space-between;
+}
+.foot-nav { display: flex; gap: 22px; }
+.foot-nav a { text-decoration: none; }
+
+@media (max-width: 700px) {
+  main { padding: 46px 0 64px; }
+  h2 { margin-top: 42px; }
+}

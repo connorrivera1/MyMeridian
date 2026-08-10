@@ -2152,3 +2152,66 @@ section[id] { scroll-margin-top: 96px; }
    heading it used to sit under. With every section now sharing one left edge,
    the mark belongs on the same side as all the others. */
 .trust-heading .kicker { flex-direction: row; }
+
+/* --------------------------------------------------- pricing + final CTA */
+
+/*
+ * The dead space inside the plan cards had two causes, and neither was the
+ * grid.
+ *
+ * `min-height: 430px` set a floor no card's content came near — Scale carries
+ * two bullets and was being held open to the height of a card with five. And
+ * the three calls to action were two different components: Growth had a
+ * full-width pill, Starter and Scale had text links with an arrow. Because the
+ * pill is taller, it set the row height and the other two cards padded
+ * themselves out to match it, which is where the rest of the gap came from.
+ *
+ * Height now comes from content, the grid equalises the row, and all three
+ * actions are the same control — filled on the recommended plan, outlined on
+ * the others.
+ */
+.plan {
+  min-height: 0;
+  padding: var(--s-6);
+  gap: var(--s-2);
+}
+
+.plan ul { margin-bottom: var(--s-6); }
+
+/* The action sits at the foot of every card, on one baseline across the row. */
+.plan-link,
+.plan .pill {
+  margin-top: auto;
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  align-items: center;
+  padding: 12px var(--s-5);
+  border-radius: var(--radius-pill);
+  font-size: 14px;
+  font-weight: 560;
+}
+
+.plan-link {
+  border: 1px solid var(--border-strong);
+  color: var(--ink);
+  transition: background 180ms var(--ease), border-color 180ms var(--ease);
+}
+.plan-link:hover { background: var(--surface-soft); border-color: var(--ink-3); }
+
+/* The arrow was doing the job the button shape now does. */
+.plan-link span { display: none; }
+
+/*
+ * The closing section had 170px of its own padding on top of the 96px section
+ * rhythm — 266px of air above a single line of type — and its heading was
+ * still auto-centred (margin-inline resolved to 214px a side) while its
+ * kicker and button sat on the left margin, so one block was aligned three
+ * different ways.
+ */
+/* Back to the page's standard band, not to nothing: zeroing it entirely put
+   the closing line hard against the plan cards. */
+.final-cta { padding-block: var(--s-24); }
+.final-cta h2,
+.final-cta > p { margin-inline: 0; }
+.final-cta .pill { align-self: flex-start; }

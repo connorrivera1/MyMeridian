@@ -3,1473 +3,445 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Meridian — true profit for your Shopify store</title>
-<meta name="description" content="Shopify reports gross sales. Meridian reports what is left — true net profit per order and product, after COGS, shipping, fees and overhead." />
-<meta property="og:title" content="Meridian — true profit for your Shopify store" />
-<meta property="og:description" content="Shopify reports gross sales. Meridian reports what is left." />
+<title>Meridian — qualified profit from available Shopify inputs</title>
+<meta name="description" content="Qualified order and product profit from recorded and modeled costs, with missing inputs and unavailable ad spend disclosed." />
+<meta property="og:title" content="Meridian — qualified profit from available Shopify inputs" />
+<meta property="og:description" content="Shopify reports gross sales. Meridian shows what remains from the inputs it actually has." />
 <meta property="og:image" content="assets/overview-top2.jpg" />
-<meta name="theme-color" content="#141a33" />
+<meta name="theme-color" content="#10142a" />
 <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-<style>
-/*
- * Meridian — golden hour, the marketing cut.
- *
- * Same world as the product: a twilight sky whose sun crosses the meridian as
- * the visitor scrolls. The page works three ways — WebGL sky when it can,
- * the painted CSS scene when it can't, and everything legible with no JS at
- * all. All chrome is frosted glass; the only opaque objects are the two pills.
- */
-
-@font-face {
-  font-family: "Satoshi";
-  src: url("fonts/Satoshi-Variable.woff2") format("woff2-variations");
-  font-weight: 300 900;
-  font-display: swap;
-}
-
-:root {
-  --zenith: #141a33;
-  --upper: #232c52;
-  --mid: #3a4671;
-  --haze: #5d6493;
-  --veil: #8a7590;
-  --ember: #c08a6e;
-  --glow: #e7ae78;
-
-  /* The reading surface below the hero. Deeper than --zenith so the hero
-     reads as the lit end of the page and the content as the quiet end. */
-  --ground: #10142a;
-
-  --ink: #f4efe6;
-  --ink-2: rgba(244, 239, 230, 0.8);
-  --ink-3: rgba(244, 239, 230, 0.68);
-
-  /* Opacity is a legibility floor, not a taste setting — see meridian.css.
-     At 0.5 the muted ink measured 2.60:1 over the sun's glow. */
-  --glass: rgba(21, 26, 51, 0.72);
-  --glass-strong: rgba(18, 23, 46, 0.88);
-  --edge: rgba(255, 255, 255, 0.14);
-  --border: rgba(244, 239, 230, 0.14);
-
-  --gold: #f0c273;
-  --gold-dim: rgba(240, 194, 115, 0.16);
-  /* The validated marks, identical to the app — see the chart palette note in
-     meridian.css. The previous --peri/#9db1e8 was half of the pair that
-     measured ΔE 5.8 apart in normal vision. */
-  --cost: #a8737f;
-  --peri: #6f92e3;
-  --ember-neg: #a8737f;
-
-  --pill: #f6f1e7;
-  --pill-ink: #232a4d;
-
-  --font: "Satoshi", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-spring: cubic-bezier(0.34, 1.42, 0.64, 1);
-  --tap: 140ms;
-  --micro: 220ms;
-}
-
-* { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-html, body { margin: 0; padding: 0; }
-
-body {
-  background: var(--zenith);
-  color: var(--ink);
-  font-family: var(--font);
-  font-size: 15px;
-  font-weight: 440;
-  line-height: 1.6;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-  overflow-x: hidden;
-}
-
-/* The painted scene — always present, so the page is beautiful before (or
-   without) the shader, and screenshots never catch a void. */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -2;
-  /* Matches the shader's tuning: the warm light is a glow near the horizon,
-     not a wash over the whole lower half, and the bottom lands on --ground so
-     a visitor with no WebGL sees the same calm scene rather than the mud the
-     shader no longer paints. */
-  background:
-    radial-gradient(100rem 34rem at 52% 92%, rgba(231, 174, 120, 0.38), transparent 62%),
-    radial-gradient(56rem 22rem at 74% 88%, rgba(240, 194, 115, 0.26), transparent 58%),
-    linear-gradient(180deg, var(--zenith) 0%, var(--upper) 28%, var(--mid) 50%, var(--haze) 66%, var(--veil) 78%, var(--ember) 88%, var(--ground) 100%);
-}
-
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  opacity: 0.05;
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
-}
-
-#sky {
-  position: fixed;
-  inset: 0;
-  z-index: -2;
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-/*
- * The reading surface.
- *
- * A near-opaque deep indigo, one step darker than the zenith so the hero
- * still feels like the lit part of the page. The first 200px fade the sky
- * into it, so the sun sets behind the content instead of stopping at a line.
- */
-.ground {
-  position: relative;
-  background: linear-gradient(180deg, rgba(16, 20, 42, 0) 0%, var(--ground) 200px);
-}
-
-/* Content sits on a solid surface now, so the per-element haze that kept text
-   legible over bare sky is only needed in the hero. Inside .ground it is dead
-   weight — a second dark panel behind every heading, which is most of what
-   made the page feel layered and heavy. */
-.ground .sky-text::before { content: none; }
-
-::selection { background: var(--gold-dim); color: var(--ink); }
-a { color: inherit; text-decoration: none; }
-img { max-width: 100%; display: block; }
-
-.wrap { max-width: 1180px; margin: 0 auto; padding: 0 28px; position: relative; }
-
-/* --------------------------------------------------------------- sky text */
-
-/*
- * Text on bare sky needs its own haze. The shader's sun is brightest low on
- * the page, exactly where the pricing note and the figure captions sit — that
- * note measured 1.35:1, the worst contrast anywhere in this project. No ink
- * colour fixes it; the backdrop has to come down.
- */
-.sky-text { position: relative; isolation: isolate; }
-
-/*
- * The ellipse must be INSCRIBED in its own box, or the box crops it and the
- * haze acquires exactly the hard edges it exists to avoid.
- *
- * The previous geometry was `62% 96% at 32% 50%`: a vertical radius of 96%
- * from a centre at 50% runs from -46% to 146% of the box, and a horizontal
- * radius of 62% from a centre at 32% runs to -30%. Three of the four sides
- * were therefore clipped, and the result was a dark rectangle behind the
- * headline — invisible while the shader sky was busy enough to hide it, plain
- * as day once the page calmed down.
- *
- * Radii of 50% about a centred origin touch each edge exactly and reach full
- * transparency there, so there is nothing left for the box to cut. The
- * asymmetric insets, not the gradient origin, are what keep the weight over
- * the text.
- */
-.sky-text::before {
-  content: "";
-  position: absolute;
-  inset: -96px -30% -84px -20%;
-  z-index: -1;
-  pointer-events: none;
-  background: radial-gradient(
-    50% 50% at 50% 50%,
-    rgba(11, 15, 33, 0.74) 0%,
-    rgba(11, 15, 33, 0.6) 34%,
-    rgba(11, 15, 33, 0.34) 58%,
-    rgba(11, 15, 33, 0.13) 76%,
-    rgba(11, 15, 33, 0.03) 90%,
-    rgba(11, 15, 33, 0) 100%
-  );
-}
-
-/* Centred blocks fade from the middle out instead. Same inscribed-ellipse
-   rule as above — the 118% vertical radius here was clipped identically. */
-.sky-text.centered::before {
-  inset: -80px -14%;
-  background: radial-gradient(
-    50% 50% at 50% 50%,
-    rgba(11, 15, 33, 0.78) 0%,
-    rgba(11, 15, 33, 0.62) 38%,
-    rgba(11, 15, 33, 0.3) 62%,
-    rgba(11, 15, 33, 0.09) 82%,
-    rgba(11, 15, 33, 0) 100%
-  );
-}
-
-/* ------------------------------------------------------------------ header */
-
-.header {
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  z-index: 50;
-  transition: background 0.3s ease, border-color 0.3s ease, backdrop-filter 0.3s ease;
-  border-bottom: 1px solid transparent;
-}
-
-.header.scrolled {
-  background: rgba(13, 17, 36, 0.78);
-  backdrop-filter: blur(24px) saturate(140%);
-  -webkit-backdrop-filter: blur(24px) saturate(140%);
-  border-bottom-color: var(--border);
-  box-shadow: 0 18px 50px -30px rgba(8, 10, 26, 0.8);
-}
-
-.header-inner {
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 16px 28px;
-  display: flex;
-  align-items: center;
-  gap: 26px;
-}
-
-.brand { display: inline-flex; align-items: center; gap: 11px; font-size: 17px; font-weight: 500; letter-spacing: 0.01em; }
-.brand svg { display: block; }
-
-.header-nav { margin-left: auto; display: flex; align-items: center; gap: 22px; font-size: 13.5px; font-weight: 480; }
-.header-nav a:not(.pill) { color: var(--ink-2); transition: color 0.16s ease; }
-.header-nav a:not(.pill):hover { color: var(--ink); }
-
-/* ------------------------------------------------------------------- pills */
-
-.pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 11px 22px;
-  border-radius: 999px;
-  background: var(--pill);
-  color: var(--pill-ink);
-  font-size: 14px;
-  font-weight: 580;
-  letter-spacing: 0.004em;
-  border: none;
-  cursor: pointer;
-  box-shadow: 0 14px 38px -14px rgba(8, 10, 26, 0.7);
-  transition:
-    transform var(--micro) var(--ease-spring),
-    background var(--micro) ease,
-    box-shadow var(--micro) ease;
-  white-space: nowrap;
-}
-/*
- * The solid pill carries a permanent bloom of the accent behind it, so it reads
- * as the lit object in the scene before anyone touches it, and a specular sweep
- * on hover. Box-shadow for the glow: it paints only outside the border box, so
- * it can never dull the label.
- */
-.pill {
-  position: relative;
-  isolation: isolate;
-  box-shadow:
-    0 14px 38px -14px rgba(8, 10, 26, 0.7),
-    0 0 22px -4px rgba(240, 194, 115, 0.45);
-}
-
-.pill::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: inherit;
-  pointer-events: none;
-  background: linear-gradient(
-    100deg,
-    transparent 22%,
-    rgba(255, 255, 255, 0.55) 48%,
-    rgba(255, 255, 255, 0.85) 50%,
-    rgba(255, 255, 255, 0.55) 52%,
-    transparent 78%
-  );
-  transform: translateX(-100%);
-  opacity: 0;
-  transition: transform 640ms var(--ease-expo), opacity 160ms ease;
-}
-
-.pill:hover {
-  background: #ffffff;
-  transform: translateY(-2px);
-  box-shadow:
-    0 22px 50px -16px rgba(8, 10, 26, 0.78),
-    0 0 34px 2px rgba(240, 194, 115, 0.55);
-}
-.pill:hover::before { transform: translateX(100%); opacity: 1; }
-.pill:active { transform: translateY(0) scale(0.97); transition-duration: var(--tap); }
-.pill.sm { padding: 8px 16px; font-size: 13px; }
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 9px 18px;
-  border-radius: 999px;
-  background: rgba(244, 239, 230, 0.09);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: var(--ink);
-  font-size: 13.5px;
-  font-weight: 480;
-  white-space: nowrap;
-  transition: background 0.18s ease, transform 0.18s var(--ease);
-}
-a.chip, button.chip { position: relative; isolation: isolate; }
-a.chip::before, button.chip::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: inherit;
-  pointer-events: none;
-  background: linear-gradient(100deg, transparent 22%, rgba(255,255,255,0.22) 48%, rgba(255,255,255,0.34) 50%, rgba(255,255,255,0.22) 52%, transparent 78%);
-  transform: translateX(-100%);
-  opacity: 0;
-  transition: transform 640ms var(--ease-expo), opacity 160ms ease;
-}
-a.chip:hover, button.chip:hover { background: rgba(244, 239, 230, 0.17); transform: translateY(-1px); border-color: rgba(255,255,255,0.3); }
-a.chip:hover::before, button.chip:hover::before { transform: translateX(100%); opacity: 1; }
-a.chip:active, button.chip:active { transform: translateY(0) scale(0.97); transition-duration: var(--tap); }
-
-.kicker {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
-.kicker::before {
-  content: "";
-  width: 22px; height: 1px;
-  background: linear-gradient(90deg, var(--gold), transparent);
-}
-
-/* -------------------------------------------------------------------- hero */
-
-.hero {
-  min-height: 100svh;
-  display: flex;
-  align-items: center;
-  padding: 130px 0 90px;
-  position: relative;
-}
-
-.hero-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr); gap: 40px; align-items: center; }
-
-/* 82px set the headline over three lines at 1440 and left it shouting. This
-   ceiling keeps it to two and lets the sub-head and the card breathe. */
-.hero h1 {
-  margin: 20px 0 0;
-  font-size: clamp(40px, 4.9vw, 66px);
-  font-weight: 300;
-  letter-spacing: -0.03em;
-  line-height: 1.06;
-  color: var(--ink-2);
-}
-/* The promise line is lit from above, matching the app's headline figure. */
-.hero h1 strong {
-  display: block;
-  font-weight: 430;
-  color: var(--ink);
-  background: linear-gradient(174deg, var(--ink) 8%, #f9e4bb 60%, #f6d9a4 98%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  /* Halved. At 0.28 the glow bled a full 40px past the letterforms and read
-     as a light effect rather than as light. */
-  filter: drop-shadow(0 0 26px rgba(240, 194, 115, 0.14));
-}
-
-.hero-sub {
-  margin: 26px 0 0;
-  max-width: 56ch;
-  font-size: 16px;
-  color: var(--ink-2);
-  line-height: 1.7;
-}
-
-.hero-ctas { display: flex; align-items: center; flex-wrap: wrap; gap: 26px; margin-top: 36px; }
-
-/* The secondary action, as a link rather than a second button. Two buttons
-   side by side ask the reader to choose; a button and a link tell them which
-   one is the point. */
-.text-link {
-  font-size: 14px;
-  color: var(--ink-2);
-  padding-bottom: 2px;
-  border-bottom: 1px solid rgba(244, 239, 230, 0.28);
-  transition: color 0.18s ease, border-color 0.18s ease;
-}
-.text-link:hover { color: var(--ink); border-bottom-color: var(--gold); }
-
-/* The floating greeting card — the reference's exercise card, speaking profit. */
-.float-card {
-  justify-self: end;
-  width: min(340px, 100%);
-  border-radius: 26px;
-  padding: 24px 26px;
-  background: var(--glass);
-  border: 1px solid var(--border);
-  box-shadow: inset 0 1px 0 var(--edge), 0 30px 80px -30px rgba(8, 10, 26, 0.8);
-  will-change: transform;
-}
-
-.float-kicker { font-size: 10px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3); }
-.float-amount {
-  font-size: 44px;
-  font-weight: 320;
-  letter-spacing: -0.03em;
-  line-height: 1.05;
-  margin: 10px 0 2px;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink);
-  background: linear-gradient(172deg, var(--ink) 12%, #f9e4bb 58%, #f6d9a4 98%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 34px rgba(240, 194, 115, 0.36));
-}
-.float-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-3); margin-bottom: 12px; }
-.float-delta {
-  display: inline-flex; align-items: center; gap: 3px;
-  padding: 2.5px 9px; border-radius: 999px;
-  background: var(--gold-dim); color: var(--gold);
-  font-size: 11.5px; font-weight: 620; font-variant-numeric: tabular-nums;
-}
-.float-card svg.spark { display: block; width: 100%; height: 54px; margin: 6px 0 14px; }
-/* The card's own button is gone, and so is the scroll cue that used to sit
-   under the hero announcing "the sun follows your scroll". A page that has to
-   caption its own effects is doing the effect for its own sake. */
-
-/* ---------------------------------------------------------------- sections */
-
-section { padding: 110px 0; position: relative; }
-section.tight { padding: 70px 0; }
-
-.sec-head { max-width: 720px; }
-.sec-head h2 {
-  margin: 18px 0 0;
-  font-size: clamp(30px, 3.6vw, 46px);
-  font-weight: 320;
-  letter-spacing: -0.024em;
-  line-height: 1.12;
-}
-.sec-head h2 strong { font-weight: 460; }
-.sec-head p { margin: 18px 0 0; font-size: 15.5px; color: var(--ink-2); line-height: 1.7; max-width: 58ch; }
-
-/* glass frame around product shots */
-.frame {
-  margin-top: 54px;
-  border-radius: 28px;
-  padding: 14px;
-  background: rgba(244, 239, 230, 0.07);
-  border: 1px solid var(--border);
-  box-shadow: inset 0 1px 0 var(--edge), 0 60px 140px -50px rgba(8, 10, 26, 0.9);
-  will-change: transform;
-  transform-style: preserve-3d;
-}
-.frame img { border-radius: 16px; width: 100%; }
-.frame-cap {
-  display: flex; align-items: center; justify-content: space-between; gap: 14px;
-  padding: 14px 10px 4px;
-  font-size: 12.5px; color: var(--ink-3);
-}
-.frame-cap .dots { display: inline-flex; gap: 5px; }
-.frame-cap .dots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(244,239,230,0.18); }
-
-/* The perspective container is kept as a hook but no longer tilts its
-   contents; the frame sits square to the reader. */
-.perspective { perspective: 1400px; }
-
-/* features */
-.feat-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; margin-top: 56px; }
-
-.feat {
-  border-radius: 26px;
-  overflow: hidden;
-  background: var(--glass);
-  border: 1px solid var(--border);
-  box-shadow: inset 0 1px 0 var(--edge), 0 34px 90px -40px rgba(8, 10, 26, 0.85);
-  transition: transform 0.28s var(--ease), border-color 0.28s ease;
-}
-/* A hairline of sunlight along the top edge — present at rest, so a grid of
-   cards reads as lit objects rather than as flat panels. */
-.feat { position: relative; }
-/* A hairline, not a highlighter. At 2.5px of full-strength gold this drew a
-   bright rule across the top of all four cards at once, which is four times
-   the emphasis any one of them deserves; the accent should mark the edge, not
-   announce it. */
-.feat::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 1px;
-  z-index: 1;
-  background: linear-gradient(90deg, rgba(240,194,115,0.55), rgba(240,194,115,0.16) 42%, transparent 78%);
-}
-.feat:hover {
-  transform: translateY(-2px);
-  border-color: rgba(244, 239, 230, 0.24);
-  box-shadow: inset 0 1px 0 var(--edge), 0 30px 70px -40px rgba(8, 10, 26, 0.9);
-}
-.feat-icon {
-  background: linear-gradient(145deg, rgba(240,194,115,0.3), rgba(240,194,115,0.07));
-  box-shadow:
-    inset 0 0 0 1px rgba(240, 194, 115, 0.34),
-    0 0 20px -6px rgba(240, 194, 115, 0.6);
-}
-
-.feat-body { padding: 26px 28px 20px; }
-.feat h3 { margin: 12px 0 0; font-size: 21px; font-weight: 460; letter-spacing: -0.014em; }
-.feat p { margin: 10px 0 0; font-size: 13.5px; color: var(--ink-2); line-height: 1.65; }
-
-.feat-icon {
-  width: 34px; height: 34px;
-  display: grid; place-items: center;
-  border-radius: 999px;
-  background: rgba(244, 239, 230, 0.08);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.13);
-  color: var(--gold);
-}
-.feat-icon svg { width: 16px; height: 16px; }
-
-.feat-shot { padding: 18px 18px 0; }
-.feat-shot img {
-  border-radius: 14px 14px 0 0;
-  border: 1px solid var(--border);
-  border-bottom: none;
-  box-shadow: 0 -20px 60px -30px rgba(8, 10, 26, 0.8);
-}
-
-/* cost ribbon */
-.waterfall {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px 14px;
-  margin-top: 34px;
-  padding-top: 22px;
-  border-top: 1px solid var(--border);
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink-2);
-}
-.wf-term em { font-style: normal; color: var(--ink-3); margin-right: 5px; }
-.wf-op { color: var(--ink-3); opacity: 0.6; }
-.wf-result { color: var(--gold); font-weight: 560; }
-.wf-result em { color: var(--gold); opacity: 0.75; }
-
-/* two skies */
-.aside-note {
-  max-width: 46ch;
-  margin: 0;
-  font-size: 15px;
-  color: var(--ink-2);
-}
-
-.skies { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; margin-top: 54px; align-items: start; }
-.skies figure { margin: 0; }
-.skies .frame { margin-top: 0; }
-.skies figcaption { text-align: center; font-size: 12.5px; color: var(--ink-3); padding-top: 14px; }
-
-/* trust strip */
-.trust {
-  margin-top: 90px;
-  border-radius: 26px;
-  border: 1px solid var(--border);
-  background: var(--glass);
-  box-shadow: inset 0 1px 0 var(--edge);
-  padding: 26px 30px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 18px 44px;
-  align-items: center;
-  justify-content: center;
-}
-.trust-item { display: inline-flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--ink-2); }
-.trust-item svg { width: 16px; height: 16px; color: var(--gold); flex: none; }
-
-/* pricing */
-.plans { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; margin-top: 56px; align-items: stretch; }
-
-.plan {
-  border-radius: 26px;
-  padding: 30px 30px 28px;
-  background: var(--glass);
-  border: 1px solid var(--border);
-  box-shadow: inset 0 1px 0 var(--edge), 0 34px 90px -40px rgba(8, 10, 26, 0.85);
-  display: flex;
-  flex-direction: column;
-  transition: transform 0.28s var(--ease), border-color 0.28s ease;
-}
-/* A 4px lift on a card the size of a plan is a jump. Halved. */
-.plan:hover { transform: translateY(-2px); }
-.plan.featured {
-  border-color: rgba(240, 194, 115, 0.45);
-  box-shadow:
-    inset 0 1px 0 var(--edge),
-    0 40px 100px -44px rgba(8, 10, 26, 0.9),
-    0 0 40px -18px rgba(240, 194, 115, 0.55);
-}
-.plan.featured::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 2.5px;
-  border-radius: 26px 26px 0 0;
-  background: linear-gradient(90deg, transparent, var(--gold) 50%, transparent);
-}
-.plan { position: relative; }
-.plan.featured::before { content: none; }
-
-.plan-name { font-size: 11px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3); display: flex; align-items: center; gap: 10px; }
-.plan-name .tag {
-  font-size: 10px; letter-spacing: 0.08em;
-  padding: 3px 9px; border-radius: 999px;
-  background: var(--gold-dim); color: var(--gold);
-}
-.plan-price { margin-top: 14px; font-size: 46px; font-weight: 320; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
-.plan-price small { font-size: 14px; font-weight: 460; color: var(--ink-3); letter-spacing: 0; }
-.plan-blurb { margin: 8px 0 0; font-size: 12.5px; color: var(--ink-3); }
-.plan-annual { margin: 10px 0 0; font-size: 12px; color: var(--gold); font-variant-numeric: tabular-nums; }
-
-.plan ul { list-style: none; margin: 22px 0 26px; padding: 0; display: flex; flex-direction: column; gap: 11px; }
-.plan li { display: flex; gap: 10px; font-size: 13.5px; color: var(--ink-2); line-height: 1.5; }
-.plan li svg { width: 15px; height: 15px; color: var(--gold); flex: none; margin-top: 2px; }
-
-.plan-foot { margin-top: auto; }
-
-.pricing-note { text-align: center; margin-top: 30px; font-size: 13px; color: var(--ink-3); }
-.pricing-cta { display: flex; justify-content: center; margin-top: 26px; }
-
-/* footer */
-/* Opaque, and no top margin. A 45%-translucent footer with a 60px gap above
-   it let the fixed sky show through in two places at once — a brown band in
-   the margin and a brown wash under the footer text — which was the only
-   place the old sky still leaked into the reading half of the page. */
-footer {
-  border-top: 1px solid var(--border);
-  background: var(--ground);
-  padding: 48px 0 54px;
-}
-.foot-inner { display: flex; flex-wrap: wrap; gap: 26px; align-items: center; justify-content: space-between; }
-.foot-tag { font-size: 13px; color: var(--ink-3); margin-top: 8px; }
-.foot-nav { display: flex; gap: 22px; font-size: 13px; color: var(--ink-2); }
-.foot-nav a:hover { color: var(--ink); }
-
-/* ---------------------------------------------------------------- reveals */
-
-/*
- * Reveals. Small offsets on purpose — 16px reads as a fade with direction; the
- * 26px this used to be reads as a slide, which draws attention to the animation
- * instead of to the content.
- */
-.reveal { opacity: 0; transform: translateY(10px); }
-.reveal.in {
-  opacity: 1;
-  transform: none;
-  transition: opacity 620ms var(--ease-expo), transform 620ms var(--ease-expo);
-}
-
-/*
- * Grid children arrive one after another. The delay is set inline from JS as
- * --i so the cascade follows document order regardless of how the grid wraps,
- * and it is capped so a long list never becomes a slow one.
- */
-.reveal.in > * { animation: rise-in 560ms var(--ease-expo) both; }
-.feat-grid > .reveal.in,
-.plans > .reveal.in { animation: rise-in 560ms var(--ease-expo) both; animation-delay: calc(var(--i, 0) * 70ms); }
-
-@keyframes rise-in {
-  from { opacity: 0; transform: translateY(14px); }
-  to   { opacity: 1; transform: none; }
-}
-
-/* ------------------------------------------------------------- responsive */
-
-@media (max-width: 960px) {
-  .hero-grid { grid-template-columns: 1fr; }
-  .float-card { justify-self: start; }
-  .feat-grid, .skies, .plans { grid-template-columns: 1fr; }
-  section { padding: 80px 0; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
-  .reveal { opacity: 1; transform: none; }
-  .scroll-cue::after { animation: none; }
-  * { transition-duration: 0.01ms !important; }
-}
-</style>
+<link rel="stylesheet" href="landing.css" />
+<script>document.documentElement.classList.add("js");</script>
 </head>
 <body>
 
+<div class="sky-fallback" aria-hidden="true"></div>
 <canvas id="sky" aria-hidden="true"></canvas>
+
+<div class="site-splash" id="site-splash" role="status" aria-label="Meridian">
+  <div class="site-splash-inner">
+    <div class="site-splash-globe">
+      <svg class="mark spinning" width="112" height="112" viewBox="0 0 96 96" fill="none" aria-hidden="true">
+        <defs>
+          <filter id="site-splash-glow" x="-80%" y="-80%" width="260%" height="260%">
+            <feGaussianBlur stdDeviation="2.6" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        </defs>
+        <g stroke="currentColor" stroke-width="2" opacity="0.8" stroke-linecap="round">
+          <circle cx="48" cy="48" r="34" />
+          <ellipse class="meridian-a" cx="48" cy="48" rx="24.5" ry="34" />
+          <ellipse class="meridian-b" cx="48" cy="48" rx="13.5" ry="34" />
+          <ellipse class="meridian-c" cx="48" cy="48" rx="0" ry="34" />
+          <path d="M48 14v68" />
+        </g>
+        <path d="M48 14 A 15 34 0 0 1 48 82" stroke="var(--gold)" stroke-width="2.5" stroke-linecap="round" filter="url(#site-splash-glow)" />
+      </svg>
+    </div>
+    <div class="site-splash-word" aria-hidden="true">
+      <span>M</span><span>e</span><span>r</span><span>i</span><span>d</span><span>i</span><span>a</span><span>n</span>
+    </div>
+  </div>
+</div>
 
 <header class="header" id="header">
   <div class="header-inner">
-    <a class="brand" href="#top" aria-label="Meridian">
-      <svg width="26" height="26" viewBox="0 0 96 96" fill="none" aria-hidden="true">
-        <g stroke="#f4efe6" stroke-width="2.6" opacity="0.85" stroke-linecap="round">
+    <a class="brand" href="#top" aria-label="Meridian home">
+      <svg class="mark" width="26" height="26" viewBox="0 0 96 96" fill="none" aria-hidden="true">
+        <g stroke="currentColor" stroke-width="2.6" opacity="0.86" stroke-linecap="round">
           <circle cx="48" cy="48" r="34" />
           <ellipse cx="48" cy="48" rx="24.5" ry="34" />
           <ellipse cx="48" cy="48" rx="13.5" ry="34" />
           <path d="M48 14v68" />
         </g>
-        <path d="M48 14 A 15 34 0 0 1 48 82" stroke="#f0c273" stroke-width="3.2" stroke-linecap="round" />
+        <path d="M48 14 A 15 34 0 0 1 48 82" stroke="var(--gold)" stroke-width="3.2" stroke-linecap="round" />
       </svg>
-      Meridian
+      <span>Meridian</span>
     </a>
-    <nav class="header-nav">
+    <nav class="header-nav" aria-label="Primary navigation">
       <a href="#product">Product</a>
-      <a href="#features">Features</a>
+      <a href="#tour">Tour</a>
       <a href="#pricing">Pricing</a>
-      <a class="pill sm" href="#pricing">Start free</a>
+      <a class="pill pill-small" href="#pricing">Start free</a>
     </nav>
   </div>
 </header>
 
 <main id="top">
 
-  <!-- ================================================================ hero -->
   <section class="hero" id="hero">
-    <div class="wrap" style="width: 100%;">
-      <div class="hero-grid">
-        <div class="sky-text">
-          <span class="kicker">Profit analytics for Shopify</span>
-          <h1>
-            Shopify reports gross sales.
-            <strong>Meridian reports what is&nbsp;left.</strong>
-          </h1>
-          <p class="hero-sub">
-            Meridian imports your orders, products, cost per item and
-            fulfilments, applies your own payment, shipping, pick-and-pack and
-            overhead rules, and gives every order and product a true net profit
-            figure.
-          </p>
-          <!-- One thing to do, and one quiet way to look first. The five
-               chips that used to sit under this repeated the nav and the
-               feature section both, and gave the eye a sixth and seventh
-               place to land before it had finished the headline. -->
-          <div class="hero-ctas">
-            <a class="pill" href="#pricing">Start free — 14-day trial</a>
-            <a class="text-link" href="#product">See the product</a>
-          </div>
-        </div>
 
-        <aside class="float-card" aria-label="Sample: tonight's net profit">
-          <div class="float-kicker">Good evening, Northwind Supply</div>
-          <div class="float-amount">$207,749</div>
-          <div class="float-meta">
-            <span class="float-delta">↑ 35%</span>
-            <span>net profit kept · last 30 days</span>
-          </div>
-          <svg class="spark" viewBox="0 0 300 54" preserveAspectRatio="none" aria-hidden="true">
-            <defs>
-              <linearGradient id="fs" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#f0c273" stop-opacity="0.4" />
-                <stop offset="100%" stop-color="#f0c273" stop-opacity="0" />
-              </linearGradient>
-            </defs>
-            <path d="M0,44 L20,40 L40,42 L60,34 L80,37 L100,30 L120,33 L140,22 L160,28 L180,18 L200,24 L220,14 L240,19 L260,10 L280,14 L300,6 L300,54 L0,54 Z" fill="url(#fs)" />
-            <!-- A baseline to be read against, and a marked endpoint: the same
-                 two aids the app's sparklines carry, so the figure in the
-                 marketing card and the figure in the product read alike. -->
-            <line x1="0" y1="53" x2="300" y2="53" stroke="rgba(244,239,230,0.16)" stroke-width="1" />
-            <path d="M0,44 L20,40 L40,42 L60,34 L80,37 L100,30 L120,33 L140,22 L160,28 L180,18 L200,24 L220,14 L240,19 L260,10 L280,14 L300,6" fill="none" stroke="#f0c273" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-            <circle cx="298" cy="6" r="3" fill="#f0c273" stroke="#151a33" stroke-width="2" />
-          </svg>
-          <!-- This card is evidence, not a second offer. It used to carry a
-               full-width white pill of its own, which put two identical
-               primary buttons in one viewport and left neither of them
-               reading as the primary. -->
-        </aside>
+    <div class="wrap hero-inner">
+      <div class="hero-copy">
+        <span class="kicker">Profit analytics for Shopify</span>
+        <h1>
+          Shopify reports gross sales.
+          <strong>Meridian reports what is left.</strong>
+        </h1>
+        <p>
+          Orders, product costs, fulfilment, fees and overhead resolved into a
+          qualified profit figure. Modeled and missing inputs remain visible;
+          paid marketing stays excluded until a real source exists.
+        </p>
+        <div class="hero-actions">
+          <a class="pill" href="#pricing">Start free — 14-day trial</a>
+          <a class="text-link" href="#product">See the arithmetic</a>
+        </div>
       </div>
+
+      <div class="hero-product" aria-label="Meridian overview using demo data">
+        <div class="product-window">
+          <div class="window-bar">
+            <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span>Meridian · Northwind Supply Co. · Demo data</span>
+            <span>30 days</span>
+          </div>
+          <img src="assets/overview-top2.jpg" alt="Meridian overview showing $207,719 profit before paid marketing for Northwind Supply Co." />
+        </div>
+        <div class="hero-ledger hero-ledger-left" aria-hidden="true">
+          <span>Net revenue</span><strong>$521K</strong>
+        </div>
+        <div class="hero-ledger hero-ledger-right" aria-hidden="true">
+          <span>Profit / order</span><strong>$67.65</strong>
+        </div>
+      </div>
+
+      <a class="scroll-cue" href="#product" aria-label="Scroll to product overview">
+        <span>Scroll to reconcile</span><i aria-hidden="true"></i>
+      </a>
     </div>
   </section>
 
-  <!--
-    Everything below the hero stands on solid ground.
-
-    The sky used to be fixed behind the whole document, so the product, the
-    features and the pricing all sat on moving cloud — and past the fold that
-    reads as brown murk under the content rather than as a sky. Spectacle
-    belongs in the hero, where there is nothing to read yet; the rest of the
-    page is a place to read, so it gets a calm opaque surface and the sky
-    stays where it earns its keep.
-  -->
   <div class="ground">
 
-  <!-- ============================================================= product -->
-  <section id="product">
-    <div class="wrap">
-      <div class="sec-head reveal sky-text">
-        <span class="kicker">The overview</span>
-        <h2>Opens with the number you<br /><strong>actually came for.</strong></h2>
-        <p>
-          A greeting in your own timezone, the profit you kept standing in
-          sunlight, and every figure beneath it fully costed. No gross-sales
-          theatre.
+  <section class="ledger-intro" id="product">
+    <div class="wrap ledger-layout">
+      <div class="ledger-heading reveal">
+        <span class="kicker">The arithmetic</span>
+        <h2>One number.<br /><strong>Nothing hidden behind it.</strong></h2>
+      </div>
+      <div class="ledger-copy reveal">
+        <p class="large-copy">
+          Meridian starts with revenue and shows each subtraction in the order
+          it hits the P&amp;L. Every modeled input stays marked as modeled. Missing
+          COGS receives no verdict. Unavailable paid marketing never becomes a
+          convenient zero.
         </p>
+        <p class="caption">The example below uses the seeded demo store.</p>
       </div>
-      <div class="perspective">
-        <figure class="frame reveal">
-          <div class="frame-cap" aria-hidden="true">
-            <span class="dots"><i></i><i></i><i></i></span>
-            <span>meridian · overview — live demo data</span>
-          </div>
-          <img src="assets/overview-top2.jpg" alt="Meridian's overview: a twilight dashboard greeting Northwind Supply Co. with $207,749 net profit kept" loading="lazy" />
-        </figure>
-      </div>
-      <!--
-        The cost waterfall, as a line of type rather than seven buttons.
-        Pills gave each subtraction a border, a fill and a hit-box it had no
-        use for — it looked like a row of controls and read as clutter. The
-        arithmetic is the point, so only the two ends are emphasised: what
-        came in, and what was kept.
-      -->
-      <div class="waterfall reveal" aria-label="The costs between revenue and profit">
-        <span class="wf-term"><em>Net revenue</em> $521K</span>
-        <span class="wf-op">−</span>
-        <span class="wf-term"><em>COGS</em> $208.4K</span>
-        <span class="wf-op">−</span>
-        <span class="wf-term"><em>Shipping</em> $32K</span>
-        <span class="wf-op">−</span>
-        <span class="wf-term"><em>Pick &amp; pack</em> $6.7K</span>
-        <span class="wf-op">−</span>
-        <span class="wf-term"><em>Fees</em> $17.7K</span>
-        <span class="wf-op">−</span>
-        <span class="wf-term"><em>Overhead</em> $48.5K</span>
-        <span class="wf-op">=</span>
-        <span class="wf-term wf-result"><em>Net profit</em> $207.7K</span>
+    </div>
+
+    <div class="wrap">
+      <div class="equation reveal" aria-label="Example profit calculation">
+        <div class="equation-item equation-start"><span>Net revenue</span><strong>$521K</strong></div>
+        <span class="equation-op">−</span>
+        <div class="equation-item"><span>COGS</span><strong>$208.4K</strong></div>
+        <span class="equation-op">−</span>
+        <div class="equation-item"><span>Fulfilment</span><strong>$38.7K</strong></div>
+        <span class="equation-op">−</span>
+        <div class="equation-item"><span>Fees</span><strong>$17.7K</strong></div>
+        <span class="equation-op">−</span>
+        <div class="equation-item"><span>Overhead</span><strong>$48.5K</strong></div>
+        <span class="equation-op">=</span>
+        <div class="equation-item equation-result"><span>Qualified profit</span><strong>$207.7K</strong></div>
       </div>
     </div>
   </section>
 
-  <!-- ============================================================ features -->
-  <section id="features">
-    <div class="wrap">
-      <div class="sec-head reveal sky-text">
-        <span class="kicker">Four instruments</span>
-        <h2>Every cost between booked revenue<br /><strong>and kept profit.</strong></h2>
-        <p>
-          Costs are applied in the order they hit the P&amp;L, and anything
-          estimated is flagged as estimated — so you can always tell a measured
-          number from an assumed one.
-        </p>
+  <section class="story" id="tour">
+    <div class="wrap story-intro reveal">
+      <span class="kicker">The working surface</span>
+      <h2>Follow the money<br /><strong>without losing the plot.</strong></h2>
+      <p>Scroll through four views. The product stays in place; the question changes.</p>
+    </div>
+
+    <div class="wrap story-layout">
+      <div class="story-stage" aria-live="polite">
+        <div class="story-window">
+          <div class="window-bar">
+            <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span id="story-window-title">01 · Profit per order</span>
+            <span>Live product</span>
+          </div>
+          <div class="story-screens">
+            <img class="story-screen is-active" data-screen="orders" src="assets/orders.jpg" alt="Meridian profit per order view with daily profit chart and order-level cost breakdown" loading="lazy" />
+            <img class="story-screen" data-screen="products" src="assets/products.jpg" alt="Meridian products view ranking qualified contribution before paid marketing" loading="lazy" />
+            <img class="story-screen" data-screen="pricing" src="assets/pricing.jpg" alt="Meridian pricing view using price history observed after installation" loading="lazy" />
+            <img class="story-screen" data-screen="fulfilment" src="assets/fulfilment.jpg" alt="Meridian fulfilment view showing backlog, throughput and capacity warnings" loading="lazy" />
+          </div>
+        </div>
+        <div class="story-progress" aria-hidden="true">
+          <span class="progress-label">01</span>
+          <i><b></b></i>
+          <span>04</span>
+        </div>
       </div>
 
-      <div class="feat-grid">
-        <article class="feat reveal">
-          <div class="feat-body">
-            <span class="feat-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18l-1.5 12.5a2 2 0 0 1-2 1.5H6.5a2 2 0 0 1-2-1.5Z"/><path d="M8.5 6V4.5a3.5 3.5 0 0 1 7 0V6"/></svg>
-            </span>
-            <h3>Every order, fully costed</h3>
-            <p>
-              Revenue, COGS, shipping, payment fees and overhead —
-              resolved per order, to the cent, with estimated costs carrying an
-              amber flag.
-            </p>
-          </div>
-          <div class="feat-shot"><img src="assets/orders.jpg" alt="Profit per order: KPI tiles and a month of gold daily-profit bars" loading="lazy" /></div>
+      <div class="story-steps">
+        <article class="story-step is-active reveal" data-screen="orders" data-index="01" data-title="Profit per order">
+          <img class="story-mobile-image" src="assets/orders.jpg" alt="Meridian profit per order view" loading="lazy" />
+          <span class="chapter">01 · Orders</span>
+          <h3>Every order has a receipt.</h3>
+          <p>
+            Net revenue, COGS, fulfilment, payment fees and overhead on one row.
+            Profit is explicitly before paid marketing while that source is unavailable.
+          </p>
+          <div class="truth-line"><span>Missing input</span><strong>Shown, never zeroed</strong></div>
         </article>
 
-        <article class="feat reveal">
-          <div class="feat-body">
-            <span class="feat-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8.5 12 3 3 8.5v7L12 21l9-5.5Z"/><path d="M3 8.5 12 14l9-5.5M12 14v7"/></svg>
-            </span>
-            <h3>What to scale, what to kill</h3>
-            <p>
-              Products classified as carrying the business or quietly bleeding —
-              and a loss leader only counts as strategic when downstream profit
-              genuinely covers the loss.
-            </p>
-          </div>
-          <div class="feat-shot"><img src="assets/products.jpg" alt="Products ranked by contribution profit with gold bars" loading="lazy" /></div>
+        <article class="story-step reveal" data-screen="products" data-index="02" data-title="Products">
+          <img class="story-mobile-image" src="assets/products.jpg" alt="Meridian product contribution view" loading="lazy" />
+          <span class="chapter">02 · Products</span>
+          <h3>See what actually carries margin.</h3>
+          <p>
+            Products are ranked by qualified contribution before overhead.
+            Missing COGS stays unclassified instead of receiving a false profit verdict.
+          </p>
+          <div class="truth-line"><span>Loss verdict</span><strong>Only with measurable cost</strong></div>
         </article>
 
-        <article class="feat reveal">
-          <div class="feat-body">
-            <span class="feat-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 13.5 13 21a2 2 0 0 1-2.8 0l-7-7A2 2 0 0 1 2.6 12V5a2 2 0 0 1 2-2h7a2 2 0 0 1 1.4.6l7.5 7.5a2 2 0 0 1 0 2.4Z"/><circle cx="7.5" cy="7.5" r="1.3"/></svg>
-            </span>
-            <h3>Prices fitted to your own history</h3>
-            <p>
-              A demand curve fitted to each variant's own price points — never an
-              invented elasticity. Moves are capped at 25% and floored at a 15%
-              margin.
-            </p>
-          </div>
-          <div class="feat-shot"><img src="assets/pricing.jpg" alt="Pricing recommendations with confidence ratings and modelled upside" loading="lazy" /></div>
+        <article class="story-step reveal" data-screen="pricing" data-index="03" data-title="Pricing">
+          <img class="story-mobile-image" src="assets/pricing.jpg" alt="Meridian pricing recommendations view" loading="lazy" />
+          <span class="chapter">03 · Pricing</span>
+          <h3>History first. Recommendation second.</h3>
+          <p>
+            Meridian fits demand only to price changes observed after installation.
+            With no usable price history, the honest answer is “not yet.”
+          </p>
+          <div class="truth-line"><span>Price movement</span><strong>Capped at 25%</strong></div>
         </article>
 
-        <article class="feat reveal">
-          <div class="feat-body">
-            <span class="feat-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8h11v9H2zM13 11h4.5l3.5 3.5V17h-8z"/><circle cx="6" cy="18.5" r="1.8"/><circle cx="17" cy="18.5" r="1.8"/></svg>
-            </span>
-            <h3>The day your warehouse falls behind</h3>
-            <p>
-              A 14-day demand forecast against the throughput your team has
-              actually demonstrated — with alerts before the backlog breaks your
-              shipping promise.
-            </p>
-          </div>
-          <div class="feat-shot"><img src="assets/fulfilment.jpg" alt="Fulfilment capacity: backlog, throughput and days until the ceiling" loading="lazy" /></div>
+        <article class="story-step reveal" data-screen="fulfilment" data-index="04" data-title="Fulfilment capacity">
+          <img class="story-mobile-image" src="assets/fulfilment.jpg" alt="Meridian fulfilment capacity view" loading="lazy" />
+          <span class="chapter">04 · Fulfilment</span>
+          <h3>Know when growth becomes backlog.</h3>
+          <p>
+            Demand is compared with throughput your team has actually demonstrated,
+            revealing the day capacity breaks the shipping promise.
+          </p>
+          <div class="truth-line"><span>Forecast</span><strong>14 days against observed capacity</strong></div>
         </article>
       </div>
     </div>
   </section>
 
-  <!-- =============================================================== skies -->
-  <section id="skies" class="tight">
-    <div class="wrap">
-      <!--
-        This used to be a full section with its own kicker and a two-line
-        display headline, which gave a theme toggle the same billing as the
-        product itself. It is a nice detail, not a pillar — one quiet line
-        is the honest weight for it.
-      -->
-      <p class="aside-note reveal">
-        Dusk by default, daybreak when you want it — the whole surface follows
-        the theme.
-      </p>
-      <div class="skies">
-        <figure class="reveal">
-          <div class="frame"><img src="assets/overview-top2.jpg" alt="The overview at dusk" loading="lazy" /></div>
-          <figcaption class="sky-text centered">Dusk</figcaption>
-        </figure>
-        <figure class="reveal">
-          <div class="frame"><img src="assets/overview-light2.jpg" alt="The overview at daybreak" loading="lazy" /></div>
-          <figcaption class="sky-text centered">Daybreak</figcaption>
-        </figure>
+  <section class="theme-story" id="themes">
+    <div class="theme-pin">
+      <div class="theme-copy reveal">
+        <span class="kicker">One system, two skies</span>
+        <h2>Dusk by default.<br /><strong>Daybreak on the way down.</strong></h2>
+        <p>Keep scrolling to move the same operating view from dusk to daybreak.</p>
       </div>
-
-      <div class="trust reveal">
-        <span class="trust-item">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2.5"/><path d="M8 10V7.5a4 4 0 0 1 8 0V10"/></svg>
-          Read-only scopes — no write access requested
-        </span>
-        <span class="trust-item">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19"/></svg>
-          Billed by Shopify, on your Shopify invoice
-        </span>
-        <span class="trust-item">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-11"/></svg>
-          Uninstalling cancels the subscription with it
-        </span>
+      <div class="theme-frame" aria-label="Meridian dusk and daybreak themes">
+        <img class="theme-dark" src="assets/overview-top2.jpg" alt="Meridian overview in dusk theme" loading="lazy" />
+        <div class="theme-light-wrap">
+          <img class="theme-light" src="assets/overview-light2.jpg" alt="Meridian overview in daybreak theme" loading="lazy" />
+        </div>
+        <div class="theme-handle" aria-hidden="true"><span></span></div>
+        <span class="theme-label theme-label-dark">Dusk</span>
+        <span class="theme-label theme-label-light">Daybreak</span>
       </div>
     </div>
   </section>
 
-  <!-- ============================================================= pricing -->
-  <section id="pricing">
+  <section class="trust-section">
     <div class="wrap">
-      <div class="sec-head reveal sky-text">
+      <div class="trust-heading reveal">
+        <span class="kicker">Read-only by construction</span>
+        <h2>Built to inspect the business.<br /><strong>Never to alter the store.</strong></h2>
+      </div>
+      <div class="trust-ledger reveal">
+        <div><span>01</span><strong>Read-only Shopify scopes</strong><p>No product, price or order writes requested.</p></div>
+        <div><span>02</span><strong>Shopify-native billing</strong><p>Charges appear on the merchant’s Shopify invoice.</p></div>
+        <div><span>03</span><strong>Qualified economics</strong><p>Modeled, missing and unavailable inputs remain visible.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pricing" id="pricing">
+    <div class="wrap">
+      <div class="pricing-heading reveal">
         <span class="kicker">Pricing</span>
-        <h2>Fourteen days free.<br /><strong>Then priced by your volume.</strong></h2>
+        <h2>Fourteen days free.<br /><strong>Then choose the right toolkit.</strong></h2>
+        <p>Billing is handled entirely by Shopify. Meridian never sees a card number.</p>
       </div>
 
       <div class="plans">
         <article class="plan reveal">
-          <div class="plan-name">Starter</div>
-          <div class="plan-price">$49<small> /month</small></div>
-          <p class="plan-annual">$490/year — two months free</p>
-          <p class="plan-blurb">Up to 1,000 orders / month</p>
+          <div class="plan-top"><span>Starter</span><strong>$49<small>/month</small></strong></div>
+          <p>$490/year · two months free</p>
           <ul>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-11"/></svg>True profit per order</li>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-11"/></svg>Product margin analysis</li>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-11"/></svg>Revenue and profit by channel</li>
+            <li>Order profit after configured costs</li>
+            <li>Product margin analysis</li>
+            <li>Revenue and profit by channel</li>
           </ul>
-          <div class="plan-foot"><a class="chip" href="https://apps.shopify.com/meridian-profit">Start with Starter</a></div>
+          <a class="plan-link" href="https://apps.shopify.com/meridian-profit">Start with Starter <span>→</span></a>
         </article>
 
-        <article class="plan featured reveal">
-          <div class="plan-name">Growth <span class="tag">Most stores</span></div>
-          <div class="plan-price">$149<small> /month</small></div>
-          <p class="plan-annual">$1,490/year — two months free</p>
-          <p class="plan-blurb">Up to 10,000 orders / month</p>
+        <article class="plan plan-featured reveal">
+          <div class="plan-badge">Most stores</div>
+          <div class="plan-top"><span>Growth</span><strong>$149<small>/month</small></strong></div>
+          <p>$1,490/year · two months free</p>
           <ul>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-11"/></svg>Everything in Starter</li>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-11"/></svg>Pricing recommendations</li>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-11"/></svg>Fulfilment capacity alerts</li>
+            <li>Everything in Starter</li>
+            <li>Pricing recommendations</li>
+            <li>Fulfilment capacity alerts</li>
           </ul>
-          <div class="plan-foot"><a class="pill" href="https://apps.shopify.com/meridian-profit" style="width: 100%; justify-content: center;">Start free trial</a></div>
+          <a class="pill" href="https://apps.shopify.com/meridian-profit">Start free trial</a>
         </article>
 
         <article class="plan reveal">
-          <div class="plan-name">Scale</div>
-          <div class="plan-price">$399<small> /month</small></div>
-          <p class="plan-annual">$3,990/year — two months free</p>
-          <p class="plan-blurb">Unlimited orders</p>
+          <div class="plan-top"><span>Scale</span><strong>$399<small>/month</small></strong></div>
+          <p>$3,990/year · two months free</p>
           <ul>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-11"/></svg>Everything in Growth</li>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-11"/></svg>Multi-location capacity modelling</li>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-11"/></svg>Priority support</li>
+            <li>Everything in Growth</li>
+            <li>Priority support</li>
           </ul>
-          <div class="plan-foot"><a class="chip" href="https://apps.shopify.com/meridian-profit">Start with Scale</a></div>
+          <a class="plan-link" href="https://apps.shopify.com/meridian-profit">Start with Scale <span>→</span></a>
         </article>
       </div>
 
-      <p class="pricing-note reveal sky-text centered">
-        Every plan starts with a 14-day free trial. Billing is handled entirely
-        by Shopify — Meridian never sees a card number.
-      </p>
-      <div class="pricing-cta reveal">
+      <div class="final-cta reveal">
+        <span class="kicker">Your gross sales already exist</span>
+        <h2>Now find out what remains.</h2>
         <a class="pill" href="https://apps.shopify.com/meridian-profit">Install from the Shopify App Store</a>
       </div>
     </div>
   </section>
 
   </div><!-- /.ground -->
-
 </main>
 
 <footer>
-  <div class="wrap foot-inner">
+  <div class="wrap footer-inner">
     <div>
-      <a class="brand" href="#top" aria-label="Meridian">
+      <a class="brand" href="#top" aria-label="Meridian home">
         <svg width="24" height="24" viewBox="0 0 96 96" fill="none" aria-hidden="true">
-          <g stroke="#f4efe6" stroke-width="2.6" opacity="0.85" stroke-linecap="round">
+          <g stroke="currentColor" stroke-width="2.6" opacity="0.86" stroke-linecap="round">
             <circle cx="48" cy="48" r="34" />
             <ellipse cx="48" cy="48" rx="24.5" ry="34" />
             <ellipse cx="48" cy="48" rx="13.5" ry="34" />
             <path d="M48 14v68" />
           </g>
-          <path d="M48 14 A 15 34 0 0 1 48 82" stroke="#f0c273" stroke-width="3.2" stroke-linecap="round" />
+          <path d="M48 14 A 15 34 0 0 1 48 82" stroke="var(--gold)" stroke-width="3.2" stroke-linecap="round" />
         </svg>
-        Meridian
+        <span>Meridian</span>
       </a>
-      <p class="foot-tag">The sun at its highest. Your numbers at their clearest.</p>
+      <p>The sun at its highest. Your numbers at their clearest.</p>
     </div>
-    <nav class="foot-nav">
-      <a href="/privacy">Privacy</a>
-      <a href="/support">Support</a>
+    <nav class="footer-nav" aria-label="Footer navigation">
+      <a href="privacy.html">Privacy</a>
+      <a href="terms.html">Terms</a>
       <a href="#pricing">Pricing</a>
     </nav>
   </div>
 </footer>
 
 <script>
-/*
- * The sky. A fragment-shader twilight whose sun crosses the meridian as the
- * visitor scrolls. Everything degrades: no WebGL → the painted CSS scene; the
- * shader itself renders one static frame under reduced motion.
- */
 (function () {
   "use strict";
 
   var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-  /* ------------------------------------------------------------ header */
+  var splash = document.getElementById("site-splash");
   var header = document.getElementById("header");
-  function headerState() {
-    header.classList.toggle("scrolled", window.scrollY > 40);
-  }
-  headerState();
-
-  /* ----------------------------------------------------------- reveals */
+  var root = document.documentElement;
   var revealed = document.querySelectorAll(".reveal");
+  var storySteps = document.querySelectorAll(".story-step");
+  var storyScreens = document.querySelectorAll(".story-screen");
+  var storyTitle = document.getElementById("story-window-title");
+  var progressLabel = document.querySelector(".progress-label");
+  var progressBar = document.querySelector(".story-progress b");
+  var themeStory = document.querySelector(".theme-story");
+  var ticking = false;
 
-  // Position within its grid drives the cascade delay.
-  document.querySelectorAll(".feat-grid, .plans").forEach(function (grid) {
-    Array.prototype.forEach.call(grid.children, function (child, i) {
-      child.style.setProperty("--i", String(i));
-    });
-  });
-  if ("IntersectionObserver" in window && !reduced) {
-    var io = new IntersectionObserver(
-      function (entries) {
-        entries.forEach(function (e) {
-          if (e.isIntersecting) {
-            e.target.classList.add("in");
-            io.unobserve(e.target);
-          }
-        });
-      },
-      { threshold: 0.12, rootMargin: "0px 0px -8% 0px" }
-    );
-    revealed.forEach(function (el) { io.observe(el); });
-  } else {
-    revealed.forEach(function (el) { el.classList.add("in"); });
+  if (splash) {
+    var splashHold = reduced ? 300 : 1160;
+    window.setTimeout(function () { splash.classList.add("out"); }, splashHold);
+    window.setTimeout(function () { splash.classList.add("done"); }, splashHold + 300);
   }
 
-  /* ---------------------------------------------------------- magnetic */
-
-  /* The primary button used to lean toward the pointer. It was the most
-     "designed" thing on the page and the least useful: a control that moves
-     under the cursor is a toy. The press state carries the feedback now. */
-
-  /* ------------------------------------------------------------ shader */
-  var canvas = document.getElementById("sky");
-  var gl = canvas.getContext("webgl", { antialias: false, alpha: false, powerPreference: "low-power" });
-
-  var VERT = "attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}";
-
-  /*
-   * A raymarched volumetric cloudscape.
-   *
-   * The previous sky was a gradient with a sun pasted on it, and it read as
-   * one — flat, and no amount of CSS on top of it was going to fix that. This
-   * marches a ray per pixel through a real density field, so the clouds have
-   * interiors: light scatters through the thin parts, the thick parts occlude,
-   * and the horizon sits at an actual distance rather than being a colour stop.
-   *
-   * The camera answers to both scroll and pointer, which is what makes it a
-   * space you are inside rather than a picture you are looking at.
-   *
-   * Cost is controlled by the two step counts. STEPS marches the view ray;
-   * LIGHT_STEPS marches toward the sun from each sample to get self-shadowing.
-   * Both are deliberately low, with the noise doing more work than the marcher
-   * — this has to hold 60fps on an integrated GPU, and a cloudscape nobody can
-   * scroll smoothly is worse than a gradient.
-   */
-  var FRAG = [
-    "precision highp float;",
-    "uniform vec2 uRes;",
-    "uniform float uTime;",
-    "uniform float uProg;",
-    "uniform vec2 uPointer;",
-
-    // --- value noise + fbm ------------------------------------------------
-    "float hash(vec3 p){ p = fract(p*0.3183099+vec3(0.71,0.113,0.419)); p*=17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }",
-    "float noise(vec3 x){",
-    "  vec3 i=floor(x); vec3 f=fract(x); f=f*f*(3.0-2.0*f);",
-    "  return mix(mix(mix(hash(i+vec3(0,0,0)),hash(i+vec3(1,0,0)),f.x),",
-    "                 mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),f.x),f.y),",
-    "             mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),f.x),",
-    "                 mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),f.x),f.y),f.z);",
-    "}",
-
-    // Three octaves, not five. Each octave is eight hash evaluations, and at
-    // the resolution this renders the top two contributed detail finer than a
-    // pixel — they cost a third of the frame and could not be seen.
-    "float fbm(vec3 p){",
-    "  float v=0.0, a=0.5;",
-    "  for(int i=0;i<3;i++){ v+=a*noise(p); p*=2.02; a*=0.5; }",
-    "  return v;",
-    "}",
-    // The erosion detail needs even less; two octaves is enough to break an
-    // edge up.
-    "float fbm2(vec3 p){ return 0.5*noise(p) + 0.25*noise(p*2.03); }",
-
-    /*
-     * Density of the cloud slab.
-     *
-     * Confined between two heights so the marcher can skip everything outside
-     * it, and eroded by a second, finer fbm — that erosion is what gives the
-     * edges their wispiness instead of the cotton-wool look that a single
-     * octave-stack always produces.
-     */
-    "float density(vec3 p){",
-    "  float h = (p.y - 1.2) / 2.6;",
-    "  if (h < 0.0 || h > 1.0) return 0.0;",
-    "  vec3 q = p + vec3(uTime*0.035, 0.0, uTime*0.012);",
-    "  float base = fbm(q*0.55);",
-    "  base = base - 0.44;",
-    "  base -= 0.16*fbm2(q*2.3);",
-    "  float shape = smoothstep(0.0,0.28,h) * smoothstep(1.0,0.55,h);",
-    "  return clamp(base,0.0,1.0) * shape * 1.5;",
-    "}",
-
-    "void main(){",
-    "  vec2 uv = (gl_FragCoord.xy - 0.5*uRes) / uRes.y;",
-
-    // Camera. Scroll lifts it and tilts the horizon; the pointer yaws it.
-    "  float pr = clamp(uProg,0.0,1.0);",
-    "  vec3 ro = vec3(0.0, 0.55 + pr*0.55, uTime*0.06);",
-    "  float yaw = uPointer.x*0.10;",
-    "  float pitch = -0.06 + uPointer.y*0.05 + pr*0.16;",
-    "  vec3 rd = normalize(vec3(uv.x, uv.y + pitch, 1.25));",
-    "  float cy = cos(yaw), sy = sin(yaw);",
-    "  rd = vec3(rd.x*cy - rd.z*sy, rd.y, rd.x*sy + rd.z*cy);",
-
-    // Sun climbs toward its meridian as the page is scrolled.
-    "  vec3 sunDir = normalize(vec3(0.36, -0.06 + pr*0.42, 1.0));",
-    "  float sunAmt = max(dot(rd, sunDir), 0.0);",
-
-    // --- sky gradient behind the clouds ----------------------------------
-    "  float horizon = smoothstep(-0.18, 0.42, rd.y);",
-    "  vec3 zenith = vec3(0.035,0.048,0.115);",
-    "  vec3 mid    = vec3(0.105,0.128,0.250);",
-    "  vec3 low    = vec3(0.315,0.238,0.272);",
-    "  vec3 ember  = vec3(0.560,0.350,0.245);",
-    "  vec3 sky = mix(ember, low, smoothstep(0.0,0.10,rd.y));",
-    "  sky = mix(sky, mid, smoothstep(0.05,0.34,rd.y));",
-    "  sky = mix(sky, zenith, smoothstep(0.28,0.85,rd.y));",
-
-    // Sun disc and its atmospheric bloom.
-    "  sky += vec3(1.0,0.74,0.46) * pow(sunAmt, 220.0) * 2.2;",
-    "  sky += vec3(1.0,0.62,0.36) * pow(sunAmt, 12.0) * 0.10 * (0.35+0.65*pr);",
-
-    // --- march the slab ---------------------------------------------------
-    "  vec3 col = sky;",
-    "  if (rd.y > -0.02) {",
-    "    float t = (1.2 - ro.y) / max(rd.y, 0.02);",
-    "    t = max(t, 0.0);",
-    "    float trans = 1.0;",
-    "    vec3 scattered = vec3(0.0);",
-    // Eighteen steps with a longer stride and a faster ramp. The slab is thin
-    // and the noise is soft, so the marcher was oversampling it.
-    "    const int STEPS = 18;",
-    "    float stepLen = 0.28;",
-    "    for (int i = 0; i < STEPS; i++) {",
-    "      if (trans < 0.02) break;",
-    "      vec3 pos = ro + rd * t;",
-    "      if (pos.y > 3.9) break;",
-    "      float d = density(pos);",
-    "      if (d > 0.001) {",
-    // Self-shadowing: march a short way toward the sun and accumulate what
-    // the sample sits behind.
-    "        float shadow = 0.0;",
-    // Two shadow taps at a wider spacing. Self-shadowing needs to know roughly
-    // how much cloud is between this sample and the sun, not precisely.
-    "        const int LIGHT_STEPS = 2;",
-    "        for (int j = 1; j <= LIGHT_STEPS; j++) {",
-    "          shadow += density(pos + sunDir * (float(j)*0.42));",
-    "        }",
-    "        float light = exp(-shadow*1.05);",
-    // Warm where lit, cool indigo in shadow — the two-colour split is what
-    // reads as sunset rather than as grey cloud tinted orange.
-    "        vec3 lit  = mix(vec3(0.16,0.175,0.28), vec3(0.86,0.66,0.46), light);",
-    "        lit += vec3(1.0,0.58,0.30) * pow(sunAmt,10.0) * light * 0.30;",
-    "        float absorb = d * stepLen * 1.9;",
-    "        scattered += lit * absorb * trans;",
-    "        trans *= exp(-absorb*1.35);",
-    "      }",
-    "      t += stepLen * (1.0 + float(i)*0.09);",
-    "    }",
-    "    col = col * trans + scattered;",
-    "  }",
-
-    /*
-     * Ground haze, closing the bottom of the frame.
-     *
-     * This used to fade to `ember*0.42` — a mid-lightness, low-saturation
-     * brown, which is the definition of mud, and it filled the entire lower
-     * half of the hero because the camera looks slightly down. It was the
-     * single biggest reason the page read as heavy.
-     *
-     * It now fades to the page's own reading surface (--ground), so the sky
-     * does not just stop being brown: it lands on the colour the content
-     * below stands on, and the hero and the first section become one
-     * continuous surface instead of two.
-     */
-    "  col = mix(col, vec3(0.063,0.078,0.165), smoothstep(0.0,-0.20,rd.y));",
-
-    // Vignette + grain. The grain matters: a clean gradient bands on 8-bit
-    // displays and banding is the thing that makes a sky look computed.
-    // Reinhard with a slight shoulder, then a gentle lift of the darks. This
-    // is what keeps the sun reading as a bright *object* rather than as a hole
-    // burned through the frame.
-    "  col *= 0.92;",
-    "  col = col / (col + vec3(0.72));",
-    "  col = pow(col, vec3(0.92));",
-    "  col *= 1.0 - 0.26*dot(uv,uv);",
-    "  col += (hash(vec3(gl_FragCoord.xy, uTime))-0.5)*0.022;",
-
-    "  gl_FragColor = vec4(col, 1.0);",
-    "}"
-  ].join("\n");
-
-  var program = null, uRes, uTime, uProg, uPointer;
-  // Camera yaw/pitch target, chased rather than snapped so the horizon glides.
-  var ptrX = 0, ptrY = 0, camX = 0, camY = 0;
-
-  function makeShader(type, src) {
-    var s = gl.createShader(type);
-    gl.shaderSource(s, src);
-    gl.compileShader(s);
-    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) return null;
-    return s;
+  function activateStory(step) {
+    var screen = step.getAttribute("data-screen");
+    var index = step.getAttribute("data-index");
+    storySteps.forEach(function (item) { item.classList.toggle("is-active", item === step); });
+    storyScreens.forEach(function (item) { item.classList.toggle("is-active", item.getAttribute("data-screen") === screen); });
+    if (storyTitle) storyTitle.textContent = index + " · " + step.getAttribute("data-title");
+    if (progressLabel) progressLabel.textContent = index;
+    if (progressBar) progressBar.style.transform = "scaleY(" + (Number(index) / storySteps.length) + ")";
   }
 
-  if (gl) {
-    var vs = makeShader(gl.VERTEX_SHADER, VERT);
-    var fs = makeShader(gl.FRAGMENT_SHADER, FRAG);
-    if (vs && fs) {
-      program = gl.createProgram();
-      gl.attachShader(program, vs);
-      gl.attachShader(program, fs);
-      gl.linkProgram(program);
-      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) program = null;
-    }
-  }
-
-  if (program) {
-    gl.useProgram(program);
-    var buf = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-    var loc = gl.getAttribLocation(program, "p");
-    gl.enableVertexAttribArray(loc);
-    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-    uRes = gl.getUniformLocation(program, "uRes");
-    uTime = gl.getUniformLocation(program, "uTime");
-    uProg = gl.getUniformLocation(program, "uProg");
-    uPointer = gl.getUniformLocation(program, "uPointer");
-  } else {
-    canvas.style.display = "none";
-  }
-
-  /*
-   * Render scale, and the governor that owns it.
-   *
-   * This is a per-pixel raymarch, so cost is linear in buffer area and nothing
-   * else moves the needle as much. The original ran at devicePixelRatio 1.5 —
-   * 3 megapixels of volumetric marching per frame, which no GPU was ever going
-   * to hold. It renders small and is stretched by CSS; the scene is soft enough
-   * that the difference is invisible, and banding is already handled by the
-   * grain in the shader.
-   *
-   * Because I cannot test this on every machine, the quality is not a guess: it
-   * measures itself. If frames are consistently slow it steps the buffer down,
-   * and if it is still slow at the floor it gives up entirely and reveals the
-   * painted CSS scene, which is complete on its own.
-   */
-  var SCALES = [0.42, 0.3, 0.22];
-  var scaleIndex = 0;
-
-  function sizeCanvas() {
-    if (!program) return;
-    var scale = SCALES[scaleIndex];
-    canvas.width = Math.max(1, Math.round(innerWidth * scale));
-    canvas.height = Math.max(1, Math.round(innerHeight * scale));
-    gl.viewport(0, 0, canvas.width, canvas.height);
-  }
-  sizeCanvas();
-
-  // Frame-time sampling. Only long stretches count: a single slow frame is a
-  // GC pause or a tab switch, not a verdict on the hardware.
-  var slowFrames = 0, sampled = 0, lastFrameAt = 0;
-
-  function governor(now) {
-    if (lastFrameAt) {
-      var dt = now - lastFrameAt;
-      sampled++;
-      if (dt > 34) slowFrames++;      // slower than ~30fps
-      if (sampled === 45) {
-        if (slowFrames > 22) {         // more than half the window was slow
-          if (scaleIndex < SCALES.length - 1) {
-            scaleIndex++;
-            sizeCanvas();
-          } else {
-            // Out of headroom. Stop drawing and let the painted scene stand.
-            canvas.style.display = "none";
-            program = null;
-            return false;
-          }
+  if ("IntersectionObserver" in window) {
+    var revealObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("in");
+          revealObserver.unobserve(entry.target);
         }
-        sampled = 0;
-        slowFrames = 0;
+      });
+    }, { threshold: 0.12, rootMargin: "0px 0px -8% 0px" });
+    revealed.forEach(function (element) { revealObserver.observe(element); });
+
+    var storyObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) activateStory(entry.target);
+      });
+    }, { threshold: 0.5, rootMargin: "-18% 0px -18% 0px" });
+    storySteps.forEach(function (step) { storyObserver.observe(step); });
+  } else {
+    revealed.forEach(function (element) { element.classList.add("in"); });
+  }
+
+  function paintScroll() {
+    ticking = false;
+    header.classList.toggle("scrolled", window.scrollY > 40);
+
+    if (!reduced) {
+      var heroProgress = Math.max(0, Math.min(1, window.scrollY / Math.max(1, window.innerHeight)));
+      root.style.setProperty("--hero-scroll", heroProgress.toFixed(3));
+
+      if (themeStory) {
+        var rect = themeStory.getBoundingClientRect();
+        var distance = Math.max(1, rect.height - window.innerHeight);
+        var progress = Math.max(0, Math.min(1, -rect.top / distance));
+        root.style.setProperty("--theme-clip", ((1 - progress) * 100).toFixed(2) + "%");
+        root.style.setProperty("--theme-position", (progress * 100).toFixed(2) + "%");
       }
     }
-    lastFrameAt = now;
-    return true;
   }
 
-  /* --------------------------------------------- scroll-driven everything */
-  var docH = 1, vh = innerHeight;
-
-  function measure() {
-    vh = innerHeight;
-    docH = Math.max(1, document.documentElement.scrollHeight - vh);
-  }
-  measure();
-
-  var progress = 0, target = 0, start = performance.now();
-  var lastTick = 0;
-
-  function frame(now) {
-    lastTick = now;
-    var sy = window.scrollY;
-    // Under reduced motion the sun holds at a fixed point in its arc rather
-    // than tracking the scroll.
-    if (!reduced) {
-      target = sy / docH;
-      // critically damped chase so the sun glides rather than jitters
-      progress += (target - progress) * 0.075;
+  function requestPaint() {
+    if (!ticking) {
+      window.requestAnimationFrame(paintScroll);
+      ticking = true;
     }
-
-    if (program && !governor(now)) {
-      // Shader retired; the CSS scene is the sky from here.
-      return;
-    }
-
-    if (program) {
-      // Ease the camera toward the pointer; an instantly-tracking camera reads
-      // as a mouse-look toy rather than as weight.
-      camX += (ptrX - camX) * 0.045;
-      camY += (ptrY - camY) * 0.045;
-      gl.uniform2f(uRes, canvas.width, canvas.height);
-      gl.uniform1f(uTime, reduced ? 40.0 : (now - start) / 1000);
-      gl.uniform1f(uProg, progress);
-      gl.uniform2f(uPointer, camX, camY);
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
-    }
-
-    // The frames used to rotate on the X axis as they entered the viewport
-    // and the hero card drifted against the scroll. Both were motion applied
-    // to things that are meant to be read; the reveal fade does the arrival
-    // and nothing keeps moving after it.
-
-    headerState();
-
-    // The cloudscape evolves on its own clock, so frames continue even with
-    // no scroll and no pointer — unlike the old static gradient.
-    if (!reduced) requestAnimationFrame(frame);
   }
 
-  // One synchronous frame no matter what: throttled or occluded contexts may
-  // never grant a rAF, and an undrawn canvas would sit black over the scene.
-  // frame() schedules its own next frame, so this also starts the loop.
-  if (reduced) progress = target = 0.35;
-  frame(performance.now());
-
-  // Where rAF is throttled to nothing (occluded windows, aggressive battery
-  // savers), scrolling still repaints: drive frames from the event instead.
-  // No scroll-driven frame here. It existed as a fallback for contexts that
-  // throttle rAF to nothing, but while the loop is alive it only adds work
-  // during the exact frames that are already the busiest — which is what makes
-  // scrolling feel like it is catching.
-  addEventListener("scroll", function () {
-    if (!program && !reduced) frame(performance.now());
-  }, { passive: true });
-
-  // Deterministic settle for capture tooling: jump the damped chase to its
-  // target and paint one frame.
+  /*
+   * Deterministic settle hook for capture tooling.
+   *
+   * Revealing an element only starts its 720ms transition, and a screenshot
+   * taken immediately afterwards catches it at opacity 0 — which reads as a
+   * blank section and has already been mistaken for a broken layout. Suppress
+   * transitions for one frame so the revealed state is the painted state, and
+   * finish the splash, which would otherwise cover the first viewport.
+   */
   window.__skySettle = function () {
-    measure();
-    target = window.scrollY / docH;
-    progress = target;
-    // IntersectionObserver can stall entirely in occluded windows — reveal
-    // everything so a capture never freezes a section at opacity 0.
-    revealed.forEach(function (el) { el.classList.add("in"); });
-    frame(performance.now());
+    root.classList.add("settled");
+    revealed.forEach(function (element) { element.classList.add("in"); });
+    // Removed rather than class-dismissed: with transitions suppressed the
+    // fade-out never runs, so the overlay would sit on top of the capture.
+    if (splash && splash.parentNode) { splash.parentNode.removeChild(splash); }
+    paintScroll();
+    // The sky is a separate module; give it one deterministic frame too.
+    if (typeof window.__skyPaintOnce === "function") window.__skyPaintOnce();
   };
 
-  if (!reduced && matchMedia("(hover: hover) and (pointer: fine)").matches) {
-    addEventListener("pointermove", function (e) {
-      ptrX = (e.clientX / innerWidth) * 2 - 1;
-      ptrY = (e.clientY / innerHeight) * 2 - 1;
-    }, { passive: true });
-  }
-
-  addEventListener("resize", function () { sizeCanvas(); measure(); }, { passive: true });
-  addEventListener("load", measure);
+  paintScroll();
+  window.addEventListener("scroll", requestPaint, { passive: true });
+  window.addEventListener("resize", requestPaint, { passive: true });
 })();
 </script>
 
+<script src="sky.js" defer></script>
 </body>
 </html>

@@ -15,23 +15,42 @@
  *  - Profit is sunlight. Gold belongs to the number the merchant came for and
  *    is never spent on chrome. Money going the wrong way is ember — the warm
  *    red of a sun that has gone down on it.
- *  - Type is light, large and unhurried. Satoshi, with weight falling as size
- *    rises — a 56px greeting at weight 320 reads as calm; bold at that size
- *    would read as a warning.
+ *  - Type is light, large and unhurried. The native UI sans stack keeps the
+ *    editorial proportions without distributing a restricted font file; a
+ *    56px greeting at weight 320 reads as calm, while bold reads as a warning.
  *  - Chrome is a HUD. Panels are indigo-tinted glass with a lit top edge, so
  *    text stays readable over any part of the sky while the scene shows
  *    through. Solid opaque boxes are reserved for the two pill buttons.
  */
 
+/* ------------------------------------------------------------------ tokens */
+
+/* --------------------------------------------------------------------- font */
+
+/*
+ * Plus Jakarta Sans Variable, SIL OFL 1.1 — a licence that permits serving the
+ * file, unlike the Fontshare FFL that governs Satoshi. `?url` imports resolve
+ * these through Vite, so the woff2 is fingerprinted and cached like any other
+ * asset.
+ *
+ * `font-display: swap` on purpose: this is a dashboard whose first paint is a
+ * splash screen, so a brief fallback face is invisible, and blocking the first
+ * paint on a font download is not.
+ */
 @font-face {
-  font-family: "Satoshi";
-  src: url("../fonts/satoshi/Satoshi-Variable.woff2") format("woff2-variations");
-  font-weight: 300 900;
+  font-family: "Plus Jakarta Sans Variable";
+  src: url("../fonts/jakarta/PlusJakartaSans-Variable.woff2") format("woff2-variations");
+  font-weight: 200 800;
   font-style: normal;
   font-display: swap;
 }
-
-/* ------------------------------------------------------------------ tokens */
+@font-face {
+  font-family: "Plus Jakarta Sans Variable";
+  src: url("../fonts/jakarta/PlusJakartaSans-Italic.woff2") format("woff2-variations");
+  font-weight: 200 800;
+  font-style: italic;
+  font-display: swap;
+}
 
 :root {
   color-scheme: dark;
@@ -138,8 +157,24 @@
     0 2px 8px rgba(8, 10, 26, 0.35),
     0 28px 70px -30px rgba(8, 10, 26, 0.7);
 
-  --font: "Satoshi", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
-    sans-serif;
+  /*
+   * Plus Jakarta Sans Variable, self-hosted.
+   *
+   * The type in here was drawn for a variable geometric face — weights of 320
+   * and 460, tracking down to -0.03em — and when Satoshi was removed for
+   * licensing, all of that kept being applied to the reader's system UI font.
+   * Those weights do not exist in SF or Segoe, so every one of them snapped to
+   * the nearest static cut and the negative tracking, drawn for Satoshi's wide
+   * geometric shapes, closed up the narrower system letterforms. That single
+   * substitution is why the interface read as badly spaced everywhere at once.
+   *
+   * Plus Jakarta Sans is the closest geometric grotesque with a licence that
+   * permits self-hosting: SIL OFL 1.1, which explicitly allows bundling and
+   * serving the file (see fonts/jakarta/LICENSE-OFL.txt). One variable file,
+   * 27KB, covering the whole 200-800 range this design uses.
+   */
+  --font: "Plus Jakarta Sans Variable", ui-sans-serif, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   /* expo.out — the long tail is what makes a movement read as expensive rather
      than merely fast. Reserved for entrances and the sliding range indicator. */
@@ -254,6 +289,45 @@ body {
   margin: 0;
   padding: 0;
   height: 100%;
+}
+
+/*
+ * The scrollbar is part of the interface.
+ *
+ * Left undeclared, the browser paints its light-theme scrollbar — a white
+ * trough down the right edge of a twilight dashboard, which is the single
+ * loudest unstyled surface in the product. `color-scheme: dark` is what fixes
+ * it everywhere at once: it re-tints the scrollbar, form controls, and the
+ * overscroll gutter, and it is the only lever Firefox and mobile Safari
+ * respond to. The webkit rules below then refine the shape on the browsers
+ * that support them.
+ */
+:root {
+  color-scheme: dark;
+  scrollbar-color: rgba(157, 177, 232, 0.42) transparent;
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  /* Inset by a transparent border rather than sized down, so the thumb keeps a
+     full-height hit target while reading as a slim capsule. */
+  background-clip: padding-box;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-color: rgba(157, 177, 232, 0.34);
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(157, 177, 232, 0.58);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -3198,4 +3272,311 @@ table.data .right { font-variant-numeric: tabular-nums lining-nums; }
 .interval-toggle .btn[aria-pressed="true"] {
   background: var(--ink-primary);
   color: var(--plane);
+}
+
+/* =========================================================================
+ * SURFACE PASS — the panel system
+ *
+ * This pass reconciles the two that came before it, and it is the last word
+ * on shape and spacing.
+ *
+ * The glass pass gave every element the same blur, the same glow and the same
+ * radius, which flattens hierarchy — that is the machine-generated tell. The
+ * editorial pass over-corrected: it removed radius entirely and dissolved
+ * every panel into hairlines, which reads as a wireframe rather than a
+ * product, and left each screen's spacing to whatever the individual rule
+ * happened to set.
+ *
+ * What a professional interface actually does is narrower than either. It
+ * uses ONE radius scale, ONE spacing scale, and ONE elevation, applied
+ * consistently, and spends its variety on typography instead. Panels are
+ * opaque and flat — no backdrop blur, no gradient fills, no glow — so the
+ * sky reads as the room the panels sit in rather than as a texture leaking
+ * through them.
+ *
+ * Rules of this pass:
+ *   - Radius comes from the scale below. Nothing is squared off, and nothing
+ *     is rounder than --radius-lg.
+ *   - Padding and gaps come from the space scale. No ad-hoc 26px.
+ *   - One border colour, one hover, one shadow. Emphasis is type and space.
+ *   - Gradients only where they describe light (the sky). Never on a panel,
+ *     a button or a headline.
+ * ====================================================================== */
+
+:root {
+  /* Radius scale. Four steps, and the pill for actions. */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 20px;
+  --r-pill: 999px;
+
+  /* Space scale, 4px-based. Every gap and pad in this pass comes from here,
+     which is what makes the rhythm read as even rather than merely tidy. */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
+  --s-12: 48px;
+  --s-16: 64px;
+
+  /* One panel, one border, one hover, one shadow. */
+  --panel: #1a2140;
+  --panel-2: #1e2649;
+  --panel-line: rgba(244, 239, 230, 0.11);
+  --panel-line-strong: rgba(244, 239, 230, 0.2);
+  --panel-shadow: 0 1px 2px rgba(8, 10, 26, 0.4), 0 12px 32px -18px rgba(8, 10, 26, 0.8);
+}
+
+[data-theme="light"] {
+  --panel: #fbf8f1;
+  --panel-2: #ffffff;
+  --panel-line: rgba(36, 28, 51, 0.14);
+  --panel-line-strong: rgba(36, 28, 51, 0.26);
+  --panel-shadow: 0 1px 2px rgba(36, 28, 51, 0.08), 0 12px 32px -20px rgba(36, 28, 51, 0.28);
+}
+
+/* --------------------------------------------------------------- panels */
+
+.card,
+.tile,
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--panel-shadow);
+  /* Undo the editorial pass's rule-only construction. */
+  border-top-color: var(--panel-line);
+  overflow: hidden;
+}
+
+.card { padding: 0; }
+.card:hover { border-color: var(--panel-line); box-shadow: var(--panel-shadow); }
+
+.card-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  padding: var(--s-5) var(--s-6);
+  border-bottom: 1px solid var(--panel-line);
+}
+
+/* The section numeral stays — a report numbers its sections — but as a quiet
+   ordinal ahead of the title rather than a badge. */
+.card-head::before {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--accent);
+  opacity: 0.85;
+}
+
+.card-body,
+.card > .card-inner { padding: var(--s-6); }
+
+/* Tiles: the KPI row. Even padding, even radius, no rules hanging off them. */
+.tile {
+  border-right: 1px solid var(--panel-line);
+  border-bottom: 1px solid var(--panel-line);
+  padding: var(--s-5);
+  min-height: 0;
+}
+
+.grid { gap: var(--s-4); }
+
+/* --------------------------------------------------------------- actions */
+
+/*
+ * Buttons were white slabs of tracked-out uppercase — a shape that reads as a
+ * 2014 marketing site, and at 11px with 0.14em tracking it is also the least
+ * legible text in the product. Sentence case, real weight, pill radius.
+ */
+.btn,
+.button,
+.chip.action,
+button.chip {
+  border-radius: var(--r-pill);
+  padding: 9px var(--s-4);
+  font-size: 13px;
+  font-weight: 560;
+  letter-spacing: 0;
+  text-transform: none;
+  border: 1px solid var(--panel-line-strong);
+  background: var(--surface-3);
+  color: var(--ink-primary);
+  transition: background var(--tap) var(--ease-out), border-color var(--tap) var(--ease-out),
+    transform var(--tap) var(--ease-out);
+}
+.btn:hover,
+.button:hover,
+button.chip:hover {
+  background: var(--surface-hover);
+  border-color: var(--panel-line-strong);
+}
+.btn:active,
+.button:active,
+button.chip:active { transform: scale(0.98); }
+
+.btn.primary,
+.button.primary {
+  background: var(--ink-primary);
+  color: var(--accent-ink);
+  border-color: transparent;
+  font-weight: 600;
+}
+.btn.primary:hover,
+.button.primary:hover { background: #ffffff; }
+
+/* Badges and status pills: same family, smaller. */
+.badge,
+.pill-badge,
+.tag {
+  border-radius: var(--r-pill);
+  padding: 3px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
+}
+
+/* Small marks read as squares only by accident of the editorial pass. */
+.legend-swatch { border-radius: 3px; width: 9px; height: 9px; }
+.estimate-flag { border-radius: 50%; width: 5px; height: 5px; }
+
+/* Inputs and selects share the field radius so a form reads as one object. */
+input,
+select,
+textarea {
+  border-radius: var(--r-md);
+  border: 1px solid var(--panel-line-strong);
+  background: var(--surface-3);
+  color: var(--ink-primary);
+  padding: 9px var(--s-3);
+  font-family: var(--font);
+  font-size: 13.5px;
+}
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ------------------------------------------------------------ typography */
+
+/*
+ * Tracking, re-cut for Plus Jakarta Sans.
+ *
+ * The values in the passes above were measured against Satoshi, which sets
+ * noticeably wider. Jakarta's counters are tighter, so the same -0.034em
+ * closes the display sizes up until the numerals touch. Display tightens
+ * gently, body sits at zero, and only the tracked-out small caps keep their
+ * positive tracking.
+ */
+h1, .display, .greet-figure, .stat-hero .stat-value {
+  letter-spacing: -0.022em;
+}
+h2, h3, .card-head h2, .card-head h3 { letter-spacing: -0.014em; }
+body, p, td, li, input, select, textarea { letter-spacing: 0; }
+
+/* Numerals in tables and figures line up column to column. */
+.stat-value,
+.greet-figure,
+table td,
+.tile .stat-value { font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------- leftovers from the editorial pass */
+
+/*
+ * Three constructions survived the pass above because they are built from
+ * their own rules rather than from .card/.tile, and each one broke the
+ * uniformity in a different way.
+ */
+
+/* 1. The greeting's stat strip. It was a row of cells divided by hairlines
+      with a white uppercase slab bolted to the end — three different shapes
+      in one 40px band. Now: one panel, evenly divided, with the action a
+      pill like every other action. */
+.greet-meta {
+  border: 1px solid var(--panel-line);
+  border-radius: var(--r-lg);
+  background: var(--panel);
+  box-shadow: var(--panel-shadow);
+  overflow: hidden;
+  align-items: stretch;
+  padding: var(--s-1);
+  gap: var(--s-1);
+}
+
+.greet-meta .chip {
+  border: none;
+  border-right: none;
+  border-radius: var(--r-md);
+  padding: var(--s-3) var(--s-4);
+  font-size: 13.5px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The divider becomes a hairline between cells rather than a border on each,
+   so the last cell does not carry a stray edge. */
+.greet-meta .chip + .chip { box-shadow: inset 1px 0 0 var(--panel-line); }
+
+.greet-meta .chip.solid {
+  margin-left: auto;
+  box-shadow: none;
+  border-radius: var(--r-pill);
+  background: var(--ink-primary);
+  color: var(--accent-ink);
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  padding: 9px var(--s-4);
+}
+.greet-meta .chip.solid:hover { background: #ffffff; }
+
+/* 2. Banners were square-cornered full-bleed strips. */
+.banner {
+  border-radius: var(--r-lg);
+  border: 1px solid var(--panel-line);
+  padding: var(--s-4) var(--s-5);
+  gap: var(--s-3);
+}
+.banner.warn { border-left: 3px solid var(--accent); }
+
+/* 3. Tiles kept the editorial pass's right/bottom rules, which doubled up
+      against the new panel border and drew a seam between neighbours. A tile
+      is a panel; the grid gap separates them. */
+.tile {
+  border: 1px solid var(--panel-line);
+  border-radius: var(--r-lg);
+}
+
+/* Alert rows inside a card sit flush to the card's own edge. */
+.alert-row:first-child { border-top: none; }
+
+/*
+ * Badges were re-cut by the editorial pass as a 2px rule with the label
+ * beside it. Against a rounded panel that stray vertical stroke reads as an
+ * opening bracket — "( in 1 day" — so the badge goes back to being a badge,
+ * tinted from its own semantic colour rather than filled with it.
+ */
+.badge {
+  border: 1px solid currentColor;
+  border-left-width: 1px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, currentColor 14%, transparent) !important;
+  padding: 3px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
 }

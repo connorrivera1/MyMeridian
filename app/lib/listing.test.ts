@@ -37,13 +37,14 @@ import { describe, expect, it } from "vitest";
  * definition, so it is now their *bytes* — a shipped screenshot may not be the
  * held original of the same name. Copying a held file back fails the test.
  *
- * `acquisition.png` stays held, and not because it is false any more. It is
- * accurate and it is unshippable: with no spend, all four headline tiles are
- * blank and the channel table is dashes under SPEND, CAC, LTV:CAC and ROAS with
- * "No spend" as every verdict. Re-capture it when a connector ships.
+ * The old `acquisition.png` stays in the held directory because its bytes show
+ * fabricated spend. The redesigned route now leads with order-derived revenue
+ * and contribution profit when spend is absent, so a fresh capture is eligible
+ * for the listing; the byte guard below is the only media restriction it needs.
  *
- * Lift all of this in the same change that ships a real ad connector, together
- * with the guard in `plan.test.ts`, and not before.
+ * Keep the byte-provenance guard while the historical originals remain. A real
+ * connector may change the ad-claim boundary in `plan.test.ts`; it must not
+ * make an old fabricated screenshot valid again.
  */
 
 const REPO_ROOT = join(__dirname, "..", "..");
@@ -53,6 +54,46 @@ function read(relative: string): string {
 }
 
 describe("listing media and the demo store it is captured from", () => {
+  it("the landing page uses a complete current capture in every feature card", () => {
+    const site = read("site/index.html");
+    const styles = read("site/landing.css");
+    for (const asset of ["orders", "products", "pricing", "fulfilment"]) {
+      expect(site).toContain(`src="assets/${asset}.jpg"`);
+    }
+    expect(site).not.toContain("product-chart-crop");
+    expect(styles).toContain("aspect-ratio: 1800 / 1126");
+    expect(styles).toContain("scroll-margin-top: 96px");
+  });
+
+  it("keeps the public surface aligned with the app opening and chrome", () => {
+    const site = read("site/index.html");
+    const styles = read("site/landing.css");
+    const legalStyles = read("site/legal.css");
+
+    expect(site).toContain('class="site-splash"');
+    expect(site).toContain('class="mark spinning"');
+    expect(site).toContain('rel="stylesheet" href="landing.css"');
+
+    // The opening scene, asserted by intent rather than by implementation.
+    //
+    // This used to pin `class="hero-space"` and `spatial-orbit-one` — the CSS
+    // wireframe of dotted ellipses over a flat gradient that stood in for a
+    // sky. Pinning it meant the test defended the exact thing that made the
+    // page read as unfinished, and would have failed any replacement. What
+    // matters is that the landing page opens on the same lit scene the app
+    // does, and that the scene degrades to a complete painted picture rather
+    // than to a void when WebGL is unavailable.
+    expect(site).toContain('id="sky"');
+    expect(site).toContain('class="sky-fallback"');
+    expect(styles).toContain(".sky-fallback");
+    expect(read("site/sky.js")).toContain("gl_FragColor");
+    expect(styles).toContain(".mark.spinning .meridian-a");
+    expect(styles).toContain("scrollbar-color:");
+    expect(styles).toContain("::-webkit-scrollbar-thumb");
+    expect(legalStyles).toContain("scrollbar-color:");
+    expect(legalStyles).toContain("::-webkit-scrollbar-thumb");
+  });
+
   it("the seed does not fabricate ad spend", () => {
     // `prisma/seed.ts:949` was the only writer of `AdSpend` in the repo. While no
     // connector exists, any row in that table is invented, and the seeded store
@@ -100,23 +141,78 @@ describe("listing media and the demo store it is captured from", () => {
     }
   });
 
-  it("acquisition.png stays held while there is no ad connector", () => {
-    // This one is not held for being false — re-captured against a clean store it
-    // is accurate. It is held for being empty: four blank headline tiles and a
-    // channel table whose spend, CAC, LTV:CAC and ROAS columns are all dashes.
-    // Accurate and unshippable are different problems with the same fix.
-    const shipped = readdirSync(join(REPO_ROOT, "listing", "screenshots"));
-    expect(
-      shipped,
-      "acquisition.png is in the shipped set. With no ad connector its four " +
-        "headline tiles are blank and every channel verdict reads 'No spend'. " +
-        "Ship it in the same change that ships a connector.",
-    ).not.toContain("acquisition.png");
-    expect(
-      existsSync(join(REPO_ROOT, "listing", "screenshots-held", "acquisition.png")),
-      "the held acquisition.png is gone — it is the record of what the listing " +
-        "claimed, and the byte-provenance guard above needs it",
-    ).toBe(true);
+  it("public copy does not sell unavailable or unenforced analysis", () => {
+    const publicCopy = [
+      "listing/copy.md",
+      "site/index.html",
+      "app/root.tsx",
+      "app/routes/home.tsx",
+      "app/routes/app.products.tsx",
+      "app/routes/app.pricing.tsx",
+    ]
+      .map(read)
+      .join("\n")
+      .toLowerCase();
+
+    expect(publicCopy).not.toMatch(/loss[- ]leader/);
+    expect(publicCopy).not.toMatch(/multi[- ]location|per[- ]location capacity/);
+    expect(publicCopy).not.toMatch(/priced by (your )?volume/);
+    expect(publicCopy).not.toMatch(/up to [\d,]+ orders|unlimited orders/);
+    expect(publicCopy).not.toContain("true net profit");
+  });
+
+  it("does not distribute the Fontshare binary whose license forbids font serving", () => {
+    const forbidden = [
+      "app/fonts/satoshi/Satoshi-Variable.woff2",
+      "site/fonts/Satoshi-Variable.woff2",
+    ];
+    for (const relative of forbidden) {
+      expect(
+        existsSync(join(REPO_ROOT, relative)),
+        `${relative} is governed by the Fontshare FFL, which forbids uploading ` +
+          "or serving the font file without prior written consent",
+      ).toBe(false);
+    }
+
+    const servedSource = [
+      "app/root.tsx",
+      "app/design/meridian.css",
+      "site/index.html",
+      "site/landing.css",
+    ]
+      .map(read)
+      .join("\n");
+    expect(servedSource).not.toMatch(/Satoshi-Variable|fonts\/satoshi/i);
+  });
+
+  it("reviewer instructions unlock the shipped gates without claiming dormant features", () => {
+    const copy = read("listing/copy.md");
+
+    expect(copy).toContain("Choose Growth monthly ($149/month)");
+    expect(copy).toContain("Pricing and Fulfilment");
+    expect(copy).toContain("Customer-lifecycle product classifications");
+    expect(copy).toContain("does not request read_customers");
+    expect(copy).toContain("ShopPlan.partnerDevelopment");
+    expect(copy).toContain("resolveBillingChargeMode");
+    expect(copy).not.toContain("MERIDIAN_BILLING_TEST_SHOPS");
+    expect(copy).not.toContain("full feature set immediately");
+    expect(copy).not.toContain(
+      'billingIsTest = process.env.NODE_ENV !== "production"',
+    );
+  });
+
+  it("merchant screens do not tell the merchant to perform publisher-only setup", () => {
+    const merchantScreens = [
+      "app/routes/app.layout.tsx",
+      "app/routes/app.overview.tsx",
+      "app/routes/app.settings.tsx",
+    ]
+      .map(read)
+      .join("\n");
+
+    expect(merchantScreens).not.toContain("shopify.app.toml");
+    expect(merchantScreens).not.toContain("npm run shopify:dev");
+    expect(merchantScreens).not.toContain("your Partner Dashboard");
   });
 
   it("the listing keeps at least Shopify's three desktop screenshots", () => {

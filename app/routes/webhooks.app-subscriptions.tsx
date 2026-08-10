@@ -2,6 +2,7 @@ import type { ActionFunctionArgs } from "react-router";
 
 import prisma from "~/db.server";
 import { planIdForSubscriptionName } from "~/lib/billing.server";
+import { ANNUAL_SUFFIX } from "~/lib/plans";
 import { handleWebhook } from "~/lib/webhooks.server";
 
 /**
@@ -48,12 +49,21 @@ export async function action({ request }: ActionFunctionArgs) {
       );
     }
 
+    // The billing key carries the interval: "growth-annual" is an annual
+    // charge, a bare plan id is monthly. Stored on the row because MRR is not
+    // computable without it — an annual Growth subscriber contributes
+    // 1490/12, not 149.
+    const interval = (sub.name ?? "").trim().toLowerCase().endsWith(ANNUAL_SUFFIX)
+      ? "annual"
+      : "monthly";
+
     const data = {
       // Cancelled, expired, declined or frozen charges drop the store to no
       // plan rather than leaving it on one it no longer pays for. "none" and
       // not "trial": under the Billing API the free trial is a property of an
       // active subscription, not a state that precedes one.
       plan: isActive && planId ? planId : "none",
+      interval,
       status: status || "unknown",
       shopifyChargeId: sub.admin_graphql_api_id ?? null,
       trialEndsAt: sub.trial_ends_on ? new Date(sub.trial_ends_on) : null,
@@ -64,6 +74,20 @@ export async function action({ request }: ActionFunctionArgs) {
       where: { shopId: shop.id },
       create: { shopId: shop.id, ...data },
       update: data,
+    });
+
+    // Append-only history. The upsert above answers "what plan is this store
+    // on"; this row answers "what happened and when" — which is what MRR
+    // over time, churn and trial conversion are computed from, and what the
+    // audit asked for when it flagged plan changes overwriting their past.
+    await prisma.subscriptionEvent.create({
+      data: {
+        shopId: shop.id,
+        name: sub.name ?? "",
+        plan: data.plan,
+        interval,
+        status: data.status,
+      },
     });
 
     console.info(

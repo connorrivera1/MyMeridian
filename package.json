@@ -28,6 +28,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@prisma/client": "6.19.3",
     "@react-router/node": "7.18.2",
     "@react-router/serve": "7.18.2",

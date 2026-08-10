@@ -86,10 +86,10 @@ model Shop {
   /// Seeded demo store. Never true for a real install.
   isDemo Boolean @default(false)
 
-  lastSyncedAt      DateTime?
-  lastComputedAt    DateTime?
-  onboardingStep    String    @default("connect_costs")
-  fulfillmentSlaDays Int      @default(2)
+  lastSyncedAt       DateTime?
+  lastComputedAt     DateTime?
+  onboardingStep     String    @default("connect_costs")
+  fulfillmentSlaDays Int       @default(2)
 
   // --- historical backfill ---------------------------------------------
   // Webhooks only ever describe what happens next. Without an initial import
@@ -108,29 +108,30 @@ model Shop {
   /// Whether Shopify granted read_all_orders. Without it the Admin API only
   /// returns the last 60 days, and the dashboard must say so rather than
   /// implying the store had no earlier trading.
-  hasAllOrdersScope Boolean  @default(false)
+  hasAllOrdersScope Boolean   @default(false)
   /// Oldest order the import could actually see.
   earliestOrderAt   DateTime?
 
   /// Scopes the store actually granted at install, as reported by the session.
   /// The import gates its GraphQL fields on these — requesting a field the app
   /// is not authorised for fails the whole query, not just that field.
-  grantedScopes     String?
+  grantedScopes String?
 
-  products     Product[]
-  variants     Variant[]
-  orders       Order[]
-  lineItems    OrderLineItem[]
-  customers    Customer[]
-  adSpend      AdSpend[]
-  fulfillments Fulfillment[]
-  capacityDays CapacityDay[]
-  costRules    CostRule[]
-  connectors   Connector[]
-  pricingRecs  PricingRecommendation[]
-  priceChanges PriceChange[]
-  dataRequests DataRequest[]
-  subscription Subscription?
+  products           Product[]
+  variants           Variant[]
+  orders             Order[]
+  lineItems          OrderLineItem[]
+  customers          Customer[]
+  adSpend            AdSpend[]
+  fulfillments       Fulfillment[]
+  capacityDays       CapacityDay[]
+  costRules          CostRule[]
+  connectors         Connector[]
+  pricingRecs        PricingRecommendation[]
+  priceChanges       PriceChange[]
+  dataRequests       DataRequest[]
+  subscription       Subscription?
+  subscriptionEvents SubscriptionEvent[]
 
   @@index([domain])
 }
@@ -140,12 +141,41 @@ model Subscription {
   shopId           String    @unique
   shop             Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
   plan             String    @default("trial")
+  /// "monthly" or "annual", derived from the billing key at webhook time.
+  /// Without it an annual subscriber's MRR cannot be computed at all.
+  interval         String    @default("monthly")
   status           String    @default("active")
   shopifyChargeId  String?
   trialEndsAt      DateTime?
   currentPeriodEnd DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
+}
+
+/// Every app_subscriptions/update delivery, kept.
+///
+/// `Subscription` above is current state and is overwritten on every change,
+/// which is right for gating but useless for two other jobs: revenue
+/// monitoring (MRR over time, churn, trial conversion need history, not
+/// state) and auditability (the security audit flagged that plan changes
+/// overwrite their own past). This table is append-only — nothing updates or
+/// deletes rows except the shop-redact cascade.
+model SubscriptionEvent {
+  id         String   @id @default(cuid())
+  shopId     String
+  /// Cascade, deliberately: the privacy audit caught WebhookEvent surviving
+  /// shop/redact because it had no relation. This table must not repeat that.
+  shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  /// The subscription name as Shopify sent it — the billing key, so it
+  /// carries the interval ("growth-annual") as well as the plan.
+  name       String
+  plan       String
+  interval   String
+  status     String
+  occurredAt DateTime @default(now())
+
+  @@index([shopId, occurredAt])
+  @@index([occurredAt])
 }
 
 // ---------------------------------------------------------------------------
@@ -191,7 +221,7 @@ model Variant {
   costSource CostSource @default(SHOPIFY)
 
   weightGrams  Int?
-  inventoryQty Int @default(0)
+  inventoryQty Int  @default(0)
 
   lineItems    OrderLineItem[]
   priceHistory PriceChange[]
@@ -232,8 +262,8 @@ model Customer {
   acquisitionCampaignId String?
 
   ordersCount     Int     @default(0)
-  lifetimeRevenue Decimal @db.Decimal(14, 2) @default(0)
-  lifetimeProfit  Decimal @db.Decimal(14, 2) @default(0)
+  lifetimeRevenue Decimal @default(0) @db.Decimal(14, 2)
+  lifetimeProfit  Decimal @default(0) @db.Decimal(14, 2)
 
   orders Order[]
 
@@ -292,11 +322,11 @@ model Order {
 
   currency        String  @default("USD")
   subtotal        Decimal @db.Decimal(12, 2)
-  discountTotal   Decimal @db.Decimal(12, 2) @default(0)
-  shippingCharged Decimal @db.Decimal(12, 2) @default(0)
-  taxTotal        Decimal @db.Decimal(12, 2) @default(0)
+  discountTotal   Decimal @default(0) @db.Decimal(12, 2)
+  shippingCharged Decimal @default(0) @db.Decimal(12, 2)
+  taxTotal        Decimal @default(0) @db.Decimal(12, 2)
   total           Decimal @db.Decimal(12, 2)
-  refundedTotal   Decimal @db.Decimal(12, 2) @default(0)
+  refundedTotal   Decimal @default(0) @db.Decimal(12, 2)
 
   financialStatus   String @default("paid")
   fulfillmentStatus String @default("unfulfilled")
@@ -311,13 +341,13 @@ model Order {
   isFirstOrder Boolean @default(false)
 
   // --- materialized by the profit engine ---
-  cogsTotal          Decimal   @db.Decimal(12, 2) @default(0)
-  shippingCost       Decimal   @db.Decimal(12, 2) @default(0)
-  paymentFee         Decimal   @db.Decimal(12, 2) @default(0)
-  adCostAttributed   Decimal   @db.Decimal(12, 2) @default(0)
-  overheadAllocated  Decimal   @db.Decimal(12, 2) @default(0)
-  contributionProfit Decimal   @db.Decimal(12, 2) @default(0)
-  netProfit          Decimal   @db.Decimal(12, 2) @default(0)
+  cogsTotal          Decimal   @default(0) @db.Decimal(12, 2)
+  shippingCost       Decimal   @default(0) @db.Decimal(12, 2)
+  paymentFee         Decimal   @default(0) @db.Decimal(12, 2)
+  adCostAttributed   Decimal   @default(0) @db.Decimal(12, 2)
+  overheadAllocated  Decimal   @default(0) @db.Decimal(12, 2)
+  contributionProfit Decimal   @default(0) @db.Decimal(12, 2)
+  netProfit          Decimal   @default(0) @db.Decimal(12, 2)
   computedAt         DateTime?
 
   lineItems    OrderLineItem[]
@@ -331,11 +361,11 @@ model Order {
 }
 
 model OrderLineItem {
-  id        String  @id @default(cuid())
+  id        String @id @default(cuid())
   shopId    String
-  shop      Shop    @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  shop      Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
   orderId   String
-  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order     Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
   shopifyId String
 
   variantId String?
@@ -348,10 +378,10 @@ model OrderLineItem {
   quantity Int
 
   unitPrice Decimal @db.Decimal(12, 2)
-  discount  Decimal @db.Decimal(12, 2) @default(0)
+  discount  Decimal @default(0) @db.Decimal(12, 2)
 
   /// COGS as it was on the day this order was placed.
-  unitCost    Decimal @db.Decimal(12, 4) @default(0)
+  unitCost    Decimal @default(0) @db.Decimal(12, 4)
   refundedQty Int     @default(0)
 
   /// Line items are deleted and recreated on every order sync, outside a
@@ -378,14 +408,14 @@ model AdSpend {
   campaignId   String?
   campaignName String?
 
-  spend       Decimal @db.Decimal(12, 2) @default(0)
+  spend       Decimal @default(0) @db.Decimal(12, 2)
   impressions Int     @default(0)
   clicks      Int     @default(0)
 
   /// What the ad platform claims it drove. Kept separate from Meridian's own
   /// attribution so the dashboard can show the gap — that gap is the product.
   platformConversions Int     @default(0)
-  platformRevenue     Decimal @db.Decimal(12, 2) @default(0)
+  platformRevenue     Decimal @default(0) @db.Decimal(12, 2)
 
   @@unique([shopId, date, channel, campaignId])
   @@index([shopId, date])
@@ -417,8 +447,8 @@ model Fulfillment {
   carrier      String?
   serviceLevel String?
 
-  shippingCost Decimal @db.Decimal(12, 2) @default(0)
-  pickPackCost Decimal @db.Decimal(12, 2) @default(0)
+  shippingCost Decimal @default(0) @db.Decimal(12, 2)
+  pickPackCost Decimal @default(0) @db.Decimal(12, 2)
   itemCount    Int     @default(0)
   location     String  @default("primary")
 
@@ -440,7 +470,7 @@ model CapacityDay {
   ordersFulfilled  Int     @default(0)
   unitsFulfilled   Int     @default(0)
   backlogEnd       Int     @default(0)
-  staffedHours     Decimal @db.Decimal(8, 2) @default(0)
+  staffedHours     Decimal @default(0) @db.Decimal(8, 2)
   maxDailyCapacity Int     @default(0)
 
   @@unique([shopId, date, location])
@@ -508,8 +538,8 @@ model PricingRecommendation {
   currentPrice   Decimal @db.Decimal(12, 2)
   suggestedPrice Decimal @db.Decimal(12, 2)
 
-  expectedUnitsDeltaPct Decimal @db.Decimal(8, 4) @default(0)
-  expectedProfitDelta   Decimal @db.Decimal(12, 2) @default(0)
+  expectedUnitsDeltaPct Decimal @default(0) @db.Decimal(8, 4)
+  expectedProfitDelta   Decimal @default(0) @db.Decimal(12, 2)
 
   elasticity Decimal?   @db.Decimal(8, 4)
   confidence Confidence @default(LOW)

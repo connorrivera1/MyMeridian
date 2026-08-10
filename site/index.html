@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Meridian — qualified profit from available Shopify inputs</title>
-<meta name="description" content="Qualified order and product profit from recorded and modeled costs, with missing inputs and unavailable ad spend disclosed." />
+<meta name="description" content="Qualified order and product profit from recorded and modelled costs, with missing inputs and unavailable ad spend disclosed." />
 <meta property="og:title" content="Meridian — qualified profit from available Shopify inputs" />
 <meta property="og:description" content="Shopify reports gross sales. Meridian shows what remains from the inputs it actually has." />
 <meta property="og:image" content="assets/overview-top2.jpg" />
@@ -80,7 +80,7 @@
         </h1>
         <p>
           Orders, product costs, fulfilment, fees and overhead resolved into a
-          qualified profit figure. Modeled and missing inputs remain visible;
+          qualified profit figure. Modelled and missing inputs remain visible;
           paid marketing stays excluded until a real source exists.
         </p>
         <div class="hero-actions">
@@ -123,7 +123,7 @@
       <div class="ledger-copy reveal">
         <p class="large-copy">
           Meridian starts with revenue and shows each subtraction in the order
-          it hits the P&amp;L. Every modeled input stays marked as modeled. Missing
+          it hits the P&amp;L. Every modelled input stays marked as modelled. Missing
           COGS receives no verdict. Unavailable paid marketing never becomes a
           convenient zero.
         </p>
@@ -253,7 +253,7 @@
       <div class="trust-ledger reveal">
         <div><span>01</span><strong>Read-only Shopify scopes</strong><p>No product, price or order writes requested.</p></div>
         <div><span>02</span><strong>Shopify-native billing</strong><p>Charges appear on the merchant’s Shopify invoice.</p></div>
-        <div><span>03</span><strong>Qualified economics</strong><p>Modeled, missing and unavailable inputs remain visible.</p></div>
+        <div><span>03</span><strong>Qualified economics</strong><p>Modelled, missing and unavailable inputs remain visible.</p></div>
       </div>
     </div>
   </section>
@@ -355,9 +355,11 @@
   var ticking = false;
 
   if (splash) {
-    var splashHold = reduced ? 300 : 1160;
+    // Matches the app's SPLASH_MS / SPLASH_FADE_MS exactly, so the marketing
+    // page and the product open with the same beat.
+    var splashHold = reduced ? 420 : 1240;
     window.setTimeout(function () { splash.classList.add("out"); }, splashHold);
-    window.setTimeout(function () { splash.classList.add("done"); }, splashHold + 300);
+    window.setTimeout(function () { splash.classList.add("done"); }, splashHold + 260);
   }
 
   function activateStory(step) {

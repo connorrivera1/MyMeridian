@@ -2039,3 +2039,116 @@ section[id] { scroll-margin-top: 96px; }
   padding: var(--s-3) var(--s-4);
   background: rgba(240, 194, 115, 0.07);
 }
+
+/* --------------------------------------------------------------- splash */
+
+/*
+ * Timed to the app's opening, frame for frame.
+ *
+ * The two sequences were close but not the same — 460ms letters on a 36ms
+ * stagger held for 1160ms here, against the app's 300ms letters on a 38ms
+ * stagger held for 1240ms. Close-but-different is worse than either: a
+ * merchant sees the marketing page and the product back to back, and a
+ * slightly different opening reads as a slightly different product.
+ *
+ * The app is the reference, because it is the thing they will see every day.
+ */
+.site-splash-word span { animation-duration: 300ms; }
+.site-splash-word span:nth-child(1) { animation-delay: 340ms; }
+.site-splash-word span:nth-child(2) { animation-delay: 378ms; }
+.site-splash-word span:nth-child(3) { animation-delay: 416ms; }
+.site-splash-word span:nth-child(4) { animation-delay: 454ms; }
+.site-splash-word span:nth-child(5) { animation-delay: 492ms; }
+.site-splash-word span:nth-child(6) { animation-delay: 530ms; }
+.site-splash-word span:nth-child(7) { animation-delay: 568ms; }
+.site-splash-word span:nth-child(8) { animation-delay: 606ms; }
+
+/* ------------------------------------------- heading + section alignment */
+
+/*
+ * Every section heading shares the page's left edge.
+ *
+ * `.pricing-heading` and `.final-cta` carried `margin-inline: auto` with their
+ * own max-width, so they sat inset from the gutter that the trust row, the
+ * ledger and the tour all align to — the left edge moved twice on the way down
+ * the page. `.kicker::before` was also switched off in those two sections, so
+ * the little gold rule that marks every other kicker vanished exactly there.
+ */
+.pricing-heading,
+.final-cta {
+  max-width: none;
+  margin-inline: 0;
+  text-align: left;
+}
+
+.pricing-heading .kicker::before,
+.final-cta .kicker::before { display: block; }
+
+.story-intro p,
+.pricing-heading > p,
+.theme-copy > p { margin-inline: 0; }
+
+/* One display scale for the whole page. 66px at -0.052em was both a second
+   heading size and tracking tight enough to touch at that size in Jakarta. */
+.trust-heading h2,
+.pricing-heading h2,
+.final-cta h2 {
+  font-size: clamp(30px, 3.2vw, 44px);
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--ink-2);
+}
+
+.trust-heading h2 strong,
+.pricing-heading h2 strong,
+.final-cta h2 strong {
+  color: #fbeed2;
+  font-weight: 520;
+}
+
+/* The pricing band opened with 144px of its own padding on top of the section
+   rhythm, which is where the dead space above it came from. */
+.pricing { padding-top: 0; }
+
+/*
+ * Final alignment reset for every section heading block.
+ *
+ * Between them these carried three different alignments and two different
+ * centring mechanisms: `.trust-heading` was `text-align: right`,
+ * `.story-intro` and `.final-cta` were centred, and `.theme-copy`,
+ * `.pricing-heading` and `.story-intro` each centred themselves with
+ * `margin-inline: auto` over their own max-width. Setting `text-align: left`
+ * alone was not enough — an auto-centred 880px block still floats away from
+ * the gutter that the content below it sits on, which is what made the left
+ * edge appear to move three times on the way down.
+ */
+.ledger-heading,
+.story-intro,
+.trust-heading,
+.pricing-heading,
+.theme-copy,
+.final-cta {
+  max-width: none;
+  margin-inline: 0;
+  text-align: left;
+}
+
+.ledger-heading .kicker,
+.story-intro .kicker,
+.trust-heading .kicker,
+.pricing-heading .kicker,
+.theme-copy .kicker,
+.final-cta .kicker { justify-content: flex-start; }
+
+/* Measures live on the children, so the block still spans the gutter. */
+.story-intro h2,
+.trust-heading h2,
+.pricing-heading h2,
+.final-cta h2,
+.ledger-heading h2 { max-width: 22ch; }
+
+/* The trust kicker was mirrored (`row-reverse`) to suit the right-aligned
+   heading it used to sit under. With every section now sharing one left edge,
+   the mark belongs on the same side as all the others. */
+.trust-heading .kicker { flex-direction: row; }

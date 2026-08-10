@@ -3580,3 +3580,23 @@ table td,
   letter-spacing: 0.01em;
   text-transform: none;
 }
+
+/*
+ * The greeting's primary action, matched to every other action in the app.
+ *
+ * The editorial pass gave it its own shape — 2px radius, 12px uppercase at
+ * 0.08em — so the one control a merchant is most likely to press was the only
+ * control in the product that looked like that, and tracked-out 12px caps is
+ * also the least legible setting on the page. The `:root[data-theme="light"]`
+ * half of that selector outranks a bare class, which is why it has to be
+ * matched here rather than simply restated.
+ */
+.greet-meta .chip.solid,
+:root[data-theme="light"] .greet-meta .chip.solid {
+  border-radius: var(--r-pill);
+  padding: 9px var(--s-4);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}

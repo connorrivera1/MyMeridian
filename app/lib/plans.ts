@@ -37,6 +37,7 @@ export const PLANS = {
     id: "starter",
     name: "Starter",
     price: 49,
+    annualPrice: 490,
     blurb: "Up to 1,000 orders / month",
     features: [
       "True profit per order",
@@ -48,6 +49,7 @@ export const PLANS = {
     id: "growth",
     name: "Growth",
     price: 149,
+    annualPrice: 1490,
     blurb: "Up to 10,000 orders / month",
     features: [
       "Everything in Starter",
@@ -59,6 +61,7 @@ export const PLANS = {
     id: "scale",
     name: "Scale",
     price: 399,
+    annualPrice: 3990,
     blurb: "Unlimited orders",
     features: [
       "Everything in Growth",
@@ -70,6 +73,35 @@ export const PLANS = {
 } as const;
 
 export type PlanId = keyof typeof PLANS;
+
+/**
+ * Annual billing.
+ *
+ * Annual is 10x monthly — two months free, about 17% — matching the convention
+ * Connor settled on for RankForge. Kept as whole dollars: an annual price with
+ * cents reads as calculated at the buyer, not for them.
+ *
+ * Each plan has a second Billing API key, `<id>-annual`. The SUFFIX is load
+ * bearing in three places that must agree: the billing config in
+ * shopify.server.ts is keyed by it, the plan page submits it, and
+ * planIdForSubscriptionName() strips it when Shopify hands the subscription
+ * name back through billing.check and the subscription webhook.
+ */
+export const ANNUAL_SUFFIX = "-annual";
+
+export type BillingKey = PlanId | `${PlanId}${typeof ANNUAL_SUFFIX}`;
+
+export function annualKey(id: PlanId): BillingKey {
+  return `${id}${ANNUAL_SUFFIX}`;
+}
+
+/** The plan a billing key belongs to, whichever interval it names. */
+export function basePlanId(key: string): PlanId | null {
+  const base = key.endsWith(ANNUAL_SUFFIX)
+    ? key.slice(0, -ANNUAL_SUFFIX.length)
+    : key;
+  return base in PLANS ? (base as PlanId) : null;
+}
 
 /** Length of the free trial attached to every Billing API subscription. */
 export const TRIAL_DAYS = 14;

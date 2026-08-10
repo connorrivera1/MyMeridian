@@ -3173,3 +3173,29 @@ table.data .right { font-variant-numeric: tabular-nums lining-nums; }
   text-transform: uppercase;
   fill: var(--ink-muted);
 }
+
+/* --- Billing interval toggle ----------------------------------------------
+ * Two named price lists, so two labelled buttons rather than a switch. The
+ * active one reads as pressed via the same inversion the rest of the controls
+ * use — aria-pressed is the styling hook, so the state the styling shows and
+ * the state a screen reader announces cannot drift apart.
+ */
+.interval-toggle {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  width: fit-content;
+}
+
+.interval-toggle .btn {
+  border: none;
+  border-radius: 0;
+}
+
+.interval-toggle .btn + .btn { border-left: 1px solid var(--rule-strong); }
+
+.interval-toggle .btn[aria-pressed="true"] {
+  background: var(--ink-primary);
+  color: var(--plane);
+}

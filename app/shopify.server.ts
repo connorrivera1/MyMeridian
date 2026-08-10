@@ -9,14 +9,14 @@ import {
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 
 import prisma from "./db.server";
-import { PLANS, TRIAL_DAYS } from "./lib/plans";
+import { PLANS, TRIAL_DAYS, ANNUAL_SUFFIX } from "./lib/plans";
 
 /**
  * Plans live in `lib/plans.ts` so route components can render the price list
  * without dragging this module into the client bundle. Re-exported here
  * because `shopifyApp()`'s billing config is built from them just below.
  */
-export { PLANS, TRIAL_DAYS, type PlanId } from "./lib/plans";
+export { PLANS, TRIAL_DAYS, ANNUAL_SUFFIX, annualKey, basePlanId, type PlanId, type BillingKey } from "./lib/plans";
 
 /**
  * The app is buildable and runnable before it has Shopify credentials, so that
@@ -55,38 +55,46 @@ function buildShopify() {
       expiringOfflineAccessTokens: true,
     },
 
-    billing: {
-      [PLANS.starter.id]: {
-        lineItems: [
+    /*
+     * Two Billing API configurations per plan: the monthly one keyed by the
+     * plan id, and the annual one keyed by `<id>-annual` (10x monthly — two
+     * months free). Built from the catalogue rather than written out so a
+     * price change in plans.ts cannot desync from what Shopify charges: these
+     * three literals were exactly the kind of duplication that drifts.
+     *
+     * Both intervals carry the same trial. Shopify prorates a mid-cycle switch
+     * between them and shows the merchant the amount before confirming.
+     */
+    billing: Object.fromEntries(
+      Object.values(PLANS).flatMap((plan) => [
+        [
+          plan.id,
           {
-            amount: PLANS.starter.price,
-            currencyCode: "USD",
-            interval: BillingInterval.Every30Days,
+            lineItems: [
+              {
+                amount: plan.price,
+                currencyCode: "USD",
+                interval: BillingInterval.Every30Days,
+              },
+            ],
+            trialDays: TRIAL_DAYS,
           },
         ],
-        trialDays: TRIAL_DAYS,
-      },
-      [PLANS.growth.id]: {
-        lineItems: [
+        [
+          `${plan.id}${ANNUAL_SUFFIX}`,
           {
-            amount: PLANS.growth.price,
-            currencyCode: "USD",
-            interval: BillingInterval.Every30Days,
+            lineItems: [
+              {
+                amount: plan.annualPrice,
+                currencyCode: "USD",
+                interval: BillingInterval.Annual,
+              },
+            ],
+            trialDays: TRIAL_DAYS,
           },
         ],
-        trialDays: TRIAL_DAYS,
-      },
-      [PLANS.scale.id]: {
-        lineItems: [
-          {
-            amount: PLANS.scale.price,
-            currencyCode: "USD",
-            interval: BillingInterval.Every30Days,
-          },
-        ],
-        trialDays: TRIAL_DAYS,
-      },
-    },
+      ]),
+    ),
 
     webhooks: {
       APP_UNINSTALLED: {

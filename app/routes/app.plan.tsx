@@ -1,10 +1,16 @@
+import { useState } from "react";
 import { Form, useActionData, useLoaderData, useNavigation } from "react-router";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 
 import { Badge, Banner, Money, Stat } from "~/design/components";
 import { requireShopContext } from "~/lib/auth.server";
 import { billingIsTest, resolvePlan } from "~/lib/plan.server";
-import { PLANS, type PlanId } from "~/lib/plans";
+import {
+  annualKey,
+  basePlanId,
+  PLANS,
+  type BillingKey,
+} from "~/lib/plans";
 
 /**
  * Plan selection, upgrade and downgrade.
@@ -44,7 +50,10 @@ export async function action({ request }: ActionFunctionArgs) {
   const form = await request.formData();
   const requested = String(form.get("plan") ?? "");
 
-  if (!(requested in PLANS)) {
+  // `requested` is a billing key: a plan id, or a plan id with the annual
+  // suffix. Validating via basePlanId accepts exactly those and nothing else —
+  // a crafted "starter-weekly" resolves to null, not to a charge.
+  if (!basePlanId(requested)) {
     return { error: "That plan does not exist." };
   }
 
@@ -53,7 +62,7 @@ export async function action({ request }: ActionFunctionArgs) {
   // Shopify sends the merchant back here after they approve or decline, so the
   // page they land on reflects the charge they just made.
   return ctx.billing.request({
-    plan: requested as PlanId,
+    plan: requested as BillingKey,
     isTest: billingIsTest,
     returnUrl: `${url.origin}/app/plan?shop=${encodeURIComponent(ctx.shop.domain)}`,
   });
@@ -64,6 +73,9 @@ export default function Plan() {
   const result = useActionData<typeof action>();
   const navigation = useNavigation();
   const busy = navigation.state !== "idle";
+  // Which interval the three cards are quoting. Purely presentational until
+  // the form is submitted, so plain component state is the right home for it.
+  const [yearly, setYearly] = useState(false);
 
   return (
     <>
@@ -96,6 +108,28 @@ export default function Plan() {
         </Banner>
       )}
 
+      {/* Billed monthly / billed yearly. A group of two buttons rather than a
+          switch: "which price list am I looking at" is a choice between two
+          named things, and a switch hides one of the names. */}
+      <div className="interval-toggle" role="group" aria-label="Billing interval">
+        <button
+          type="button"
+          className="btn sm"
+          aria-pressed={!yearly}
+          onClick={() => setYearly(false)}
+        >
+          Billed monthly
+        </button>
+        <button
+          type="button"
+          className="btn sm"
+          aria-pressed={yearly}
+          onClick={() => setYearly(true)}
+        >
+          Billed yearly · two months free
+        </button>
+      </div>
+
       <div className="grid cols-3">
         {data.plans.map((plan) => {
           const current = data.currentPlan === plan.id;
@@ -106,11 +140,34 @@ export default function Plan() {
                 label={plan.name}
                 value={
                   <>
-                    <Money cents={plan.price * 100} currency="USD" decimals={false} />
-                    <span className="muted tiny"> /month</span>
+                    <Money
+                      cents={(yearly ? plan.annualPrice : plan.price) * 100}
+                      currency="USD"
+                      decimals={false}
+                    />
+                    <span className="muted tiny">
+                      {" "}
+                      {yearly ? "/year" : "/month"}
+                    </span>
                   </>
                 }
-                meta={<span>{plan.blurb}</span>}
+                meta={
+                  <span>
+                    {plan.blurb}
+                    {yearly && (
+                      <>
+                        {" "}
+                        · saves{" "}
+                        <Money
+                          cents={(plan.price * 12 - plan.annualPrice) * 100}
+                          currency="USD"
+                          decimals={false}
+                        />{" "}
+                        a year
+                      </>
+                    )}
+                  </span>
+                }
               />
               <div style={{ padding: "0 16px 16px" }}>
                 <ul
@@ -126,7 +183,11 @@ export default function Plan() {
                   <Badge tone="good">Current plan</Badge>
                 ) : (
                   <Form method="post">
-                    <input type="hidden" name="plan" value={plan.id} />
+                    <input
+                      type="hidden"
+                      name="plan"
+                      value={yearly ? annualKey(plan.id) : plan.id}
+                    />
                     <button
                       className={
                         data.currentPlan ? "btn sm" : "btn primary sm"

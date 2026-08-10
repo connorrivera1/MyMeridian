@@ -41,3 +41,27 @@ describe("planIdForSubscriptionName", () => {
     expect(planIdForSubscriptionName("   ")).toBeNull();
   });
 });
+
+/**
+ * Annual billing keys. billing.request names the subscription after the
+ * billing key it was given, so a yearly subscriber's active charge comes back
+ * as "<plan>-annual" — from billing.check and from the subscription webhook.
+ * If this mapping misses, a paying annual customer resolves to no plan at all
+ * and is locked out of what they paid for.
+ */
+describe("planIdForSubscriptionName: annual keys", () => {
+  it("resolves each annual key to its plan", () => {
+    expect(planIdForSubscriptionName("starter-annual")).toBe("starter");
+    expect(planIdForSubscriptionName("growth-annual")).toBe("growth");
+    expect(planIdForSubscriptionName("scale-annual")).toBe("scale");
+  });
+
+  it("is tolerant of case and whitespace on annual keys too", () => {
+    expect(planIdForSubscriptionName("  Growth-Annual ")).toBe("growth");
+  });
+
+  it("does not invent a plan for an annual-looking unknown", () => {
+    expect(planIdForSubscriptionName("enterprise-annual")).toBeNull();
+    expect(planIdForSubscriptionName("-annual")).toBeNull();
+  });
+});

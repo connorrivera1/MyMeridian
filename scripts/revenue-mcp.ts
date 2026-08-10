@@ -18,8 +18,17 @@
  * only findMany/count. Connect it to an agent without worrying about what the
  * agent might do; there is nothing here to do.
  *
+ * The cash side is different: `cash_summary` reads Shopify's Partner API
+ * ledger (gross, Shopify's fee, net, refunds) — what actually moved, not what
+ * subscriptions are worth. It needs SHOPIFY_PARTNER_ORG_ID and
+ * SHOPIFY_PARTNER_API_TOKEN (see .env.example) and explains itself when
+ * they're absent.
+ *
  *   Run:      npx tsx scripts/revenue-mcp.ts        (from the Meridian root)
- *   Wire in:  claude mcp add meridian-revenue -- npx tsx scripts/revenue-mcp.ts
+ *   Agents:   claude mcp add meridian-revenue -- npx tsx scripts/revenue-mcp.ts
+ *   Eevee:    already wired via extra_mcp_servers.json in her runtime dir —
+ *             her gateway runs --strict-mcp-config, so ~/.claude.json never
+ *             reaches her; that file is the only door.
  *
  * DATABASE_URL comes from the environment, or from Meridian's own .env as a
  * fallback so the agent's MCP config never has to duplicate the secret.
@@ -34,6 +43,7 @@ import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 
 import { formatMoney } from "~/engine/money";
+import { summariseCash, type CashTransactionRow } from "~/lib/cash";
 import { PLANS, type PlanId } from "~/lib/plans";
 import {
   summariseMovement,
@@ -44,20 +54,21 @@ import {
 
 // --- environment -----------------------------------------------------------
 
-if (!process.env.DATABASE_URL) {
-  const envPath = join(dirname(fileURLToPath(import.meta.url)), "..", ".env");
+const ENV_PATH = join(dirname(fileURLToPath(import.meta.url)), "..", ".env");
+
+function fromDotenv(key: string): string | undefined {
   try {
-    const line = readFileSync(envPath, "utf8")
+    const line = readFileSync(ENV_PATH, "utf8")
       .split("\n")
-      .find((l) => l.startsWith("DATABASE_URL="));
-    if (line) {
-      process.env.DATABASE_URL = line.slice("DATABASE_URL=".length).replace(/^"|"$/g, "");
-    }
+      .find((l) => l.startsWith(`${key}=`));
+    return line?.slice(key.length + 1).replace(/^"|"$/g, "") || undefined;
   } catch {
-    // No .env — Prisma's own missing-URL error below is clearer than anything
-    // synthesised here.
+    return undefined;
   }
 }
+
+// Prisma's own missing-URL error is clearer than anything synthesised here.
+process.env.DATABASE_URL ||= fromDotenv("DATABASE_URL") ?? "";
 
 const prisma = new PrismaClient();
 
@@ -155,6 +166,174 @@ server.tool(
             .join("\n");
 
     return { content: [{ type: "text" as const, text }] };
+  },
+);
+
+// --- cash side: the Partner API ledger --------------------------------------
+//
+// Everything above is entitlements at list price. This is what money actually
+// moved: gross charged, Shopify's fee, net to us, refunds included. Source is
+// the Partner API's transaction ledger — a different system from the Admin
+// API, with its own credential that only Connor's Partner account can mint.
+//
+// UNVERIFIED AGAINST THE LIVE API: written from the documented schema, but
+// never run with a real token (none exists yet). If Shopify's schema disagrees,
+// the GraphQL error comes back verbatim in the tool result — fix the query in
+// fetchPartnerTransactions below.
+
+const PARTNER_API_VERSION = "2025-04";
+
+const TRANSACTIONS_QUERY = `
+  query($createdAtMin: DateTime, $after: String) {
+    transactions(createdAtMin: $createdAtMin, first: 100, after: $after) {
+      edges {
+        cursor
+        node {
+          __typename
+          createdAt
+          ... on AppSubscriptionSale {
+            grossAmount { amount } shopifyFee { amount } netAmount { amount }
+            shop { myshopifyDomain }
+          }
+          ... on AppOneTimeSale {
+            grossAmount { amount } shopifyFee { amount } netAmount { amount }
+            shop { myshopifyDomain }
+          }
+          ... on AppUsageSale {
+            grossAmount { amount } shopifyFee { amount } netAmount { amount }
+            shop { myshopifyDomain }
+          }
+          ... on AppSaleAdjustment { netAmount { amount } shop { myshopifyDomain } }
+          ... on AppSaleCredit { netAmount { amount } shop { myshopifyDomain } }
+        }
+      }
+      pageInfo { hasNextPage }
+    }
+  }
+`;
+
+interface PartnerCreds {
+  orgId: string;
+  token: string;
+}
+
+function partnerCreds(): PartnerCreds | null {
+  const orgId = process.env.SHOPIFY_PARTNER_ORG_ID || fromDotenv("SHOPIFY_PARTNER_ORG_ID");
+  const token = process.env.SHOPIFY_PARTNER_API_TOKEN || fromDotenv("SHOPIFY_PARTNER_API_TOKEN");
+  return orgId && token ? { orgId, token } : null;
+}
+
+const CREDS_MISSING =
+  "Partner API credentials are not configured, so the cash ledger is not " +
+  "reachable yet. The subscription-side tools (revenue_summary etc.) still " +
+  "work — they read Meridian's own database.\n\n" +
+  "To enable: Connor creates a Partner API client at partners.shopify.com → " +
+  "Settings → Partner API clients (read-only scope: 'View financials'), then " +
+  `adds to ${ENV_PATH}:\n` +
+  "  SHOPIFY_PARTNER_ORG_ID=<the number in the partners.shopify.com URL>\n" +
+  "  SHOPIFY_PARTNER_API_TOKEN=<the client's access token>\n" +
+  "No restart of anything else is needed; this server reads them per call.";
+
+async function fetchPartnerTransactions(
+  creds: PartnerCreds,
+  since: Date,
+): Promise<CashTransactionRow[]> {
+  const rows: CashTransactionRow[] = [];
+  let after: string | null = null;
+
+  // 5 pages × 100 is bounded honesty: an app whose 30-day ledger overflows
+  // that has outgrown this tool, and the truncation is reported, not silent.
+  for (let page = 0; page < 5; page += 1) {
+    const response = await fetch(
+      `https://partners.shopify.com/${creds.orgId}/api/${PARTNER_API_VERSION}/graphql.json`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Access-Token": creds.token,
+        },
+        body: JSON.stringify({
+          query: TRANSACTIONS_QUERY,
+          variables: { createdAtMin: since.toISOString(), after },
+        }),
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`Partner API HTTP ${response.status}: ${await response.text()}`);
+    }
+    const payload = (await response.json()) as {
+      errors?: { message: string }[];
+      data?: {
+        transactions: {
+          edges: {
+            cursor: string;
+            node: {
+              __typename: string;
+              createdAt: string;
+              grossAmount?: { amount: string };
+              shopifyFee?: { amount: string };
+              netAmount?: { amount: string };
+              shop?: { myshopifyDomain: string };
+            };
+          }[];
+          pageInfo: { hasNextPage: boolean };
+        };
+      };
+    };
+    if (payload.errors?.length) {
+      throw new Error(`Partner API: ${payload.errors.map((e) => e.message).join("; ")}`);
+    }
+    const connection = payload.data?.transactions;
+    if (!connection) break;
+
+    for (const { node } of connection.edges) {
+      rows.push({
+        type: node.__typename,
+        createdAt: node.createdAt,
+        grossAmount: node.grossAmount?.amount ?? null,
+        shopifyFee: node.shopifyFee?.amount ?? null,
+        netAmount: node.netAmount?.amount ?? null,
+        shop: node.shop?.myshopifyDomain ?? null,
+      });
+    }
+    if (!connection.pageInfo.hasNextPage) return rows;
+    after = connection.edges.at(-1)?.cursor ?? null;
+    if (!after) return rows;
+  }
+
+  throw new Error(
+    `More than ${5 * 100} transactions in the window — totals would be silently wrong. Narrow windowDays.`,
+  );
+}
+
+server.tool(
+  "cash_summary",
+  "What money actually moved, from Shopify's Partner API transaction ledger: " +
+    "gross charged to merchants, Shopify's fee, and net to us over a trailing " +
+    "window — refunds and credits included. This is cash truth, unlike " +
+    "revenue_summary which is entitlements at list price. Requires Partner " +
+    "API credentials; if missing, the result explains how to add them.",
+  { windowDays: z.number().int().min(1).max(365).default(30) },
+  async ({ windowDays }) => {
+    const creds = partnerCreds();
+    if (!creds) return { content: [{ type: "text" as const, text: CREDS_MISSING }] };
+
+    const since = new Date(Date.now() - windowDays * 86_400_000);
+    const summary = summariseCash(await fetchPartnerTransactions(creds, since), windowDays);
+
+    const lines = [
+      `Last ${windowDays} days: gross ${money(summary.grossCents)}, ` +
+        `Shopify fee ${money(summary.feeCents)}, net ${money(summary.netCents)} ` +
+        `(${summary.transactionCount} transaction(s))`,
+      ...Object.entries(summary.byType).map(
+        ([type, b]) => `  ${type}: ${b.count} -> net ${money(b.netCents)}`,
+      ),
+    ];
+
+    return {
+      content: [{ type: "text" as const, text: lines.join("\n") }],
+      structuredContent: summary as unknown as Record<string, unknown>,
+    };
   },
 );
 

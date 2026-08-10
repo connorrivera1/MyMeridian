@@ -176,12 +176,21 @@ server.tool(
 // the Partner API's transaction ledger — a different system from the Admin
 // API, with its own credential that only Connor's Partner account can mint.
 //
-// UNVERIFIED AGAINST THE LIVE API: written from the documented schema, but
-// never run with a real token (none exists yet). If Shopify's schema disagrees,
-// the GraphQL error comes back verbatim in the tool result — fix the query in
-// fetchPartnerTransactions below.
+// VERIFIED against the live Partner API on 2026-08-10 (org 5094596): the query
+// below is accepted and returns an empty edge list, which is the correct answer
+// while no merchant has subscribed. Any future schema disagreement comes back
+// verbatim in the tool result.
+//
+// On the version: every dated version string from 2019-10 through 2025-07 was
+// probed against this endpoint and every one answered `Invalid API version`;
+// only `unstable` is served. So that default is measured, not lazy — override
+// it once a dated version starts answering, since `unstable` may change
+// without notice.
 
-const PARTNER_API_VERSION = "2025-04";
+const PARTNER_API_VERSION =
+  process.env.SHOPIFY_PARTNER_API_VERSION ||
+  fromDotenv("SHOPIFY_PARTNER_API_VERSION") ||
+  "unstable";
 
 const TRANSACTIONS_QUERY = `
   query($createdAtMin: DateTime, $after: String) {

@@ -1887,7 +1887,13 @@ main section:not(.hero) { padding-block: var(--s-24); }
   min-height: auto;
   padding: calc(var(--s-24) + 64px) 0 var(--s-20);
   background: none;
-  overflow: visible;
+  /* `clip`, not `hidden`: the globe is deliberately wider than the viewport
+     and would otherwise widen the document (165px of horizontal scroll at
+     1180). `hidden` would also create a scroll container, which breaks the
+     sticky product window in the tour further down the page. Clipping on one
+     axis leaves the vertical bleed of the product shot intact. */
+  overflow-x: clip;
+  overflow-y: visible;
 }
 
 .hero-inner {
@@ -2222,3 +2228,113 @@ section[id] { scroll-margin-top: 96px; }
 .final-cta h2,
 .final-cta > p { margin-inline: 0; }
 .final-cta .pill { align-self: flex-start; }
+
+/* ============================================================ the globe */
+
+/*
+ * The line-drawn meridian, at hero scale.
+ *
+ * This replaces the raymarched sun. The sun was atmospheric but generic —
+ * any product could have used it — whereas the globe is the thing the product
+ * is named after, and turning it under the reader's scroll makes the page's
+ * one piece of motion mean something instead of merely moving.
+ *
+ * It sits to the right of the copy and runs off the edge of the frame at
+ * every width. A brand object cropped by the viewport reads as large; the
+ * same object fitted politely inside the margins reads as an illustration.
+ */
+.globe-stage {
+  position: absolute;
+  /* Anchored to the top of the hero, not its middle. The hero is tall — copy
+     plus a product shot that crosses the fold — so a centred globe sank below
+     the first viewport and only its polar cap was ever visible. */
+  top: -14vh;
+  right: -14vw;
+  width: min(104vh, 940px);
+  aspect-ratio: 1;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.globe-stage svg { width: 100%; height: 100%; overflow: visible; }
+
+.globe-limb,
+.globe-meridian,
+.globe-axis {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+}
+
+/* The silhouette carries the most weight: it is the only line that is always
+   at full length, so it is what holds the shape together while the meridians
+   sweep through it. */
+.globe-limb {
+  stroke: rgba(212, 224, 255, 0.42);
+  stroke-width: 1.15;
+}
+
+.globe-meridian {
+  stroke: rgba(190, 206, 250, 0.55);
+  stroke-width: 0.85;
+}
+
+/* The prime meridian — the line the product is named for — is the one warm
+   element left in the hero now that the sun is gone. */
+.globe-prime {
+  stroke: var(--gold);
+  stroke-width: 1.35;
+}
+
+.globe-axis {
+  stroke: rgba(212, 224, 255, 0.3);
+  stroke-width: 0.85;
+}
+
+/* Content sits above the globe, and the copy column gets a soft scrim so the
+   headline never has to compete with a line passing behind it. */
+.hero-inner { position: relative; z-index: 1; }
+
+.hero-copy {
+  position: relative;
+  isolation: isolate;
+}
+
+.hero-copy::before {
+  content: "";
+  position: absolute;
+  inset: -12% -22% -14% -20%;
+  z-index: -1;
+  pointer-events: none;
+  /* Inscribed ellipse, so the falloff completes inside its own box and the
+     scrim can never acquire a visible edge. */
+  background: radial-gradient(
+    50% 50% at 50% 50%,
+    rgba(13, 17, 37, 0.82) 0%,
+    rgba(13, 17, 37, 0.6) 42%,
+    rgba(13, 17, 37, 0.24) 68%,
+    rgba(13, 17, 37, 0) 100%
+  );
+}
+
+/*
+ * The backdrop, with the sun taken out of it.
+ *
+ * What is left is an even twilight field: deep indigo falling to the reading
+ * surface, with one cool bloom behind the globe so it is lit from somewhere
+ * rather than floating on flat colour. No warm horizon band — that belonged
+ * to the sun, and without it the band read as an orphaned smear.
+ */
+.sky-fallback {
+  background:
+    radial-gradient(58rem 44rem at 76% 34%, rgba(120, 146, 220, 0.16), transparent 68%),
+    linear-gradient(180deg, #10142a 0%, #161d3d 34%, #1b2348 58%, #141a35 82%, var(--ground) 100%);
+}
+
+@media (max-width: 900px) {
+  .globe-stage {
+    right: -34vw;
+    width: min(96vh, 760px);
+    opacity: 0.7;
+  }
+}

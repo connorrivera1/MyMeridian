@@ -16,7 +16,6 @@
 <body>
 
 <div class="sky-fallback" aria-hidden="true"></div>
-<canvas id="sky" aria-hidden="true"></canvas>
 
 <div class="site-splash" id="site-splash" role="status" aria-label="Meridian">
   <div class="site-splash-inner">
@@ -71,6 +70,29 @@
 
   <section class="hero" id="hero">
 
+<div class="globe-stage" aria-hidden="true">
+  <svg id="globe" data-radius="170" viewBox="0 0 400 400" fill="none"
+       xmlns="http://www.w3.org/2000/svg" role="presentation">
+    <!-- The silhouette. Fixed, because the edge of a sphere does not move. -->
+    <circle class="globe-limb" cx="200" cy="200" r="170" />
+    <!-- Meridians. `rx` is rewritten every frame from cos(phase + longitude);
+         the values here are the rest state so the globe is complete before
+         any script runs. -->
+    <g class="globe-meridians">
+      <ellipse class="globe-meridian globe-prime" data-longitude="0" cx="200" cy="200" rx="170.00" ry="170" />
+      <ellipse class="globe-meridian" data-longitude="20" cx="200" cy="200" rx="159.75" ry="170" />
+      <ellipse class="globe-meridian" data-longitude="40" cx="200" cy="200" rx="130.23" ry="170" />
+      <ellipse class="globe-meridian" data-longitude="60" cx="200" cy="200" rx="85.00" ry="170" />
+      <ellipse class="globe-meridian" data-longitude="80" cx="200" cy="200" rx="29.52" ry="170" />
+      <ellipse class="globe-meridian" data-longitude="100" cx="200" cy="200" rx="29.52" ry="170" />
+      <ellipse class="globe-meridian" data-longitude="120" cx="200" cy="200" rx="85.00" ry="170" />
+      <ellipse class="globe-meridian" data-longitude="140" cx="200" cy="200" rx="130.23" ry="170" />
+      <ellipse class="globe-meridian" data-longitude="160" cx="200" cy="200" rx="159.75" ry="170" />
+    </g>
+    <!-- The axis: the one meridian that is always edge-on to the viewer. -->
+    <line class="globe-axis" x1="200" y1="30" x2="200" y2="370" />
+  </svg>
+</div>
     <div class="wrap hero-inner">
       <div class="hero-copy">
         <span class="kicker">Profit analytics for Shopify</span>
@@ -435,7 +457,7 @@
     if (splash && splash.parentNode) { splash.parentNode.removeChild(splash); }
     paintScroll();
     // The sky is a separate module; give it one deterministic frame too.
-    if (typeof window.__skyPaintOnce === "function") window.__skyPaintOnce();
+    if (typeof window.__globePaintOnce === "function") window.__globePaintOnce();
   };
 
   paintScroll();
@@ -444,6 +466,6 @@
 })();
 </script>
 
-<script src="sky.js" defer></script>
+<script src="globe.js" defer></script>
 </body>
 </html>

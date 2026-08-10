@@ -74,19 +74,24 @@ describe("listing media and the demo store it is captured from", () => {
     expect(site).toContain('class="mark spinning"');
     expect(site).toContain('rel="stylesheet" href="landing.css"');
 
-    // The opening scene, asserted by intent rather than by implementation.
+    // The opening scene: the brand mark at hero scale, turning with the scroll.
     //
-    // This used to pin `class="hero-space"` and `spatial-orbit-one` — the CSS
-    // wireframe of dotted ellipses over a flat gradient that stood in for a
-    // sky. Pinning it meant the test defended the exact thing that made the
-    // page read as unfinished, and would have failed any replacement. What
-    // matters is that the landing page opens on the same lit scene the app
-    // does, and that the scene degrades to a complete painted picture rather
-    // than to a void when WebGL is unavailable.
-    expect(site).toContain('id="sky"');
-    expect(site).toContain('class="sky-fallback"');
-    expect(styles).toContain(".sky-fallback");
-    expect(read("site/sky.js")).toContain("gl_FragColor");
+    // Two earlier versions of this assertion pinned an implementation and had
+    // to be rewritten when the implementation was replaced — first a CSS
+    // wireframe, then a WebGL sun. What is actually load-bearing is that the
+    // hero opens on the meridian globe, that it is line art rather than a
+    // raster, and that its rotation is driven from scroll position, so those
+    // are what is checked here.
+    expect(site).toContain('id="globe"');
+    expect(site).toContain("data-longitude");
+    expect(styles).toContain(".globe-meridian");
+
+    const globe = read("site/globe.js");
+    expect(globe).toContain("scrollY");
+    // Rotation is a cosine sweep of each meridian's width, not a rotateY: a
+    // flat SVG spun in 3D collapses edge-on and reappears mirrored.
+    expect(globe).toContain("Math.cos");
+    expect(globe).toContain('setAttribute("rx"');
     expect(styles).toContain(".mark.spinning .meridian-a");
     expect(styles).toContain("scrollbar-color:");
     expect(styles).toContain("::-webkit-scrollbar-thumb");

@@ -1850,10 +1850,17 @@ footer { position: relative; background: var(--ground); }
    it is excluded rather than zeroed — an earlier version of this rule used
    :first-child, which outranks `.hero` on specificity and silently removed the
    header clearance, dropping the headline behind the nav. */
-main > section:not(.hero) { padding-block: var(--s-24); }
+/* Descendant, not child.
+ *
+ * Everything past the hero is wrapped in `.ground`, so `main > section` stopped
+ * matching a single section the moment that wrapper was introduced and the
+ * whole page quietly fell back to whatever padding each section had set for
+ * itself. That is what left the pricing kicker nine pixels under the band
+ * above it. */
+main section:not(.hero) { padding-block: var(--s-24); }
 
 @media (max-width: 900px) {
-  main > section:not(.hero) { padding-block: var(--s-16); }
+  main section:not(.hero) { padding-block: var(--s-16); }
 }
 
 /* ------------------------------------------------------------------ hero */
@@ -2107,9 +2114,9 @@ section[id] { scroll-margin-top: 96px; }
   font-weight: 520;
 }
 
-/* The pricing band opened with 144px of its own padding on top of the section
-   rhythm, which is where the dead space above it came from. */
-.pricing { padding-top: 0; }
+/* The pricing band opened with 144px of its own padding, which double-counted
+   against the section rhythm now that the rhythm actually applies. */
+.pricing { padding-block: var(--s-24); }
 
 /*
  * Final alignment reset for every section heading block.

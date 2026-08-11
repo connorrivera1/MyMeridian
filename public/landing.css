@@ -3764,3 +3764,32 @@ html[data-theme="dark"] .theme-icon-moon { opacity: 1; }
 @media (max-width: 940px) {
   .theme-switch { margin-right: 6px; }
 }
+
+/* ------------------------------------------------------------- sign-in link
+   "Log in" sits with the section links but is not one: the mobile rule above
+   hides `.header-nav a:not(.pill)` to make room for the pill, which would
+   leave a returning visitor on a phone with a Sign up button and no way in.
+   It keeps the nav-link look and the pill's survival. */
+.header-nav a.header-signin {
+  padding: 9px 13px;
+  border-radius: 10px;
+  color: var(--ink-2);
+  transition: background 180ms ease, color 180ms ease;
+}
+
+.header-nav a.header-signin:hover {
+  background: var(--periwinkle-dim);
+  color: var(--ink);
+}
+
+@media (max-width: 940px) {
+  .header-nav a.header-signin { display: inline-flex; }
+}
+
+@media (max-width: 480px) {
+  /* At the narrowest the wordmark, Log in and Sign up is already three
+     things; the theme switch is the one that can go without losing a route
+     into the product. */
+  .header-nav .theme-switch { display: none; }
+  .header-nav a.header-signin { padding: 9px 8px; }
+}

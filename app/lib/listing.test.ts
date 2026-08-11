@@ -56,7 +56,7 @@ function read(relative: string): string {
 describe("listing media and the demo store it is captured from", () => {
   it("the landing page uses a complete current capture in every feature card", () => {
     const site = read("site/index.html");
-    const styles = read("site/landing.css");
+    const styles = read("public/landing.css");
     for (const asset of ["orders", "products", "pricing", "fulfilment"]) {
       expect(site).toContain(`src="assets/${asset}.jpg"`);
     }
@@ -67,8 +67,8 @@ describe("listing media and the demo store it is captured from", () => {
 
   it("keeps the public surface aligned with the app opening and chrome", () => {
     const site = read("site/index.html");
-    const styles = read("site/landing.css");
-    const legalStyles = read("site/legal.css");
+    const styles = read("public/landing.css");
+    const legalStyles = read("public/legal.css");
 
     expect(site).toContain('class="site-splash"');
     expect(site).toContain('class="mark spinning"');
@@ -86,7 +86,7 @@ describe("listing media and the demo store it is captured from", () => {
     expect(site).toContain("data-longitude");
     expect(styles).toContain(".globe-meridian");
 
-    const globe = read("site/globe.js");
+    const globe = read("public/globe.js");
     expect(globe).toContain("scrollY");
     // Rotation is a cosine sweep of each meridian's width, not a rotateY: a
     // flat SVG spun in 3D collapses edge-on and reappears mirrored.
@@ -151,7 +151,7 @@ describe("listing media and the demo store it is captured from", () => {
       "listing/copy.md",
       "site/index.html",
       "app/root.tsx",
-      "app/routes/home.tsx",
+      "app/routes/home.ts",
       "app/routes/app.products.tsx",
       "app/routes/app.pricing.tsx",
     ]
@@ -169,7 +169,7 @@ describe("listing media and the demo store it is captured from", () => {
   it("does not distribute the Fontshare binary whose license forbids font serving", () => {
     const forbidden = [
       "app/fonts/satoshi/Satoshi-Variable.woff2",
-      "site/fonts/Satoshi-Variable.woff2",
+      "public/fonts/Satoshi-Variable.woff2",
     ];
     for (const relative of forbidden) {
       expect(
@@ -183,7 +183,7 @@ describe("listing media and the demo store it is captured from", () => {
       "app/root.tsx",
       "app/design/meridian.css",
       "site/index.html",
-      "site/landing.css",
+      "public/landing.css",
     ]
       .map(read)
       .join("\n");

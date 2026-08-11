@@ -16,17 +16,25 @@ const REPO_ROOT = join(import.meta.dirname, "..", "..");
 const read = (relative: string) =>
   readFileSync(join(REPO_ROOT, relative), "utf8");
 
-const PAGES = ["site/privacy.html", "site/terms.html"] as const;
+/*
+ * These live in `public/` rather than `site/` since the app began serving the
+ * whole product from one origin: `public/` is what Vite copies into the client
+ * build, so this is what makes them publicly reachable at all. `site/` now
+ * holds only the landing document, which is inlined into the server bundle by
+ * `routes/home.ts`.
+ */
+const PAGES = ["public/privacy.html", "public/terms.html"] as const;
 
 describe("public legal pages", () => {
   it.each(PAGES)("%s is linked from the landing page footer", (page) => {
-    const file = page.replace("site/", "");
+    const file = page.replace("public/", "");
     expect(read("site/index.html")).toContain(`href="${file}"`);
   });
 
   it.each(PAGES)("%s links back to the site and to its sibling", (page) => {
     const html = read(page);
-    expect(html).toContain('href="index.html"');
+    // The landing page is served at the root now, not as a sibling file.
+    expect(html).toContain('href="/"');
     const sibling = page.includes("privacy") ? "terms.html" : "privacy.html";
     expect(html).toContain(`href="${sibling}"`);
   });
@@ -52,7 +60,7 @@ describe("public legal pages", () => {
   });
 
   it("does not repeat claims the code does not support", () => {
-    const privacy = read("site/privacy.html").toLowerCase();
+    const privacy = read("public/privacy.html").toLowerCase();
 
     // read_customers is not requested; a policy claiming it would be asking
     // for a scope review the app does not need and cannot pass.
@@ -67,7 +75,7 @@ describe("public legal pages", () => {
   });
 
   it("states the retention period the retention worker actually enforces", () => {
-    const privacy = read("site/privacy.html");
+    const privacy = read("public/privacy.html");
     const retention = read("app/lib/data-request.server.ts");
 
     const days = retention.match(
@@ -76,12 +84,12 @@ describe("public legal pages", () => {
     expect(days, "retention constant not found").toBeTruthy();
     expect(
       privacy,
-      `privacy.html must state the same ${days}-day retention the sweep enforces`,
+      `public/privacy.html must state the same ${days}-day retention the sweep enforces`,
     ).toContain(`<strong>${days} days</strong>`);
   });
 
   it("states the prices the billing catalogue actually charges", () => {
-    const terms = read("site/terms.html");
+    const terms = read("public/terms.html");
     const plans = read("app/lib/plans.ts");
 
     const prices = [...plans.matchAll(/price:\s*(\d+)/g)].map((m) => m[1]);

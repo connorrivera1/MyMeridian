@@ -1,7 +1,10 @@
 import { index, route, type RouteConfig } from "@react-router/dev/routes";
 
 export default [
-  index("routes/home.tsx"),
+  // The marketing page, served by the app so the whole product is one origin.
+  // A resource route: it returns the hand-written HTML document rather than
+  // rendering a component. See routes/home.ts.
+  index("routes/home.ts"),
 
   // Public, unauthenticated documents. Shopify's listing links to the privacy
   // policy and the reviewer opens both without a session, so neither may ever
@@ -13,6 +16,26 @@ export default [
   route("auth/login", "routes/auth.login.tsx"),
   // Shopify OAuth entry and callback.
   route("auth/*", "routes/auth.splat.tsx"),
+
+  /*
+   * Web accounts.
+   *
+   * Deliberately outside `auth/`, which is Shopify's namespace here: the splat
+   * above would swallow anything added under it, and a merchant-facing sign-in
+   * silently becoming a Shopify OAuth attempt is a hard failure to read.
+   */
+  route("login", "routes/login.tsx"),
+  route("signup", "routes/signup.tsx"),
+  route("logout", "routes/logout.tsx"),
+  // Email entry, code entry and the confirmation are one path in three phases,
+  // so the code goes in on the screen that announced it.
+  route("forgot", "routes/forgot.tsx"),
+  // Claims the one-time post-signup splash, then forwards.
+  route("welcome", "routes/welcome.tsx"),
+  // Where an account with no store connected is sent.
+  route("connect", "routes/connect.tsx"),
+  route("oauth/:provider", "routes/oauth.$provider.tsx"),
+  route("oauth/:provider/callback", "routes/oauth.$provider.callback.tsx"),
 
   route("app", "routes/app.layout.tsx", [
     index("routes/app.overview.tsx"),

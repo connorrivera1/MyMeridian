@@ -4287,3 +4287,299 @@ td.muted .money.neg,
   margin-top: auto;
   align-self: flex-start;
 }
+
+/* --------------------------------------------------------------- accounts
+   Sign-in, sign-up and store connection. These are the only screens a
+   merchant sees before there is a shop to render, so they reuse the auth
+   panel rather than the dashboard shell. */
+
+.account-panel {
+  padding: 40px 36px 34px;
+  text-align: left;
+}
+
+.account-mark {
+  display: flex;
+  justify-content: center;
+  color: var(--ink-primary);
+}
+
+.account-panel .auth-word {
+  text-align: center;
+  font-size: 26px;
+  margin: 18px 0 6px;
+}
+
+.account-panel .auth-tag {
+  text-align: center;
+  margin-bottom: 22px;
+}
+
+.account-providers {
+  display: grid;
+  gap: 8px;
+}
+
+.account-provider {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--ink-primary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.16s var(--ease-out), border-color 0.16s var(--ease-out);
+}
+
+.account-provider:hover {
+  background: rgba(var(--ink-rgb), 0.06);
+  border-color: rgba(var(--ink-rgb), 0.28);
+}
+
+/* A rule with the word sitting in a gap in it, rather than a word floating
+   over an unbroken line. */
+.account-divider {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0;
+  color: var(--ink-secondary);
+  font-size: 12px;
+}
+
+.account-divider::before,
+.account-divider::after {
+  content: "";
+  height: 1px;
+  background: var(--border);
+}
+
+.account-form {
+  display: grid;
+  gap: 14px;
+}
+
+.account-field {
+  display: grid;
+  gap: 6px;
+}
+
+.account-label {
+  font-size: 12.5px;
+  font-weight: 560;
+  color: var(--ink-secondary);
+}
+
+.account-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(var(--ink-rgb), 0.04);
+  color: var(--ink-primary);
+  font: inherit;
+  font-size: 14px;
+}
+
+.account-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+
+.account-hint {
+  font-size: 11.5px;
+  color: var(--ink-secondary);
+}
+
+.account-submit {
+  margin-top: 4px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: none;
+  background: var(--ink-primary);
+  color: var(--glass);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.account-submit:hover { opacity: 0.9; }
+
+/* Carries its own icon-free colour, because the panel is glass and a tinted
+   background block would read as a second card. */
+.account-error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--neg, #d9534f);
+}
+
+.account-footer {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.account-alt,
+.account-fineprint {
+  margin: 0;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--ink-secondary);
+  line-height: 1.6;
+}
+
+.account-fineprint { margin-top: 18px; }
+
+/* ---------------------------------------------------------------- welcome
+   Shown once, immediately after an account is created. Same sky, same mark
+   and the same entrance timings as the opening splash, stacked vertically
+   because this one is a sentence rather than a wordmark. */
+
+.welcome-splash { z-index: 1000; }
+
+.welcome-inner {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+  padding: 0 24px;
+  text-align: center;
+}
+
+.welcome-word {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0 0.32em;
+  margin: 0;
+  font-size: clamp(28px, 5.2vw, 52px);
+  font-weight: 340;
+  letter-spacing: -0.028em;
+  color: var(--ink-primary);
+  line-height: 1.1;
+}
+
+/* Word at a time rather than letter at a time: "Welcome to MyMeridian" is
+   21 characters, and the per-letter cadence that suits a wordmark would run
+   most of a second before the sentence was readable. */
+.welcome-word span { opacity: 0; }
+
+.welcome-sub {
+  margin: 0;
+  max-width: 30ch;
+  font-size: clamp(13px, 1.6vw, 15px);
+  font-weight: 440;
+  color: var(--ink-secondary);
+  line-height: 1.6;
+  opacity: 0;
+}
+
+.welcome-skip {
+  margin-top: 6px;
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--ink-secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.welcome-skip:hover { color: var(--ink-primary); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .welcome-word span { animation: splash-letter-in 0.42s var(--ease-out) both; }
+  .welcome-sub { animation: splash-letter-in 0.5s var(--ease-out) 0.78s both; }
+  .welcome-skip { animation: splash-letter-in 0.5s var(--ease-out) 1.15s both; }
+}
+
+/* Without motion the three still have to become visible; the animation above
+   is what was setting opacity, so they need it back explicitly. */
+@media (prefers-reduced-motion: reduce) {
+  .welcome-word span,
+  .welcome-sub,
+  .welcome-skip { opacity: 1; }
+}
+
+/* ------------------------------------------------------- password reset
+   The code screen borrows the welcome splash rather than the account panel:
+   it is the app speaking directly, and the form sits on that screen so the
+   code is typed where it was announced. */
+
+.reset-inner {
+  gap: 14px;
+  width: min(420px, 92vw);
+}
+
+/* Three short lines rather than one long one. The headline is a sentence,
+   and at splash size a single line of it wraps arbitrarily against the
+   viewport instead of where the meaning breaks. */
+.reset-word {
+  flex-direction: column;
+  gap: 0;
+  font-size: clamp(22px, 3.4vw, 34px);
+  line-height: 1.22;
+}
+
+.reset-form {
+  width: 100%;
+  margin-top: 6px;
+  text-align: left;
+  opacity: 0;
+}
+
+/* Wide tracking and a tabular face: six digits read as six separate things
+   to check against the email, not as one number. */
+.reset-code {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.34em;
+  text-align: center;
+  font-size: 19px;
+  padding-block: 12px;
+}
+
+.reset-code::placeholder {
+  letter-spacing: 0.34em;
+  opacity: 0.35;
+}
+
+.reset-restart {
+  opacity: 0;
+}
+
+.account-forgot {
+  margin: -4px 0 0;
+  text-align: right;
+  font-size: 12.5px;
+}
+
+.account-forgot a {
+  color: var(--ink-secondary);
+}
+
+.account-forgot a:hover {
+  color: var(--ink-primary);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .reset-form { animation: splash-letter-in 0.5s var(--ease-out) 0.8s both; }
+  .reset-restart { animation: splash-letter-in 0.5s var(--ease-out) 1s both; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reset-form,
+  .reset-restart { opacity: 1; }
+}

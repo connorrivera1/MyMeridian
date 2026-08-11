@@ -194,7 +194,16 @@ document.documentElement.classList.add("js");
           </span>
         </span>
       </button>
-      <a class="pill pill-small" href="#pricing">Start free</a>
+      <!--
+        Both entry points to the web dashboard.
+
+        Root-relative on purpose: the app and this page are expected to be one
+        origin in production, so /login resolves to the app's own sign-in. If
+        the marketing site ends up on a separate host these two hrefs (and the
+        hero CTA below) are the three places that need the absolute app URL.
+      -->
+      <a class="header-signin" href="/login">Log in</a>
+      <a class="pill pill-small" href="/signup">Sign up</a>
     </nav>
   </div>
   <div class="header-progress" aria-hidden="true"><i></i></div>
@@ -225,7 +234,7 @@ document.documentElement.classList.add("js");
           still on screen. Nothing is guessed into a figure that looks certain.
         </p>
         <div class="hero-actions">
-          <a class="pill pill-lg" href="https://apps.shopify.com/meridian-profit">
+          <a class="pill pill-lg" href="/signup">
             Start free — 14-day trial
             <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h9m0 0L8.5 4.5M12 8l-3.5 3.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </a>

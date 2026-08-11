@@ -1192,6 +1192,7 @@ model User {
   sessions           WebSession[]
   memberships        ShopMembership[]
   verificationTokens EmailVerificationToken[]
+  passwordResetCodes PasswordResetCode[]
 
   @@index([email])
 }
@@ -1202,14 +1203,14 @@ model OAuthAccount {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  provider AuthProvider
+  provider       AuthProvider
   /// The provider's stable subject claim (`sub`), never the email. Apple lets
   /// a user hide their address and rotates the relay, and Google addresses can
   /// be reassigned within a workspace; keying on email would silently merge or
   /// orphan accounts.
   providerUserId String
   /// Whatever address the provider released, kept for display only.
-  providerEmail String?
+  providerEmail  String?
 
   createdAt DateTime @default(now())
 
@@ -1231,7 +1232,7 @@ model WebSession {
   createdAt  DateTime @default(now())
   lastSeenAt DateTime @default(now())
   /// Recorded so a user can recognise a session when revoking it.
-  userAgent String?
+  userAgent  String?
 
   revokedAt DateTime?
 
@@ -1274,6 +1275,34 @@ model EmailVerificationToken {
   createdAt  DateTime  @default(now())
 
   @@index([userId])
+}
+
+/// A one-time code for resetting a forgotten password.
+///
+/// Hashed like every other token here, but deliberately NOT unique: a six-digit
+/// code has only a million values, so two users can hold the same one at the
+/// same time, and a unique index would make the second issue fail. That is also
+/// why verification looks the code up by user and never by code alone —
+/// searching all users for a matching code would let someone submit six digits
+/// without knowing whose account they were opening.
+model PasswordResetCode {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  codeHash String
+
+  /// Wrong guesses so far. A million values is brute-forceable in seconds
+  /// against an endpoint that answers indefinitely, so the code dies after a
+  /// handful of attempts and the person asks for a new one.
+  attempts Int @default(0)
+
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 // ---------------------------------------------------------------------------

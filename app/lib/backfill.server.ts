@@ -21,6 +21,8 @@ import {
   syncFulfillmentFromShopify,
   syncOrderFromShopify,
 } from "~/lib/sync.server";
+import { seedOpeningCostBasis } from "~/lib/cost-history.server";
+import { toMicros } from "~/engine/money";
 import { generatePricingRecommendations } from "~/lib/pricing.server";
 import { withProductLock } from "~/lib/product-lock.server";
 import { recomputeShopProfitability } from "~/lib/recompute.server";
@@ -1106,6 +1108,22 @@ export async function importProducts(
               inventoryQty: variant.inventoryQuantity ?? 0,
             },
           });
+
+          // Give the timeline a floor while the catalog is being read. Without
+          // it a brand-new install has current costs but no cost history, and
+          // the merchant's first backdated correction would have nothing to
+          // supersede. Idempotent: only an empty timeline is seeded.
+          if (includeCost && unitCost) {
+            await seedOpeningCostBasis(
+              {
+                shopId,
+                variantId: record.id,
+                unitCostMicros: toMicros(unitCost),
+                source: CostSource.SHOPIFY,
+              },
+              tx,
+            );
+          }
 
           const needsPriceFact =
             !existingVariant ||

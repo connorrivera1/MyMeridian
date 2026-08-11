@@ -1,4 +1,5 @@
 import { purgeExpiredDataRequests } from "~/lib/data-request.server";
+import { purgeFinishedRecalcJobs } from "~/lib/recalc-queue.server";
 
 /**
  * The retention boundary is measured in days, but an hourly sweep keeps the
@@ -37,6 +38,19 @@ function beginSweep(): void {
       // stop future sweeps. The next interval retries the same deterministic
       // expiresAt predicate.
       console.error("[privacy] expired customer data export purge failed", error);
+    })
+    // Chained rather than combined: a failure to prune spent job receipts must
+    // never be able to stop a privacy deletion, and the privacy deletion is the
+    // one with a legal deadline, so it goes first and its failure is caught
+    // before this runs at all.
+    .then(() => purgeFinishedRecalcJobs())
+    .then((count) => {
+      if (count > 0) {
+        console.info(`[recalc] purged ${count} finished recalculation job(s)`);
+      }
+    })
+    .catch((error: unknown) => {
+      console.error("[recalc] finished job purge failed", error);
     })
     .finally(() => {
       if (state.inFlight === work) state.inFlight = undefined;

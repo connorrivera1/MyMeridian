@@ -21,6 +21,7 @@ export default [
     route("acquisition", "routes/app.acquisition.tsx"),
     route("pricing", "routes/app.pricing.tsx"),
     route("fulfilment", "routes/app.fulfilment.tsx"),
+    route("costs", "routes/app.costs.tsx"),
     route("settings", "routes/app.settings.tsx"),
     // A merchant's privacy obligations survive subscription cancellation, so
     // authenticated export handoff remains reachable without an active plan.

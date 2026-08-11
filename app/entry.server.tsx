@@ -8,6 +8,8 @@ import { ServerRouter, type EntryContext } from "react-router";
 import { addDocumentResponseHeaders } from "./shopify.server";
 import { validateCustomerErasureConfiguration } from "./lib/customer-erasure.server";
 import { startDataRetentionScheduler } from "./lib/data-retention.server";
+import { registerRecalcHandlers } from "./lib/recalc-handlers.server";
+import { startRecalcWorker } from "./lib/recalc-queue.server";
 import { startWebhookDeliveryWorker } from "./lib/webhooks.server";
 
 // This module is loaded with the server process, not when a merchant opens
@@ -19,6 +21,10 @@ import { startWebhookDeliveryWorker } from "./lib/webhooks.server";
 validateCustomerErasureConfiguration();
 startDataRetentionScheduler();
 startWebhookDeliveryWorker();
+// Handlers first: a worker that starts before its registry is populated would
+// lease a queued restatement and immediately fail it as unhandled.
+registerRecalcHandlers();
+startRecalcWorker();
 
 const ABORT_DELAY = 5000;
 

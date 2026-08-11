@@ -49,6 +49,7 @@ let shopUpdates: Record<string, unknown>[];
 
 const variantUpserts: Record<string, unknown>[] = [];
 const priceChangesCreated: Record<string, unknown>[] = [];
+const openingCostBases: Record<string, unknown>[] = [];
 const lineItemsCreated: Record<string, unknown>[] = [];
 let storedOrder: Record<string, any> | null = null;
 let storedFulfillment: Record<string, any> | null = null;
@@ -113,6 +114,15 @@ const prismaMock = {
       return { id: "variant_row" };
     }),
     findMany: vi.fn(async () => storedVariants),
+  },
+  // The import seeds each variant's opening cost basis inside the same product
+  // lock that writes the catalog, so the transaction mock has to model it.
+  variantCost: {
+    findFirst: vi.fn(async () => null),
+    create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+      openingCostBases.push(data);
+      return { id: "variant_cost_row", ...data };
+    }),
   },
   priceChange: {
     findFirst: vi.fn(async () => null),
@@ -419,6 +429,7 @@ beforeEach(() => {
   shopUpdates = [];
   variantUpserts.length = 0;
   priceChangesCreated.length = 0;
+  openingCostBases.length = 0;
   lineItemsCreated.length = 0;
   storedOrder = null;
   storedFulfillment = null;
@@ -865,6 +876,73 @@ describe("runBackfill: what the granted scopes change", () => {
       unitCost: null,
       costSource: CostSource.ESTIMATED,
     });
+  });
+
+  it("gives each measured cost an opening basis so history has a floor", async () => {
+    const admin = scriptedAdmin({
+      products: [
+        productPage(
+          [
+            {
+              id: "gid://shopify/Product/1",
+              title: "Jacket",
+              handle: "jacket",
+              status: "ACTIVE",
+              productType: null,
+              vendor: null,
+              updatedAt: "2026-08-05T18:00:00.000Z",
+              variants: {
+                pageInfo: { hasNextPage: false, endCursor: null },
+                nodes: [variantNode("11", "48.00"), variantNode("12", null)],
+              },
+            },
+          ],
+          null,
+        ),
+      ],
+    });
+
+    await runBackfill("shop_1", admin);
+
+    // Dated at the epoch, matching what the cost-history migration wrote for
+    // stores that installed before it existed. Without this a brand-new store
+    // has current costs and no timeline, so the merchant's first backdated
+    // correction has nothing to supersede.
+    expect(openingCostBases).toHaveLength(1);
+    expect(openingCostBases[0]).toMatchObject({ source: CostSource.SHOPIFY });
+    // Prisma reads Decimal(12,4) 48.0000 back as Decimal("48"), so compare the
+    // value rather than its canonical text.
+    expect(Number(openingCostBases[0]!.unitCost)).toBe(48);
+    expect((openingCostBases[0]!.effectiveAt as Date).getTime()).toBe(0);
+  });
+
+  it("invents no opening basis for a variant nobody has costed", async () => {
+    const admin = scriptedAdmin({
+      products: [
+        productPage(
+          [
+            {
+              id: "gid://shopify/Product/1",
+              title: "Jacket",
+              handle: "jacket",
+              status: "ACTIVE",
+              productType: null,
+              vendor: null,
+              updatedAt: "2026-08-05T18:00:00.000Z",
+              variants: {
+                pageInfo: { hasNextPage: false, endCursor: null },
+                nodes: [variantNode("12", null)],
+              },
+            },
+          ],
+          null,
+        ),
+      ],
+    });
+
+    await runBackfill("shop_1", admin);
+
+    expect(openingCostBases).toEqual([]);
   });
 });
 

@@ -1,9 +1,14 @@
 import { Channel, CostSource, Prisma } from "@prisma/client";
 
 import prisma from "~/db.server";
+import {
+  loadEffectiveCosts,
+  observeVariantCost,
+} from "~/lib/cost-history.server";
 import { customerErasureStateInTransaction } from "~/lib/customer-erasure.server";
 import { withOrderLock } from "~/lib/order-lock.server";
 import { withProductLock } from "~/lib/product-lock.server";
+import { toMicros } from "~/engine/money";
 
 /**
  * Translation layer between Shopify's webhook payloads and Meridian's schema.
@@ -282,10 +287,25 @@ export async function syncOrderFromShopify(shopId: string, payload: Payload) {
       variants.map((variant) => [variant.shopifyId, variant]),
     );
 
+    // COGS is frozen from the cost timeline as it stood when the order was
+    // *placed*, not as it stands now. For a live webhook those are the same
+    // instant and nothing changes. For the historical import they are not, and
+    // stamping today's supplier cost onto a two-year-old order — which is what
+    // this line did before cost history existed — silently rewrote the entire
+    // backfill to today's margins.
+    const effectiveCosts = await loadEffectiveCosts(
+      variants.map((variant) => variant.id),
+      processedAt,
+      tx,
+    );
+
     const rows = lineItems.map((item) => {
       const variant = item.variant_id
         ? variantByGid.get(gid("ProductVariant", item.variant_id))
         : undefined;
+      // Falling back to the catalog's current cost keeps a variant with no
+      // timeline behaving exactly as it did before this change.
+      const effective = variant ? effectiveCosts.get(variant.id) : undefined;
       const lineDiscount = (item.discount_allocations ?? []).reduce(
         (sum: number, allocation: Payload) =>
           sum + Number(allocation.amount ?? 0),
@@ -302,7 +322,11 @@ export async function syncOrderFromShopify(shopId: string, payload: Payload) {
         quantity: Number(item.quantity ?? 0),
         unitPrice: decimal(item.price),
         discount: decimal(lineDiscount.toFixed(2)),
-        unitCost: decimal(variant?.unitCost ?? "0", "0.0000"),
+        unitCost: decimal(
+          effective?.unitCost ?? variant?.unitCost ?? "0",
+          "0.0000",
+        ),
+        costEffectiveAt: effective?.effectiveAt ?? null,
         refundedQty: refundedByLineItem.get(String(item.id)) ?? 0,
       };
     });
@@ -453,6 +477,46 @@ export async function reconcileFirstOrdersForShop(shopId: string) {
   `;
 }
 
+/**
+ * Append an observed cost to the variant's timeline, inside the product lock.
+ *
+ * `effectiveAt` is Shopify's own inventory-item mutation time, not the moment
+ * the delivery arrived. That is what makes redelivery idempotent — the same
+ * change carries the same instant and upserts onto one row — and it is also
+ * simply true: the cost changed when the merchant changed it, not when the
+ * webhook happened to land.
+ *
+ * A cost Shopify reports as absent withdraws nothing. The merchant may have
+ * supplied that cost themselves, and an unauthorised Admin field coming back
+ * empty is not evidence the cost stopped existing.
+ */
+async function recordObservedCost(
+  tx: Prisma.TransactionClient,
+  shopId: string,
+  variantId: string,
+  variant: Payload,
+  context: {
+    unitCostKnown: boolean;
+    inventoryItemUpdatedAt: Date | null;
+    observedAt: Date;
+  },
+): Promise<void> {
+  if (!context.unitCostKnown) return;
+  if (variant.unit_cost === null || variant.unit_cost === undefined) return;
+
+  await observeVariantCost(
+    {
+      shopId,
+      variantId,
+      unitCostMicros: toMicros(decimal(variant.unit_cost, "0.0000")),
+      effectiveAt: context.inventoryItemUpdatedAt ?? context.observedAt,
+      source: CostSource.SHOPIFY,
+      note: null,
+    },
+    tx,
+  );
+}
+
 export async function syncProductFromShopify(shopId: string, payload: Payload) {
   const shopifyId = gid("Product", payload.id);
   const observedAt = new Date();
@@ -569,6 +633,11 @@ export async function syncProductFromShopify(shopId: string, payload: Payload) {
             where: { id: existing.id },
             data: inventoryData,
           });
+          await recordObservedCost(tx, shopId, existing.id, variant, {
+            unitCostKnown,
+            inventoryItemUpdatedAt,
+            observedAt,
+          });
         }
         if (!existing || !sourceUpdatedAt) continue;
         const duplicate = await tx.priceChange.findFirst({
@@ -623,6 +692,14 @@ export async function syncProductFromShopify(shopId: string, payload: Payload) {
           ...inventoryData,
         },
       });
+
+      if (publishesInventoryState) {
+        await recordObservedCost(tx, shopId, record.id, variant, {
+          unitCostKnown,
+          inventoryItemUpdatedAt,
+          observedAt,
+        });
+      }
 
       // Current price and its irreconstructible history commit together. A
       // failed insert rolls the price back, so durable replay still observes

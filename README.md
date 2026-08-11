@@ -223,7 +223,7 @@ app/
   data/       Prisma -> engine input translation, and the assembled picture.
   lib/        Auth boundary, webhooks, sync, recompute, crypto.
   design/     Tokens, primitives, hand-built SVG charts.
-  routes/     Nine app screens and eleven webhook endpoints.
+  routes/     Ten app screens and eleven webhook endpoints.
 ```
 
 **The engine is the product.** `app/engine/` holds pure functions with no
@@ -343,6 +343,76 @@ the background because Shopify's OAuth redirect cannot wait for store history.
 A five-minute lease is renewed every minute; owner-fenced progress and terminal
 writes, plus a saved cursor, make interruption visible and safely resumable.
 There is still no external queue that restarts an abandoned run automatically.
+
+### Cost history and restatement
+
+A variant's cost is a step function over time (`VariantCost`), not a column.
+`Variant.unitCost` is still there — every catalog read wants today's number and
+none of them want a timeline — but it is the denormalised head of the history
+rather than the truth.
+
+That distinction is what makes a wrong cost fixable. Snapshotting COGS onto the
+line item preserved March correctly, and also made March unfixable: a merchant
+who imported a bad cost, or who only learned the freight component a month
+later, had no way to correct the past. Now a correction is a row with a past
+`effectiveAt`, which is a different act from raising a price today.
+
+**Saving a cost changes no reported number.** Restating is separate, explicit and
+audited (`app/lib/restatement.server.ts`), and it happens in a fixed order:
+
+1. **Freeze.** Every affected merchant-local month with no `PeriodSnapshot` gets
+   one, holding the figures as they were reported. Those numbers never change
+   again.
+2. **Refuse.** A month the merchant has CLOSED does not move unless the request
+   names closed periods explicitly — and the refusal happens before any write,
+   so a five-month window cannot half-apply.
+3. **Rewrite.** Line-item COGS is re-derived from the cost timeline at each
+   order's own `processedAt`, never from today's cost, in one `UPDATE` driven by
+   a lateral over `VariantCost`.
+4. **Record.** Every month that moved gets an append-only `PeriodRestatement`
+   saying what it said before, what it says now, and why.
+
+The baseline for step 4 is measured after a preliminary recompute, not from the
+live ledger. Monthly overhead is prorated across the days a period covers, so the
+in-progress month's allocation drifts daily whether or not a cost changed —
+measured on the seeded store, a $180 COGS correction otherwise reported an
+$8,002 fall in net profit, $7,822 of which was overhead catching up. A log that
+attributes unrelated drift to the merchant's correction is worse than no log.
+
+### Bundle deconstruction
+
+A 3-pack has no cost of its own; it costs three of something else. `BundleComponent`
+holds that graph, and the rollup resolves each bundle's **timeline** — not a
+number — because a merchant restating March needs the pack's March cost, which no
+snapshot of today's components can give them.
+
+Nested packs resolve depth-first with an explicit in-progress set, so a mapping
+that makes a bundle contain itself is reported as a cycle rather than overflowing
+the stack. Unpriced components, absurd nesting and non-positive quantities are
+all reported rather than resolved to a plausible-looking number — treating an
+unpriced component as free understates COGS, which is the one direction of error
+a profit tool must not make quietly.
+
+Detection reads the merchant's own naming (`WIDGET-BLU-3PK` beside `WIDGET-BLU`,
+or "3-Pack" beside "Single" within one product) and writes **proposals**.
+`confirmedAt` is null until a merchant agrees, and the rollup ignores unconfirmed
+edges: inferring from a SKU suffix that a product's COGS should triple, and then
+silently doing it, is exactly the unasked-for accounting that makes a profit
+number untrustworthy.
+
+### The recalculation queue
+
+Restatements and bundle rollups are `RecalcJob` rows, not awaits in a form
+action. Restating a quarter rewrites line items across months and then recomputes
+the shop — minutes on a large store, and an in-process promise would leave half a
+quarter rewritten if a deploy landed mid-run.
+
+The claim/lease/backoff shape is lifted from the webhook outbox rather than
+invented again: same fencing token, same compare-and-set on the lease, same
+exponential retry, so there is one durable-work pattern in this codebase to
+reason about instead of two that drift apart. Finished rows are pruned after 30
+days by the existing retention sweep; `PeriodRestatement.jobId` is `SetNull`
+precisely so pruning a spent receipt cannot take the accounting trail with it.
 
 ## Shopify integration
 

@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Privacy Policy — Meridian</title>
+    <title>Privacy Policy — MyMeridian</title>
     <meta
       name="description"
-      content="What Meridian reads from a Shopify store, what it stores, how long it keeps it, and how access and erasure requests are answered."
+      content="What MyMeridian reads from a Shopify store, what it stores, how long it keeps it, and how access and erasure requests are answered."
     />
     <meta name="robots" content="index, follow" />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
@@ -25,7 +25,7 @@ document.documentElement.classList.add("js");
   <body>
     <header class="header">
       <div class="header-inner">
-        <a class="brand" href="index.html" aria-label="Meridian">
+        <a class="brand" href="index.html" aria-label="MyMeridian">
           <svg
             width="24"
             height="24"
@@ -51,7 +51,7 @@ document.documentElement.classList.add("js");
               stroke-linecap="round"
             />
           </svg>
-          Meridian
+          MyMeridian
         </a>
         <nav class="header-nav">
           <a href="index.html">Home</a>
@@ -88,37 +88,37 @@ document.documentElement.classList.add("js");
         </p>
 
         <p class="lede">
-          Meridian is a pre-launch profitability dashboard for Shopify
+          MyMeridian is a pre-launch profitability dashboard for Shopify
           merchants. This draft describes the data handling implemented in the
           current code. It is not the final public policy and must not be used
-          for a Shopify submission until Meridian&rsquo;s publisher, domain and
+          for a Shopify submission until MyMeridian&rsquo;s publisher, domain and
           support contact are confirmed.
         </p>
 
         <div class="note">
-          <strong>Roles.</strong> The merchant who installs Meridian is the
+          <strong>Roles.</strong> The merchant who installs MyMeridian is the
           <strong>controller</strong> of their store&rsquo;s data and of any
-          shopper data within it. Meridian&rsquo;s future publisher will operate
+          shopper data within it. MyMeridian&rsquo;s future publisher will operate
           the app as a <strong>processor</strong> acting on that
           merchant&rsquo;s instructions. Shoppers who want their data accessed or
-          erased should contact the store they bought from; Meridian answers
+          erased should contact the store they bought from; MyMeridian answers
           those requests through Shopify on the merchant&rsquo;s behalf, as
           described below.
         </div>
 
         <h2>Publisher and contact</h2>
         <div class="note">
-          Meridian&rsquo;s publishing entity, domain and monitored support
+          MyMeridian&rsquo;s publishing entity, domain and monitored support
           inbox have not been selected. They will be added here before this
           policy becomes effective or the app is submitted to Shopify.
         </div>
 
-        <h2>What Meridian reads from a store</h2>
+        <h2>What MyMeridian reads from a store</h2>
         <p>
-          Meridian requests <strong>read-only</strong> Shopify access. It holds
+          MyMeridian requests <strong>read-only</strong> Shopify access. It holds
           no write permission of any kind and cannot change a price, an order, a
           product or a customer record. Accepted pricing recommendations are
-          recorded inside Meridian only; applying one remains a manual action
+          recorded inside MyMeridian only; applying one remains a manual action
           the merchant takes in Shopify.
         </p>
         <p>The scopes requested are:</p>
@@ -149,7 +149,7 @@ document.documentElement.classList.add("js");
 
         <h2>Shopper personal data</h2>
         <p>
-          Shopper personal data does reach Meridian, through
+          Shopper personal data does reach MyMeridian, through
           <code>read_orders</code>. Exactly two fields are selected from
           Shopify&rsquo;s customer object and stored:
         </p>
@@ -170,14 +170,14 @@ document.documentElement.classList.add("js");
           No other field from that customer object is kept. Shopify may include
           more fields in an order webhook, but the authenticated payload is
           projected onto the exact fields listed here before anything is
-          written. Meridian does not retain shopper <strong>names</strong>,
+          written. MyMeridian does not retain shopper <strong>names</strong>,
           <strong>phone numbers</strong>,
           <strong>billing or shipping addresses</strong>,
           <strong>IP addresses</strong>, payment card details or passwords.
         </p>
         <p>
           Because a shopper email address is among the fields stored,
-          Meridian&rsquo;s access to orders falls under Shopify&rsquo;s
+          MyMeridian&rsquo;s access to orders falls under Shopify&rsquo;s
           protected customer data requirements at the level covering customer
           email, and is subject to the approval and data-handling undertakings
           that go with it.
@@ -205,7 +205,7 @@ document.documentElement.classList.add("js");
         <p>
           Cost assumptions shown in <em>Costs &amp; connections</em> — payment
           processing rates, shipping and pick-and-pack estimates, and fixed
-          monthly overhead. Meridian supplies visible install defaults until the
+          monthly overhead. MyMeridian supplies visible install defaults until the
           merchant reviews or replaces them; reviewing a fallback does not make
           it measured.
           <strong
@@ -239,9 +239,9 @@ document.documentElement.classList.add("js");
 
         <h2>Who else sees it</h2>
         <p>
-          Meridian does <strong>not</strong> sell store data, does not share it
+          MyMeridian does <strong>not</strong> sell store data, does not share it
           with advertisers, and does not use it to train machine-learning
-          models. Meridian is currently pre-launch. Its deployment plan uses
+          models. MyMeridian is currently pre-launch. Its deployment plan uses
           Fly.io for application hosting and Fly Managed Postgres for its
           database; data will also be disclosed to Shopify as needed to provide
           the app. This policy will be updated before launch if either provider
@@ -268,7 +268,7 @@ document.documentElement.classList.add("js");
 
         <h2>Access and erasure requests</h2>
         <p>
-          Meridian implements all three of Shopify&rsquo;s mandatory compliance
+          MyMeridian implements all three of Shopify&rsquo;s mandatory compliance
           webhooks and acts on each automatically:
         </p>
         <ul>
@@ -333,14 +333,14 @@ document.documentElement.classList.add("js");
 
         <h2>Contact</h2>
         <p>
-          Not available yet — Meridian is pre-launch and this policy is a draft.
+          Not available yet — MyMeridian is pre-launch and this policy is a draft.
         </p>
       </div>
     </main>
 
     <footer>
       <div class="foot-inner">
-        <span>&copy; 2026 Meridian</span>
+        <span>&copy; 2026 MyMeridian</span>
         <nav class="foot-nav">
           <a href="index.html">Home</a>
           <a href="privacy.html">Privacy</a>

@@ -34,7 +34,7 @@ export default function Home() {
         <div style={{ display: "flex", justifyContent: "center" }}>
           <BrandMark size={116} orbit />
         </div>
-        <h1 className="auth-word">Meridian</h1>
+        <h1 className="auth-word">MyMeridian</h1>
         <p className="auth-tag">
           Qualified profit for Shopify stores — revenue against recorded and
           modeled costs, with missing inputs and unavailable ad spend called
@@ -42,7 +42,7 @@ export default function Home() {
         </p>
         <div className="banner" style={{ textAlign: "left" }}>
           <div>
-            Install Meridian from the Shopify App Store, or open it from your
+            Install MyMeridian from the Shopify App Store, or open it from your
             store&rsquo;s admin. To explore it locally with seeded data, run{" "}
             <code>npm run db:seed</code> with <code>MERIDIAN_DEMO_MODE=true</code>.
           </div>

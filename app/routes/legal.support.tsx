@@ -68,7 +68,7 @@ export default function Support() {
           <strong>A new product shows no cost.</strong> Set{" "}
           <em>Cost per item</em> on the variant in Shopify. Inventory updates
           keep the catalog current, and each new order snapshots the cost
-          available when Meridian ingests it; an unknown historical cost is
+          available when MyMeridian ingests it; an unknown historical cost is
           never invented.
         </li>
       </ul>

@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { formatMoney, formatPercent, type Cents } from "~/engine/money";
+import { APP_NAME } from "~/lib/brand";
 
 /* ------------------------------------------------------------- brand mark */
 
@@ -189,8 +190,16 @@ export function AnimatedInt({ value }: { value: number }) {
 
 /* --------------------------------------------------------------- splash */
 
-/** Total sequence length; must stay in step with the CSS delays. */
-const SPLASH_MS = 1240;
+/**
+ * Total sequence length; must stay in step with the CSS delays.
+ *
+ * The last letter of a ten-letter wordmark starts at 0.682s and takes 0.3s, so
+ * the word completes at ~0.98s. 1320ms leaves the same ~334ms of finished
+ * wordmark on screen that the eight-letter "Meridian" had at 1240ms — the pause
+ * after the word lands is what the sequence reads as, so it is held constant
+ * rather than absorbed by the rename.
+ */
+const SPLASH_MS = 1320;
 const SPLASH_FADE_MS = 260;
 
 /**
@@ -233,14 +242,14 @@ export function Splash() {
     <div
       className={leaving ? "splash out" : "splash"}
       role="status"
-      aria-label="Meridian"
+      aria-label={APP_NAME}
     >
       <div className="splash-inner">
         <div className="splash-globe">
           <BrandMark size={112} spin />
         </div>
         <div className="splash-word" aria-hidden="true">
-          {"Meridian".split("").map((letter, i) => (
+          {APP_NAME.split("").map((letter, i) => (
             <span key={`${letter}-${i}`}>{letter}</span>
           ))}
         </div>
@@ -827,7 +836,7 @@ export function LegalPage({
       <header className="legal-head">
         <a className="legal-brand" href="/">
           <BrandMark size={30} />
-          <span>Meridian</span>
+          <span>{APP_NAME}</span>
         </a>
         <h1>{title}</h1>
         {updated && <p className="legal-updated">Last updated {updated}</p>}

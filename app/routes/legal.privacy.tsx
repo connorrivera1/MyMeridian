@@ -149,7 +149,7 @@ export default function Privacy() {
       <p>
         Cost assumptions shown in <em>Costs &amp; connections</em> — payment
         processing rates, shipping and pick-and-pack estimates, and fixed
-        monthly overhead. Meridian supplies visible install defaults until the
+        monthly overhead. MyMeridian supplies visible install defaults until the
         merchant reviews or replaces them; reviewing a fallback does not turn it
         into a measured cost. This release does not connect to an advertising
         account, collect an advertising-platform access token, or import ad

@@ -310,7 +310,7 @@ export default function AppLayout() {
         <div className="brand">
           <BrandMark />
           <div style={{ minWidth: 0 }}>
-            <div className="brand-name">Meridian</div>
+            <div className="brand-name">MyMeridian</div>
             <div className="brand-shop" title={shopDomain}>
               {shopName}
             </div>

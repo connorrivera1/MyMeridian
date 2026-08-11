@@ -83,7 +83,7 @@ export default function Fulfilment() {
         planName={data.locked.name}
         price={data.locked.price}
       >
-        Meridian measures the throughput your team has actually demonstrated,
+        MyMeridian measures the throughput your team has actually demonstrated,
         projects the next fortnight of demand against it, and tells you which
         days will miss your shipping promise before the backlog forms.
       </UpgradeNotice>
@@ -94,7 +94,7 @@ export default function Fulfilment() {
     return (
       <Card title="Fulfilment capacity">
         <Empty>
-          No fulfilment history yet. Once orders start shipping, Meridian learns
+          No fulfilment history yet. Once orders start shipping, MyMeridian learns
           your warehouse&rsquo;s real throughput and warns you before it falls behind.
         </Empty>
       </Card>

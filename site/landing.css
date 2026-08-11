@@ -1,5 +1,5 @@
 /*
- * Meridian public surface.
+ * MyMeridian public surface.
  *
  * One world: a twilight sky that runs from the hero's deep dusk down to the
  * daybreak of the closing frame, with the brand's meridian globe turning
@@ -214,7 +214,7 @@ a {
  * Headings are set in the wordmark's own face.
  *
  * The editorial serif came from the Wix reference and looked handsome, but it
- * shared nothing with "Meridian" in the top-left — so the page read as two
+ * shared nothing with "MyMeridian" in the top-left — so the page read as two
  * brands stacked. The mark is the fixed point: whatever it is set in, the
  * headings are set in too. Space Grotesk it is, and the serif comes out.
  */
@@ -620,6 +620,8 @@ strong[data-count],
 .site-splash-word span:nth-child(6) { animation-delay: 350ms; }
 .site-splash-word span:nth-child(7) { animation-delay: 378ms; }
 .site-splash-word span:nth-child(8) { animation-delay: 406ms; }
+.site-splash-word span:nth-child(9) { animation-delay: 434ms; }
+.site-splash-word span:nth-child(10) { animation-delay: 462ms; }
 
 .mark.spinning .meridian-a { animation: globe-sweep-a 720ms linear both; }
 .mark.spinning .meridian-b { animation: globe-sweep-b 720ms linear both; }
@@ -827,7 +829,7 @@ strong[data-count],
 /* ------------------------------------------------------- hero, centred */
 
 /*
- * The Portfolite hero, in Meridian's palette.
+ * The Portfolite hero, in MyMeridian's palette.
  *
  * One full-bleed atmospheric plate, everything centred over it, and the
  * whole opening carried by type: a status pill, a very large light-weight
@@ -2110,7 +2112,7 @@ strong[data-count],
  * to compare against became unreadable.
  *
  * It is struck through instead — the value is legible, and visibly crossed
- * out, which is what "Meridian will not print this" actually looks like.
+ * out, which is what "MyMeridian will not print this" actually looks like.
  */
 .demo-wrong {
   border-style: dashed;
@@ -2702,7 +2704,7 @@ strong[data-count],
 /*
  * Alternating full-bleed bands, taken straight from the editorial reference.
  *
- * Meridian was one continuous navy corridor from the hero to the footer, and
+ * MyMeridian was one continuous navy corridor from the hero to the footer, and
  * that is most of why it read as dead no matter what went into it: nothing
  * about the page changed as you moved down it. Flipping every other section
  * to paper gives the scroll a pulse, and it costs nothing structurally

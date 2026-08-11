@@ -1,12 +1,12 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-# Working development identity only. A published Shopify app already uses
-# Meridian, so the public name/handle must be chosen as one coordinated brand
-# decision before deployment. Do not rename only this linked config while the
-# logo, landing page, listing copy, screenshots, and Fly slug still use the old
-# identity.
-name = "Meridian"
-handle = "meridian-profit"
+# A published Shopify app already holds "Meridian", and the matching domain is
+# taken, so the public identity is MyMeridian. Decided 2026-08-11; the app UI,
+# landing page and legal pages were renamed in the same change. Still to follow
+# the decision: the logo wordmark asset, listing copy, screenshots, and the Fly
+# slug — do not leave those on the old identity.
+name = "MyMeridian"
+handle = "mymeridian"
 # NOT SUBMITTABLE AS IT STANDS. This is still the Shopify CLI's placeholder.
 # It must become the app's real, stable, public HTTPS origin before submission:
 # Shopify rejects localhost and tunnel URLs here, and it must not contain the

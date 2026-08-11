@@ -48,7 +48,7 @@ export async function action({ request }: ActionFunctionArgs) {
     return {
       error:
         "The seeded demo store has no Shopify billing session, so no plan can " +
-        "be selected here. Install Meridian on a store to subscribe.",
+        "be selected here. Install MyMeridian on a store to subscribe.",
     };
   }
 
@@ -115,7 +115,7 @@ export default function Plan() {
         </Banner>
       ) : (
         <Banner tone="warn">
-          Meridian needs an active plan before it can show your store&rsquo;s
+          MyMeridian needs an active plan before it can show your store&rsquo;s
           figures. Every plan starts with a 14-day free trial, and Shopify does
           not charge anything until the trial ends.
         </Banner>
@@ -230,7 +230,7 @@ export default function Plan() {
 
       <p className="tiny muted" style={{ maxWidth: "72ch", lineHeight: 1.7 }}>
         Billing is handled entirely by Shopify and appears on your Shopify
-        invoice. Meridian never sees a card number. Cancelling the app from your
+        invoice. MyMeridian never sees a card number. Cancelling the app from your
         Shopify admin cancels the subscription with it.
       </p>
     </>

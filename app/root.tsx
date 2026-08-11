@@ -35,7 +35,7 @@ export const links = () => [
 ];
 
 export const meta = () => [
-  { title: "Meridian — qualified profit from available inputs" },
+  { title: "MyMeridian — qualified profit from available inputs" },
   { name: "viewport", content: "width=device-width, initial-scale=1" },
   // Media-scoped so the browser chrome follows the sky. The toggle also
   // rewrites these at runtime, since data-theme can override the OS setting.
@@ -142,7 +142,7 @@ export function ErrorBoundary({ error }: { error: unknown }) {
   return (
     <main style={{ padding: 48, maxWidth: 640, margin: "0 auto" }}>
       <h1 className="auth-word" style={{ fontSize: 22, marginTop: 0, marginBottom: 8 }}>
-        {status ? `${status} — ` : ""}Meridian hit a problem
+        {status ? `${status} — ` : ""}MyMeridian hit a problem
       </h1>
       <p className="secondary" style={{ lineHeight: 1.6 }}>
         {detail || message}

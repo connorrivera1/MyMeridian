@@ -596,7 +596,7 @@ code {
 
 /*
  * Opening sequence: the globe spins up against the dusk sky, then the wordmark
- * reveals a letter at a time, then it clears. Total ~1.24s.
+ * reveals a letter at a time, then it clears. Total ~1.32s.
  *
  * It is rendered on the server too, so the first paint is the splash rather
  * than a flash of dashboard underneath it.
@@ -695,6 +695,8 @@ code {
   .splash-word span:nth-child(6) { animation-delay: 0.53s; }
   .splash-word span:nth-child(7) { animation-delay: 0.568s; }
   .splash-word span:nth-child(8) { animation-delay: 0.606s; }
+  .splash-word span:nth-child(9) { animation-delay: 0.644s; }
+  .splash-word span:nth-child(10) { animation-delay: 0.682s; }
 }
 
 /* Reduced motion still gets the mark and wordmark, just without movement. */

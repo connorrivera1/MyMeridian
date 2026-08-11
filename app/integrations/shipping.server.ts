@@ -639,7 +639,7 @@ export async function ensureShipStationWebhook(
     : randomBytes(32).toString("base64url");
   const target = new URL(`/webhooks/shipstation/${encodeURIComponent(connector.id)}`, base).toString();
   const commonBody = {
-    name: "Meridian carrier cost reconciliation",
+    name: "MyMeridian carrier cost reconciliation",
     url: target,
     headers: [{ key: "X-Meridian-Webhook-Secret", value: secret }],
   };

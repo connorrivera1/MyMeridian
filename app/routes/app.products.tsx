@@ -138,7 +138,7 @@ export function ProductsView({ data }: { data: ProductsData }) {
           {!data.hasCustomerData && (
             <>
               Customer-lifetime effects are intentionally omitted because
-              Meridian does not request the <code>read_customers</code> scope.
+              MyMeridian does not request the <code>read_customers</code> scope.
               Every negative-contribution product is therefore classified only
               by its available order economics.
             </>

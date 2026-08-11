@@ -117,4 +117,4 @@ export const TRIAL_DAYS = 14;
  * billing period, not a hard application stop. */
 export const USAGE_CAP_AMOUNT = 50;
 export const USAGE_TERMS =
-  "$0.05 per order above Meridian's soft monthly order threshold; capped at $50";
+  "$0.05 per order above MyMeridian's soft monthly order threshold; capped at $50";

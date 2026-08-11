@@ -95,7 +95,7 @@ export async function requireShopContext(request: Request): Promise<ShopContext>
 
   if (!demoAvailable) {
     throw new Response(
-      "Meridian is not configured. Set SHOPIFY_API_KEY and SHOPIFY_API_SECRET " +
+      "MyMeridian is not configured. Set SHOPIFY_API_KEY and SHOPIFY_API_SECRET " +
         "to install on a store, or run with MERIDIAN_DEMO_MODE=true outside " +
         "production to explore the seeded demo.",
       { status: 503, statusText: "Not configured" },

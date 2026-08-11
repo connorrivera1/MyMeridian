@@ -333,7 +333,7 @@ export function ProfitBreakdownDrawer({
 
         <div className="profit-drawer-scroll">
           <p className="profit-drawer-intro">
-            This is the exact order-level math used in Meridian&apos;s profit
+            This is the exact order-level math used in MyMeridian&apos;s profit
             totals. Taxes are excluded because they are collected on behalf of
             the tax authority.
           </p>

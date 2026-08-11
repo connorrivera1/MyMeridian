@@ -651,8 +651,21 @@ export function OrdersView({ data }: { data: OrdersData }) {
                       : "Ads"}
                   </th>
                   <th className="right">Overhead</th>
-                  <th className="right">{tableProfitLabel}</th>
-                  <th className="right">{tableMarginLabel}</th>
+                  {/* The qualifier drops to a second line rather than sitting
+                      inline. Spelled out inline it made these two headers 228px
+                      each — 38% of the table for two numeric columns — which
+                      squeezed Channel until "Facebook Ads" wrapped and pushed
+                      every row to three lines. It stays in the header because a
+                      merchant scanning a column should not have to look
+                      elsewhere for what the number excludes. */}
+                  <th className="right">
+                    Profit
+                    <span className="th-sub">{profitBasis}</span>
+                  </th>
+                  <th className="right">
+                    Margin
+                    <span className="th-sub">{profitBasis}</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>

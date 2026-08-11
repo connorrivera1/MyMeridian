@@ -155,7 +155,7 @@ export default function Plan() {
           const current = data.currentPlan === plan.id;
 
           return (
-            <div className="card" key={plan.id}>
+            <div className="card plan-card" key={plan.id}>
               <Stat
                 label={plan.name}
                 value={
@@ -189,10 +189,10 @@ export default function Plan() {
                   </span>
                 }
               />
-              <div style={{ padding: "0 16px 16px" }}>
+              <div className="plan-card-body">
                 <ul
-                  className="tiny secondary"
-                  style={{ margin: "6px 0 14px", paddingLeft: 16, lineHeight: 1.7 }}
+                  className="tiny secondary plan-features"
+                  style={{ paddingLeft: 16, lineHeight: 1.7 }}
                 >
                   {plan.features.map((feature) => (
                     <li key={feature}>{feature}</li>

@@ -4195,3 +4195,95 @@ td.muted .money.neg,
  */
 .empty { padding-block: var(--s-6); }
 .card-body.flush .empty { padding-inline: var(--ledger-gutter); }
+
+/*
+ * A column header's qualifier, on its own line.
+ *
+ * "Profit before paid marketing" spelled out inline made that header the
+ * widest column in the orders table — wider than the figures it labels — and
+ * the two of them together took better than a third of the table. Everything
+ * else then had to give: the channel name wrapped, the order reference wrapped,
+ * and a row that holds one line of data stood three lines tall.
+ *
+ * Dropping the qualifier to a second line keeps the disclosure where it is
+ * read — beside the number, not only in the card hint above — while letting the
+ * column size to its content. Deliberately not uppercase or tracked like the
+ * header above it: it is an aside, and it should read as one.
+ */
+.th-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 9.5px;
+  font-weight: 450;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  color: var(--ink-muted);
+  white-space: normal;
+}
+
+/*
+ * Tile labels reserve two lines, so the figures line up.
+ *
+ * The labels in a row are not the same length — "AVERAGE ORDER VALUE" fits on
+ * one line where "PROFIT PER ORDER BEFORE PAID MARKETING" needs two — and the
+ * tile is a flex column, so a longer label pushed its own number down. Measured
+ * on Profit per order, that put two of the four headline figures 15px lower
+ * than the other two: a row of instruments where nothing sits on a common
+ * baseline, which is most of what reads as "warped".
+ *
+ * Reserving the taller of the two heights fixes it for any label rather than
+ * for the ones that happen to be long today, and it survives a copy change or
+ * a narrower column, which shortening the words would not.
+ */
+.tile-label {
+  /* Exactly two line boxes. `lh` tracks the label's own line-height, so this
+     stays correct if the type scale moves; the em value is the fallback for
+     engines without it. */
+  min-height: 3.1em;
+  min-height: 2lh;
+  display: flex;
+  align-items: flex-start;
+}
+
+/*
+ * The same argument one row down: a tile whose meta runs to two lines must not
+ * drag its neighbours' baselines around either. The meta is pinned to the
+ * bottom of the tile, and the space between figure and meta absorbs the
+ * difference.
+ */
+.tile { justify-content: flex-start; }
+.tile-meta { margin-top: auto; }
+
+/*
+ * Plan cards present one row of actions.
+ *
+ * The three tiers do not have the same number of features — Scale lists two
+ * where Starter lists three — and the card was a plain block, so each call to
+ * action sat wherever its own list happened to end. The grid stretched all
+ * three cards to the same height anyway, so the shortest one simply carried
+ * 42px of dead space under a button that had floated 20px above its
+ * neighbours': three prices, three lists, and no shared line to compare along.
+ *
+ * The body is a column and the last child is pushed to the floor, so the
+ * actions line up however long the feature lists get. Padding comes from the
+ * gutter rather than the hardcoded 16px it replaced, so these cards breathe
+ * with everything else.
+ */
+.plan-card { display: flex; flex-direction: column; }
+
+.plan-card-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding: 0 var(--ledger-gutter) var(--ledger-gutter);
+}
+
+.plan-features { margin: var(--s-2) 0 var(--s-4); }
+
+/* Pushed to the floor, but sized to its own content: a flex column stretches
+   its children, which turned the "Current plan" badge into a full-width bar
+   sitting where the other two cards show a pill. */
+.plan-card-body > :last-child {
+  margin-top: auto;
+  align-self: flex-start;
+}

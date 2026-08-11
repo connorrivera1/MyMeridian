@@ -4583,3 +4583,67 @@ td.muted .money.neg,
   .reset-form,
   .reset-restart { opacity: 1; }
 }
+
+/*
+ * Direct line labels get knocked out of the plot behind them.
+ *
+ * The labels sit inside the plot, right-aligned, a little above each line's
+ * final point — which is correct, and is what lets "Profit before paid
+ * marketing" be written out in full rather than abbreviated to a "PROFIT" this
+ * product will not claim. But the label is 182px wide and the line runs the
+ * whole width beneath it, so on a flat right-hand tail the text lies directly
+ * along its own series: two greys crossing, and neither readable.
+ *
+ * `paint-order: stroke fill` paints a fat stroke in the panel colour first and
+ * the glyphs over it, so the label carries its own clearance wherever it lands.
+ * This is the standard fix for direct labelling on a dense plot, and unlike
+ * moving the text it cannot collide with the *other* series either.
+ *
+ * `--panel`, not `--plane`: these sit on a card, which is two shades lighter
+ * than the page behind it.
+ */
+.chart .series-end-label {
+  paint-order: stroke fill;
+  stroke: var(--panel);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  /* The halo is decoration; it must never be read as a mark on the plot. */
+  stroke-opacity: 1;
+}
+
+/*
+ * The same treatment for the forecast caption and for a rule's own label — the
+ * capacity ceiling names the very dashed line it sits on, so it is guaranteed
+ * to cross it.
+ */
+.chart .forecast-label,
+.chart .chart-rule-label {
+  paint-order: stroke fill;
+  stroke: var(--panel);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+/*
+ * Chart labels are knocked out of whatever they cross.
+ *
+ * A direct label sits inside the plot so it can be written out in full —
+ * "Profit before paid marketing" rather than a "PROFIT" this product will not
+ * claim. Placement keeps each label clear of its *own* line (see charts.tsx),
+ * but nothing can keep it clear of every other mark, and the capacity ceiling
+ * names the very dashed rule it sits on.
+ *
+ * `paint-order: stroke fill` paints a fat stroke in the panel colour first and
+ * the glyphs over it, so a label carries its own clearance wherever it lands.
+ *
+ * `--panel`, not `--plane`: these sit on a card, two shades lighter than the
+ * page behind it.
+ */
+.chart .series-end-label,
+.chart .forecast-label,
+.chart .chart-rule-label {
+  paint-order: stroke fill;
+  stroke: var(--panel);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}

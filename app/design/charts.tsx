@@ -315,8 +315,37 @@ export function TimeSeriesChart({
           */}
         {series.length <= 4 &&
           (() => {
+            /*
+             * Clear of the line, not merely above its last point.
+             *
+             * The label is right-aligned and long — "Profit before paid
+             * marketing" runs ~180px — so it hangs back over a stretch of plot
+             * where the line is free to climb. Offsetting from the final point
+             * alone put the text straight along a rising tail, and the knockout
+             * that keeps it readable then bit a visible gap out of the series.
+             *
+             * So each label clears the highest point its own line reaches
+             * underneath it. The x-span is estimated from the glyph count
+             * because SVG text cannot be measured before layout; it only has to
+             * be close, and erring wide errs safe.
+             */
+            const labelSpan = (label: string) =>
+              Math.min(label.length * 7.2, plotW);
+
+            const highestUnder = (key: string, span: number) => {
+              const from = width - pad.right - span;
+              let top = Infinity;
+              data.forEach((d, i) => {
+                if (xAt(i) < from) return;
+                top = Math.min(top, yAt(d.values[key] ?? 0));
+              });
+              return Number.isFinite(top)
+                ? top
+                : yAt(data[data.length - 1]?.values[key] ?? 0);
+            };
+
             const ends = series
-              .map((s) => ({ s, y: yAt(data[data.length - 1]?.values[s.key] ?? 0) }))
+              .map((s) => ({ s, y: highestUnder(s.key, labelSpan(s.label)) }))
               .sort((a, b) => a.y - b.y);
             let previous = -Infinity;
             return ends.map(({ s, y }) => {
@@ -993,9 +1022,17 @@ export function CapacityChart({
           strokeWidth={1.5}
           strokeDasharray="5 4"
         />
+        {/*
+          * Pulled in from the boundary and lifted off its own rule. Sat flush
+          * at `width - pad.right` the last glyph met the plot's edge, and six
+          * pixels of clearance was not enough to keep a 1.5px dashed line out
+          * of the type. The knockout does the rest — this label always crosses
+          * the very rule it names.
+          */}
         <text
-          x={width - pad.right}
-          y={yAt(capacity) - 6}
+          className="chart-rule-label"
+          x={width - pad.right - 4}
+          y={yAt(capacity) - 9}
           textAnchor="end"
           style={{ fill: "var(--status-warning)", fontWeight: 650 }}
         >

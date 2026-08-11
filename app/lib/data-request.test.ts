@@ -307,6 +307,9 @@ describe("buildCustomerExport", () => {
         "discountTotal",
         "shippingCharged",
         "taxTotal",
+        "taxesIncluded",
+        "taxCountryCode",
+        "taxRegionCode",
         "total",
         "refundedTotal",
         "financialStatus",
@@ -329,6 +332,8 @@ describe("buildCustomerExport", () => {
         "computedAt",
         "lineItems",
         "fulfillments",
+        "taxComponents",
+        "shippingCostObservations",
       ].sort(),
     );
     expect(Object.keys(report.orders[0]!.lineItems[0]!).sort()).toEqual(

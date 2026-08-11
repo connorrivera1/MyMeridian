@@ -12,9 +12,10 @@ the app resolves the active Billing API subscription, redirects an unsubscribed
 store to the plan screen, gates paid features, and re-checks the plan before a
 protected pricing mutation.
 
-**Release status (verified 2026-08-10):** `npm run ci` passes with 648 tests
-collected (619 passed, 29 opt-in PostgreSQL tests skipped), and the explicit
-real-PostgreSQL integration run passes 29/29 across seven files. The app has
+**Release status (verified 2026-08-11):** `npm run ci` passes with 907 tests
+collected (850 passed, 57 opt-in PostgreSQL tests skipped), and the explicit
+real-PostgreSQL integration run passes 57/57 across ten files after all 21
+migrations apply from empty. The app has
 still never been installed on a real Shopify store, so OAuth, Shopify-delivered
 webhooks, and a real billing approval/return flow remain unproved. Submission is
 also waiting on external decisions and accounts: a non-confusable app name, a
@@ -135,6 +136,7 @@ fails the *entire* query rather than returning null for that field.
 | `read_inventory` | **No COGS.** Margins read as ~100% and every profit figure is overstated. Requested by default; not protected data. |
 | `read_customers` | No CAC, LTV, payback or customer-lifecycle product classification. **Protected customer data** — needs an approved request in the Partner Dashboard, not just the scope. |
 | `read_fulfillments` | No capacity forecasting. Meridian writes no capacity data at all rather than inferring a backlog that only ever grows. |
+| `read_reports` | No Shopify Shipping label-cost reconciliation. The `shipping_labels` ShopifyQL schema also requires Level 2 Protected Customer Data approval. |
 
 Missing permissions surface in *Costs & connections → Data access*, and the
 affected screens explain what is unavailable instead of rendering a zero.
@@ -152,7 +154,76 @@ affected screens explain what is unavailable instead of rendering a zero.
   unavailable rather than zero. Acquisition still shows order-derived channel
   revenue and contribution profit. Historical imports without customer access
   cannot read journey attribution and fall back to Direct; new-order webhooks
-  retain landing/referring signals when Shopify supplies them.
+  retain landing/referring signals when Shopify supplies them. Operator-provisioned
+  credentials are health-checked, refreshed or failed over as described below;
+  that operational monitoring does not pretend Meridian has imported ad spend.
+
+### Tax and carrier reconciliation
+
+Every order stores Shopify's authoritative total tax plus auditable jurisdiction
+components. The splitter classifies EU VAT and US state/county/city/district
+sales-tax lines, separates merchandise tax from shipping tax, handles inclusive
+prices and compound lines, and uses exact integer largest-remainder allocation.
+The components therefore always add back to Shopify's order total, including
+one-cent rounding differences. Unknown detail is retained as an explicit
+`UNALLOCATED` component instead of being guessed.
+
+Shopify Shipping costs are read from the ShopifyQL `shipping_labels` report when
+`read_reports` is granted. ShipStation uses its v2 label feed. Both sources are
+retained as observations and matched by Shopify order GID, numeric ID or order
+name. Equal totals corroborate each other; conflicting totals remain auditable
+and only the most complete, newest source is applied. Voids, refunds and currency
+mismatches remove stale measured costs before profitability is recomputed. The
+worker runs on process start and every five minutes. Shopify fulfillment
+webhooks trigger the same reconciliation immediately. A production ShipStation
+credential automatically registers its `fulfillment_shipped_v2` webhook with a
+random per-connector authentication header; the poll remains the recovery path
+for missed events and late label voids. Database leases prevent two app
+instances from duplicating a provider read or alert.
+
+### Connector health and operator provisioning
+
+Ad credentials are encrypted at rest. A five-minute health routine validates
+Meta through token debugging plus live ad-account access, Google Ads through
+accessible-customer access, and TikTok through its authorized-advertiser
+endpoint. A valid token with no accessible advertiser account is treated as a
+disconnect, not a healthy empty integration. Google tokens are refreshed
+before expiry. An independently verified standby token is promoted only after
+the provider confirms the primary credential is no longer authorized; timeouts,
+rate limits and provider outages never rotate credentials. A confirmed
+disconnection is marked and sends a signed HTTPS alert immediately when a
+receiver is configured. Other failures use exponential backoff and alert on the
+third consecutive check. Alert delivery failures are retained as health events
+instead of being silently swallowed.
+
+There is deliberately no merchant-facing OAuth screen yet. An operator can
+bootstrap ShipStation or an ad credential without placing the secret in command
+history:
+
+```bash
+MERIDIAN_CONNECTOR_TOKEN='<secret>' npm run connector:configure -- \
+  --shop store.myshopify.com --provider shipstation
+
+# Google also accepts MERIDIAN_CONNECTOR_REFRESH_TOKEN and an expiry timestamp.
+MERIDIAN_CONNECTOR_TOKEN='<access>' \
+MERIDIAN_CONNECTOR_REFRESH_TOKEN='<refresh>' \
+npm run connector:configure -- --shop store.myshopify.com --provider google \
+  --expires-at 2026-08-11T18:00:00Z
+
+# A standby credential is encrypted but not promoted until its live probe passes.
+MERIDIAN_CONNECTOR_TOKEN='<standby>' npm run connector:configure -- \
+  --shop store.myshopify.com --provider meta --standby
+```
+
+Provider probes need the corresponding variables in `.env.example`. Set
+`CONNECTOR_ALERT_WEBHOOK_URL` to an HTTPS receiver and
+`CONNECTOR_ALERT_WEBHOOK_SECRET` to authenticate its
+`X-Meridian-Signature: sha256=...` payload. Never reuse or rotate
+`MERIDIAN_ENCRYPTION_KEY` casually: existing connector ciphertext depends on it.
+When `SHOPIFY_APP_URL` is a public HTTPS origin, ShipStation provisioning also
+creates or repairs the authenticated fulfillment webhook. Until that production
+origin exists, the command stores the credential and reports that only the
+five-minute fallback can run.
 
 ## Running the demo without Shopify
 
@@ -175,7 +246,7 @@ and must never be reachable there.
 | `npm run shopify:dev` | Run against a real store via the Shopify CLI |
 | `npm run dev` | Dev server (demo / no Shopify) |
 | `npm run db:migrate` | Apply migrations |
-| `npm test` | Test suite (648 collected: 619 pass, 29 integration tests skipped) |
+| `npm test` | Test suite (907 collected: 850 pass, 57 integration tests skipped) |
 | `npm run test:coverage` | Tests with coverage thresholds enforced |
 | `npm run ci` | Everything CI runs: typecheck, coverage, build |
 | `npm run typecheck` | Types |
@@ -223,7 +294,7 @@ app/
   data/       Prisma -> engine input translation, and the assembled picture.
   lib/        Auth boundary, webhooks, sync, recompute, crypto.
   design/     Tokens, primitives, hand-built SVG charts.
-  routes/     Nine app screens and eleven webhook endpoints.
+  routes/     Ten app screens and thirteen webhook endpoints.
 ```
 
 **The engine is the product.** `app/engine/` holds pure functions with no
@@ -343,6 +414,76 @@ the background because Shopify's OAuth redirect cannot wait for store history.
 A five-minute lease is renewed every minute; owner-fenced progress and terminal
 writes, plus a saved cursor, make interruption visible and safely resumable.
 There is still no external queue that restarts an abandoned run automatically.
+
+### Cost history and restatement
+
+A variant's cost is a step function over time (`VariantCost`), not a column.
+`Variant.unitCost` is still there — every catalog read wants today's number and
+none of them want a timeline — but it is the denormalised head of the history
+rather than the truth.
+
+That distinction is what makes a wrong cost fixable. Snapshotting COGS onto the
+line item preserved March correctly, and also made March unfixable: a merchant
+who imported a bad cost, or who only learned the freight component a month
+later, had no way to correct the past. Now a correction is a row with a past
+`effectiveAt`, which is a different act from raising a price today.
+
+**Saving a cost changes no reported number.** Restating is separate, explicit and
+audited (`app/lib/restatement.server.ts`), and it happens in a fixed order:
+
+1. **Freeze.** Every affected merchant-local month with no `PeriodSnapshot` gets
+   one, holding the figures as they were reported. Those numbers never change
+   again.
+2. **Refuse.** A month the merchant has CLOSED does not move unless the request
+   names closed periods explicitly — and the refusal happens before any write,
+   so a five-month window cannot half-apply.
+3. **Rewrite.** Line-item COGS is re-derived from the cost timeline at each
+   order's own `processedAt`, never from today's cost, in one `UPDATE` driven by
+   a lateral over `VariantCost`.
+4. **Record.** Every month that moved gets an append-only `PeriodRestatement`
+   saying what it said before, what it says now, and why.
+
+The baseline for step 4 is measured after a preliminary recompute, not from the
+live ledger. Monthly overhead is prorated across the days a period covers, so the
+in-progress month's allocation drifts daily whether or not a cost changed —
+measured on the seeded store, a $180 COGS correction otherwise reported an
+$8,002 fall in net profit, $7,822 of which was overhead catching up. A log that
+attributes unrelated drift to the merchant's correction is worse than no log.
+
+### Bundle deconstruction
+
+A 3-pack has no cost of its own; it costs three of something else. `BundleComponent`
+holds that graph, and the rollup resolves each bundle's **timeline** — not a
+number — because a merchant restating March needs the pack's March cost, which no
+snapshot of today's components can give them.
+
+Nested packs resolve depth-first with an explicit in-progress set, so a mapping
+that makes a bundle contain itself is reported as a cycle rather than overflowing
+the stack. Unpriced components, absurd nesting and non-positive quantities are
+all reported rather than resolved to a plausible-looking number — treating an
+unpriced component as free understates COGS, which is the one direction of error
+a profit tool must not make quietly.
+
+Detection reads the merchant's own naming (`WIDGET-BLU-3PK` beside `WIDGET-BLU`,
+or "3-Pack" beside "Single" within one product) and writes **proposals**.
+`confirmedAt` is null until a merchant agrees, and the rollup ignores unconfirmed
+edges: inferring from a SKU suffix that a product's COGS should triple, and then
+silently doing it, is exactly the unasked-for accounting that makes a profit
+number untrustworthy.
+
+### The recalculation queue
+
+Restatements and bundle rollups are `RecalcJob` rows, not awaits in a form
+action. Restating a quarter rewrites line items across months and then recomputes
+the shop — minutes on a large store, and an in-process promise would leave half a
+quarter rewritten if a deploy landed mid-run.
+
+The claim/lease/backoff shape is lifted from the webhook outbox rather than
+invented again: same fencing token, same compare-and-set on the lease, same
+exponential retry, so there is one durable-work pattern in this codebase to
+reason about instead of two that drift apart. Finished rows are pruned after 30
+days by the existing retention sweep; `PeriodRestatement.jobId` is `SetNull`
+precisely so pruning a spent receipt cannot take the accounting trail with it.
 
 ## Shopify integration
 

@@ -23,6 +23,8 @@ export interface Capabilities {
   inventoryCost: boolean;
   /** Fulfilment records, for capacity and real shipping cost. */
   fulfillments: boolean;
+  /** ShopifyQL reports, including Shopify Shipping label costs. */
+  reports: boolean;
 }
 
 /** Session scope strings arrive comma-separated; the TOML uses spaces. */
@@ -49,6 +51,7 @@ export function capabilitiesFrom(
     customers: has("read_customers"),
     inventoryCost: has("read_inventory"),
     fulfillments: has("read_fulfillments"),
+    reports: has("read_reports"),
   };
 }
 
@@ -58,6 +61,7 @@ export const ALL_CAPABILITIES: Capabilities = {
   customers: true,
   inventoryCost: true,
   fulfillments: true,
+  reports: true,
 };
 
 /**
@@ -123,6 +127,14 @@ export const SCOPE_IMPACTS: ScopeImpact[] = [
     label: "Fulfilments",
     unlocks: "Shipping records behind capacity forecasting and backlog alerts.",
     protectedData: false,
+    essential: false,
+  },
+  {
+    scope: "read_reports",
+    label: "Shopify reports",
+    unlocks:
+      "Shopify Shipping label costs by order, carrier and service for measured fulfilment profit.",
+    protectedData: true,
     essential: false,
   },
 ];

@@ -7,6 +7,7 @@ import {
 } from "@prisma/client";
 
 import prisma from "~/db.server";
+import { parseScopes } from "~/lib/scopes";
 
 /**
  * Default cost assumptions applied at install time.
@@ -94,7 +95,44 @@ function initialConnectors(domain: string) {
       provider: ConnectorProvider.WAREHOUSE_3PL,
       status: ConnectorStatus.NOT_CONFIGURED,
     },
+    {
+      provider: ConnectorProvider.SHIPSTATION,
+      status: ConnectorStatus.NOT_CONFIGURED,
+    },
+    {
+      provider: ConnectorProvider.SHOPIFY_SHIPPING,
+      status: ConnectorStatus.NOT_CONFIGURED,
+    },
   ];
+}
+
+/** Shopify Shipping needs no second credential, but its cost schema is gated. */
+export async function synchroniseShopifyShippingConnector(
+  shopId: string,
+  grantedScopes: string | null | undefined,
+) {
+  const connected = parseScopes(grantedScopes).has("read_reports");
+  return prisma.connector.upsert({
+    where: {
+      shopId_provider: { shopId, provider: ConnectorProvider.SHOPIFY_SHIPPING },
+    },
+    create: {
+      shopId,
+      provider: ConnectorProvider.SHOPIFY_SHIPPING,
+      status: connected ? ConnectorStatus.CONNECTED : ConnectorStatus.NOT_CONFIGURED,
+      displayName: "Shopify Shipping",
+      lastError: connected
+        ? null
+        : "read_reports is not granted; shipping-label cost reconciliation is unavailable.",
+    },
+    update: {
+      status: connected ? ConnectorStatus.CONNECTED : ConnectorStatus.DISCONNECTED,
+      displayName: "Shopify Shipping",
+      lastError: connected
+        ? null
+        : "read_reports was revoked; shipping-label cost reconciliation is paused.",
+    },
+  });
 }
 
 export async function ensureShopProvisioned(domain: string, name?: string) {

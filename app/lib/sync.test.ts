@@ -20,6 +20,8 @@ const customerUpdate = vi.fn();
 const customerErasureFindFirst = vi.fn();
 const lineItemDeleteMany = vi.fn();
 const lineItemCreateMany = vi.fn();
+const orderTaxComponentDeleteMany = vi.fn();
+const orderTaxComponentCreateMany = vi.fn();
 let orderRows: any[] = [];
 let customerRows: any[] = [];
 const fulfillmentFindUnique = vi.fn();
@@ -59,6 +61,10 @@ vi.mock("~/db.server", () => {
     orderLineItem: {
       deleteMany: (...args: unknown[]) => lineItemDeleteMany(...args),
       createMany: (...args: unknown[]) => lineItemCreateMany(...args),
+    },
+    orderTaxComponent: {
+      deleteMany: (...args: unknown[]) => orderTaxComponentDeleteMany(...args),
+      createMany: (...args: unknown[]) => orderTaxComponentCreateMany(...args),
     },
     fulfillment: {
       findUnique: (...args: unknown[]) => fulfillmentFindUnique(...args),
@@ -149,6 +155,8 @@ beforeEach(() => {
   customerErasureFindFirst.mockResolvedValue(null);
   lineItemDeleteMany.mockResolvedValue({ count: 0 });
   lineItemCreateMany.mockResolvedValue({ count: 0 });
+  orderTaxComponentDeleteMany.mockResolvedValue({ count: 0 });
+  orderTaxComponentCreateMany.mockResolvedValue({ count: 0 });
 
   customerUpsert.mockImplementation(async ({ where, create, update }: any) => {
     const key = where.shopId_shopifyId;

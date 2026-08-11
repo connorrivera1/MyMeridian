@@ -111,3 +111,10 @@ export function basePlanId(key: string): PlanId | null {
 
 /** Length of the free trial attached to every Billing API subscription. */
 export const TRIAL_DAYS = 14;
+
+/** Shopify usage line-item terms for soft order overage. The meter's order
+ * thresholds are plan-specific; this is the maximum Shopify can collect in a
+ * billing period, not a hard application stop. */
+export const USAGE_CAP_AMOUNT = 50;
+export const USAGE_TERMS =
+  "$0.05 per order above Meridian's soft monthly order threshold; capped at $50";

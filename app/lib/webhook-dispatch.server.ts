@@ -2,6 +2,7 @@ import {
   processAppScopesUpdateWebhook,
   processAppSubscriptionsWebhook,
   processAppUninstalledWebhook,
+  processCheckoutsWebhook,
   processCustomerDataRequestWebhook,
   processCustomersRedactWebhook,
   processFulfillmentsWebhook,
@@ -29,6 +30,9 @@ export async function dispatchPersistedWebhook(
     case "ORDERS_UPDATED":
     case "REFUNDS_CREATE":
       return processOrdersWebhook(routeContext);
+    case "CHECKOUTS_CREATE":
+    case "CHECKOUTS_UPDATE":
+      return processCheckoutsWebhook(routeContext);
     case "PRODUCTS_CREATE":
     case "PRODUCTS_UPDATE":
       return processProductsWebhook(routeContext);
@@ -42,6 +46,7 @@ export async function dispatchPersistedWebhook(
     case "SHOP_UPDATE":
       return processShopUpdateWebhook(routeContext);
     case "APP_SUBSCRIPTIONS_UPDATE":
+    case "APP_SUBSCRIPTIONS_APPROACHING_CAPPED_AMOUNT":
       return processAppSubscriptionsWebhook(routeContext);
     case "APP_SCOPES_UPDATE":
       return processAppScopesUpdateWebhook(routeContext);

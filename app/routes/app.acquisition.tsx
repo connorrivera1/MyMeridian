@@ -456,7 +456,7 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
                         row.ltvCurve.some((point) => !point.measurable) ? (
                           <span className="muted">not yet</span>
                         ) : (
-                          <Badge tone="critical">never</Badge>
+                          <Badge tone="critical">Never</Badge>
                         )
                       ) : row.paybackDays === 0 ? (
                         "first order"

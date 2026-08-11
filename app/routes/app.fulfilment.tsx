@@ -5,6 +5,7 @@ import { CapacityChart } from "~/design/charts";
 import {
   Alert,
   AnimatedInt,
+  Badge,
   Card,
   Empty,
   IconChannels,
@@ -239,12 +240,15 @@ export default function Fulfilment() {
                         : `${day.shipDelay.toFixed(1)} days`}
                     </td>
                     <td>
+                      {/* The Badge component, not a hand-rolled span: these
+                          three were the only badges in the app bypassing it,
+                          and they were also the only ones in lower case. */}
                       {late ? (
-                        <span className="badge critical">past promise</span>
+                        <Badge tone="critical">Past promise</Badge>
                       ) : day.overCapacity ? (
-                        <span className="badge warning">over capacity</span>
+                        <Badge tone="warning">Over capacity</Badge>
                       ) : (
-                        <span className="badge neutral">on track</span>
+                        <Badge tone="neutral">On track</Badge>
                       )}
                     </td>
                   </tr>

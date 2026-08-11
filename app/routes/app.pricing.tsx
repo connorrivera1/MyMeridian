@@ -200,6 +200,19 @@ const CONFIDENCE_TONE = {
   LOW: "neutral",
 } as const;
 
+/**
+ * Written out rather than lower-cased from the enum.
+ *
+ * `confidence.toLowerCase()` rendered "high" beside two dozen Title Case
+ * badges elsewhere in the app, which reads as an unstyled value that escaped
+ * rather than a label someone chose.
+ */
+const CONFIDENCE_LABEL = {
+  HIGH: "High",
+  MEDIUM: "Medium",
+  LOW: "Low",
+} as const;
+
 const METHOD_LABEL: Record<string, string> = {
   ELASTICITY_REGRESSION: "Fitted demand curve",
   MARGIN_TARGET: "Margin target",
@@ -378,7 +391,9 @@ export default function Pricing() {
                             ]
                           }
                         >
-                          {rec.confidence.toLowerCase()}
+                          {CONFIDENCE_LABEL[
+                            rec.confidence as keyof typeof CONFIDENCE_LABEL
+                          ] ?? rec.confidence}
                         </Badge>
                       </td>
                       <td>

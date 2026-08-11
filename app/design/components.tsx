@@ -699,7 +699,7 @@ export function Alert({
           {title}
           {typeof daysUntil === "number" && (
             <Badge tone={severity === "CRITICAL" ? "critical" : "warning"}>
-              in {daysUntil} {daysUntil === 1 ? "day" : "days"}
+              In {daysUntil} {daysUntil === 1 ? "day" : "days"}
             </Badge>
           )}
         </h3>

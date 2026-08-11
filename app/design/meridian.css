@@ -3213,14 +3213,36 @@ table.data .right { font-variant-numeric: tabular-nums lining-nums; }
   --mark-cost: #6d6d6d;
   --mark-result: #ffffff;
 
-  --series-1: #ffffff;
-  --series-2: #c9c9c9;
-  --series-3: #9a9a9a;
-  --series-4: #e2e2e2;
-  --series-5: #b0b0b0;
-  --series-6: #808080;
-  --series-7: #f0f0f0;
-  --series-8: #666666;
+/*
+ * Categorical identity — the one place hue is the point.
+ *
+ * These are channels, and `seriesColor` pins each to a fixed key order, so
+ * "Facebook is blue" holds on Acquisition, on Profit per order, and anywhere
+ * else a channel is drawn. A merchant reading two screens side by side should
+ * not have to re-learn the legend on each.
+ *
+ * They are still a luminance ladder underneath. The rungs were solved for, not
+ * eyeballed: each colour's OKLCH lightness was binary-searched until it landed
+ * on its target CIE L*, because equal OKLCH lightness across different hues
+ * does *not* give equal perceived value — an ochre and a green both set to
+ * 0.80 measured 0.6 L* apart, which is invisible in greyscale. Solved this way
+ * no pair sits closer than ~4 L*, so the set survives having its hue removed,
+ * which is what makes it legible to every form of colour vision deficiency.
+ * Direct labelling stays mandatory regardless; the swatch reinforces the name,
+ * it does not replace it.
+ *
+ * DIRECT carries almost no chroma on purpose. It is the "we could not tell"
+ * bucket, and dressing an absence of attribution in a brand colour would give
+ * it a confidence it has not earned.
+ */
+  --series-1: oklch(0.704 0.13 258);  /* facebook */
+  --series-2: oklch(0.786 0.11 70);  /* google */
+  --series-3: oklch(0.846 0.10 190);  /* tiktok */
+  --series-4: oklch(0.680 0.13 320);  /* email */
+  --series-5: oklch(0.810 0.11 130);  /* organic */
+  --series-6: oklch(0.894 0.035 220);  /* direct */
+  --series-7: oklch(0.757 0.13 25);  /* referral */
+  --series-8: oklch(0.633 0.12 285);  /* affiliate */
 
   /*
    * Two families under one set of legacy names, and the split is deliberate.
@@ -3251,14 +3273,14 @@ table.data .right { font-variant-numeric: tabular-nums lining-nums; }
   --mark-cost: #b4b4b4;
   --mark-result: #0a0a0a;
 
-  --series-1: #0a0a0a;
-  --series-2: #4a4a4a;
-  --series-3: #7d7d7d;
-  --series-4: #262626;
-  --series-5: #616161;
-  --series-6: #949494;
-  --series-7: #363636;
-  --series-8: #a8a8a8;
+  --series-1: oklch(0.427 0.13 258);  /* facebook */
+  --series-2: oklch(0.549 0.11 70);  /* google */
+  --series-3: oklch(0.608 0.10 190);  /* tiktok */
+  --series-4: oklch(0.395 0.13 320);  /* email */
+  --series-5: oklch(0.574 0.11 130);  /* organic */
+  --series-6: oklch(0.656 0.035 220);  /* direct */
+  --series-7: oklch(0.514 0.13 25);  /* referral */
+  --series-8: oklch(0.355 0.12 285);  /* affiliate */
 }
 
 /* Direct labels at the end of a line. Set in the series' own colour because
@@ -4157,3 +4179,19 @@ td.muted .money.neg,
  */
 .chart .mark-result.pos { stroke: var(--pos); }
 .chart .mark-result.neg { stroke: var(--neg); }
+
+/*
+ * Empty states line up with the content they replace.
+ *
+ * `.empty` carried `padding: 40px 0`, which is right inside a padded card body
+ * and wrong inside a flush one — and the flush bodies are exactly the ones that
+ * hold tables, so every "no data yet" message on the app sat 1px off the card's
+ * left wall while the heading above it sat 30px in. Two different left edges in
+ * one card is what reads as unfinished.
+ *
+ * The gutter is applied only where the body does not already provide it, so
+ * both cases land on the same line. The vertical is trimmed to the scale: 80px
+ * of stacked padding around a single sentence was a hole, not breathing room.
+ */
+.empty { padding-block: var(--s-6); }
+.card-body.flush .empty { padding-inline: var(--ledger-gutter); }

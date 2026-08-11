@@ -42,6 +42,7 @@ function context(
     billing: {} as ShopContext["billing"],
     session: { shop: String(shop.domain), id: "session-1" },
     isDemo: false,
+    user: null,
   };
 }
 

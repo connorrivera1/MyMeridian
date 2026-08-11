@@ -180,6 +180,7 @@ model Shop {
   usageMeterEvents      UsageMeterEvent[]
   shippingAdjustments   ShippingLabelAdjustment[]
   adSyncWindows         AdSyncWindow[]
+  memberships           ShopMembership[]
 
   @@index([domain])
 }
@@ -1145,8 +1146,149 @@ model PricingRecommendation {
 }
 
 // ---------------------------------------------------------------------------
+// Web accounts
+// ---------------------------------------------------------------------------
+//
+// Everything above this line is keyed by Shop, because the embedded app learns
+// who you are from Shopify's session token and never needs an identity of its
+// own. The web dashboard has no such token, so it needs one.
+//
+// The rule these tables exist to enforce: signing up proves you own an email
+// address, and nothing else. It does not prove you control a store. Only the
+// Shopify OAuth install does that, so `ShopMembership` is written from the
+// OAuth callback and never from a signup form — otherwise anyone who typed a
+// merchant's address would be handed that merchant's revenue.
+
+/// A person, as opposed to a store. Sign-in methods hang off this.
+model User {
+  id    String  @id @default(cuid())
+  /// Lowercased and trimmed before write; the uniqueness guarantee is only
+  /// meaningful if "A@x.com" and "a@x.com" cannot both exist.
+  email String  @unique
+  name  String?
+
+  /// Null for accounts that only ever signed in with Apple or Google. Such an
+  /// account has no password to guess, so the absence is a feature; the login
+  /// form must still not reveal which kind of account an address belongs to.
+  passwordHash String?
+
+  emailVerifiedAt DateTime?
+
+  /// Gate for the one-time post-signup splash. A timestamp rather than a
+  /// boolean so it also answers "when did this account start", and so the
+  /// splash cannot be replayed by a second device or a re-login.
+  welcomedAt DateTime?
+
+  /// Throttling state for password attempts. Kept on the row rather than in
+  /// memory so it survives a deploy and is shared across every Fly machine —
+  /// an in-process counter resets exactly when an attacker wants it to.
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  oauthAccounts      OAuthAccount[]
+  sessions           WebSession[]
+  memberships        ShopMembership[]
+  verificationTokens EmailVerificationToken[]
+
+  @@index([email])
+}
+
+/// A third-party sign-in method bound to a User.
+model OAuthAccount {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  provider AuthProvider
+  /// The provider's stable subject claim (`sub`), never the email. Apple lets
+  /// a user hide their address and rotates the relay, and Google addresses can
+  /// be reassigned within a workspace; keying on email would silently merge or
+  /// orphan accounts.
+  providerUserId String
+  /// Whatever address the provider released, kept for display only.
+  providerEmail String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+}
+
+/// A logged-in browser.
+model WebSession {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// SHA-256 of the cookie value, never the value itself. A dump of this table
+  /// must not be enough to log in as anyone.
+  tokenHash String @unique
+
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  /// Recorded so a user can recognise a session when revoking it.
+  userAgent String?
+
+  revokedAt DateTime?
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Proof that a User controls a Shop.
+///
+/// Written only after a Shopify OAuth install completes for a shop while that
+/// user was signed in. This is the join that decides whose numbers a web
+/// session is allowed to see, so it is the security boundary of the whole web
+/// dashboard.
+model ShopMembership {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shopId String
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  role      MembershipRole @default(OWNER)
+  createdAt DateTime       @default(now())
+
+  @@unique([userId, shopId])
+  @@index([shopId])
+}
+
+/// A single-use email-confirmation token.
+///
+/// Hashed like a session token, for the same reason. Rows are kept after use
+/// so a consumed token is rejected as consumed rather than as unknown.
+model EmailVerificationToken {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
 // Enums
 // ---------------------------------------------------------------------------
+
+enum AuthProvider {
+  GOOGLE
+  APPLE
+}
+
+enum MembershipRole {
+  OWNER
+  MEMBER
+}
 
 enum Channel {
   FACEBOOK

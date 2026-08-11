@@ -1,7 +1,11 @@
-import type { Shop } from "@prisma/client";
+import type { Shop, User } from "@prisma/client";
+import { redirect } from "react-router";
 
 import prisma from "~/db.server";
 import { authenticate, hasShopifyCredentials } from "~/shopify.server";
+import { resolveAccessibleShop } from "./shop-access.server";
+import { readSessionToken } from "./web-session.server";
+import { resolveSession } from "./webauth.server";
 
 export const DEMO_SHOP_DOMAIN = "meridian-demo.myshopify.com";
 
@@ -27,16 +31,32 @@ type BillingClient = AdminContext["billing"];
 
 export interface ShopContext {
   shop: Shop;
-  /** Null in demo mode — there is no Shopify Admin API without a session. */
+  /**
+   * Null in demo mode, and null for a web session — neither has a Shopify
+   * session token to call the Admin API with. No dashboard route reads it:
+   * they render from the database, and the Admin API is reached from backfill
+   * and webhook processing, which carry their own offline session.
+   */
   admin: AdminClient | null;
   /**
    * Null in demo mode. Reads and requests Billing API charges; see
    * `plan.server.ts` for why this app bills through the Billing API rather
    * than Shopify App Pricing.
+   *
+   * Also null for a web session, and that one is a rule rather than a gap:
+   * Shopify requires a subscription to be approved inside the admin, so a
+   * charge can only ever be requested from the embedded app. `/app/plan`
+   * sends a web visitor there instead of offering a button that cannot work.
    */
   billing: BillingClient | null;
   session: { shop: string; id: string } | null;
   isDemo: boolean;
+  /**
+   * The signed-in web account, or null when the request was authenticated by
+   * Shopify. Present so routes can render the account menu and so the store
+   * switcher knows whose memberships to offer.
+   */
+  user: User | null;
 }
 
 /**
@@ -84,13 +104,56 @@ export function shouldLoadAppBridge(request: Request): boolean {
 export async function requireShopContext(request: Request): Promise<ShopContext> {
   const shopifyRequest = looksLikeShopifyRequest(request);
 
-  if (hasShopifyCredentials && authenticate && (shopifyRequest || !demoAvailable)) {
+  /*
+   * Shopify's own signal always wins, and is checked first.
+   *
+   * Ordering matters rather than being a style choice: a merchant can be
+   * signed in to the web dashboard in the same browser that has their Shopify
+   * admin open. If the cookie were consulted first, opening the embedded app
+   * would render whichever store the web session last selected instead of the
+   * store whose admin they are standing in.
+   */
+  if (hasShopifyCredentials && authenticate && shopifyRequest) {
     const { session, admin, billing } = await authenticate.admin(request);
 
     const { ensureShopProvisioned } = await import("./provision.server");
     const shop = await ensureShopProvisioned(session.shop);
 
-    return { shop, admin, billing, session, isDemo: false };
+    return { shop, admin, billing, session, isDemo: false, user: null };
+  }
+
+  /*
+   * A signed-in web account. Costs nothing when there is no cookie: the token
+   * read is a header parse, and a null token short-circuits before any query.
+   */
+  const user = await resolveWebUser(request);
+  if (user) {
+    const requested = new URL(request.url).searchParams.get("store");
+    const shop = await resolveAccessibleShop(user, requested);
+
+    // Authenticated, but no store has been connected yet. This is the normal
+    // state immediately after signup, not an error.
+    if (!shop) throw redirect("/connect");
+
+    return {
+      shop,
+      admin: null,
+      billing: null,
+      session: null,
+      isDemo: false,
+      user,
+    };
+  }
+
+  // No Shopify signal and no web session. Unchanged: hand it to Shopify, which
+  // redirects to the install/login flow.
+  if (hasShopifyCredentials && authenticate && !demoAvailable) {
+    const { session, admin, billing } = await authenticate.admin(request);
+
+    const { ensureShopProvisioned } = await import("./provision.server");
+    const shop = await ensureShopProvisioned(session.shop);
+
+    return { shop, admin, billing, session, isDemo: false, user: null };
   }
 
   if (!demoAvailable) {
@@ -110,5 +173,23 @@ export async function requireShopContext(request: Request): Promise<ShopContext>
     );
   }
 
-  return { shop, admin: null, billing: null, session: null, isDemo: true };
+  return {
+    shop,
+    admin: null,
+    billing: null,
+    session: null,
+    isDemo: true,
+    user: null,
+  };
+}
+
+/**
+ * The signed-in web account on this request, if any.
+ *
+ * Separate from `requireShopContext` because the login, signup and connect
+ * screens need to know who someone is before any store exists to authorise
+ * them against.
+ */
+export async function resolveWebUser(request: Request): Promise<User | null> {
+  return resolveSession(readSessionToken(request));
 }

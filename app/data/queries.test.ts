@@ -17,6 +17,9 @@ import { CostRuleKind, CostRuleOrigin, type CostRule } from "@prisma/client";
 const orderFindMany = vi.fn();
 const orderCount = vi.fn(async (..._args: unknown[]) => 0);
 const fulfillmentGroupBy = vi.fn();
+const adjustmentGroupBy = vi.fn(
+  async (..._args: unknown[]): Promise<unknown[]> => [],
+);
 const costRuleFindMany = vi.fn();
 
 vi.mock("~/db.server", () => ({
@@ -30,6 +33,9 @@ vi.mock("~/db.server", () => ({
     },
     fulfillment: {
       groupBy: (...args: unknown[]) => fulfillmentGroupBy(...args),
+    },
+    shippingLabelAdjustment: {
+      groupBy: (...args: unknown[]) => adjustmentGroupBy(...args),
     },
     costRule: {
       findMany: (...args: unknown[]) => costRuleFindMany(...args),
@@ -74,6 +80,8 @@ beforeEach(() => {
   orderFindMany.mockReset();
   orderCount.mockClear();
   fulfillmentGroupBy.mockReset();
+  adjustmentGroupBy.mockReset();
+  adjustmentGroupBy.mockResolvedValue([]);
   costRuleFindMany.mockReset();
 });
 
@@ -246,6 +254,93 @@ describe("loadEngineOrders fulfilment costs", () => {
     expect(order.actualPickPackCostCents).toBeNull();
   });
 
+  it("folds a carrier correction into the actual outbound cost", async () => {
+    orderFindMany.mockResolvedValue([orderRow("order_1")]);
+    fulfillmentGroupBy.mockResolvedValue([
+      {
+        orderId: "order_1",
+        _sum: { shippingCost: "10.00", pickPackCost: null },
+      },
+    ]);
+    adjustmentGroupBy.mockResolvedValue([
+      { orderId: "order_1", kind: "CARRIER_ADJUSTMENT", _sum: { amount: "4.20" } },
+    ]);
+
+    const [order] = await loadEngineOrders("shop_1", RANGE);
+    if (!order) throw new Error("expected one order back");
+
+    expect(order.actualShippingCostCents).toBe(1420);
+    expect(order.returnShippingCostCents).toBe(0);
+  });
+
+  it("treats a recorded label purchase as known cost even with no fulfilment cost", async () => {
+    orderFindMany.mockResolvedValue([orderRow("order_1")]);
+    fulfillmentGroupBy.mockResolvedValue([]);
+    adjustmentGroupBy.mockResolvedValue([
+      { orderId: "order_1", kind: "LABEL_PURCHASE", _sum: { amount: "6.10" } },
+    ]);
+
+    const [order] = await loadEngineOrders("shop_1", RANGE);
+    if (!order) throw new Error("expected one order back");
+
+    // Not null: a bought label is real evidence, so the modeled shipping rule
+    // must not also be charged on top of it.
+    expect(order.actualShippingCostCents).toBe(610);
+  });
+
+  it("keeps return labels on their own line, not inside outbound cost", async () => {
+    orderFindMany.mockResolvedValue([orderRow("order_1")]);
+    fulfillmentGroupBy.mockResolvedValue([
+      {
+        orderId: "order_1",
+        _sum: { shippingCost: "10.00", pickPackCost: null },
+      },
+    ]);
+    adjustmentGroupBy.mockResolvedValue([
+      { orderId: "order_1", kind: "RETURN_LABEL", _sum: { amount: "7.25" } },
+    ]);
+
+    const [order] = await loadEngineOrders("shop_1", RANGE);
+    if (!order) throw new Error("expected one order back");
+
+    expect(order.actualShippingCostCents).toBe(1000);
+    expect(order.returnShippingCostCents).toBe(725);
+  });
+
+  it("lets a carrier credit reduce the actual cost below the quote", async () => {
+    orderFindMany.mockResolvedValue([orderRow("order_1")]);
+    fulfillmentGroupBy.mockResolvedValue([
+      {
+        orderId: "order_1",
+        _sum: { shippingCost: "10.00", pickPackCost: null },
+      },
+    ]);
+    adjustmentGroupBy.mockResolvedValue([
+      {
+        orderId: "order_1",
+        kind: "CARRIER_ADJUSTMENT",
+        _sum: { amount: "-3.40" },
+      },
+    ]);
+
+    const [order] = await loadEngineOrders("shop_1", RANGE);
+    if (!order) throw new Error("expected one order back");
+
+    expect(order.actualShippingCostCents).toBe(660);
+  });
+
+  it("maps retained return fees onto the engine order", async () => {
+    orderFindMany.mockResolvedValue([
+      orderRow("order_1", { returnFeesRetained: "12.50" }),
+    ]);
+    fulfillmentGroupBy.mockResolvedValue([]);
+
+    const [order] = await loadEngineOrders("shop_1", RANGE);
+    if (!order) throw new Error("expected one order back");
+
+    expect(order.returnFeesRetainedCents).toBe(1250);
+  });
+
   it("scopes the aggregate to the same shop and window as the rows", async () => {
     orderFindMany.mockResolvedValue([]);
     fulfillmentGroupBy.mockResolvedValue([]);
@@ -315,6 +410,7 @@ describe("loadEngineOrders column projection", () => {
         "orderNumber",
         "processedAt",
         "refundedTotal",
+        "returnFeesRetained",
         "shippingCharged",
         "subtotal",
         "taxTotal",
@@ -429,8 +525,10 @@ describe("loadEngineOrders column projection", () => {
       taxTotalCents: 825,
       totalCents: 11075,
       refundedTotalCents: 1000,
+      returnFeesRetainedCents: 0,
       actualShippingCostCents: null,
       actualPickPackCostCents: null,
+      returnShippingCostCents: 0,
       lineItems: [
         {
           id: "li_1",

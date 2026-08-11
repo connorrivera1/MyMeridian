@@ -126,7 +126,81 @@ export function deriveChannel(signals: AttributionSignals): {
 }
 
 /**
- * What a set of Shopify refunds actually took back.
+ * Currency facts a refund needs to be read correctly.
+ *
+ * Refund transactions report money in the currency the customer paid in. On a
+ * multi-currency order that is the presentment currency, while every other
+ * number Meridian stores is shop currency — so a €92 refund on a $100 order
+ * subtracted as "92" overstates the merchant's kept revenue by the whole FX
+ * spread. The conversion rate used is the one implied by Shopify's own
+ * conversion of this order's total, i.e. the rate the money actually moved at.
+ */
+export interface RefundCurrencyContext {
+  /** ISO code all stored money is in. */
+  shopCurrency: string;
+  presentmentCurrency?: string | null;
+  /** Shop-currency units per presentment unit; null when underivable. */
+  presentmentExchangeRate?: number | null;
+}
+
+const NO_CURRENCY_CONTEXT: RefundCurrencyContext = { shopCurrency: "" };
+
+function successfulRefundTransactions(refund: Payload): Payload[] {
+  const transactions: Payload[] = Array.isArray(refund?.transactions)
+    ? refund.transactions
+    : [];
+  return transactions.filter((tx: Payload) => {
+    const status = String(tx?.status ?? "").toLowerCase();
+    const kind = String(tx?.kind ?? "refund").toLowerCase();
+    return kind === "refund" && (status === "success" || status === "");
+  });
+}
+
+/** One transaction's value in shop-currency cents, converted when it needs it. */
+function refundTransactionCents(
+  tx: Payload,
+  context: RefundCurrencyContext,
+): number {
+  const amount = Number(tx?.amount ?? 0);
+  if (!Number.isFinite(amount) || amount === 0) return 0;
+
+  const txCurrency = String(tx?.currency ?? "").toUpperCase() || null;
+  const shopCurrency = context.shopCurrency.toUpperCase();
+
+  // No currency on the transaction (legacy payloads, the backfill's synthetic
+  // transactions, and single-currency stores) means shop currency: rate 1.
+  if (!txCurrency || !shopCurrency || txCurrency === shopCurrency) {
+    return Math.round(amount * 100);
+  }
+
+  const presentment = context.presentmentCurrency?.toUpperCase() ?? null;
+  const rate = context.presentmentExchangeRate ?? null;
+  if (txCurrency === presentment && rate !== null && rate > 0) {
+    // Round per transaction: that is the granularity the money moved at.
+    return Math.round(amount * rate * 100);
+  }
+
+  // A currency we cannot convert (no derivable rate). Falling back to rate 1
+  // is the pre-multi-currency behaviour — wrong by the FX spread, but visible
+  // and stable, rather than silently dropping a real refund to zero.
+  return Math.round(amount * 100);
+}
+
+export interface RefundEconomics {
+  /** What was actually paid back, shop currency, as a 2dp decimal string. */
+  refundedTotal: string;
+  /**
+   * Return/restocking fees the merchant kept: the shop-money value of returned
+   * items (with their tax) minus what the transactions actually paid out,
+   * summed per refund and floored at zero. A money-only goodwill refund has no
+   * returned items and produces no fee; a refund that also returned shipping
+   * charges conservatively understates the fee rather than inventing one.
+   */
+  returnFeesRetained: string;
+}
+
+/**
+ * What a set of Shopify refunds actually took back, and what the merchant kept.
  *
  * `refund.transactions[]` is an attempt log, not a ledger: a declined refund
  * stays in it with `status: "error"`, and a retry adds a second entry for the
@@ -137,19 +211,61 @@ export function deriveChannel(signals: AttributionSignals): {
  * Only successful transactions of kind `refund` moved money. A `void` releases
  * an authorisation that was never captured, so it is not a refund either.
  */
-export function refundedTotalFrom(refunds: unknown): string {
-  if (!Array.isArray(refunds)) return "0.00";
+export function refundEconomicsFrom(
+  refunds: unknown,
+  context: RefundCurrencyContext = NO_CURRENCY_CONTEXT,
+): RefundEconomics {
+  if (!Array.isArray(refunds)) {
+    return { refundedTotal: "0.00", returnFeesRetained: "0.00" };
+  }
 
-  const total = refunds
-    .flatMap((refund: Payload) => refund?.transactions ?? [])
-    .filter((tx: Payload) => {
-      const status = String(tx?.status ?? "").toLowerCase();
-      const kind = String(tx?.kind ?? "refund").toLowerCase();
-      return kind === "refund" && (status === "success" || status === "");
-    })
-    .reduce((sum: number, tx: Payload) => sum + Number(tx?.amount ?? 0), 0);
+  let refundedCents = 0;
+  let feesCents = 0;
 
-  return total.toFixed(2);
+  for (const refund of refunds as Payload[]) {
+    const paidOutCents = successfulRefundTransactions(refund).reduce(
+      (sum, tx) => sum + refundTransactionCents(tx, context),
+      0,
+    );
+    refundedCents += paidOutCents;
+
+    // Shop-money value of what physically came back. `subtotal_set.shop_money`
+    // is exact on every store; the bare fields are a legacy fallback and are
+    // treated as shop currency.
+    const lineItems: Payload[] = Array.isArray(refund?.refund_line_items)
+      ? refund.refund_line_items
+      : [];
+    const returnedValueCents = lineItems.reduce((sum, item: Payload) => {
+      const subtotal = Number(
+        item?.subtotal_set?.shop_money?.amount ?? item?.subtotal ?? 0,
+      );
+      const tax = Number(
+        item?.total_tax_set?.shop_money?.amount ?? item?.total_tax ?? 0,
+      );
+      const subtotalCents = Number.isFinite(subtotal)
+        ? Math.round(subtotal * 100)
+        : 0;
+      const taxCents = Number.isFinite(tax) ? Math.round(tax * 100) : 0;
+      return sum + subtotalCents + taxCents;
+    }, 0);
+
+    if (returnedValueCents > 0) {
+      feesCents += Math.max(0, returnedValueCents - paidOutCents);
+    }
+  }
+
+  return {
+    refundedTotal: (refundedCents / 100).toFixed(2),
+    returnFeesRetained: (feesCents / 100).toFixed(2),
+  };
+}
+
+/** Back-compat façade over `refundEconomicsFrom` for single-total callers. */
+export function refundedTotalFrom(
+  refunds: unknown,
+  context: RefundCurrencyContext = NO_CURRENCY_CONTEXT,
+): string {
+  return refundEconomicsFrom(refunds, context).refundedTotal;
 }
 
 export async function syncOrderFromShopify(shopId: string, payload: Payload) {
@@ -164,7 +280,41 @@ export async function syncOrderFromShopify(shopId: string, payload: Payload) {
     utmCampaign: payload.meridian_utm_campaign,
   });
 
-  const refundedTotal = refundedTotalFrom(payload.refunds);
+  const shopCurrency = String(payload.currency ?? "USD");
+
+  // Presentment provenance. The rate is implied by Shopify's own conversion of
+  // this order's total — shop money over presentment money — which is the rate
+  // the customer's payment actually settled at. It exists so refund
+  // transactions, which arrive in the payment currency, convert back at the
+  // same rate instead of a market rate from a different day.
+  const presentmentCurrencyRaw = String(
+    payload.presentment_currency ??
+      payload.total_price_set?.presentment_money?.currency_code ??
+      "",
+  ).toUpperCase();
+  const presentmentCurrency =
+    presentmentCurrencyRaw && presentmentCurrencyRaw !== shopCurrency.toUpperCase()
+      ? presentmentCurrencyRaw
+      : null;
+  const totalShopCents = Math.round(
+    Number(payload.total_price_set?.shop_money?.amount ?? payload.total_price ?? 0) * 100,
+  );
+  const presentmentTotalCents = Math.round(
+    Number(payload.total_price_set?.presentment_money?.amount ?? 0) * 100,
+  );
+  const presentmentExchangeRate =
+    presentmentCurrency && totalShopCents > 0 && presentmentTotalCents > 0
+      ? totalShopCents / presentmentTotalCents
+      : null;
+
+  const { refundedTotal, returnFeesRetained } = refundEconomicsFrom(
+    payload.refunds,
+    {
+      shopCurrency,
+      presentmentCurrency,
+      presentmentExchangeRate,
+    },
+  );
 
   const processedAt = new Date(payload.processed_at ?? payload.created_at);
   if (Number.isNaN(processedAt.getTime())) {
@@ -183,7 +333,7 @@ export async function syncOrderFromShopify(shopId: string, payload: Payload) {
     orderNumber: Number(payload.order_number ?? payload.number ?? 0),
     processedAt,
     shopifyUpdatedAt,
-    currency: payload.currency ?? "USD",
+    currency: shopCurrency,
     subtotal: decimal(payload.subtotal_price),
     discountTotal: decimal(payload.total_discounts),
     shippingCharged: decimal(shippingCharged),
@@ -195,6 +345,16 @@ export async function syncOrderFromShopify(shopId: string, payload: Payload) {
       String(payload.tax_destination?.province_code ?? "").trim().toUpperCase() || null,
     total: decimal(payload.total_price),
     refundedTotal: decimal(refundedTotal),
+    presentmentCurrency,
+    presentmentTotal:
+      presentmentCurrency && presentmentTotalCents > 0
+        ? decimal((presentmentTotalCents / 100).toFixed(2))
+        : null,
+    presentmentExchangeRate:
+      presentmentExchangeRate !== null
+        ? presentmentExchangeRate.toFixed(10)
+        : null,
+    returnFeesRetained: decimal(returnFeesRetained),
     financialStatus: payload.financial_status ?? "paid",
     fulfillmentStatus: payload.fulfillment_status ?? "unfulfilled",
     channel,

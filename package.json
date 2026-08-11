@@ -38,6 +38,8 @@
     "@shopify/shopify-api": "13.1.0",
     "@shopify/shopify-app-react-router": "1.2.1",
     "@shopify/shopify-app-session-storage-prisma": "9.0.1",
+    "bullmq": "^6.0.11",
+    "ioredis": "^6.0.0",
     "isbot": "5.1.31",
     "react": "19.2.8",
     "react-dom": "19.2.8",

@@ -41,6 +41,8 @@ function makeOrder(overrides: Partial<EngineOrder> = {}): EngineOrder {
     taxTotalCents: 700,
     totalCents: 9700,
     refundedTotalCents: 0,
+    returnFeesRetainedCents: 0,
+    returnShippingCostCents: 0,
     actualShippingCostCents: null,
     actualPickPackCostCents: null,
     lineItems: [
@@ -131,6 +133,54 @@ describe("computeOrderProfit", () => {
     // The $90.00 of actual revenue is reversed, not $97.00.
     expect(profit.refundCents).toBe(9000);
     expect(profit.netRevenueCents).toBe(0);
+  });
+
+  it("takes tax off the returned value, never off a retained return fee", () => {
+    // A $110.00 order: $100 goods + $10 tax (10%). The full item comes back,
+    // but a $20.00 restocking fee is kept, so only $90.00 was paid out.
+    const order = makeOrder({
+      subtotalCents: 10000,
+      discountTotalCents: 0,
+      shippingChargedCents: 0,
+      taxTotalCents: 1000,
+      totalCents: 11000,
+      refundedTotalCents: 9000,
+      returnFeesRetainedCents: 2000,
+    });
+
+    const profit = computeOrderProfit(order, RULES);
+
+    // The value that came back is $110 gross → $100 ex-tax; the merchant kept
+    // a $20 fee of it, so $80.00 of revenue is reversed. Scaling the $90
+    // payout alone would have said round(9000 × 10/11) = $81.82 — shaving the
+    // tax rate off the fee itself.
+    expect(profit.refundCents).toBe(8000);
+    expect(profit.returnFeesRetainedCents).toBe(2000);
+    expect(profit.netRevenueCents).toBe(10000 - 8000);
+  });
+
+  it("clamps the refund at zero when fees exceed the taxed return value", () => {
+    const profit = computeOrderProfit(
+      makeOrder({ refundedTotalCents: 0, returnFeesRetainedCents: 500 }),
+      RULES,
+    );
+    expect(profit.refundCents).toBe(0);
+    expect(profit.netRevenueCents).toBe(9000);
+  });
+
+  it("charges a recorded return label as a real cost of the order", () => {
+    const withLabel = computeOrderProfit(
+      makeOrder({ returnShippingCostCents: 725 }),
+      RULES,
+    );
+    const without = computeOrderProfit(makeOrder(), RULES);
+
+    expect(withLabel.returnShippingCostCents).toBe(725);
+    expect(withLabel.totalCostCents).toBe(without.totalCostCents + 725);
+    expect(withLabel.contributionProfitCents).toBe(
+      without.contributionProfitCents - 725,
+    );
+    expect(withLabel.netProfitCents).toBe(without.netProfitCents - 725);
   });
 
   it("reports no margin rather than a nonsense one on a fully refunded order", () => {
@@ -472,6 +522,26 @@ describe("attributeAdSpend", () => {
     );
 
     expect(result.byOrderId.get("late")).toBe(10_000);
+  });
+
+  it("takes a spend date at face value — a DATE column is a day, not an instant", () => {
+    // Prisma surfaces AdSpend.date as midnight UTC. Converting that synthetic
+    // instant into New York time called it the previous day, so every
+    // platform-reported day's budget attributed to the day before. The first
+    // live connector run caught it: Aug 5 orders wearing Aug 6's spend.
+    const order = makeOrder({
+      id: "same-day",
+      processedAt: new Date("2026-03-10T20:00:00Z"), // NY March 10, mid-day
+    });
+
+    const result = attributeAdSpend(
+      [order],
+      [spendRow({ date: new Date("2026-03-10T00:00:00Z") })], // the row shape Prisma actually returns
+      TZ,
+    );
+
+    expect(result.byOrderId.get("same-day")).toBe(10_000);
+    expect(result.unattributedCents).toBe(0);
   });
 });
 

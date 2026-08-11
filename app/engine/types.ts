@@ -57,11 +57,25 @@ export interface EngineOrder {
   totalCents: Cents;
   refundedTotalCents: Cents;
 
+  /**
+   * Return/restocking fees the merchant kept when refunding this order.
+   * `refundedTotalCents` is what was actually paid back, so it is already net
+   * of these — the engine needs them named so the tax share of a refund is
+   * taken from the value that came back, not from money that never left.
+   */
+  returnFeesRetainedCents: Cents;
+
   lineItems: EngineLineItem[];
 
   /** Real carrier cost when a fulfilment record exists; null falls back to rules. */
   actualShippingCostCents: Cents | null;
   actualPickPackCostCents: Cents | null;
+  /**
+   * Return labels and other inbound-shipping cost the merchant paid, from the
+   * shipping-adjustment ledger. Zero when none — a return label either exists
+   * as a recorded cost or it does not, so there is no modeled fallback.
+   */
+  returnShippingCostCents: Cents;
 }
 
 export interface CostRuleSet {
@@ -116,15 +130,20 @@ export interface OrderProfit {
   grossRevenueCents: Cents;
   discountCents: Cents;
   refundCents: Cents;
+  /** Return/restocking fees retained on refunds; already inside net revenue. */
+  returnFeesRetainedCents: Cents;
   shippingRevenueCents: Cents;
   netRevenueCents: Cents;
 
   cogsCents: Cents;
+  /** Outbound only. Return labels are their own line below. */
   shippingCostCents: Cents;
   paymentFeeCents: Cents;
   pickPackCents: Cents;
   adCostCents: Cents;
   overheadCents: Cents;
+  /** Merchant-paid return labels, from the shipping-adjustment ledger. */
+  returnShippingCostCents: Cents;
   totalCostCents: Cents;
 
   contributionProfitCents: Cents;

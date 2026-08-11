@@ -6,6 +6,7 @@ import {
   loadCapacityDays,
   loadProductMeta,
 } from "~/data/queries.server";
+import { recomputeShopProfitability } from "~/lib/recompute.server";
 import { computeProfitForPeriod } from "~/engine/profit";
 import { computeProductProfitability } from "~/engine/products";
 import { computeChannelPerformance } from "~/engine/acquisition";
@@ -15,11 +16,20 @@ import { formatMoney } from "~/engine/money";
 const prisma = new PrismaClient();
 
 async function main() {
+  const domain = process.argv[2] ?? "meridian-demo.myshopify.com";
   const shop = await prisma.shop.findUniqueOrThrow({
-    where: { domain: "meridian-demo.myshopify.com" },
+    where: { domain },
   });
 
-  const range = { from: new Date("2026-02-01"), to: new Date("2026-08-04") };
+  const span = await prisma.order.aggregate({
+    where: { shopId: shop.id },
+    _min: { processedAt: true },
+    _max: { processedAt: true },
+  });
+  const range = {
+    from: span._min.processedAt ?? new Date("2026-02-01"),
+    to: span._max.processedAt ?? new Date("2026-08-04"),
+  };
   const [orders, spend, rules, products, capacity] = await Promise.all([
     loadEngineOrders(shop.id, range),
     loadAdSpend(shop.id, range),
@@ -32,8 +42,10 @@ async function main() {
 
   console.log("=== P&L ===");
   console.log("Net revenue      ", formatMoney(period.netRevenueCents));
+  console.log("  incl. return fees kept", formatMoney(period.returnFeesRetainedCents));
   console.log("COGS             ", formatMoney(period.cogsCents));
   console.log("Shipping         ", formatMoney(period.shippingCostCents));
+  console.log("Return shipping  ", formatMoney(period.returnShippingCostCents));
   console.log("Payment fees     ", formatMoney(period.paymentFeeCents));
   console.log("Pick/pack        ", formatMoney(period.pickPackCents));
   console.log("Ad spend         ", formatMoney(period.totalAdCostCents));
@@ -97,6 +109,76 @@ async function main() {
       r.confidence.padEnd(8),
       `e=${r.elasticity ?? "—"}`,
     );
+  }
+
+  // -------------------------------------------------------------------------
+  // Reconciliation: the materialised ledger against a fresh engine run.
+  //
+  // recomputeShopProfitability writes per-order profit and reports the engine
+  // total. Unattributed ad spend is subtracted in that period total but never
+  // lands on any order row, so the invariant is:
+  //
+  //   Σ Order.netProfit  ==  engine net profit + unattributed ad spend
+  //
+  // to the cent, over the whole history. Any drift means a writer bypassed the
+  // engine or a conversion rounded twice — either is a bug, and this script's
+  // exit code says so.
+  // -------------------------------------------------------------------------
+  console.log("\n=== RECONCILIATION (whole history) ===");
+  const recompute = await recomputeShopProfitability(shop.id);
+  const [materialised] = await prisma.$queryRaw<
+    Array<{
+      net: string | null;
+      contribution: string | null;
+      returnFees: string | null;
+      multicurrencyOrders: bigint;
+      labelAdjustments: string | null;
+    }>
+  >`
+    SELECT
+      SUM(o."netProfit")::text AS net,
+      SUM(o."contributionProfit")::text AS contribution,
+      SUM(o."returnFeesRetained")::text AS "returnFees",
+      COUNT(*) FILTER (WHERE o."presentmentCurrency" IS NOT NULL) AS "multicurrencyOrders",
+      (SELECT SUM(a.amount)::text FROM "ShippingLabelAdjustment" a
+        WHERE a."shopId" = ${shop.id}) AS "labelAdjustments"
+    FROM "Order" o
+    WHERE o."shopId" = ${shop.id}
+  `;
+
+  const materialisedNetCents = Math.round(Number(materialised?.net ?? 0) * 100);
+  const engineNetLandedCents =
+    recompute.netProfitCents + recompute.unattributedAdSpendCents;
+  const drift = materialisedNetCents - engineNetLandedCents;
+
+  console.log("Orders recomputed         ", recompute.ordersUpdated);
+  console.log("Engine net profit         ", formatMoney(recompute.netProfitCents));
+  console.log(
+    "  of which unattributed ads",
+    formatMoney(recompute.unattributedAdSpendCents),
+  );
+  console.log("Σ materialised net profit ", formatMoney(materialisedNetCents));
+  console.log(
+    "Multi-currency orders     ",
+    Number(materialised?.multicurrencyOrders ?? 0),
+  );
+  console.log(
+    "Return fees retained      ",
+    formatMoney(Math.round(Number(materialised?.returnFees ?? 0) * 100)),
+  );
+  console.log(
+    "Label adjustments (net)   ",
+    formatMoney(Math.round(Number(materialised?.labelAdjustments ?? 0) * 100)),
+  );
+
+  if (drift === 0) {
+    console.log("RECONCILIATION            OK — ledger matches engine to the cent");
+  } else {
+    console.error(
+      `RECONCILIATION            DRIFT of ${formatMoney(drift)} — ` +
+        "materialised orders disagree with the engine",
+    );
+    process.exitCode = 1;
   }
 }
 

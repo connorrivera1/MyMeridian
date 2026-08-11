@@ -45,6 +45,28 @@ function nestedMoney(value: unknown): Payload | undefined {
     : undefined;
 }
 
+/**
+ * Like `nestedMoney`, but keeps the presentment amount too. Only the order
+ * total needs both: the shop/presentment pair is what fixes the exchange rate
+ * this order's money actually moved at, which is the rate refund transactions
+ * — reported in the payment currency — must be converted back with.
+ */
+function nestedMoneyPair(value: unknown): Payload | undefined {
+  const outer = record(value);
+  const result: Payload = {};
+  const shopMoney = record(outer?.shop_money);
+  if (shopMoney) {
+    const minimized = copy(shopMoney, ["amount"]);
+    if (Object.keys(minimized).length > 0) result.shop_money = minimized;
+  }
+  const presentmentMoney = record(outer?.presentment_money);
+  if (presentmentMoney) {
+    const minimized = copy(presentmentMoney, ["amount", "currency_code"]);
+    if (Object.keys(minimized).length > 0) result.presentment_money = minimized;
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
 function arrayOfRecords(value: unknown): Payload[] {
   return Array.isArray(value)
     ? value.map(record).filter((item): item is Payload => item !== null)
@@ -73,6 +95,7 @@ function minimizeOrder(payload: Payload): Payload {
     "created_at",
     "updated_at",
     "currency",
+    "presentment_currency",
     "subtotal_price",
     "total_discounts",
     "total_tax",
@@ -83,6 +106,11 @@ function minimizeOrder(payload: Payload): Payload {
     "landing_site",
     "referring_site",
   ]);
+
+  // Both sides of the order total. On a multi-currency order this pair is the
+  // only honest source for the conversion rate the refunds below need.
+  const totalSet = nestedMoneyPair(payload.total_price_set);
+  if (totalSet) result.total_price_set = totalSet;
 
   const customer = record(payload.customer);
   if (customer) {
@@ -135,13 +163,27 @@ function minimizeOrder(payload: Payload): Payload {
 
   const refunds = arrayOfRecords(payload.refunds).map((refund) => {
     const minimized: Payload = {};
+    // `currency` is retained because refund transactions report money in the
+    // currency the customer paid in, which on a multi-currency order is not
+    // the currency of any other number on this payload.
     const transactions = arrayOfRecords(refund.transactions).map((tx) =>
-      copy(tx, ["status", "kind", "amount"]),
+      copy(tx, ["status", "kind", "amount", "currency"]),
     );
     if (transactions.length > 0) minimized.transactions = transactions;
 
     const refundLineItems = arrayOfRecords(refund.refund_line_items).map(
-      (item) => copy(item, ["line_item_id", "quantity"]),
+      (item) => {
+        // The shop-money value of what physically came back. Compared against
+        // what the transactions actually paid out, the gap is the return or
+        // restocking fee the merchant kept — which the profit engine needs
+        // named to split tax from refunds honestly.
+        const line = copy(item, ["line_item_id", "quantity"]);
+        const subtotalSet = nestedMoney(item.subtotal_set);
+        if (subtotalSet) line.subtotal_set = subtotalSet;
+        const taxSet = nestedMoney(item.total_tax_set);
+        if (taxSet) line.total_tax_set = taxSet;
+        return line;
+      },
     );
     if (refundLineItems.length > 0) {
       minimized.refund_line_items = refundLineItems;

@@ -42,6 +42,8 @@ function order(args: {
     taxTotalCents: 0,
     totalCents: args.priceCents,
     refundedTotalCents: 0,
+    returnFeesRetainedCents: 0,
+    returnShippingCostCents: 0,
     actualShippingCostCents: 0,
     actualPickPackCostCents: 0,
     lineItems: [

@@ -178,6 +178,8 @@ model Shop {
   checkouts             Checkout[]
   usageMeters           UsageMeter[]
   usageMeterEvents      UsageMeterEvent[]
+  shippingAdjustments   ShippingLabelAdjustment[]
+  adSyncWindows         AdSyncWindow[]
 
   @@index([domain])
 }
@@ -710,6 +712,14 @@ model Order {
   total           Decimal   @db.Decimal(12, 2)
   refundedTotal   Decimal   @default(0) @db.Decimal(12, 2)
 
+  /// Customer-facing currency on a multi-currency order. Monetary ledger
+  /// columns remain shop currency; these fields retain Shopify's conversion
+  /// evidence for refunds and reconciliation.
+  presentmentCurrency     String?
+  presentmentTotal        Decimal? @db.Decimal(12, 2)
+  presentmentExchangeRate Decimal? @db.Decimal(20, 10)
+  returnFeesRetained      Decimal  @default(0) @db.Decimal(12, 2)
+
   financialStatus   String @default("paid")
   fulfillmentStatus String @default("unfulfilled")
 
@@ -736,6 +746,7 @@ model Order {
   fulfillments             Fulfillment[]
   taxComponents            OrderTaxComponent[]
   shippingCostObservations ShippingCostObservation[]
+  shippingAdjustments      ShippingLabelAdjustment[]
 
   @@unique([shopId, shopifyId])
   @@index([shopId, processedAt])
@@ -774,6 +785,33 @@ model OrderTaxComponent {
 
   @@unique([orderId, sourceKey])
   @@index([shopId, regime, jurisdictionType])
+}
+
+/// An immutable carrier or merchant correction to shipping cost. It is kept
+/// separate from a provider's original ShippingCostObservation so invoice
+/// replays stay idempotent and a correction never rewrites history.
+model ShippingLabelAdjustment {
+  id            String       @id @default(cuid())
+  shopId        String
+  shop          Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  orderId       String
+  order         Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fulfillmentId String?
+  fulfillment   Fulfillment? @relation(fields: [fulfillmentId], references: [id], onDelete: SetNull)
+
+  kind           ShippingAdjustmentKind
+  source         ShippingAdjustmentSource
+  reference      String
+  amount         Decimal                  @db.Decimal(12, 2)
+  sourceCurrency String?
+  sourceAmount   Decimal?                 @db.Decimal(12, 2)
+  reason         String?
+  occurredAt     DateTime
+  createdAt      DateTime                 @default(now())
+
+  @@unique([shopId, source, reference])
+  @@index([orderId])
+  @@index([shopId, occurredAt])
 }
 
 model OrderLineItem {
@@ -881,6 +919,7 @@ model Fulfillment {
   location     String  @default("primary")
 
   shippingCostObservations ShippingCostObservation[]
+  labelAdjustments         ShippingLabelAdjustment[]
 
   @@unique([shopId, shopifyId])
   @@index([shopId, createdAt])
@@ -1015,7 +1054,11 @@ model Connector {
   workLeaseToken     String?
   workLeaseExpiresAt DateTime?
 
-  healthEvents ConnectorHealthEvent[]
+  healthEvents    ConnectorHealthEvent[]
+  accountCurrency String?
+  /// Watermark for the weekly full attribution-window restatement poll.
+  lastDeepSyncAt  DateTime?
+  syncWindows     AdSyncWindow[]
 
   @@unique([shopId, provider])
   @@index([workLeaseExpiresAt])
@@ -1037,6 +1080,42 @@ model ConnectorHealthEvent {
 
   @@index([shopId, createdAt])
   @@index([connectorId, createdAt])
+}
+
+/// Durable per-connector/day ad sync ledger. Redis schedules work, while this
+/// table makes missing and restated days recoverable after a worker restart.
+model AdSyncWindow {
+  id            String            @id @default(cuid())
+  shopId        String
+  shop          Shop              @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  connectorId   String
+  connector     Connector         @relation(fields: [connectorId], references: [id], onDelete: Cascade)
+  day           DateTime          @db.Date
+  status        AdSyncWindowState @default(PENDING)
+  attempts      Int               @default(0)
+  rowsWritten   Int               @default(0)
+  contentHash   String?
+  lastChangedAt DateTime?
+  lastError     String?
+  syncedAt      DateTime?
+  updatedAt     DateTime          @updatedAt
+
+  @@unique([connectorId, day])
+  @@index([shopId, status, day])
+}
+
+/// Immutable daily FX rate used for ad and carrier-cost conversion.
+model ExchangeRate {
+  id        String   @id @default(cuid())
+  day       DateTime @db.Date
+  base      String
+  quote     String
+  rate      Decimal  @db.Decimal(20, 10)
+  source    String   @default("frankfurter")
+  fetchedAt DateTime @default(now())
+
+  @@unique([day, base, quote])
+  @@index([base, quote, day])
 }
 
 model PricingRecommendation {
@@ -1199,6 +1278,25 @@ enum ShippingObservationStatus {
   CURRENCY_MISMATCH
   CONFLICT
   VOIDED
+}
+
+enum ShippingAdjustmentKind {
+  LABEL_PURCHASE
+  CARRIER_ADJUSTMENT
+  RETURN_LABEL
+}
+
+enum ShippingAdjustmentSource {
+  SHOPIFY
+  CARRIER_INVOICE
+  THREEPL
+  MANUAL
+}
+
+enum AdSyncWindowState {
+  PENDING
+  SYNCED
+  FAILED
 }
 
 enum SyncStatus {

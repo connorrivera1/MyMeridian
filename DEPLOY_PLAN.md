@@ -3,6 +3,12 @@
 Canonical checkout: branch `main`, no git remote. Nothing here has been deployed,
 pushed or submitted.
 
+**Ads ingestion dependency.** `MERIDIAN_REDIS_URL` enables continuous
+Meta/Google/TikTok polling; without it the app stays up and ad ingestion is
+offline. The durable `AdSyncWindow` ledger is Postgres, so a lost Redis queue
+is reconciled on the next polling cycle. Google Ads also needs its client id,
+secret, and developer token configured as deployment secrets.
+
 **Current snapshot, 2026-08-11.** This snapshot overrides stale "now" claims in
 the dated audit history below. In particular, billing is enforced, the suite has
 907 tests, Docker and flyctl are installed, and the remaining release gates are

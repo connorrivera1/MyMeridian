@@ -278,6 +278,24 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const money = (set: { shopMoney?: { amount?: string } } | null | undefined) =>
   set?.shopMoney?.amount ?? "0.00";
 
+/** The customer-facing side of a Shopify money bag, when present. */
+const presentmentMoney = (
+  set:
+    | { presentmentMoney?: { amount?: string; currencyCode?: string } }
+    | null
+    | undefined,
+) => {
+  const side = (
+    set as
+      | { presentmentMoney?: { amount?: string; currencyCode?: string } }
+      | null
+      | undefined
+  )?.presentmentMoney;
+  return side?.amount && side.currencyCode
+    ? { amount: side.amount, currencyCode: side.currencyCode }
+    : null;
+};
+
 /** "#1042" -> 1042 */
 function orderNumberFrom(name: string | null | undefined): number {
   const digits = (name ?? "").replace(/\D/g, "");
@@ -393,6 +411,13 @@ const LINE_ITEM_FIELDS = `
   taxLines { ${TAX_LINE_FIELDS} }
 `;
 
+const REFUND_LINE_ITEM_FIELDS = `
+  quantity
+  lineItem { id }
+  subtotalSet { shopMoney { amount } }
+  totalTaxSet { shopMoney { amount } }
+`;
+
 const ORDER_FIELDS = `
   id
   name
@@ -400,6 +425,7 @@ const ORDER_FIELDS = `
   createdAt
   updatedAt
   currencyCode
+  presentmentCurrencyCode
   displayFinancialStatus
   displayFulfillmentStatus
   subtotalPriceSet { shopMoney { amount } }
@@ -416,7 +442,7 @@ const ORDER_FIELDS = `
       taxLines { ${TAX_LINE_FIELDS} }
     }
   }
-  totalPriceSet { shopMoney { amount } }
+  totalPriceSet { shopMoney { amount } presentmentMoney { amount currencyCode } }
   totalRefundedSet { shopMoney { amount } }
   lineItems(first: ${LINE_ITEMS_PER_ORDER}) {
     pageInfo { hasNextPage endCursor }
@@ -426,9 +452,10 @@ const ORDER_FIELDS = `
   }
   refunds {
     id
+    totalRefundedSet { shopMoney { amount } }
     refundLineItems(first: ${LINE_ITEMS_PER_ORDER}) {
       pageInfo { hasNextPage endCursor }
-      nodes { quantity lineItem { id } }
+      nodes { ${REFUND_LINE_ITEM_FIELDS} }
     }
   }
 `;
@@ -1204,6 +1231,8 @@ interface TaxLineNode {
 interface RefundLineItemNode {
   quantity: number;
   lineItem: { id: string } | null;
+  subtotalSet: never;
+  totalTaxSet: never;
 }
 
 export interface FulfillmentNode {
@@ -1223,6 +1252,7 @@ interface OrderNode {
   createdAt: string;
   updatedAt?: string;
   currencyCode: string;
+  presentmentCurrencyCode?: string | null;
   displayFinancialStatus: string | null;
   displayFulfillmentStatus: string | null;
   subtotalPriceSet: never;
@@ -1239,7 +1269,7 @@ interface OrderNode {
       taxLines: TaxLineNode[];
     }[];
   };
-  totalPriceSet: never;
+  totalPriceSet: { shopMoney?: { amount?: string }; presentmentMoney?: { amount?: string; currencyCode?: string } };
   totalRefundedSet: never;
   /** Absent entirely when customer access was not granted. */
   customer?: { id: string; email: string | null } | null;
@@ -1249,6 +1279,7 @@ interface OrderNode {
   };
   refunds: {
     id: string;
+    totalRefundedSet: never;
     refundLineItems: {
       pageInfo?: { hasNextPage: boolean; endCursor: string | null };
       nodes: RefundLineItemNode[];
@@ -1549,15 +1580,29 @@ async function importOneOrder(shopId: string, node: OrderNode) {
     utmCampaign: visit?.utmParameters?.campaign,
   });
 
-  const refundLineItems = (node.refunds ?? []).flatMap((refund) =>
-    (refund.refundLineItems?.nodes ?? [])
+  const refundEvents = (node.refunds ?? []).map((refund) => ({
+    transactions: [
+      {
+        status: "success",
+        kind: "refund",
+        amount: money(refund.totalRefundedSet),
+      },
+    ],
+    refund_line_items: (refund.refundLineItems?.nodes ?? [])
       .filter((item) => item.lineItem?.id)
       .map((item) => ({
         line_item_id: item.lineItem!.id,
         quantity: item.quantity,
+        subtotal_set: { shop_money: { amount: money(item.subtotalSet) } },
+        total_tax_set: { shop_money: { amount: money(item.totalTaxSet) } },
       })),
+  }));
+  const perRefundTotalCents = refundEvents.reduce(
+    (sum, refund) => sum + Math.round(Number(refund.transactions[0]!.amount) * 100),
+    0,
   );
   const refundedTotal = money(node.totalRefundedSet);
+  const orderPresentment = presentmentMoney(node.totalPriceSet);
 
   // Use the exact same source-watermarked, advisory-locked transaction as live
   // webhooks. A page fetched before a newer delivery can therefore finish
@@ -1569,6 +1614,8 @@ async function importOneOrder(shopId: string, node: OrderNode) {
     created_at: node.createdAt,
     updated_at: node.updatedAt,
     currency: node.currencyCode,
+    presentment_currency:
+      node.presentmentCurrencyCode ?? orderPresentment?.currencyCode ?? null,
     subtotal_price: money(node.subtotalPriceSet),
     total_discounts: money(node.totalDiscountsSet),
     total_shipping_price_set: {
@@ -1596,6 +1643,12 @@ async function importOneOrder(shopId: string, node: OrderNode) {
       })),
     })),
     total_price: money(node.totalPriceSet),
+    total_price_set: {
+      shop_money: { amount: money(node.totalPriceSet) },
+      ...(orderPresentment
+        ? { presentment_money: { amount: orderPresentment.amount, currency_code: orderPresentment.currencyCode } }
+        : {}),
+    },
     financial_status: (node.displayFinancialStatus ?? "PAID").toLowerCase(),
     fulfillment_status: (
       node.displayFulfillmentStatus ?? "UNFULFILLED"
@@ -1626,16 +1679,15 @@ async function importOneOrder(shopId: string, node: OrderNode) {
       })),
     })),
     refunds:
-      refundedTotal !== "0.00" || refundLineItems.length > 0
-        ? [
-            {
-              transactions: [
-                { status: "success", kind: "refund", amount: refundedTotal },
-              ],
-              refund_line_items: refundLineItems,
-            },
-          ]
-        : [],
+      perRefundTotalCents > 0 ||
+      refundEvents.some((refund) => refund.refund_line_items.length > 0)
+        ? refundEvents
+        : refundedTotal !== "0.00"
+          ? [{
+              transactions: [{ status: "success", kind: "refund", amount: refundedTotal }],
+              refund_line_items: [],
+            }]
+          : [],
   });
 
   // Fulfilments have their own Shopify source clock. Each write and its

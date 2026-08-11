@@ -266,6 +266,74 @@ describe("durable webhook payload minimization", () => {
     },
   );
 
+  it("carries the currency facts a multi-currency refund needs", () => {
+    const minimized = minimizeWebhookPayload("orders/updated", {
+      id: 101,
+      currency: "USD",
+      presentment_currency: "EUR",
+      total_price: "113.00",
+      total_price_set: {
+        shop_money: { amount: "113.00", currency_code: "USD" },
+        presentment_money: { amount: "100.00", currency_code: "EUR" },
+      },
+      refunds: [
+        {
+          transactions: [
+            {
+              status: "success",
+              kind: "refund",
+              amount: "50.00",
+              currency: "EUR",
+              gateway: "private-gateway-metadata",
+            },
+          ],
+          refund_line_items: [
+            {
+              line_item_id: 303,
+              quantity: 1,
+              subtotal: "55.00",
+              subtotal_set: {
+                shop_money: { amount: "56.50", currency_code: "USD" },
+                presentment_money: { amount: "50.00", currency_code: "EUR" },
+              },
+              total_tax_set: {
+                shop_money: { amount: "4.52", currency_code: "USD" },
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(minimized).toEqual({
+      id: 101,
+      currency: "USD",
+      presentment_currency: "EUR",
+      total_price: "113.00",
+      // Both sides of the total — the only honest source for the rate the
+      // refund below must convert back at.
+      total_price_set: {
+        shop_money: { amount: "113.00" },
+        presentment_money: { amount: "100.00", currency_code: "EUR" },
+      },
+      refunds: [
+        {
+          transactions: [
+            { status: "success", kind: "refund", amount: "50.00", currency: "EUR" },
+          ],
+          refund_line_items: [
+            {
+              line_item_id: 303,
+              quantity: 1,
+              subtotal_set: { shop_money: { amount: "56.50" } },
+              total_tax_set: { shop_money: { amount: "4.52" } },
+            },
+          ],
+        },
+      ],
+    });
+  });
+
   it("projects billing and scope events", () => {
     expect(
       minimizeWebhookPayload("app_subscriptions/update", {

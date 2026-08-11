@@ -134,7 +134,7 @@ export async function loadEngineOrders(
   // per parcel and one row per order. Both columns are Decimal(12,2), so
   // summing before the cents conversion is exact — there is no sub-cent
   // remainder for SUM to accumulate and no rounding for it to move.
-  const [orders, fulfilmentCosts] = await Promise.all([
+  const [orders, fulfilmentCosts, labelAdjustments] = await Promise.all([
     prisma.order.findMany({
       where: { shopId, processedAt: { gte: range.from, lte: range.to } },
       // Named columns rather than the whole row. `EngineOrder` uses thirteen of
@@ -165,6 +165,7 @@ export async function loadEngineOrders(
         taxTotal: true,
         total: true,
         refundedTotal: true,
+        returnFeesRetained: true,
 
         lineItems: {
           select: {
@@ -195,20 +196,54 @@ export async function loadEngineOrders(
       },
       _sum: { shippingCost: true, pickPackCost: true },
     }),
+    // The correction ledger, summed per order and split outbound/return. Both
+    // Decimal(12,2) columns, so summing before the cents conversion is exact.
+    prisma.shippingLabelAdjustment.groupBy({
+      by: ["orderId", "kind"],
+      where: {
+        shopId,
+        order: { processedAt: { gte: range.from, lte: range.to } },
+      },
+      _sum: { amount: true },
+    }),
   ]);
 
   const fulfilmentCostByOrder = new Map(
     fulfilmentCosts.map((row) => [row.orderId, row._sum]),
   );
 
+  const outboundAdjustmentByOrder = new Map<string, number>();
+  const returnShippingByOrder = new Map<string, number>();
+  for (const row of labelAdjustments) {
+    const cents = toCents(row._sum.amount);
+    if (row.kind === "RETURN_LABEL") {
+      returnShippingByOrder.set(
+        row.orderId,
+        (returnShippingByOrder.get(row.orderId) ?? 0) + cents,
+      );
+    } else {
+      outboundAdjustmentByOrder.set(
+        row.orderId,
+        (outboundAdjustmentByOrder.get(row.orderId) ?? 0) + cents,
+      );
+    }
+  }
+
   return orders.map((order) => {
     // Shopify's own fulfilment webhooks carry no carrier cost — that arrives
     // from the 3PL connector. A zero therefore means "not known yet", not
     // "shipped for free", and must fall back to the merchant's cost rule. An
     // order with no fulfilments has no group row at all, which reads as the
-    // same zero.
+    // same zero. A recorded label purchase or carrier correction is equally
+    // real evidence of outbound cost, so its presence also switches the order
+    // off the modeled fallback — the correction folds into the actual figure.
     const summed = fulfilmentCostByOrder.get(order.id);
-    const shippingCostCents = toCents(summed?.shippingCost);
+    const fulfilmentShippingCents = toCents(summed?.shippingCost);
+    const outboundAdjustmentCents = outboundAdjustmentByOrder.get(order.id);
+    const shippingCostCents =
+      fulfilmentShippingCents + (outboundAdjustmentCents ?? 0);
+    const shippingCostKnown =
+      fulfilmentShippingCents > 0 || outboundAdjustmentCents !== undefined;
     const pickPackCostCents = toCents(summed?.pickPackCost);
 
     return {
@@ -226,9 +261,11 @@ export async function loadEngineOrders(
       taxTotalCents: toCents(order.taxTotal),
       totalCents: toCents(order.total),
       refundedTotalCents: toCents(order.refundedTotal),
+      returnFeesRetainedCents: toCents(order.returnFeesRetained),
 
-      actualShippingCostCents: shippingCostCents > 0 ? shippingCostCents : null,
+      actualShippingCostCents: shippingCostKnown ? shippingCostCents : null,
       actualPickPackCostCents: pickPackCostCents > 0 ? pickPackCostCents : null,
+      returnShippingCostCents: returnShippingByOrder.get(order.id) ?? 0,
 
       lineItems: order.lineItems.map((item) => ({
         id: item.id,

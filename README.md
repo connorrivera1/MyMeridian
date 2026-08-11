@@ -12,10 +12,9 @@ the app resolves the active Billing API subscription, redirects an unsubscribed
 store to the plan screen, gates paid features, and re-checks the plan before a
 protected pricing mutation.
 
-**Release status (verified 2026-08-11):** `npm run ci` passes with 907 tests
-collected (850 passed, 57 opt-in PostgreSQL tests skipped), and the explicit
-real-PostgreSQL integration run passes 57/57 across ten files after all 21
-migrations apply from empty. The app has
+**Release status (verified 2026-08-11):** `npm run ci` passes with 930 unit
+tests, while the explicit real-PostgreSQL run passes all 987 tests (including
+57 opt-in integration tests) after all 23 migrations apply from empty. The app has
 still never been installed on a real Shopify store, so OAuth, Shopify-delivered
 webhooks, and a real billing approval/return flow remain unproved. Submission is
 also waiting on external decisions and accounts: a non-confusable app name, a
@@ -246,7 +245,7 @@ and must never be reachable there.
 | `npm run shopify:dev` | Run against a real store via the Shopify CLI |
 | `npm run dev` | Dev server (demo / no Shopify) |
 | `npm run db:migrate` | Apply migrations |
-| `npm test` | Test suite (907 collected: 850 pass, 57 integration tests skipped) |
+| `npm test` | Test suite (930 unit tests; 57 PostgreSQL tests are opt-in) |
 | `npm run test:coverage` | Tests with coverage thresholds enforced |
 | `npm run ci` | Everything CI runs: typecheck, coverage, build |
 | `npm run typecheck` | Types |
@@ -463,6 +462,15 @@ the stack. Unpriced components, absurd nesting and non-positive quantities are
 all reported rather than resolved to a plausible-looking number — treating an
 unpriced component as free understates COGS, which is the one direction of error
 a profit tool must not make quietly.
+
+### Ad-spend ingestion
+
+Meta, Google, and TikTok spend polling is optional and uses BullMQ/Redis only
+as a scheduler. The `AdSyncWindow` Postgres ledger is the source of truth: a
+flushed queue, stopped worker, or delayed platform restatement is reconciled on
+the next polling cycle. Foreign-currency spend is converted against immutable
+daily `ExchangeRate` rows, and workers may run in the web process or through
+`npx tsx scripts/ads-worker.ts`.
 
 Detection reads the merchant's own naming (`WIDGET-BLU-3PK` beside `WIDGET-BLU`,
 or "3-Pack" beside "Single" within one product) and writes **proposals**.

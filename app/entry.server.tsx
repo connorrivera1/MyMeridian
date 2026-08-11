@@ -12,6 +12,7 @@ import { registerRecalcHandlers } from "./lib/recalc-handlers.server";
 import { startRecalcWorker } from "./lib/recalc-queue.server";
 import { startWebhookDeliveryWorker } from "./lib/webhooks.server";
 import { startIntegrationScheduler } from "./integrations/scheduler.server";
+import { startAdIngestion } from "./queue/ads-queue.server";
 
 // This module is loaded with the server process, not when a merchant opens
 // Settings. Retention therefore advances even when the app receives no page
@@ -23,6 +24,11 @@ validateCustomerErasureConfiguration();
 startDataRetentionScheduler();
 startWebhookDeliveryWorker();
 startIntegrationScheduler();
+// Optional by design: without MERIDIAN_REDIS_URL the web app remains usable;
+// only continuous ad ingestion is offline.
+void startAdIngestion().catch((error) =>
+  console.error("[ads] failed to start ingestion queues", error),
+);
 // Handlers first: a worker that starts before its registry is populated would
 // lease a queued restatement and immediately fail it as unhandled.
 registerRecalcHandlers();

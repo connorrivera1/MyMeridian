@@ -67,6 +67,8 @@ function engineOrder(
     taxTotalCents: 0,
     totalCents: subtotalCents + 500,
     refundedTotalCents: 0,
+    returnFeesRetainedCents: 0,
+    returnShippingCostCents: 0,
     actualShippingCostCents: null,
     actualPickPackCostCents: null,
     lineItems: [

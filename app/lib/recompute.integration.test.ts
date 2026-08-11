@@ -198,8 +198,8 @@ describe.skipIf(!TEST_URL)("bounded recompute, against real Postgres", () => {
       });
     }
 
-    // SQL DATE values surface at midnight UTC. For LA, the following day's
-    // date is the instant that buckets onto the intended merchant-local day.
+    // AdSpend.date is a platform statistics DATE, not a timestamp. Its face
+    // value must remain March 8 even though Prisma surfaces it at midnight UTC.
     await prisma.adSpend.createMany({
       data: [
         {
@@ -230,7 +230,7 @@ describe.skipIf(!TEST_URL)("bounded recompute, against real Postgres", () => {
         },
         {
           shopId,
-          date: new Date("2026-03-09T00:00:00.000Z"),
+          date: new Date("2026-03-08T00:00:00.000Z"),
           channel: "GOOGLE",
           spend: "0.01",
         },

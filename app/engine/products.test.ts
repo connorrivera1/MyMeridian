@@ -69,6 +69,8 @@ function order(
     taxTotalCents: 0,
     totalCents: subtotal,
     refundedTotalCents: 0,
+    returnFeesRetainedCents: 0,
+    returnShippingCostCents: 0,
     actualShippingCostCents: 0,
     actualPickPackCostCents: 0,
     lineItems,

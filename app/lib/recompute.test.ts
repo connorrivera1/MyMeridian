@@ -104,6 +104,8 @@ const DEFAULT_ORDER: EngineOrder = {
   taxTotalCents: 0,
   totalCents: 10_000,
   refundedTotalCents: 0,
+  returnFeesRetainedCents: 0,
+  returnShippingCostCents: 0,
   actualShippingCostCents: null,
   actualPickPackCostCents: null,
   lineItems: [],

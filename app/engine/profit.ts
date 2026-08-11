@@ -239,11 +239,25 @@ export function computeOrderProfit(
   // before it is subtracted. Netting the gross refund against ex-tax revenue
   // over-subtracts by exactly the tax, and on a fully refunded order that drives
   // revenue negative — which then produces a nonsense margin.
+  //
+  // Return fees complicate the share. A restocking or return-shipping fee the
+  // merchant kept is charged ex-tax, so what was *paid back* is the taxed value
+  // of the goods minus an untaxed fee. Scaling the paid-back amount alone
+  // shaves the tax rate off the fee as well — on a $110 return with a $20 fee
+  // at 10% tax, that misreports ~$2 of retained fee as returned tax. The tax
+  // share belongs to the full value that came back (refund + fee); the fee then
+  // comes out ex-tax, whole.
+  const returnFeesRetainedCents = Math.max(0, order.returnFeesRetainedCents);
   const exTaxShare =
     order.totalCents > 0
       ? (order.totalCents - order.taxTotalCents) / order.totalCents
       : 1;
-  const refundCents = Math.round(order.refundedTotalCents * exTaxShare);
+  const refundCents = Math.max(
+    0,
+    Math.round(
+      (order.refundedTotalCents + returnFeesRetainedCents) * exTaxShare,
+    ) - returnFeesRetainedCents,
+  );
 
   // Tax is excluded throughout: it is collected on behalf of a tax authority
   // and was never the merchant's revenue.
@@ -278,12 +292,18 @@ export function computeOrderProfit(
   // zero share, its headline still rests on that non-zero monthly assumption.
   const estimatedOverhead = rules.monthlyOverheadCents !== 0;
 
+  // A return label is real fulfilment spend on this order, but unlike outbound
+  // shipping there is no modeled fallback: it either exists in the adjustment
+  // ledger or the order genuinely had none.
+  const returnShippingCostCents = order.returnShippingCostCents;
+
   const totalCostCents =
     cogsCents +
     shippingCostCents +
     paymentFeeCents +
     pickPackCents +
     adCostCents +
+    returnShippingCostCents +
     overheadCents;
 
   const contributionProfitCents =
@@ -292,7 +312,8 @@ export function computeOrderProfit(
     shippingCostCents -
     paymentFeeCents -
     pickPackCents -
-    adCostCents;
+    adCostCents -
+    returnShippingCostCents;
 
   const netProfitCents = contributionProfitCents - overheadCents;
 
@@ -307,6 +328,7 @@ export function computeOrderProfit(
     grossRevenueCents,
     discountCents,
     refundCents,
+    returnFeesRetainedCents,
     shippingRevenueCents,
     netRevenueCents,
 
@@ -316,6 +338,7 @@ export function computeOrderProfit(
     pickPackCents,
     adCostCents,
     overheadCents,
+    returnShippingCostCents,
     totalCostCents,
 
     contributionProfitCents,
@@ -359,6 +382,8 @@ export interface PeriodProfit {
   grossRevenueCents: Cents;
   discountCents: Cents;
   refundCents: Cents;
+  /** Return/restocking fees retained across the period's refunds. */
+  returnFeesRetainedCents: Cents;
   shippingRevenueCents: Cents;
   netRevenueCents: Cents;
 
@@ -369,6 +394,8 @@ export interface PeriodProfit {
   attributedAdCostCents: Cents;
   unattributedAdCostCents: Cents;
   totalAdCostCents: Cents;
+  /** Merchant-paid return labels across the period. */
+  returnShippingCostCents: Cents;
   overheadCents: Cents;
 
   contributionProfitCents: Cents;
@@ -428,6 +455,7 @@ export function computeProfitForPeriod(
     grossRevenueCents: pick((o) => o.grossRevenueCents),
     discountCents: pick((o) => o.discountCents),
     refundCents: pick((o) => o.refundCents),
+    returnFeesRetainedCents: pick((o) => o.returnFeesRetainedCents),
     shippingRevenueCents: pick((o) => o.shippingRevenueCents),
     netRevenueCents,
 
@@ -438,6 +466,7 @@ export function computeProfitForPeriod(
     attributedAdCostCents,
     unattributedAdCostCents: attribution.unattributedCents,
     totalAdCostCents: attributedAdCostCents + attribution.unattributedCents,
+    returnShippingCostCents: pick((o) => o.returnShippingCostCents),
     overheadCents,
 
     contributionProfitCents,

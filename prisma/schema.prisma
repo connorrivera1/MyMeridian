@@ -176,6 +176,9 @@ model Shop {
   usageMeters        UsageMeter[]
   usageMeterEvents   UsageMeterEvent[]
 
+  shippingAdjustments ShippingLabelAdjustment[]
+  adSyncWindows       AdSyncWindow[]
+
   @@index([domain])
 }
 
@@ -700,6 +703,24 @@ model Order {
   total           Decimal @db.Decimal(12, 2)
   refundedTotal   Decimal @default(0) @db.Decimal(12, 2)
 
+  /// Customer-facing currency on a multi-currency order; null when the order
+  /// was presented in the shop currency. Every money column on this row is
+  /// shop currency — these three exist so a converted figure can always be
+  /// traced back to what the customer actually paid.
+  presentmentCurrency String?
+  presentmentTotal    Decimal? @db.Decimal(12, 2)
+  /// Shop-currency units per presentment unit, implied by Shopify's own
+  /// conversion of this order (total ÷ presentmentTotal). Refund transactions
+  /// report money in the payment currency, so they are converted at the rate
+  /// this order's money actually moved at — never a market rate fetched later.
+  presentmentExchangeRate Decimal? @db.Decimal(20, 10)
+
+  /// Return/restocking fees the merchant kept when refunding: the value of
+  /// what came back minus what was actually paid out. Fees are not tax, so
+  /// naming them explicitly is what lets the engine strip the tax share from a
+  /// refund without shaving phantom tax off money the merchant retained.
+  returnFeesRetained Decimal @default(0) @db.Decimal(12, 2)
+
   financialStatus   String @default("paid")
   fulfillmentStatus String @default("unfulfilled")
 
@@ -722,14 +743,60 @@ model Order {
   netProfit          Decimal   @default(0) @db.Decimal(12, 2)
   computedAt         DateTime?
 
-  lineItems    OrderLineItem[]
-  fulfillments Fulfillment[]
+  lineItems           OrderLineItem[]
+  fulfillments        Fulfillment[]
+  shippingAdjustments ShippingLabelAdjustment[]
 
   @@unique([shopId, shopifyId])
   @@index([shopId, processedAt])
   @@index([shopId, channel, processedAt])
   @@index([shopId, netProfit])
   @@index([customerId])
+}
+
+/// A correction to what shipping an order actually cost, learned after the
+/// label was bought.
+///
+/// Carriers reweigh parcels, apply dimensional corrections and bill address
+/// surcharges weeks after the fact, on an invoice — there is no Shopify webhook
+/// for any of it. Editing `Fulfillment.shippingCost` in place would make the
+/// correction indistinguishable from the original quote, so each adjustment is
+/// its own signed row and the engine sums the ledger. `reference` is the source
+/// system's own id (invoice line, adjustment id), which is what makes replaying
+/// an import idempotent instead of double-charging the correction.
+model ShippingLabelAdjustment {
+  id            String       @id @default(cuid())
+  shopId        String
+  shop          Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  orderId       String
+  order         Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  /// The parcel it corrects, when the source can say. An invoice-level
+  /// surcharge that only names the order legitimately has none.
+  fulfillmentId String?
+  fulfillment   Fulfillment? @relation(fields: [fulfillmentId], references: [id], onDelete: SetNull)
+
+  kind   ShippingAdjustmentKind
+  source ShippingAdjustmentSource
+  /// The source system's own identity for this adjustment. Unique per source,
+  /// so re-importing the same carrier invoice cannot double-charge.
+  reference String
+
+  /// Signed, in the shop currency: positive is additional cost, negative is a
+  /// carrier credit. Conversion happens at ingestion so the engine never mixes
+  /// currencies.
+  amount Decimal @db.Decimal(12, 2)
+  /// Original invoice currency and amount when conversion happened; null when
+  /// the source already billed in the shop currency.
+  sourceCurrency String?
+  sourceAmount   Decimal? @db.Decimal(12, 2)
+
+  reason     String?
+  occurredAt DateTime
+  createdAt  DateTime @default(now())
+
+  @@unique([shopId, source, reference])
+  @@index([orderId])
+  @@index([shopId, occurredAt])
 }
 
 model OrderLineItem {
@@ -836,6 +903,8 @@ model Fulfillment {
   itemCount    Int     @default(0)
   location     String  @default("primary")
 
+  labelAdjustments ShippingLabelAdjustment[]
+
   @@unique([shopId, shopifyId])
   @@index([shopId, createdAt])
   @@index([orderId])
@@ -912,10 +981,72 @@ model Connector {
   refreshTokenEnc String?
   tokenExpiresAt  DateTime?
 
+  /// ISO 4217 currency the ad account bills in, read from the platform at
+  /// connect/sync time. Spend is converted to the shop currency at ingestion;
+  /// null means "not read yet" and is treated as the shop currency.
+  accountCurrency String?
+
   lastSyncedAt DateTime?
   lastError    String?
+  /// Watermark for the deep restatement re-poll (attribution windows move
+  /// platform-reported spend for weeks). The scheduler widens its lookback to
+  /// the deep horizon whenever this is older than the configured cadence.
+  lastDeepSyncAt DateTime?
+
+  syncWindows AdSyncWindow[]
 
   @@unique([shopId, provider])
+}
+
+/// Per-connector, per-day ledger of ad-spend ingestion — the source of truth
+/// for what has actually been synced.
+///
+/// Redis schedules the work; it does not remember it. If the queue is flushed,
+/// a worker dies mid-run, or the app is down for a weekend, these rows are what
+/// the next scheduler pass reconciles against — any day inside the horizon
+/// without a SYNCED row is re-enqueued. That reconciliation, not the queue
+/// itself, is what makes sync drops self-healing.
+model AdSyncWindow {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  connectorId String
+  connector   Connector @relation(fields: [connectorId], references: [id], onDelete: Cascade)
+
+  /// The platform-reported statistics day, in the ad account's own timezone.
+  day    DateTime          @db.Date
+  status AdSyncWindowState @default(PENDING)
+
+  attempts  Int       @default(0)
+  /// Rows written on the last successful sync of this day.
+  rowsWritten Int     @default(0)
+  /// Hash of the last fetched result, so an unchanged restatement poll can
+  /// skip the write and, more importantly, skip invalidating profit.
+  contentHash String?
+  lastError   String?
+  syncedAt    DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([connectorId, day])
+  @@index([shopId, status, day])
+}
+
+/// Daily FX rates for converting foreign-currency costs (ad accounts, carrier
+/// invoices) into the shop currency. Global, not shop-scoped: a EUR→USD rate
+/// is the same fact for every store. Order money never touches this table —
+/// multi-currency orders convert at Shopify's own per-order implied rate.
+model ExchangeRate {
+  id        String   @id @default(cuid())
+  day       DateTime @db.Date
+  base      String
+  quote     String
+  /// 1 unit of `base` = `rate` units of `quote`.
+  rate      Decimal  @db.Decimal(20, 10)
+  source    String   @default("frankfurter")
+  fetchedAt DateTime @default(now())
+
+  @@unique([day, base, quote])
+  @@index([base, quote, day])
 }
 
 model PricingRecommendation {
@@ -1028,6 +1159,29 @@ enum ConnectorStatus {
   CONNECTED
   DISCONNECTED
   ERROR
+}
+
+enum ShippingAdjustmentKind {
+  /// The label as originally bought — a cost observation, not a correction.
+  LABEL_PURCHASE
+  /// Carrier reweigh, dimensional correction, address surcharge, or credit.
+  CARRIER_ADJUSTMENT
+  /// A return label the merchant paid for. Kept apart from outbound cost so
+  /// the engine can report return economics on their own line.
+  RETURN_LABEL
+}
+
+enum ShippingAdjustmentSource {
+  SHOPIFY
+  CARRIER_INVOICE
+  THREEPL
+  MANUAL
+}
+
+enum AdSyncWindowState {
+  PENDING
+  SYNCED
+  FAILED
 }
 
 enum SyncStatus {

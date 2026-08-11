@@ -622,3 +622,83 @@ describe("syncFulfillmentFromShopify", () => {
     expect(orderUpdate).not.toHaveBeenCalled();
   });
 });
+
+describe("syncOrderFromShopify — multi-currency provenance", () => {
+  it("stores the presentment pair and converts refunds at the implied rate", async () => {
+    await syncOrderFromShopify(
+      SHOP_ID,
+      orderPayload({
+        total_price: "113.00",
+        presentment_currency: "EUR",
+        total_price_set: {
+          shop_money: { amount: "113.00", currency_code: "USD" },
+          presentment_money: { amount: "100.00", currency_code: "EUR" },
+        },
+        refunds: [
+          {
+            transactions: [
+              {
+                kind: "refund",
+                status: "success",
+                amount: "50.00",
+                currency: "EUR",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const data = orderUpsert.mock.calls[0]![0].create;
+    expect(data.presentmentCurrency).toBe("EUR");
+    expect(data.presentmentTotal).toBe("100.00");
+    // $113.00 settled from €100.00.
+    expect(data.presentmentExchangeRate).toBe("1.1300000000");
+    // €50.00 × 1.13 = $56.50, not $50.00.
+    expect(data.refundedTotal).toBe("56.50");
+  });
+
+  it("stores no presentment provenance for a single-currency order", async () => {
+    await syncOrderFromShopify(
+      SHOP_ID,
+      orderPayload({
+        total_price_set: {
+          shop_money: { amount: "100.00", currency_code: "USD" },
+          presentment_money: { amount: "100.00", currency_code: "USD" },
+        },
+      }),
+    );
+
+    const data = orderUpsert.mock.calls[0]![0].create;
+    expect(data.presentmentCurrency).toBeNull();
+    expect(data.presentmentTotal).toBeNull();
+    expect(data.presentmentExchangeRate).toBeNull();
+  });
+
+  it("writes derived return fees onto the order", async () => {
+    await syncOrderFromShopify(
+      SHOP_ID,
+      orderPayload({
+        refunds: [
+          {
+            transactions: [
+              { kind: "refund", status: "success", amount: "90.00" },
+            ],
+            refund_line_items: [
+              {
+                line_item_id: 1,
+                quantity: 1,
+                subtotal_set: { shop_money: { amount: "100.00" } },
+                total_tax_set: { shop_money: { amount: "0.00" } },
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const data = orderUpsert.mock.calls[0]![0].create;
+    expect(data.refundedTotal).toBe("90.00");
+    expect(data.returnFeesRetained).toBe("10.00");
+  });
+});

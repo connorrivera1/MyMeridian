@@ -298,7 +298,7 @@ async function writeOrderProfits(profits: readonly OrderProfit[]) {
       (p) => Prisma.sql`(
         ${p.orderId}::text,
         ${centsToDollars(p.cogsCents)}::numeric,
-        ${centsToDollars(p.shippingCostCents)}::numeric,
+        ${centsToDollars(p.shippingCostCents + p.returnShippingCostCents)}::numeric,
         ${centsToDollars(p.paymentFeeCents + p.pickPackCents)}::numeric,
         ${centsToDollars(p.adCostCents)}::numeric,
         ${centsToDollars(p.overheadCents)}::numeric,

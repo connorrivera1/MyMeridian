@@ -2,7 +2,7 @@
 
 Status of every requirement Shopify checks. The long audit trail below records
 what was run on 2026-08-05/06; this current snapshot was reconciled and verified
-again on 2026-08-10.
+again on 2026-08-11.
 
 Canonical branch: `main`. Nothing has been deployed, pushed or submitted, and
 the repo has no git remote configured.
@@ -16,9 +16,9 @@ with credentials injected into the real route modules — and the level is named
 each time. See _What has not been tested_ at the end.
 
 **Current local gate:** `npm run ci` passes — typecheck, coverage thresholds,
-and production build — with 648 tests collected (619 passed, 29 opt-in
-PostgreSQL integration tests skipped). The explicit seven-file real-PostgreSQL
-run passes 29/29 after all 16 migrations apply from empty with zero schema drift.
+and production build — with 907 tests collected (850 passed, 57 opt-in
+PostgreSQL integration tests skipped). The explicit ten-file real-PostgreSQL
+run passes 57/57 after all 21 migrations apply from empty.
 Billing is no longer merely declared:
 `resolvePlan`, the layout subscription redirect, the `planAllows`
 capability gates, the pricing-action re-check, and `billing.request` implement
@@ -1123,10 +1123,10 @@ the bug, and why the third row of that table matches.
 | Read-only scopes                           | Done      | `read_orders,read_products,read_fulfillments,read_inventory`; no write scope; accepted price changes are recorded, never pushed                                                                                                                                                                                                                                                                                              |
 | GraphQL Admin API only                     | Done      | No REST calls anywhere; new public apps may not use REST                                                                                                                                                                                                                                                                                                                                                                     |
 | Webhook API version                        | Done      | `2026-07`, matching `@shopify/shopify-api` 13.1.0                                                                                                                                                                                                                                                                                                                                                                            |
-| Production build                           | Done      | `npm run ci` production build clean on 2026-08-10                                                                                                                                                                                                                                                                                                                                                                            |
-| Test suite                                 | Done      | **648 collected: 619 passed, 29 opt-in PostgreSQL integration tests skipped; explicit real-PostgreSQL suite 29/29 across seven files** (verified 2026-08-10)                                                                                                                                                                                                                                                                |
+| Production build                           | Done      | `npm run ci` production build clean on 2026-08-11                                                                                                                                                                                                                                                                                                                                                                            |
+| Test suite                                 | Done      | **907 collected: 850 passed, 57 opt-in PostgreSQL integration tests skipped; explicit real-PostgreSQL suite 57/57 across ten files** (verified 2026-08-11)                                                                                                                                                                                                                                                                |
 | Engine output unchanged by the query work  | Done      | `npx tsx scripts/verify-data.ts` against live Postgres, diffed byte-for-byte against its output before the change                                                                                                                                                                                                                                                                                                            |
-| Typecheck                                  | Done      | Clean in `npm run ci` on 2026-08-10                                                                                                                                                                                                                                                                                                                                                                                          |
+| Typecheck                                  | Done      | Clean in `npm run ci` on 2026-08-11                                                                                                                                                                                                                                                                                                                                                                                          |
 | Config validity                            | Done      | `shopify app config validate` passes on 2026-08-10; CLI 4.x publishes config through `shopify app deploy`, not the removed `config push` command                                                                                                                                                                                                                                                                             |
 | Every current content route renders        | Done      | Browser-checked on 2026-08-10 in a running demo-mode server: all 11 content routes rendered without an error overlay — `/app`, `/app/orders`, `/app/products`, `/app/acquisition`, `/app/pricing`, `/app/fulfilment`, `/app/settings`, `/app/privacy-requests`, `/app/plan`, `/privacy`, `/support`. The public landing bundle also revealed all 18 below-fold regions under real scroll and exposed all content with reduced motion. `/` remains an auth redirect by design; this does not prove real Shopify OAuth. |
 

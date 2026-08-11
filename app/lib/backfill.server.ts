@@ -21,6 +21,8 @@ import {
   syncFulfillmentFromShopify,
   syncOrderFromShopify,
 } from "~/lib/sync.server";
+import { seedOpeningCostBasis } from "~/lib/cost-history.server";
+import { toMicros } from "~/engine/money";
 import { generatePricingRecommendations } from "~/lib/pricing.server";
 import { withProductLock } from "~/lib/product-lock.server";
 import { recomputeShopProfitability } from "~/lib/recompute.server";
@@ -371,6 +373,14 @@ function productVariantsQuery(includeCost: boolean) {
  * back as a field error the import drops to the narrow query and carries on
  * with referrer-based attribution rather than failing the whole run.
  */
+const TAX_LINE_FIELDS = `
+  title
+  rate
+  source
+  channelLiable
+  priceSet { shopMoney { amount } }
+`;
+
 const LINE_ITEM_FIELDS = `
   id
   title
@@ -380,6 +390,7 @@ const LINE_ITEM_FIELDS = `
   totalDiscountSet { shopMoney { amount } }
   variant { id }
   product { id }
+  taxLines { ${TAX_LINE_FIELDS} }
 `;
 
 const ORDER_FIELDS = `
@@ -395,6 +406,16 @@ const ORDER_FIELDS = `
   totalDiscountsSet { shopMoney { amount } }
   totalShippingPriceSet { shopMoney { amount } }
   totalTaxSet { shopMoney { amount } }
+  taxesIncluded
+  taxLines { ${TAX_LINE_FIELDS} }
+  shippingLines(first: 20) {
+    nodes {
+      title
+      source
+      discountedPriceSet { shopMoney { amount } }
+      taxLines { ${TAX_LINE_FIELDS} }
+    }
+  }
   totalPriceSet { shopMoney { amount } }
   totalRefundedSet { shopMoney { amount } }
   lineItems(first: ${LINE_ITEMS_PER_ORDER}) {
@@ -1107,6 +1128,22 @@ export async function importProducts(
             },
           });
 
+          // Give the timeline a floor while the catalog is being read. Without
+          // it a brand-new install has current costs but no cost history, and
+          // the merchant's first backdated correction would have nothing to
+          // supersede. Idempotent: only an empty timeline is seeded.
+          if (includeCost && unitCost) {
+            await seedOpeningCostBasis(
+              {
+                shopId,
+                variantId: record.id,
+                unitCostMicros: toMicros(unitCost),
+                source: CostSource.SHOPIFY,
+              },
+              tx,
+            );
+          }
+
           const needsPriceFact =
             !existingVariant ||
             existingVariant._count.priceHistory === 0 ||
@@ -1153,6 +1190,15 @@ interface LineItemNode {
   totalDiscountSet: never;
   variant: { id: string } | null;
   product: { id: string } | null;
+  taxLines?: TaxLineNode[];
+}
+
+interface TaxLineNode {
+  title: string;
+  rate: number | null;
+  source: string | null;
+  channelLiable: boolean | null;
+  priceSet: { shopMoney?: { amount?: string } };
 }
 
 interface RefundLineItemNode {
@@ -1183,6 +1229,16 @@ interface OrderNode {
   totalDiscountsSet: never;
   totalShippingPriceSet: never;
   totalTaxSet: never;
+  taxesIncluded?: boolean;
+  taxLines?: TaxLineNode[];
+  shippingLines?: {
+    nodes: {
+      title: string;
+      source: string | null;
+      discountedPriceSet: never;
+      taxLines: TaxLineNode[];
+    }[];
+  };
   totalPriceSet: never;
   totalRefundedSet: never;
   /** Absent entirely when customer access was not granted. */
@@ -1519,6 +1575,26 @@ async function importOneOrder(shopId: string, node: OrderNode) {
       shop_money: { amount: money(node.totalShippingPriceSet) },
     },
     total_tax: money(node.totalTaxSet),
+    taxes_included: Boolean(node.taxesIncluded),
+    tax_lines: (node.taxLines ?? []).map((line) => ({
+      title: line.title,
+      rate: line.rate,
+      source: line.source,
+      channel_liable: line.channelLiable,
+      price_set: { shop_money: { amount: money(line.priceSet) } },
+    })),
+    shipping_lines: (node.shippingLines?.nodes ?? []).map((line) => ({
+      title: line.title,
+      source: line.source,
+      price: money(line.discountedPriceSet),
+      tax_lines: line.taxLines.map((tax) => ({
+        title: tax.title,
+        rate: tax.rate,
+        source: tax.source,
+        channel_liable: tax.channelLiable,
+        price_set: { shop_money: { amount: money(tax.priceSet) } },
+      })),
+    })),
     total_price: money(node.totalPriceSet),
     financial_status: (node.displayFinancialStatus ?? "PAID").toLowerCase(),
     fulfillment_status: (
@@ -1541,6 +1617,13 @@ async function importOneOrder(shopId: string, node: OrderNode) {
       quantity: item.quantity,
       price: money(item.originalUnitPriceSet),
       discount_allocations: [{ amount: money(item.totalDiscountSet) }],
+      tax_lines: (item.taxLines ?? []).map((tax) => ({
+        title: tax.title,
+        rate: tax.rate,
+        source: tax.source,
+        channel_liable: tax.channelLiable,
+        price_set: { shop_money: { amount: money(tax.priceSet) } },
+      })),
     })),
     refunds:
       refundedTotal !== "0.00" || refundLineItems.length > 0

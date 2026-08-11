@@ -334,6 +334,10 @@ export async function redactCustomerEverywhere(input: {
         : null;
 
       if (customer) {
+        await tx.orderTaxComponent.updateMany({
+          where: { shopId: input.shopId, order: { customerId: customer.id } },
+          data: { countryCode: null, regionCode: null },
+        });
         await tx.order.updateMany({
           where: { shopId: input.shopId, customerId: customer.id },
           data: {
@@ -349,6 +353,8 @@ export async function redactCustomerEverywhere(input: {
             utmMedium: null,
             utmCampaign: null,
             landingSite: null,
+            taxCountryCode: null,
+            taxRegionCode: null,
           },
         });
         await tx.customer.delete({ where: { id: customer.id } });

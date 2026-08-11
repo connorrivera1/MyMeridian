@@ -83,6 +83,7 @@ const realStore = {
   customers: false,
   inventoryCost: true,
   fulfillments: true,
+  reports: false,
 };
 
 /** A store that also granted customer access, so journey is probed for. */

@@ -4,6 +4,8 @@ import {
   type Fulfillment,
   type Order,
   type OrderLineItem,
+  type OrderTaxComponent,
+  type ShippingCostObservation,
 } from "@prisma/client";
 
 import prisma from "~/db.server";
@@ -37,6 +39,8 @@ type CustomerWithOrders = Customer & {
   orders: (Order & {
     lineItems: OrderLineItem[];
     fulfillments: Fulfillment[];
+    taxComponents: OrderTaxComponent[];
+    shippingCostObservations: ShippingCostObservation[];
   })[];
 };
 
@@ -68,6 +72,9 @@ export interface CustomerExport {
     discountTotal: string;
     shippingCharged: string;
     taxTotal: string;
+    taxesIncluded: boolean;
+    taxCountryCode: string | null;
+    taxRegionCode: string | null;
     total: string;
     refundedTotal: string;
     financialStatus: string;
@@ -119,6 +126,29 @@ export interface CustomerExport {
       pickPackCost: string;
       itemCount: number;
       location: string;
+    }[];
+    taxComponents: {
+      title: string;
+      regime: string;
+      jurisdictionType: string;
+      countryCode: string | null;
+      regionCode: string | null;
+      rate: string | null;
+      taxableAmount: string;
+      taxAmount: string;
+      lineItemTax: string;
+      shippingTax: string;
+      includedInPrice: boolean;
+    }[];
+    shippingCostObservations: {
+      source: string;
+      externalId: string;
+      carrier: string | null;
+      serviceLevel: string | null;
+      currency: string;
+      amount: string;
+      observedAt: string;
+      status: string;
     }[];
   }[];
   pendingWebhookData: PendingWebhookPersonalData[];
@@ -186,6 +216,9 @@ export function buildCustomerExport(
       discountTotal: String(order.discountTotal),
       shippingCharged: String(order.shippingCharged),
       taxTotal: String(order.taxTotal),
+      taxesIncluded: Boolean(order.taxesIncluded),
+      taxCountryCode: order.taxCountryCode ?? null,
+      taxRegionCode: order.taxRegionCode ?? null,
       total: String(order.total),
       refundedTotal: String(order.refundedTotal),
       financialStatus: order.financialStatus,
@@ -238,6 +271,31 @@ export function buildCustomerExport(
         itemCount: fulfillment.itemCount,
         location: fulfillment.location,
       })),
+      taxComponents: (order.taxComponents ?? []).map((component) => ({
+        title: component.title,
+        regime: component.regime,
+        jurisdictionType: component.jurisdictionType,
+        countryCode: component.countryCode,
+        regionCode: component.regionCode,
+        rate: component.rate === null ? null : String(component.rate),
+        taxableAmount: String(component.taxableAmount),
+        taxAmount: String(component.taxAmount),
+        lineItemTax: String(component.lineItemTax),
+        shippingTax: String(component.shippingTax),
+        includedInPrice: component.includedInPrice,
+      })),
+      shippingCostObservations: (order.shippingCostObservations ?? []).map(
+        (observation) => ({
+          source: observation.source,
+          externalId: observation.externalId,
+          carrier: observation.carrier,
+          serviceLevel: observation.serviceLevel,
+          currency: observation.currency,
+          amount: String(observation.amount),
+          observedAt: observation.observedAt.toISOString(),
+          status: observation.status,
+        }),
+      ),
     })),
     pendingWebhookData,
   };

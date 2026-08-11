@@ -37,7 +37,11 @@ const shopUpdate = vi.fn();
 const shopUpdateMany = vi.fn();
 const sessionDeleteMany = vi.fn();
 const subscriptionUpsert = vi.fn();
+const subscriptionUpdateMany = vi.fn();
 const subscriptionEventUpsert = vi.fn();
+const usageMeterUpdateMany = vi.fn();
+const checkoutFindUnique = vi.fn();
+const checkoutUpsert = vi.fn();
 const webhookEventCreate = vi.fn();
 const webhookEventUpdate = vi.fn();
 const webhookEventUpdateMany = vi.fn();
@@ -61,14 +65,25 @@ vi.mock("~/db.server", () => ({
     },
     subscription: {
       upsert: (...args: unknown[]) => subscriptionUpsert(...args),
+      updateMany: (...args: unknown[]) => subscriptionUpdateMany(...args),
     },
     subscriptionEvent: {
       upsert: (...args: unknown[]) => subscriptionEventUpsert(...args),
+    },
+    usageMeter: {
+      updateMany: (...args: unknown[]) => usageMeterUpdateMany(...args),
+    },
+    checkout: {
+      findUnique: (...args: unknown[]) => checkoutFindUnique(...args),
+      upsert: (...args: unknown[]) => checkoutUpsert(...args),
     },
     webhookEvent: {
       create: (...args: unknown[]) => webhookEventCreate(...args),
       update: (...args: unknown[]) => webhookEventUpdate(...args),
       updateMany: (...args: unknown[]) => webhookEventUpdateMany(...args),
+    },
+    connector: {
+      upsert: vi.fn().mockResolvedValue({}),
     },
   },
 }));
@@ -78,6 +93,9 @@ const syncProductFromShopify = vi.fn(async (..._args: unknown[]) => undefined);
 const syncFulfillmentFromShopify = vi.fn(
   async (..._args: unknown[]) => undefined,
 );
+const recordOrderUsage = vi.fn();
+const billSoftOrderOverage = vi.fn();
+const reconcileConnectedCarriersForShop = vi.fn();
 
 vi.mock("~/lib/sync.server", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/lib/sync.server")>()),
@@ -118,6 +136,16 @@ vi.mock("~/data/analytics.server", () => ({
   loadStrategicProductIds: vi.fn(),
 }));
 
+vi.mock("~/lib/usage-meter.server", () => ({
+  recordOrderUsage: (...args: unknown[]) => recordOrderUsage(...args),
+  billSoftOrderOverage: (...args: unknown[]) => billSoftOrderOverage(...args),
+}));
+
+vi.mock("~/integrations/shipping.server", () => ({
+  reconcileConnectedCarriersForShop: (...args: unknown[]) =>
+    reconcileConnectedCarriersForShop(...args),
+}));
+
 const { webhooksSettled } = await import("~/lib/webhooks.server");
 
 const orders = await import("./webhooks.orders");
@@ -128,6 +156,7 @@ const uninstalled = await import("./webhooks.app-uninstalled");
 const subscriptions = await import("./webhooks.app-subscriptions");
 const scopesUpdate = await import("./webhooks.app-scopes-update");
 const shopUpdateRoute = await import("./webhooks.shop-update");
+const checkouts = await import("./webhooks.checkouts");
 
 interface WebhookRoute {
   action: (args: ActionFunctionArgs) => Promise<Response>;
@@ -177,7 +206,7 @@ const ENDPOINTS: {
     path: "/webhooks/fulfillments",
     route: fulfillments as unknown as WebhookRoute,
     payload: { id: 8880001, order_id: 5550001, status: "success" },
-    writes: () => [syncFulfillmentFromShopify],
+    writes: () => [syncFulfillmentFromShopify, reconcileConnectedCarriersForShop],
   },
   {
     topic: "app/uninstalled",
@@ -198,6 +227,24 @@ const ENDPOINTS: {
       },
     },
     writes: () => [subscriptionUpsert],
+  },
+  {
+    topic: "app_subscriptions/approaching_capped_amount",
+    path: "/webhooks/app-subscriptions",
+    route: subscriptions as unknown as WebhookRoute,
+    payload: { app_subscription: { id: "usage-subscription" } },
+    writes: () => [usageMeterUpdateMany],
+  },
+  {
+    topic: "checkouts/update",
+    path: "/webhooks/checkouts",
+    route: checkouts as unknown as WebhookRoute,
+    payload: {
+      token: "checkout-token",
+      updated_at: "2026-08-11T10:01:00Z",
+      line_items: [],
+    },
+    writes: () => [checkoutUpsert],
   },
   {
     topic: "app/scopes_update",
@@ -279,6 +326,13 @@ async function invoke(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  recordOrderUsage.mockResolvedValue({
+    meterId: "meter_1",
+    status: "under_limit",
+    crossedSoftLimit: false,
+  });
+  billSoftOrderOverage.mockResolvedValue({ billedUnits: 0, skipped: true });
+  subscriptionUpdateMany.mockResolvedValue({ count: 1 });
   webhookEventCreate.mockResolvedValue({});
   webhookEventUpdate.mockResolvedValue({});
   webhookEventUpdateMany.mockResolvedValue({ count: 1 });
@@ -292,6 +346,9 @@ beforeEach(() => {
   sessionDeleteMany.mockResolvedValue({ count: 1 });
   subscriptionUpsert.mockResolvedValue({});
   subscriptionEventUpsert.mockResolvedValue({});
+  usageMeterUpdateMany.mockResolvedValue({ count: 1 });
+  checkoutFindUnique.mockResolvedValue(null);
+  checkoutUpsert.mockResolvedValue({});
   adminClientForShop.mockResolvedValue({});
   hydrateProductWebhook.mockImplementation(async (_admin, payload) => payload);
   hydrateOrderVariantProducts.mockResolvedValue([]);
@@ -301,6 +358,7 @@ beforeEach(() => {
   syncOrderFromShopify.mockResolvedValue(undefined);
   syncProductFromShopify.mockResolvedValue(undefined);
   syncFulfillmentFromShopify.mockResolvedValue(undefined);
+  reconcileConnectedCarriersForShop.mockResolvedValue(0);
 });
 
 describe.each(ENDPOINTS)(

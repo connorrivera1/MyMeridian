@@ -63,7 +63,7 @@ client_id = "9dfbe484752628b0a96c4755caf4f502"
 # refunds are read as Order.refunds inside the orders query, which read_orders
 # already covers. Requesting a scope the platform does not recognise risks
 # failing OAuth outright, and nothing in the app ever checked for it.
-scopes = "read_orders,read_products,read_fulfillments,read_inventory"
+scopes = "read_orders,read_products,read_fulfillments,read_inventory,read_reports"
 
 [auth]
 # The path has to match `authPathPrefix` in app/shopify.server.ts, which is
@@ -121,6 +121,12 @@ api_version = "2026-07"
   uri = "/webhooks/orders/create"
   topics = [ "orders/create", "orders/updated", "refunds/create" ]
 
+  # Checkout payloads are kept as a tiny projection for live funnel signals;
+  # customer addresses and notes never enter the durable queue.
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/checkouts/create"
+  topics = [ "checkouts/create", "checkouts/update" ]
+
   [[webhooks.subscriptions]]
   uri = "/webhooks/products/update"
   topics = [ "products/update", "products/create" ]
@@ -144,6 +150,10 @@ api_version = "2026-07"
   [[webhooks.subscriptions]]
   uri = "/webhooks/app-subscriptions/update"
   topics = [ "app_subscriptions/update" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app-subscriptions/update"
+  topics = [ "app_subscriptions/approaching_capped_amount" ]
 
 [pos]
 embedded = false

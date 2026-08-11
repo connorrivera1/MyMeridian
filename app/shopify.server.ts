@@ -9,7 +9,13 @@ import {
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 
 import prisma from "./db.server";
-import { PLANS, TRIAL_DAYS, ANNUAL_SUFFIX } from "./lib/plans";
+import {
+  PLANS,
+  TRIAL_DAYS,
+  ANNUAL_SUFFIX,
+  USAGE_CAP_AMOUNT,
+  USAGE_TERMS,
+} from "./lib/plans";
 import { parseScopes } from "./lib/scopes";
 
 /**
@@ -88,6 +94,12 @@ function buildShopify() {
                 currencyCode: "USD",
                 interval: BillingInterval.Every30Days,
               },
+              {
+                amount: USAGE_CAP_AMOUNT,
+                currencyCode: "USD",
+                interval: BillingInterval.Usage,
+                terms: USAGE_TERMS,
+              },
             ],
             trialDays: TRIAL_DAYS,
           },
@@ -100,6 +112,12 @@ function buildShopify() {
                 amount: plan.annualPrice,
                 currencyCode: "USD",
                 interval: BillingInterval.Annual,
+              },
+              {
+                amount: USAGE_CAP_AMOUNT,
+                currencyCode: "USD",
+                interval: BillingInterval.Usage,
+                terms: USAGE_TERMS,
               },
             ],
             trialDays: TRIAL_DAYS,
@@ -129,6 +147,14 @@ function buildShopify() {
         deliveryMethod: DeliveryMethod.Http,
         callbackUrl: "/webhooks/orders/create",
       },
+      CHECKOUTS_CREATE: {
+        deliveryMethod: DeliveryMethod.Http,
+        callbackUrl: "/webhooks/checkouts/create",
+      },
+      CHECKOUTS_UPDATE: {
+        deliveryMethod: DeliveryMethod.Http,
+        callbackUrl: "/webhooks/checkouts/create",
+      },
       PRODUCTS_UPDATE: {
         deliveryMethod: DeliveryMethod.Http,
         callbackUrl: "/webhooks/products/update",
@@ -153,6 +179,10 @@ function buildShopify() {
         deliveryMethod: DeliveryMethod.Http,
         callbackUrl: "/webhooks/app-subscriptions/update",
       },
+      APP_SUBSCRIPTIONS_APPROACHING_CAPPED_AMOUNT: {
+        deliveryMethod: DeliveryMethod.Http,
+        callbackUrl: "/webhooks/app-subscriptions/update",
+      },
       APP_SCOPES_UPDATE: {
         deliveryMethod: DeliveryMethod.Http,
         callbackUrl: "/webhooks/app/scopes-update",
@@ -172,7 +202,7 @@ function buildShopify() {
 
         // Every install needs a Shop row and a starting set of cost rules,
         // otherwise the first dashboard load has nothing to reason about.
-        const { ensureShopProvisioned } =
+        const { ensureShopProvisioned, synchroniseShopifyShippingConnector } =
           await import("./lib/provision.server");
         const shop = await ensureShopProvisioned(session.shop);
 
@@ -184,6 +214,7 @@ function buildShopify() {
           where: { id: shop.id },
           data: { grantedScopes: session.scope ?? null },
         });
+        await synchroniseShopifyShippingConnector(shop.id, session.scope);
 
         // Webhooks only describe what happens next, so without a historical
         // import the merchant's first view of Meridian is a wall of zeroes.

@@ -7,6 +7,40 @@ import {
 } from "./webhook-payload.server";
 
 describe("durable webhook payload minimization", () => {
+  it("keeps a checkout token and economic line projection without customer data", () => {
+    expect(
+      minimizeWebhookPayload("checkouts/update", {
+        token: "checkout-token",
+        cart_token: "cart-token",
+        email: "buyer@example.com",
+        phone: "+1-555-0100",
+        currency: "USD",
+        total_price: "42.00",
+        created_at: "2026-08-11T10:00:00Z",
+        updated_at: "2026-08-11T10:01:00Z",
+        line_items: [
+          { variant_id: 7, quantity: 2, price: "21.00", properties: [{ value: "secret" }] },
+        ],
+      }),
+    ).toEqual({
+      token: "checkout-token",
+      cart_token: "cart-token",
+      currency: "USD",
+      total_price: "42.00",
+      created_at: "2026-08-11T10:00:00Z",
+      updated_at: "2026-08-11T10:01:00Z",
+      line_items: [{ variant_id: 7, quantity: 2, price: "21.00" }],
+    });
+  });
+
+  it("acknowledges capped-amount warnings without retaining a billing payload", () => {
+    expect(
+      minimizeWebhookPayload("app_subscriptions/approaching_capped_amount", {
+        app_subscription: { id: "private-billing-detail" },
+      }),
+    ).toEqual({});
+  });
+
   it("keeps only the order fields the profit importer consumes", () => {
     const minimized = minimizeWebhookPayload("orders/create", {
       id: 101,
@@ -97,7 +131,7 @@ describe("durable webhook payload minimization", () => {
       referring_site: "https://google.example/search",
       customer: { id: 202, email: "buyer@example.com" },
       total_shipping_price_set: { shop_money: { amount: "10.00" } },
-      shipping_lines: [{ price: "10.00" }],
+      shipping_lines: [{ price: "10.00", title: "Home address delivery" }],
       line_items: [
         {
           id: 303,
@@ -109,6 +143,7 @@ describe("durable webhook payload minimization", () => {
           quantity: 1,
           price: "100.00",
           discount_allocations: [{ amount: "5.00" }],
+          tax_lines: [{ title: "Tax", price: "8.00" }],
         },
       ],
       refunds: [

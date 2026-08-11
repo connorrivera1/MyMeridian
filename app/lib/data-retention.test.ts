@@ -1,9 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const purgeExpiredDataRequests = vi.fn();
+const purgeFinishedRecalcJobs = vi.fn();
 
 vi.mock("~/lib/data-request.server", () => ({
   purgeExpiredDataRequests: (...args: unknown[]) => purgeExpiredDataRequests(...args),
+}));
+vi.mock("~/lib/recalc-queue.server", () => ({
+  purgeFinishedRecalcJobs: (...args: unknown[]) => purgeFinishedRecalcJobs(...args),
 }));
 
 const {
@@ -16,6 +20,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.clearAllMocks();
   purgeExpiredDataRequests.mockResolvedValue(0);
+  purgeFinishedRecalcJobs.mockResolvedValue(0);
   stopDataRetentionScheduler();
 });
 
@@ -87,5 +92,34 @@ describe("data retention scheduler", () => {
 
     expect(purgeExpiredDataRequests).toHaveBeenCalledTimes(2);
     error.mockRestore();
+  });
+});
+
+describe("recalculation job retention", () => {
+  it("sweeps spent job receipts alongside expired exports", async () => {
+    startDataRetentionScheduler(60_000);
+    await dataRetentionSettled();
+
+    expect(purgeFinishedRecalcJobs).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps sweeping jobs even when a privacy purge fails", async () => {
+    purgeExpiredDataRequests.mockRejectedValue(new Error("postgres down"));
+
+    startDataRetentionScheduler(60_000);
+    await dataRetentionSettled();
+
+    expect(purgeFinishedRecalcJobs).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not let a failing job sweep stop the next privacy purge", async () => {
+    purgeFinishedRecalcJobs.mockRejectedValue(new Error("postgres down"));
+
+    startDataRetentionScheduler(60_000);
+    await dataRetentionSettled();
+    await vi.advanceTimersByTimeAsync(60_000);
+    await dataRetentionSettled();
+
+    expect(purgeExpiredDataRequests).toHaveBeenCalledTimes(2);
   });
 });

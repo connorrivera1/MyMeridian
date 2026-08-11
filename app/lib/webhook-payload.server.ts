@@ -51,6 +51,19 @@ function arrayOfRecords(value: unknown): Payload[] {
     : [];
 }
 
+function minimizeTaxLine(value: Payload): Payload {
+  const result = copy(value, [
+    "title",
+    "rate",
+    "price",
+    "source",
+    "channel_liable",
+  ]);
+  const priceSet = nestedMoney(value.price_set);
+  if (priceSet) result.price_set = priceSet;
+  return result;
+}
+
 function minimizeOrder(payload: Payload): Payload {
   const result = copy(payload, [
     "id",
@@ -63,6 +76,7 @@ function minimizeOrder(payload: Payload): Payload {
     "subtotal_price",
     "total_discounts",
     "total_tax",
+    "taxes_included",
     "total_price",
     "financial_status",
     "fulfillment_status",
@@ -79,9 +93,23 @@ function minimizeOrder(payload: Payload): Payload {
   const shippingSet = nestedMoney(payload.total_shipping_price_set);
   if (shippingSet) result.total_shipping_price_set = shippingSet;
 
-  const shippingLines = arrayOfRecords(payload.shipping_lines).map((line) =>
-    copy(line, ["price"]),
-  );
+  // Country and province codes are sufficient for tax-regime classification.
+  // Street, city, postal code, names and phone remain deliberately discarded.
+  const destination = record(payload.shipping_address) ?? record(payload.billing_address);
+  if (destination) {
+    const minimized = copy(destination, ["country_code", "province_code"]);
+    if (Object.keys(minimized).length > 0) result.tax_destination = minimized;
+  }
+
+  const orderTaxLines = arrayOfRecords(payload.tax_lines).map(minimizeTaxLine);
+  if (orderTaxLines.length > 0) result.tax_lines = orderTaxLines;
+
+  const shippingLines = arrayOfRecords(payload.shipping_lines).map((line) => {
+    const minimized = copy(line, ["price", "title", "code", "source"]);
+    const taxLines = arrayOfRecords(line.tax_lines).map(minimizeTaxLine);
+    if (taxLines.length > 0) minimized.tax_lines = taxLines;
+    return minimized;
+  });
   if (shippingLines.length > 0) result.shipping_lines = shippingLines;
 
   const lineItems = arrayOfRecords(payload.line_items).map((item) => {
@@ -99,6 +127,8 @@ function minimizeOrder(payload: Payload): Payload {
       (allocation) => copy(allocation, ["amount"]),
     );
     if (allocations.length > 0) minimized.discount_allocations = allocations;
+    const taxLines = arrayOfRecords(item.tax_lines).map(minimizeTaxLine);
+    if (taxLines.length > 0) minimized.tax_lines = taxLines;
     return minimized;
   });
   if (lineItems.length > 0) result.line_items = lineItems;
@@ -267,6 +297,8 @@ export function minimizeWebhookPayload(
       return {};
     case "APP_SUBSCRIPTIONS_UPDATE":
       return minimizeSubscription(payload);
+    case "APP_SUBSCRIPTIONS_APPROACHING_CAPPED_AMOUNT":
+      return {};
     case "CHECKOUTS_CREATE":
     case "CHECKOUTS_UPDATE":
       return minimizeCheckout(payload);
@@ -350,6 +382,7 @@ export function scrubCustomerFromWebhookPayload(
     customer: _customer,
     landing_site: _landingSite,
     referring_site: _referringSite,
+    tax_destination: _taxDestination,
     ...anonymous
   } = payload;
   return anonymous;

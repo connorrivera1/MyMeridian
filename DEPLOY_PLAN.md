@@ -3,9 +3,9 @@
 Canonical checkout: branch `main`, no git remote. Nothing here has been deployed,
 pushed or submitted.
 
-**Current snapshot, 2026-08-10.** This snapshot overrides stale "now" claims in
+**Current snapshot, 2026-08-11.** This snapshot overrides stale "now" claims in
 the dated audit history below. In particular, billing is enforced, the suite has
-648 tests, Docker and flyctl are installed, and the remaining release gates are
+907 tests, Docker and flyctl are installed, and the remaining release gates are
 external configuration, access requests, business decisions, and real-Shopify
 acceptance testing.
 
@@ -29,8 +29,8 @@ the ordered path from here to a submitted listing.
 
 | Check                             | Result                                                                                                                                                                                                                                                                                                                          |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm run ci`                      | **Passes** (2026-08-10): typecheck, coverage thresholds and production build.                                                                                                                                                                                                                                                   |
-| `npx vitest run`                  | **648 collected: 619 passed, 29 skipped** across 65 files. All 29 skipped cases are opt-in PostgreSQL integration tests; the explicit seven-file real-PostgreSQL run passes **29/29**.                                                                                                                                              |
+| `npm run ci`                      | **Passes** (2026-08-11): typecheck, coverage thresholds and production build.                                                                                                                                                                                                                                                   |
+| `npx vitest run`                  | **907 collected: 850 passed, 57 skipped** across 87 files. All 57 skipped cases are opt-in PostgreSQL integration tests; the explicit ten-file real-PostgreSQL run passes **57/57**.                                                                                                                                              |
 | Billing enforcement               | **Implemented and tested locally.** `resolvePlan` reads/caches Billing API state, the app layout redirects stores without an active plan, `planAllows` enforces the paid capabilities, the pricing action re-checks its gate, and `/app/plan` calls `billing.request`. The real Shopify approval/return flow is still untested. |
 | `npx shopify app config validate` | **Passes.** On CLI 4.x, `app config` has `link`, `pull`, `use`, and `validate`; **there is no `config push`**. Config is published by `shopify app deploy` because `include_config_on_deploy = true`.                                                                                                                           |
 | Docker / flyctl                   | **Installed.** Docker CLI 29.7.1 and flyctl 0.4.79 are present. The image was previously built and booted locally (§11); the Docker daemon was stopped during this verification. flyctl is not authenticated (`fly auth whoami` returns `no access token available`).                                                           |
@@ -244,7 +244,7 @@ fly mpg attach "$MERIDIAN_FLY_DB_ID" --app "$MERIDIAN_FLY_APP"   # sets pooled D
 fly secrets set \
   SHOPIFY_API_KEY="<from Partner Dashboard>" \
   SHOPIFY_API_SECRET="<from Partner Dashboard>" \
-  SCOPES="read_orders,read_products,read_fulfillments,read_inventory" \
+  SCOPES="read_orders,read_products,read_fulfillments,read_inventory,read_reports" \
   SHOPIFY_APP_URL="$MERIDIAN_PROD_ORIGIN" \
   DIRECT_DATABASE_URL="<direct URL from the MPG Connect tab>" \
   MERIDIAN_ENCRYPTION_KEY="$MERIDIAN_ENCRYPTION_KEY" \
@@ -482,8 +482,8 @@ them because the work landed:
    at the last and most important step.
 2. **Test count.** v1 said 178 tests in 16 files and this section previously
    recorded the intermediate 212-in-20 milestone. The current baseline is the
-   §1 result: **648 collected, 619 passed, 29 skipped**; the explicit
-   real-PostgreSQL integration run passes **29/29**.
+   §1 result: **907 collected, 850 passed, 57 skipped**; the explicit
+   real-PostgreSQL integration run passes **57/57**.
 3. **`Shop.syncCursor` is no longer write-only.** v1 listed "written but never
    read" as a fast-follow. Commit `200a350` reads it; an interrupted import now
    resumes from the cursor instead of restarting.
@@ -616,14 +616,20 @@ blocks knowing the backfill survives real data. Phases 3 and 4 run alongside.
 
 ## Where this leaves it
 
-The local code gate is green: `npm run ci` passes, with 648 tests collected (619
-passed and 29 opt-in integration tests skipped), coverage thresholds met, and a
-clean production build. All seven real-PostgreSQL integration files pass 29/29
-against a fresh database after all 16 migrations. Billing is enforced in code
+The local code gate is green: `npm run ci` passes, with 907 tests collected (850
+passed and 57 opt-in integration tests skipped), coverage thresholds met, and a
+clean production build. All ten real-PostgreSQL integration files pass 57/57
+against a fresh database after all 21 migrations. Billing is enforced in code
 rather than merely declared.
 
 What remains before submission is infrastructure, external approval, business
 decisions, assets, and real-platform proof:
+
+- Shopify Shipping reconciliation additionally needs `read_reports` granted
+  and the `shipping_labels` dataset's Level 2 Protected Customer Data approval.
+- ShipStation's immediate reconciliation webhook is registered only after
+  `SHOPIFY_APP_URL` becomes the real public HTTPS origin; until then its tested
+  five-minute reconciliation fallback is the only reachable path.
 
 1. **Nobody has run a deploy.** The host is picked and, as of 2026-08-06, the
    §4 files are built and booted rather than merely written (§11). What is left

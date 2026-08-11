@@ -147,16 +147,35 @@
    * All four clear AA on --glass; with hue gone, severity has to be carried
    * by luminance and by the wording beside it.
    */
-  --status-good: #8e8e8e;
-  --status-warning: #b4b4b4;
-  --status-serious: #d8d8d8;
-  --status-critical: #ffffff;
+  /*
+   * Polarity — the only hue in the system.
+   *
+   * The palette is monochrome by value, and that is not decoration: a ramp
+   * separated by luminance is legible to every form of colour vision
+   * deficiency without a special case. Hue is added back for one job only —
+   * saying whether a number is good or bad — and it is always the *second*
+   * channel, never the first. Every place these appear, the meaning is already
+   * carried by something else: an arrow glyph, a minus sign, a word, a label.
+   * Remove the colour and nothing becomes unreadable; it only becomes slower.
+   *
+   * That is also why they are muted. These sit as small accents inside a grey
+   * world — a green that shouts would make the composition a traffic light,
+   * and the figures are supposed to be the loudest thing on the page.
+   */
+  --pos: #6fc593;
+  --neg: #e8776d;
+  --caution: #d9a441;
 
-  /* money polarity — up is bright, down is recessive */
-  --delta-up: #ffffff;
-  --delta-down: #8a8a8a;
-  --delta-up-wash: rgba(245, 245, 245, 0.12);
-  --delta-down-wash: rgba(245, 245, 245, 0.06);
+  --status-good: var(--pos);
+  --status-warning: var(--caution);
+  --status-serious: color-mix(in srgb, var(--neg) 65%, var(--caution));
+  --status-critical: var(--neg);
+
+  /* money polarity — up reads as gain, down as loss */
+  --delta-up: var(--pos);
+  --delta-down: var(--neg);
+  --delta-up-wash: color-mix(in srgb, var(--pos) 12%, transparent);
+  --delta-down-wash: color-mix(in srgb, var(--neg) 10%, transparent);
 
   /* semantic chart marks */
   --mark-structure: #5c5c5c;
@@ -265,15 +284,20 @@
   --pill-ink: #ffffff;
 
   /* Severity darkens on paper, the mirror of the night ramp. */
-  --status-good: #8a8a8a;
-  --status-warning: #6a6a6a;
-  --status-serious: #3d3d3d;
-  --status-critical: #0a0a0a;
+  /* Paper. The same three hues, darkened until they hold ~5:1 on white. */
+  --pos: #2e7d55;
+  --neg: #c0453a;
+  --caution: #8a6212;
 
-  --delta-up: #0a0a0a;
-  --delta-down: #8a8a8a;
-  --delta-up-wash: rgba(10, 10, 10, 0.09);
-  --delta-down-wash: rgba(10, 10, 10, 0.05);
+  --status-good: var(--pos);
+  --status-warning: var(--caution);
+  --status-serious: color-mix(in srgb, var(--neg) 65%, var(--caution));
+  --status-critical: var(--neg);
+
+  --delta-up: var(--pos);
+  --delta-down: var(--neg);
+  --delta-up-wash: color-mix(in srgb, var(--pos) 10%, transparent);
+  --delta-down-wash: color-mix(in srgb, var(--neg) 9%, transparent);
 
   --mark-structure: #8e8e8e;
   --mark-cost: #b4b4b4;
@@ -3196,14 +3220,27 @@ table.data .right { font-variant-numeric: tabular-nums lining-nums; }
   --series-7: #f0f0f0;
   --series-8: #666666;
 
+  /*
+   * Two families under one set of legacy names, and the split is deliberate.
+   *
+   * Categorical names stay on the value ramp: a channel or a campaign is not
+   * good or bad, and colouring seven of them would be the decoration this
+   * palette was rebuilt to remove.
+   *
+   * The three the routes use as *verdicts* — mint for profitable, rose for
+   * bleeding, amber for thin — carry polarity instead. Those three already sit
+   * beside a word ("Profitable", "Bleeding") or a signed figure, so the hue is
+   * redundant reinforcement rather than the only thing distinguishing them.
+   */
   --viz-blue: var(--series-1);
-  --viz-amber: var(--series-2);
   --viz-teal: var(--series-3);
   --viz-pink: var(--series-4);
   --viz-violet: var(--series-6);
   --viz-orange: var(--series-7);
-  --viz-mint: var(--accent);
-  --viz-rose: var(--mark-cost);
+
+  --viz-mint: var(--pos);
+  --viz-rose: var(--neg);
+  --viz-amber: var(--caution);
 }
 
 :root[data-theme="light"] {
@@ -3894,3 +3931,197 @@ table td,
   .profit-drawer-head { padding-top: max(20px, env(safe-area-inset-top)); }
   .profit-drawer-result { padding: 14px; }
 }
+
+/* =========================================================================
+ * VIEWPORT FIT
+ *
+ * The app must fit the screen it is on — phone, laptop, or a 34" monitor —
+ * and it must never scroll sideways. Horizontal scroll on a dashboard is the
+ * single loudest "unfinished" signal there is: it hides the right-hand column
+ * of every table and makes the sidebar drift off the left edge.
+ *
+ * Three separate causes, fixed in order.
+ * ====================================================================== */
+
+/*
+ * 1. Atmosphere must not be able to create scroll.
+ *
+ * The two drifting glows are `position: fixed`, which normally means they
+ * cannot extend the scrollable area — but they are painted inside a
+ * transformed ancestor, so they are contained by it and their bleed counted.
+ * `.app-shell::before` sits at `right: -8rem`, which was exactly the 128px of
+ * horizontal scroll present on every screen in the app.
+ *
+ * `clip`, not `hidden`: `hidden` would make the shell a scroll container and
+ * break `position: sticky` inside it. `clip` only clips.
+ */
+.app-shell {
+  overflow-x: clip;
+}
+
+/*
+ * 2. The floating HUD must fit, and must not be run through by the rule below it.
+ *
+ * The range control and theme switch float over the top-right of the page head
+ * on a negative margin. On the Overview that puts them on the same line as the
+ * greeting's kicker, whose `::after` is a hairline set to `flex: 1` — so the
+ * rule ran straight through the middle of "7 DAYS / 30 DAYS / 90 DAYS", which
+ * reads as a rendering fault rather than a divider.
+ *
+ * The kicker reserves the HUD's width so the rule stops short of it. One
+ * documented constant, declared next to the control it is reserving for, and
+ * released as soon as the HUD stops floating.
+ */
+:root {
+  --hud-reserve: 27rem;
+}
+
+.greet-kicker {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-inline-end: var(--hud-reserve);
+}
+
+/* Below this the topbar is static and owns its own row, so nothing to clear. */
+@media (max-width: 760px) {
+  .greet-kicker { padding-inline-end: 0; }
+}
+
+.topbar { flex-wrap: wrap; row-gap: 8px; }
+.topbar-actions { flex-wrap: wrap; justify-content: flex-end; min-width: 0; }
+.segmented { max-width: 100%; }
+
+/*
+ * 3. The range chips shrink rather than spill.
+ *
+ * Four fixed-width chips plus the theme switch came to 407px, which does not
+ * fit a 375px phone — so "6 MONTHS" and the theme toggle were simply
+ * unreachable, cut off past the right edge.
+ */
+@media (max-width: 900px) {
+  .segmented a { padding-inline: 11px; font-size: 10px; letter-spacing: 0.07em; }
+  .segmented { gap: 0; }
+}
+
+/*
+ * 4. On a phone the sidebar becomes a rail, not a wall.
+ *
+ * Stacked, eleven navigation links push the actual page a full screen down.
+ * A horizontally scrolling strip keeps them one thumb-reach away — and the
+ * scroll is inside the rail, so the page itself still only moves vertically.
+ */
+@media (max-width: 760px) {
+  .sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-right: none;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .brand { flex: none; margin: 0; padding: 0; }
+  .brand-shop { display: none; }
+
+  .nav {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .nav::-webkit-scrollbar { display: none; }
+
+  .nav-link { white-space: nowrap; flex: none; padding: 7px 11px; }
+  /* The active marker is a left edge on the rail; on a row it belongs under. */
+  .nav-link::before { inset: auto 0 0 0; width: auto; height: 2px; }
+  .nav-section { display: none; }
+  .sidebar-footer { display: none; }
+}
+
+/* =========================================================================
+ * BREATHING ROOM
+ *
+ * The measurements below were all fixed pixels, which means they were tuned at
+ * one window size and cramped at every other. A 1728px window gave a section
+ * the same 22px of gutter as a 1024px one, so the wide layout read as squeezed
+ * and unfinished — lots of empty margin, and the content still packed tight.
+ *
+ * `clamp()` throughout: a floor that works on a phone, a ceiling that stops a
+ * wide monitor turning into whitespace, and a viewport term between them.
+ * ====================================================================== */
+
+.content {
+  padding: clamp(14px, 1.6vw, 26px) clamp(16px, 2.6vw, 48px) 80px;
+  gap: clamp(16px, 1.6vw, 26px);
+  /* A dashboard is read in columns, not in lines of prose. Past this width the
+     eye is travelling further than it gains, so the shell centres instead. */
+  width: 100%;
+  max-width: 1680px;
+  margin-inline: auto;
+}
+
+.page-enter { gap: clamp(16px, 1.6vw, 26px); }
+
+.card-body { padding: clamp(16px, 1.3vw, 24px) 0; }
+.card-body.flush { padding: 0; }
+.card-head { padding: clamp(20px, 2vw, 32px) 0 clamp(14px, 1.2vw, 20px); }
+
+.grid { gap: clamp(12px, 1.2vw, 20px); }
+
+/* The ledger strip keeps its shared rules, but its cells get real padding. */
+.grid.cols-3,
+.grid.cols-4 { gap: 0; }
+.tile { padding: clamp(16px, 1.4vw, 24px) clamp(16px, 1.5vw, 26px); }
+
+/* Table cells were the worst of it — three columns of figures at 10px apart. */
+.data th,
+.data td { padding-block: clamp(10px, 0.85vw, 15px); }
+.data th:first-child,
+.data td:first-child { padding-inline-start: 0; }
+.data th:last-child,
+.data td:last-child { padding-inline-end: 0; }
+
+/*
+ * Wide monitors get more columns rather than wider ones. Stretching four tiles
+ * across 1600px is what made them look like empty boxes with a number in the
+ * corner.
+ */
+@media (min-width: 1500px) {
+  .grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* =========================================================================
+ * POLARITY, APPLIED
+ * ====================================================================== */
+
+/*
+ * A negative *result* is a loss and reads red. A cost written as a negative is
+ * not a loss — it is a cost, and every row has one, so colouring those would
+ * turn a whole column red and teach the merchant to ignore the colour. The
+ * muted cells are exactly the presentational negatives; they stay in ink.
+ */
+.money.neg { color: var(--neg); }
+.muted .money.neg,
+td.muted .money.neg,
+.cell-sub .money.neg { color: inherit; }
+
+/* Direction is still carried by the arrow; the wash is reinforcement. */
+.delta.up { color: var(--delta-up); }
+.delta.down { color: var(--delta-down); }
+
+/*
+ * The chart's result mark follows the same rule as the figure it plots, so a
+ * profit line that ends below where it started is not drawn in the colour of
+ * a gain.
+ */
+.chart .mark-result.pos { stroke: var(--pos); }
+.chart .mark-result.neg { stroke: var(--neg); }

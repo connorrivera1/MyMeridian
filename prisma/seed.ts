@@ -524,6 +524,16 @@ async function main() {
               "Credentials rejected (401). Reconnect to resume cost sync.",
             lastSyncedAt: new Date(PERIOD_END.getTime() - 9 * DAY_MS),
           },
+          {
+            provider: ConnectorProvider.SHIPSTATION,
+            status: ConnectorStatus.NOT_CONFIGURED,
+          },
+          {
+            provider: ConnectorProvider.SHOPIFY_SHIPPING,
+            status: ConnectorStatus.NOT_CONFIGURED,
+            lastError:
+              "Demo data has no Shopify reports session; label-cost reconciliation is unavailable.",
+          },
         ],
       },
     },

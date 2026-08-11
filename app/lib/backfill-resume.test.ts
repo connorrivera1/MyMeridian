@@ -89,6 +89,7 @@ const capabilities = {
   customers: false,
   fulfillments: false,
   inventoryCost: true,
+  reports: false,
 };
 
 const ok = (data: unknown) =>

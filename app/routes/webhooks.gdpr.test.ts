@@ -53,6 +53,9 @@ const transactionClient = {
   order: {
     updateMany: (...args: unknown[]) => orderUpdateMany(...args),
   },
+  orderTaxComponent: {
+    updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+  },
   webhookEvent: {
     findMany: (...args: unknown[]) => webhookEventFindMany(...args),
     updateMany: (...args: unknown[]) => webhookEventUpdateMany(...args),
@@ -75,6 +78,9 @@ vi.mock("~/db.server", () => ({
     },
     order: {
       updateMany: (...args: unknown[]) => orderUpdateMany(...args),
+    },
+    orderTaxComponent: {
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
     session: {
       count: vi.fn().mockResolvedValue(0),
@@ -576,6 +582,8 @@ describe("customers/redact", () => {
         utmMedium: null,
         utmCampaign: null,
         landingSite: null,
+        taxCountryCode: null,
+        taxRegionCode: null,
       },
     });
     expect(customerDelete).toHaveBeenCalledWith({ where: { id: "cust_9" } });

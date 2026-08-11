@@ -150,31 +150,34 @@ model Shop {
   /// is not authorised for fails the whole query, not just that field.
   grantedScopes String?
 
-  products           Product[]
-  variants           Variant[]
-  variantCosts       VariantCost[]
-  bundleComponents   BundleComponent[]
-  periodSnapshots    PeriodSnapshot[]
-  periodRestatements PeriodRestatement[]
-  recalcJobs         RecalcJob[]
-  orders             Order[]
-  lineItems          OrderLineItem[]
-  customers          Customer[]
-  adSpend            AdSpend[]
-  fulfillments       Fulfillment[]
-  capacityDays       CapacityDay[]
-  costRules          CostRule[]
-  connectors         Connector[]
-  pricingRecs        PricingRecommendation[]
-  priceChanges       PriceChange[]
-  dataRequests       DataRequest[]
-  customerErasures   CustomerErasure[]
-  subscription       Subscription?
-  subscriptionEvents SubscriptionEvent[]
-  webhookEvents      WebhookEvent[]
-  checkouts          Checkout[]
-  usageMeters        UsageMeter[]
-  usageMeterEvents   UsageMeterEvent[]
+  products              Product[]
+  variants              Variant[]
+  variantCosts          VariantCost[]
+  bundleComponents      BundleComponent[]
+  periodSnapshots       PeriodSnapshot[]
+  periodRestatements    PeriodRestatement[]
+  recalcJobs            RecalcJob[]
+  orders                Order[]
+  lineItems             OrderLineItem[]
+  taxComponents         OrderTaxComponent[]
+  customers             Customer[]
+  adSpend               AdSpend[]
+  fulfillments          Fulfillment[]
+  shippingCosts         ShippingCostObservation[]
+  capacityDays          CapacityDay[]
+  costRules             CostRule[]
+  connectors            Connector[]
+  connectorHealthEvents ConnectorHealthEvent[]
+  pricingRecs           PricingRecommendation[]
+  priceChanges          PriceChange[]
+  dataRequests          DataRequest[]
+  customerErasures      CustomerErasure[]
+  subscription          Subscription?
+  subscriptionEvents    SubscriptionEvent[]
+  webhookEvents         WebhookEvent[]
+  checkouts             Checkout[]
+  usageMeters           UsageMeter[]
+  usageMeterEvents      UsageMeterEvent[]
 
   @@index([domain])
 }
@@ -229,20 +232,20 @@ model SubscriptionEvent {
 /// keep only the fields Meridian needs for funnel and capacity signals, never
 /// the customer's address, phone, or checkout note.
 model Checkout {
-  id             String   @id @default(cuid())
-  shopId         String
-  shop           Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  token          String
-  cartToken      String?
-  currency       String   @default("USD")
-  total          Decimal  @default(0) @db.Decimal(12, 2)
-  lineCount      Int      @default(0)
-  totalQuantity  Int      @default(0)
-  status         String   @default("open")
-  createdAt      DateTime
+  id               String    @id @default(cuid())
+  shopId           String
+  shop             Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  token            String
+  cartToken        String?
+  currency         String    @default("USD")
+  total            Decimal   @default(0) @db.Decimal(12, 2)
+  lineCount        Int       @default(0)
+  totalQuantity    Int       @default(0)
+  status           String    @default("open")
+  createdAt        DateTime
   shopifyUpdatedAt DateTime
-  completedAt    DateTime?
-  receivedAt     DateTime @default(now())
+  completedAt      DateTime?
+  receivedAt       DateTime  @default(now())
 
   @@unique([shopId, token])
   @@index([shopId, shopifyUpdatedAt])
@@ -253,25 +256,25 @@ model Checkout {
 /// threshold state. Shopify remains the source of truth for any optional usage
 /// charge and its capped amount.
 model UsageMeter {
-  id                   String   @id @default(cuid())
+  id                   String    @id @default(cuid())
   shopId               String
-  shop                 Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  shop                 Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
   metric               String
   periodStart          DateTime
   periodEnd            DateTime
-  used                 Int      @default(0)
+  used                 Int       @default(0)
   softLimit            Int
   hardLimit            Int
-  status               String   @default("under_limit")
-  billedUnits          Int      @default(0)
-  billingAttempts      Int      @default(0)
+  status               String    @default("under_limit")
+  billedUnits          Int       @default(0)
+  billingAttempts      Int       @default(0)
   billingError         String?
   lastBillingAttemptAt DateTime?
   lastUsageRecordId    String?
   overageNotifiedAt    DateTime?
   capWarningNotifiedAt DateTime?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   events UsageMeterEvent[]
 
@@ -692,13 +695,20 @@ model Order {
   customerId String?
   customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
-  currency        String  @default("USD")
-  subtotal        Decimal @db.Decimal(12, 2)
-  discountTotal   Decimal @default(0) @db.Decimal(12, 2)
-  shippingCharged Decimal @default(0) @db.Decimal(12, 2)
-  taxTotal        Decimal @default(0) @db.Decimal(12, 2)
-  total           Decimal @db.Decimal(12, 2)
-  refundedTotal   Decimal @default(0) @db.Decimal(12, 2)
+  currency        String    @default("USD")
+  subtotal        Decimal   @db.Decimal(12, 2)
+  discountTotal   Decimal   @default(0) @db.Decimal(12, 2)
+  shippingCharged Decimal   @default(0) @db.Decimal(12, 2)
+  taxTotal        Decimal   @default(0) @db.Decimal(12, 2)
+  /// Whether Shopify's merchandise and shipping prices already include tax.
+  taxesIncluded   Boolean   @default(false)
+  /// Country/region only. Meridian never needs or stores the street address to
+  /// classify a tax line as VAT versus a US state/local component.
+  taxCountryCode  String?   @db.VarChar(2)
+  taxRegionCode   String?   @db.VarChar(16)
+  taxReconciledAt DateTime?
+  total           Decimal   @db.Decimal(12, 2)
+  refundedTotal   Decimal   @default(0) @db.Decimal(12, 2)
 
   financialStatus   String @default("paid")
   fulfillmentStatus String @default("unfulfilled")
@@ -722,14 +732,48 @@ model Order {
   netProfit          Decimal   @default(0) @db.Decimal(12, 2)
   computedAt         DateTime?
 
-  lineItems    OrderLineItem[]
-  fulfillments Fulfillment[]
+  lineItems                OrderLineItem[]
+  fulfillments             Fulfillment[]
+  taxComponents            OrderTaxComponent[]
+  shippingCostObservations ShippingCostObservation[]
 
   @@unique([shopId, shopifyId])
   @@index([shopId, processedAt])
   @@index([shopId, channel, processedAt])
   @@index([shopId, netProfit])
   @@index([customerId])
+}
+
+/// Shopify is the tax calculator of record. Meridian stores how its reported
+/// order total splits by jurisdiction, without inventing a second tax engine.
+model OrderTaxComponent {
+  id      String @id @default(cuid())
+  shopId  String
+  shop    Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  sourceKey          String
+  regime             TaxRegime
+  jurisdictionType   TaxJurisdictionType
+  title              String
+  source             String?
+  countryCode        String?             @db.VarChar(2)
+  regionCode         String?             @db.VarChar(16)
+  rate               Decimal?            @db.Decimal(12, 8)
+  taxableAmount      Decimal             @default(0) @db.Decimal(24, 2)
+  reportedTax        Decimal             @default(0) @db.Decimal(12, 2)
+  taxAmount          Decimal             @default(0) @db.Decimal(12, 2)
+  lineItemTax        Decimal             @default(0) @db.Decimal(12, 2)
+  shippingTax        Decimal             @default(0) @db.Decimal(12, 2)
+  roundingAdjustment Decimal             @default(0) @db.Decimal(12, 2)
+  channelLiable      Boolean?
+  includedInPrice    Boolean             @default(false)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@unique([orderId, sourceKey])
+  @@index([shopId, regime, jurisdictionType])
 }
 
 model OrderLineItem {
@@ -836,9 +880,42 @@ model Fulfillment {
   itemCount    Int     @default(0)
   location     String  @default("primary")
 
+  shippingCostObservations ShippingCostObservation[]
+
   @@unique([shopId, shopifyId])
   @@index([shopId, createdAt])
   @@index([orderId])
+}
+
+/// One immutable-looking source record from ShipStation or Shopify Shipping.
+/// Upserts follow the provider's stable id so API retries cannot double cost.
+model ShippingCostObservation {
+  id            String       @id @default(cuid())
+  shopId        String
+  shop          Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  orderId       String?
+  order         Order?       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fulfillmentId String?
+  fulfillment   Fulfillment? @relation(fields: [fulfillmentId], references: [id], onDelete: SetNull)
+
+  source            ShippingCostSource
+  externalId        String
+  externalOrderRef  String?
+  carrier           String?
+  serviceLevel      String?
+  currency          String                    @db.VarChar(3)
+  amount            Decimal                   @db.Decimal(12, 2)
+  labelCount        Int                       @default(1)
+  observedAt        DateTime
+  sourceUpdatedAt   DateTime?
+  status            ShippingObservationStatus @default(UNMATCHED)
+  discrepancyReason String?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  @@unique([shopId, source, externalId])
+  @@index([shopId, status, observedAt])
+  @@index([orderId, source])
 }
 
 /// Daily warehouse throughput. Backlog and capacity alerts are derived from
@@ -912,10 +989,54 @@ model Connector {
   refreshTokenEnc String?
   tokenExpiresAt  DateTime?
 
-  lastSyncedAt DateTime?
-  lastError    String?
+  /// Optional independently-issued credential promoted only after the primary
+  /// cannot be refreshed and a live probe proves it unusable.
+  standbyAccessTokenEnc  String?
+  standbyRefreshTokenEnc String?
+  standbyTokenExpiresAt  DateTime?
+
+  lastSyncedAt        DateTime?
+  lastError           String?
+  healthStatus        ConnectorHealthStatus @default(UNKNOWN)
+  lastHealthCheckedAt DateTime?
+  lastHealthyAt       DateTime?
+  nextHealthCheckAt   DateTime?
+  consecutiveFailures Int                   @default(0)
+  failoverCount       Int                   @default(0)
+
+  /// ShipStation v2 supports custom webhook headers. The provider id is not a
+  /// credential; the listener secret remains AES-GCM ciphertext.
+  webhookId           String?
+  webhookSecretEnc    String?
+  webhookRegisteredAt DateTime?
+
+  /// Cross-process ownership for scheduled provider work. In-memory guards
+  /// alone do not prevent duplicate probes, failovers or alerts on two VMs.
+  workLeaseToken     String?
+  workLeaseExpiresAt DateTime?
+
+  healthEvents ConnectorHealthEvent[]
 
   @@unique([shopId, provider])
+  @@index([workLeaseExpiresAt])
+}
+
+model ConnectorHealthEvent {
+  id          String                   @id @default(cuid())
+  shopId      String
+  shop        Shop                     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  connectorId String
+  connector   Connector                @relation(fields: [connectorId], references: [id], onDelete: Cascade)
+  provider    ConnectorProvider
+  kind        ConnectorHealthEventKind
+  status      ConnectorHealthStatus
+  message     String
+  attempt     Int                      @default(1)
+  notifiedAt  DateTime?
+  createdAt   DateTime                 @default(now())
+
+  @@index([shopId, createdAt])
+  @@index([connectorId, createdAt])
 }
 
 model PricingRecommendation {
@@ -1021,6 +1142,8 @@ enum ConnectorProvider {
   TIKTOK_ADS
   STRIPE
   WAREHOUSE_3PL
+  SHIPSTATION
+  SHOPIFY_SHIPPING
 }
 
 enum ConnectorStatus {
@@ -1028,6 +1151,54 @@ enum ConnectorStatus {
   CONNECTED
   DISCONNECTED
   ERROR
+}
+
+enum ConnectorHealthStatus {
+  UNKNOWN
+  HEALTHY
+  DEGRADED
+  UNHEALTHY
+}
+
+enum ConnectorHealthEventKind {
+  CHECK_PASSED
+  CHECK_FAILED
+  TOKEN_REFRESHED
+  FAILOVER_ACTIVATED
+  ALERT_SENT
+  ALERT_FAILED
+}
+
+enum TaxRegime {
+  EU_VAT
+  US_SALES_TAX
+  GST
+  OTHER
+  UNALLOCATED
+}
+
+enum TaxJurisdictionType {
+  VAT
+  STATE
+  COUNTY
+  CITY
+  DISTRICT
+  NATIONAL
+  OTHER
+  UNALLOCATED
+}
+
+enum ShippingCostSource {
+  SHIPSTATION
+  SHOPIFY_SHIPPING
+}
+
+enum ShippingObservationStatus {
+  MATCHED
+  UNMATCHED
+  CURRENCY_MISMATCH
+  CONFLICT
+  VOIDED
 }
 
 enum SyncStatus {

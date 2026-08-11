@@ -39,6 +39,21 @@ export function monthKey(date: Date, timeZone: string): string {
   return dayKey(date, timeZone).slice(0, 7);
 }
 
+/**
+ * The calendar day of a platform-reported statistics date.
+ *
+ * `AdSpend.date` is a date-only column: the platform said "spend for
+ * 2026-08-06" and the row stores exactly that calendar date, which the driver
+ * surfaces as midnight UTC. Running that synthetic instant through a timezone
+ * conversion shifts the whole day early for any shop west of Greenwich — a
+ * merchant in New York saw every Facebook day's budget attributed to the day
+ * before. Spend therefore buckets by the date's face value; orders, which are
+ * real instants, keep converting into the merchant's timezone.
+ */
+export function spendDayKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
 // ---------------------------------------------------------------------------
 // Ad spend attribution
 // ---------------------------------------------------------------------------
@@ -96,7 +111,7 @@ export function attributeAdSpend(
   for (const row of spend) {
     if (row.spendCents === 0) continue;
 
-    const day = dayKey(row.date, timeZone);
+    const day = spendDayKey(row.date);
 
     const matched =
       (row.campaignId

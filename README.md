@@ -12,8 +12,8 @@ the app resolves the active Billing API subscription, redirects an unsubscribed
 store to the plan screen, gates paid features, and re-checks the plan before a
 protected pricing mutation.
 
-**Release status (verified 2026-08-10):** `npm run ci` passes with 648 tests
-collected (619 passed, 29 opt-in PostgreSQL tests skipped), and the explicit
+**Release status (verified 2026-08-11):** `npm run ci` passes with 753 tests
+collected (724 passed, 29 opt-in PostgreSQL tests skipped), and the explicit
 real-PostgreSQL integration run passes 29/29 across seven files. The app has
 still never been installed on a real Shopify store, so OAuth, Shopify-delivered
 webhooks, and a real billing approval/return flow remain unproved. Submission is
@@ -147,8 +147,11 @@ affected screens explain what is unavailable instead of rendering a zero.
   app detects this and says so in a banner rather than implying the store had no
   earlier trading. Add the scope to `shopify.app.toml` only once it is approved —
   requesting an ungranted scope fails OAuth.
-- **Ad spend has no live connector yet.** Facebook/Google/TikTok are modelled but
-  not wired to OAuth, so CAC, ROAS, payback and marketing efficiency are
+- **Ad spend polling is built; the connect screens are not.** The continuous
+  Meta/Google/TikTok ingestion queues (see *Ad-spend ingestion* below) poll any
+  `Connector` row holding a token, convert foreign-currency accounts, and feed
+  attribution — but there is no merchant-facing OAuth flow to create those rows
+  yet, so on a fresh install CAC, ROAS, payback and marketing efficiency remain
   unavailable rather than zero. Acquisition still shows order-derived channel
   revenue and contribution profit. Historical imports without customer access
   cannot read journey attribution and fall back to Direct; new-order webhooks
@@ -175,7 +178,7 @@ and must never be reachable there.
 | `npm run shopify:dev` | Run against a real store via the Shopify CLI |
 | `npm run dev` | Dev server (demo / no Shopify) |
 | `npm run db:migrate` | Apply migrations |
-| `npm test` | Test suite (648 collected: 619 pass, 29 integration tests skipped) |
+| `npm test` | Test suite (753 collected: 724 pass, 29 integration tests skipped) |
 | `npm run test:coverage` | Tests with coverage thresholds enforced |
 | `npm run ci` | Everything CI runs: typecheck, coverage, build |
 | `npm run typecheck` | Types |
@@ -344,6 +347,38 @@ A five-minute lease is renewed every minute; owner-fenced progress and terminal
 writes, plus a saved cursor, make interruption visible and safely resumable.
 There is still no external queue that restarts an abandoned run automatically.
 
+### Ad-spend ingestion
+
+Continuous Meta/Google/TikTok spend polling on BullMQ/Redis, entirely optional:
+without `MERIDIAN_REDIS_URL` the app logs one line and runs exactly as before.
+
+The design premise is that **the queue schedules, Postgres remembers**. An
+`AdSyncWindow` row per connector-day is the ledger of what has actually been
+synced; every polling cycle re-plans from that ledger and the calendar, so any
+day lost to a killed worker, a flushed Redis or a weekend outage is simply
+re-enqueued on the next cycle. Restatement is first-class: platforms restate
+recent days as attribution windows close, so the trailing days re-poll every
+cycle and a deep pass re-covers the full attribution window weekly, with a
+content hash so an unchanged day skips both the rewrite and the profit
+invalidation. The same ledger carries the durable recompute signal
+(`lastChangedAt` vs the shop's `lastComputedAt`) — a recompute enqueue lost
+mid-crash is re-derived, never gone.
+
+Rate limits are a per-platform fact, so each platform has its own queue and
+limiter; a 429 delays the whole provider's queue without consuming a retry
+attempt. Auth failures mark the connector `ERROR` and stop retrying — the
+ledger keeps the un-synced days, and the connector heals (and catches up)
+as soon as it can answer again. Foreign-currency ad accounts convert at the
+statistics day's stored FX rate (`ExchangeRate`, fed by frankfurter.app and
+cached forever, so last month's spend always reconverts at last month's rate).
+
+Workers run inside the web process and/or standalone
+(`npx tsx scripts/ads-worker.ts`); both at once is safe. To watch the whole
+loop locally without ad credentials: `node scripts/dev/fake-ads-platform.mjs`,
+`npx tsx scripts/dev/seed-ads-debug.ts`, then point the worker at it with
+`MERIDIAN_META_API_BASE=http://localhost:4545` — the fake platform serves a
+EUR-billed account with failure injection for the rate-limit and auth paths.
+
 ## Shopify integration
 
 - **Read-only scopes.** An analytics app should not be able to change a price, an
@@ -380,10 +415,12 @@ and fought with over mark geometry.
 
 ## Known gaps
 
-- Ad platform connectors are modelled but not wired to live
-  Facebook/Google/TikTok OAuth. The Acquisition screen therefore leaves spend,
-  CAC and ROAS unavailable while keeping order-derived channel revenue and
-  contribution profit visible.
+- The merchant-facing ad-platform OAuth *connect* flow does not exist yet. The
+  polling, ingestion, FX conversion and attribution machinery behind it is
+  live (`app/queue/`, `app/lib/ad-ingestion*.ts`, `app/lib/ad-platforms/`);
+  until a store can mint Connector tokens in Settings, the Acquisition screen
+  leaves spend, CAC and ROAS unavailable while keeping order-derived channel
+  revenue and contribution profit visible.
 - Historical COGS is not retrievable from Shopify. The import snapshots each
   variant's *current* landed cost onto its line items, which is the best
   available basis; from then on webhooks snapshot the cost in force at the time.
@@ -393,6 +430,7 @@ and fought with over mark geometry.
   approval screen, return redirect, subscription lookup, and webhook delivery
   have never been exercised. That is a deployment acceptance test, not a
   missing gate in the code.
-- The backfill and recompute both run in-process. That is correct on a
-  long-lived server and wrong on a serverless platform, where the process may
-  not outlive the response — both belong in a job queue before deploying there.
+- The historical backfill still runs in-process (lease-fenced and resumable,
+  but with no external queue restarting an abandoned run). Ad-spend ingestion
+  and its profit recompute now run on BullMQ/Redis; folding the backfill into
+  the same queue is the natural next step for a serverless platform.

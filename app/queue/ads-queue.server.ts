@@ -19,6 +19,7 @@ import {
   ensureSyncWindows,
   ingestConnectorDay,
   listPollableConnectors,
+  listShopsWithStaleProfit,
   loadConnectorSyncState,
 } from "~/lib/ad-ingestion.server";
 import {
@@ -104,11 +105,21 @@ interface IngestJobData {
   day: string;
 }
 
+/**
+ * Jobs vanish from Redis the moment they finish, in either direction. This is
+ * load-bearing, not housekeeping: BullMQ's jobId dedup spans every retained
+ * state, so a completed job kept "for an hour" silently swallows every
+ * restatement re-poll of that day for an hour, and a retained failure blocks
+ * the ledger's gap-repair re-enqueue exactly when it is needed. The durable
+ * record of outcomes is the AdSyncWindow ledger (attempts, lastError,
+ * contentHash), which survives Redis entirely. Found live: injected failures
+ * sat unconsumed while every cycle's re-adds deduped against old completions.
+ */
 const INGEST_JOB_OPTS: JobsOptions = {
   attempts: 6,
   backoff: { type: "custom" },
-  removeOnComplete: { age: 3_600, count: 1_000 },
-  removeOnFail: { age: 24 * 3_600 },
+  removeOnComplete: true,
+  removeOnFail: true,
 };
 
 interface AdsIngestionHandle {
@@ -181,9 +192,32 @@ export async function runSchedulingCycle(
     }
   }
 
-  if (enqueued > 0) {
+  // The durable half of the recompute contract. The fast path fires straight
+  // after a changed ingest; this sweep re-derives lost enqueues from the
+  // ledger, so a crash or Redis flush between "spend committed" and "recompute
+  // queued" costs one polling cycle, never the recompute itself.
+  const recomputeQueue = queues.get(RECOMPUTE_QUEUE);
+  let recomputesQueued = 0;
+  if (recomputeQueue) {
+    for (const shopId of await listShopsWithStaleProfit()) {
+      await recomputeQueue.add(
+        "recompute-shop",
+        { shopId },
+        {
+          jobId: `recompute_${shopId}`,
+          delay: adsIngestionConfig().recomputeDebounceMs,
+          removeOnComplete: true,
+          removeOnFail: true,
+        },
+      );
+      recomputesQueued += 1;
+    }
+  }
+
+  if (enqueued > 0 || recomputesQueued > 0) {
     console.info(
-      `[ads] scheduling cycle: ${enqueued} day(s) across ${connectors.length} connector(s)`,
+      `[ads] scheduling cycle: ${enqueued} day(s) across ${connectors.length} connector(s), ` +
+        `${recomputesQueued} stale-profit recompute(s)`,
     );
   }
   return { connectors: connectors.length, enqueued };
@@ -204,10 +238,11 @@ function ingestProcessor(
           "recompute-shop",
           { shopId },
           {
-            jobId: `recompute:${shopId}`,
+            // Underscore, not colon: BullMQ rejects `:` in custom job ids.
+            jobId: `recompute_${shopId}`,
             delay: adsIngestionConfig().recomputeDebounceMs,
             removeOnComplete: true,
-            removeOnFail: { age: 3_600 },
+            removeOnFail: true,
           },
         );
       }

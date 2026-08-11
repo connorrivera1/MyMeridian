@@ -122,9 +122,13 @@ export function contentHashFor(rows: readonly unknown[]): string {
   return createHash("sha256").update(canonical.join("\n")).digest("hex");
 }
 
-/** Deterministic job identity: one job per connector-day in flight at once. */
+/**
+ * Deterministic job identity: one job per connector-day in flight at once.
+ * Underscore-separated because BullMQ reserves `:` as its Redis key separator
+ * and rejects custom ids containing it — found live, not in review.
+ */
 export function ingestJobId(connectorId: string, day: string): string {
-  return `ingest:${connectorId}:${day}`;
+  return `ingest_${connectorId}_${day}`;
 }
 
 /**

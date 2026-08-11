@@ -28,6 +28,7 @@ interface WindowRow {
   attempts: number;
   rowsWritten: number;
   contentHash: string | null;
+  lastChangedAt: Date | null;
   lastError: string | null;
   syncedAt: Date | null;
 }
@@ -107,6 +108,7 @@ vi.mock("~/db.server", () => {
             attempts: 0,
             rowsWritten: 0,
             contentHash: null,
+            lastChangedAt: null,
             lastError: null,
             syncedAt: null,
             ...(create as object),
@@ -280,6 +282,8 @@ describe("ingestConnectorDay", () => {
     expect(window.status).toBe("SYNCED");
     expect(window.rowsWritten).toBe(1);
     expect(window.contentHash).toBe(contentHashFor(PLATFORM_ROWS));
+    // The durable recompute signal commits with the rows it describes.
+    expect(window.lastChangedAt).toBeInstanceOf(Date);
 
     expect(connectorRow.status).toBe("CONNECTED");
     expect(connectorRow.lastError).toBeNull();
@@ -308,14 +312,18 @@ describe("ingestConnectorDay", () => {
     await ingestConnectorDay("conn_1", DAY, deps(fakeAdapter()));
     invalidateAnalyticsCache.mockClear();
     const writesBefore = adSpendRows.length;
+    const changedAtAfterFirstSync = windowFor("conn_1", DATE)!.lastChangedAt;
 
     const outcome = await ingestConnectorDay("conn_1", DAY, deps(fakeAdapter()));
 
     expect(outcome).toEqual({ kind: "synced", changed: false, rowsWritten: 0 });
     expect(adSpendRows).toHaveLength(writesBefore);
     expect(invalidateAnalyticsCache).not.toHaveBeenCalled();
-    // Liveness is still stamped: the poll happened and answered.
-    expect(windowFor("conn_1", DATE)!.attempts).toBe(2);
+    // Liveness is still stamped: the poll happened and answered — but the
+    // change marker is not, or every idle poll would re-flag profit as stale.
+    const window = windowFor("conn_1", DATE)!;
+    expect(window.attempts).toBe(2);
+    expect(window.lastChangedAt).toBe(changedAtAfterFirstSync);
   });
 
   it("converts a foreign-currency ad account at the stored day rate", async () => {

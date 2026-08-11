@@ -176,10 +176,10 @@ describe("contentHashFor", () => {
 });
 
 describe("retry backoff", () => {
-  it("keeps ids deterministic for queue-level deduplication", () => {
-    expect(ingestJobId("conn_1", "2026-08-11")).toBe(
-      "ingest:conn_1:2026-08-11",
-    );
+  it("keeps ids deterministic and free of BullMQ's reserved colon", () => {
+    const id = ingestJobId("conn_1", "2026-08-11");
+    expect(id).toBe("ingest_conn_1_2026-08-11");
+    expect(id).not.toContain(":");
   });
 
   it("jitters inside an exponential envelope with a hard cap", () => {

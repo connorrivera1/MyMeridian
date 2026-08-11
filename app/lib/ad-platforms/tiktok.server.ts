@@ -18,7 +18,10 @@ import {
  * body's `code`, so classification reads the envelope, not the status line.
  */
 
-const API_BASE = "https://business-api.tiktok.com/open_api/v1.3";
+/** Overridable so staging and local debugging can point at a mock platform. */
+const API_BASE =
+  process.env.MERIDIAN_TIKTOK_API_BASE ??
+  "https://business-api.tiktok.com/open_api/v1.3";
 const PAGE_SIZE = 200;
 const FETCH_TIMEOUT_MS = 30_000;
 const RATE_LIMIT_BACKOFF_MS = 60_000;

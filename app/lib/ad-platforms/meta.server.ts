@@ -21,7 +21,10 @@ import {
  */
 
 const GRAPH_VERSION = "v21.0";
-const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
+/** Overridable so staging and local debugging can point at a mock platform. */
+const GRAPH_BASE =
+  process.env.MERIDIAN_META_API_BASE ??
+  `https://graph.facebook.com/${GRAPH_VERSION}`;
 const PAGE_SIZE = 200;
 const FETCH_TIMEOUT_MS = 30_000;
 

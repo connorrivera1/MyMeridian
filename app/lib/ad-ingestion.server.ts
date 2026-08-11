@@ -287,6 +287,7 @@ export async function ingestConnectorDay(
           rowsWritten: rows.length,
           contentHash: hash,
           syncedAt: now,
+          lastChangedAt: now,
         },
         update: {
           status: AdSyncWindowState.SYNCED,
@@ -294,6 +295,10 @@ export async function ingestConnectorDay(
           rowsWritten: rows.length,
           contentHash: hash,
           syncedAt: now,
+          // In the same transaction as the rows it describes: if this commit
+          // lands, the stale-profit sweep can always see it, no matter what
+          // happens to the in-flight recompute enqueue afterwards.
+          lastChangedAt: now,
           lastError: null,
         },
       });
@@ -389,6 +394,25 @@ export async function loadConnectorSyncState(
         ? windows[0]!.day.toISOString().slice(0, 10)
         : null,
   };
+}
+
+/**
+ * Shops whose synced spend changed after their last profit materialisation.
+ *
+ * The durable recompute signal. The fast path — enqueue straight after a
+ * changed ingest — can be lost to a crash between the ledger commit and the
+ * queue add, or to a Redis flush; this query re-derives the debt from the
+ * ledger itself, so the scheduling cycle can always pay it.
+ */
+export async function listShopsWithStaleProfit(): Promise<string[]> {
+  const rows = await prisma.$queryRaw<Array<{ shopId: string }>>`
+    SELECT DISTINCT w."shopId"
+    FROM "AdSyncWindow" w
+    JOIN "Shop" s ON s.id = w."shopId"
+    WHERE w."lastChangedAt" IS NOT NULL
+      AND (s."lastComputedAt" IS NULL OR w."lastChangedAt" > s."lastComputedAt")
+  `;
+  return rows.map((row) => row.shopId);
 }
 
 /** Connectors the scheduler should be polling for this whole deployment. */

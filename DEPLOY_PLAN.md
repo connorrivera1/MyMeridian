@@ -3,6 +3,24 @@
 Canonical checkout: branch `main`, no git remote. Nothing here has been deployed,
 pushed or submitted.
 
+**Addendum, 2026-08-11 (ads-ingestion branch).** The
+`feature/ads-ingestion-and-net-profit` branch adds one deploy-time dependency
+and one decision:
+
+- **Redis** (`MERIDIAN_REDIS_URL`). Optional by construction — without it the
+  app boots and logs one line, with ad ingestion offline. On Fly the natural
+  fit is Upstash Redis (`fly redis create`); the AdSyncWindow ledger in
+  Postgres is the source of truth, so the eviction-prone free tiers are
+  acceptable: a flushed Redis costs one polling cycle, never data.
+- **Where workers run.** The queues start inside the web process by default,
+  which matches the app's existing "long-running workers inside the app
+  process" hosting premise. A split deployment sets
+  `MERIDIAN_ADS_WORKER_DISABLED=true` on web and runs
+  `npx tsx scripts/ads-worker.ts` as a `processes.worker` group; running both
+  is also safe (BullMQ leases atomically).
+- Google Ads additionally needs `MERIDIAN_GOOGLE_ADS_CLIENT_ID/SECRET/`
+  `DEVELOPER_TOKEN` as Fly secrets before its connector can poll.
+
 **Current snapshot, 2026-08-10.** This snapshot overrides stale "now" claims in
 the dated audit history below. In particular, billing is enforced, the suite has
 648 tests, Docker and flyctl are installed, and the remaining release gates are

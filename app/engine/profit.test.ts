@@ -523,6 +523,26 @@ describe("attributeAdSpend", () => {
 
     expect(result.byOrderId.get("late")).toBe(10_000);
   });
+
+  it("takes a spend date at face value — a DATE column is a day, not an instant", () => {
+    // Prisma surfaces AdSpend.date as midnight UTC. Converting that synthetic
+    // instant into New York time called it the previous day, so every
+    // platform-reported day's budget attributed to the day before. The first
+    // live connector run caught it: Aug 5 orders wearing Aug 6's spend.
+    const order = makeOrder({
+      id: "same-day",
+      processedAt: new Date("2026-03-10T20:00:00Z"), // NY March 10, mid-day
+    });
+
+    const result = attributeAdSpend(
+      [order],
+      [spendRow({ date: new Date("2026-03-10T00:00:00Z") })], // the row shape Prisma actually returns
+      TZ,
+    );
+
+    expect(result.byOrderId.get("same-day")).toBe(10_000);
+    expect(result.unattributedCents).toBe(0);
+  });
 });
 
 describe("allocateOverhead", () => {

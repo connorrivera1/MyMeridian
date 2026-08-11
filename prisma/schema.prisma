@@ -1023,6 +1023,12 @@ model AdSyncWindow {
   /// Hash of the last fetched result, so an unchanged restatement poll can
   /// skip the write and, more importantly, skip invalidating profit.
   contentHash String?
+  /// When this day's content last actually changed — distinct from syncedAt,
+  /// which restamps on every liveness poll. Compared against the shop's
+  /// lastComputedAt, this is the durable "profit is stale" signal: a recompute
+  /// enqueue lost to a crash or a Redis flush is re-derived on the next cycle
+  /// instead of being gone.
+  lastChangedAt DateTime?
   lastError   String?
   syncedAt    DateTime?
   updatedAt   DateTime  @updatedAt

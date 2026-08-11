@@ -22,8 +22,13 @@ import {
  */
 
 const API_VERSION = "v18";
-const ADS_BASE = `https://googleads.googleapis.com/${API_VERSION}`;
-const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
+/** Overridable so staging and local debugging can point at a mock platform. */
+const ADS_BASE =
+  process.env.MERIDIAN_GOOGLE_ADS_API_BASE ??
+  `https://googleads.googleapis.com/${API_VERSION}`;
+const TOKEN_ENDPOINT =
+  process.env.MERIDIAN_GOOGLE_ADS_TOKEN_ENDPOINT ??
+  "https://oauth2.googleapis.com/token";
 const FETCH_TIMEOUT_MS = 30_000;
 const RATE_LIMIT_BACKOFF_MS = 30_000;
 

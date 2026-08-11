@@ -10,7 +10,7 @@ import {
   type DateRange,
 } from "~/data/queries.server";
 import { centsToDollars } from "~/engine/money";
-import { computeProfitForPeriod, monthKey } from "~/engine/profit";
+import { computeProfitForPeriod, spendDayKey } from "~/engine/profit";
 import type { OrderProfit } from "~/engine/types";
 import { withAnalyticsAdmission } from "~/lib/analytics-admission.server";
 
@@ -154,12 +154,12 @@ async function performRecompute(shopId: string): Promise<RecomputeResult> {
   // memory without changing an answer. The 60k admission guard therefore now
   // applies to a month, while a shop may have arbitrarily many such months.
   for (const { slice, range } of monthRanges) {
-    // `AdSpend.date` is a SQL DATE surfaced by Prisma as midnight UTC, while
-    // the engine deliberately buckets it in the merchant's timezone. Pad the
-    // database read across both possible UTC boundary days, then keep only the
-    // rows whose engine month key is this slice. This prevents a west-coast
-    // first-of-month row from leaking into a different computation while still
-    // including spend-only months.
+    // `AdSpend.date` is a SQL DATE and buckets by its face value — the
+    // calendar day the platform reported — while this month's boundaries are
+    // merchant-local instants. Pad the database read across the boundary
+    // days both interpretations could touch, then keep exactly the rows whose
+    // spend month is this slice, so no first-of-month row is double-loaded or
+    // dropped and spend-only months still compute.
     const spendRange: DateRange = {
       from: new Date(
         Math.max(
@@ -180,7 +180,7 @@ async function performRecompute(shopId: string): Promise<RecomputeResult> {
       loadAdSpend(shopId, spendRange),
     ]);
     const spend = spendCandidates.filter(
-      (row) => monthKey(row.date, timeZone) === slice.monthKey,
+      (row) => spendDayKey(row.date).slice(0, 7) === slice.monthKey,
     );
 
     const period = computeProfitForPeriod(
@@ -267,10 +267,9 @@ async function loadRecomputeMonthSlices(
 
       UNION
 
-      SELECT DISTINCT to_char(
-        (a."date"::timestamp AT TIME ZONE 'UTC') AT TIME ZONE ${timeZone},
-        'YYYY-MM'
-      ) AS month_key
+      -- Spend months come from the date's face value: a DATE column is the
+      -- platform's calendar day, not an instant to convert.
+      SELECT DISTINCT to_char(a."date", 'YYYY-MM') AS month_key
       FROM "AdSpend" AS a
       WHERE a."shopId" = ${shopId}
         AND a."date" >= ${range.from}

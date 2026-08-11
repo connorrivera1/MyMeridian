@@ -27,7 +27,7 @@ business day of an operator leaving.
 
 ## Leakage prevention
 
-GitHub Actions scans full history for credentials and runs CodeQL; Dependabot
+GitHub Actions scans full history for credentials and runs Semgrep SAST; Dependabot
 opens dependency updates and GitHub vulnerability alerts are enabled. Hosted
 push protection remains unavailable on the current private-repository plan, so
 the full-history gitleaks gate is mandatory. Logs must never contain
@@ -37,7 +37,7 @@ exports. Customer exports expire through the retention worker.
 ## Production evidence checklist
 
 - [x] Repository is private.
-- [x] Full-history gitleaks and CodeQL scans run in GitHub Actions.
+- [x] Full-history gitleaks and Semgrep SAST scans run in GitHub Actions.
 - [ ] GitHub-hosted secret scanning and push protection require a repository
       plan that supports Secret Protection for private repositories; the API
       rejected activation with HTTP 422 on 2026-08-11.

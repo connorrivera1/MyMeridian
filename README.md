@@ -17,7 +17,7 @@ protected pricing mutation.
 coverage thresholds, 1,074 unit tests and the production build. All 1,131 tests
 pass when the 57 database integration cases run against a fresh PostgreSQL
 database after all 27 migrations apply from empty. The repository also includes
-automated dependency, secret and CodeQL security checks. The app has
+automated dependency, full-history secret and Semgrep security checks. The app has
 still never been installed on a real Shopify store, so OAuth, Shopify-delivered
 webhooks, and a real billing approval/return flow remain unproved. Submission is
 also waiting on external decisions and accounts: a non-confusable app name, a

@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Scan full history for credentials
@@ -25,16 +25,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  codeql:
+  sast:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
+    container:
+      image: semgrep/semgrep
     steps:
-      - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v3
-        with:
-          languages: javascript-typescript
-      - uses: github/codeql-action/analyze@v3
+      - uses: actions/checkout@v6
+      - name: Static application security scan
+        run: semgrep scan --config auto --error

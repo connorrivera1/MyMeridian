@@ -7,6 +7,8 @@ updates:
       day: monday
       time: "09:00"
       timezone: America/New_York
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     groups:
       production-minor-and-patch:
@@ -21,4 +23,6 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    cooldown:
+      default-days: 7
     labels: [dependencies, security]

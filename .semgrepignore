@@ -1,0 +1,4 @@
+# Test fixtures intentionally contain fake cryptographic keys and forged
+# signatures. Production source remains fully scanned.
+**/*.test.ts
+**/*.integration.test.ts

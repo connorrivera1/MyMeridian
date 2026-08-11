@@ -251,7 +251,8 @@ describe("queue recovery", () => {
 
     await expect(drainWebhookQueue()).resolves.toBe(1);
     expect(consoleError).toHaveBeenCalledWith(
-      expect.stringContaining("failed to record delivery failure"),
+      "[webhook:%s] failed to record delivery failure",
+      "delivery_1",
       expect.any(Error),
     );
     consoleError.mockRestore();

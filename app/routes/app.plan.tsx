@@ -67,7 +67,8 @@ export async function action({ request }: ActionFunctionArgs) {
     isTest = await resolveBillingChargeMode(ctx);
   } catch (error) {
     console.error(
-      `[billing] could not verify store type for ${ctx.shop.domain}:`,
+      "[billing] could not verify store type for %s:",
+      ctx.shop.domain,
       error,
     );
     return {

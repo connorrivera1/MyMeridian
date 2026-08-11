@@ -325,7 +325,7 @@ export async function startAdIngestion(): Promise<AdsIngestionHandle | null> {
     { connection, concurrency: 1 },
   );
   scheduleWorker.on("failed", (_job, error) => {
-    console.error(`[ads] scheduling cycle failed: ${error.message}`);
+    console.error("[ads] scheduling cycle failed: %s", error.message);
   });
   workers.push(scheduleWorker);
 

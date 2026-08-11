@@ -18,6 +18,7 @@ import {
 const VERSION = "v1";
 const ALGORITHM = "aes-256-gcm";
 const IV_BYTES = 12; // GCM standard
+const AUTH_TAG_BYTES = 16;
 const KEY_BYTES = 32;
 
 let cachedKey: Buffer | null = null;
@@ -46,7 +47,9 @@ function getKey(): Buffer {
 
 export function encryptSecret(plaintext: string): string {
   const iv = randomBytes(IV_BYTES);
-  const cipher = createCipheriv(ALGORITHM, getKey(), iv);
+  const cipher = createCipheriv(ALGORITHM, getKey(), iv, {
+    authTagLength: AUTH_TAG_BYTES,
+  });
 
   const ciphertext = Buffer.concat([
     cipher.update(plaintext, "utf8"),
@@ -74,6 +77,7 @@ export function decryptSecret(envelope: string): string {
     ALGORITHM,
     getKey(),
     Buffer.from(ivB64, "base64"),
+    { authTagLength: AUTH_TAG_BYTES },
   );
   decipher.setAuthTag(Buffer.from(tagB64, "base64"));
 

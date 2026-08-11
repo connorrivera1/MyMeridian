@@ -201,7 +201,7 @@ export function startRecalcHeartbeat(
         data: { leaseExpiresAt: new Date(Date.now() + RECALC_LEASE_MS) },
       })
       .catch((error) =>
-        console.error(`[recalc:${jobId}] failed to extend job lease`, error),
+        console.error("[recalc:%s] failed to extend job lease", jobId, error),
       );
   }, RECALC_HEARTBEAT_MS);
   timer.unref?.();
@@ -334,12 +334,19 @@ export async function runRecalcJob(leased: LeasedRecalcJob): Promise<void> {
     const result = await handler(job);
     await completeRecalcJob(job.id, leaseToken, result);
   } catch (error) {
-    console.error(`[recalc:${job.id}] ${job.kind} attempt ${attempt} failed`, error);
+    console.error(
+      "[recalc:%s] %s attempt %d failed",
+      job.id,
+      job.kind,
+      attempt,
+      error,
+    );
     try {
       await failRecalcJob(job.id, leaseToken, attempt, error);
     } catch (persistenceError) {
       console.error(
-        `[recalc:${job.id}] could not record job failure`,
+        "[recalc:%s] could not record job failure",
+        job.id,
         persistenceError,
       );
     }

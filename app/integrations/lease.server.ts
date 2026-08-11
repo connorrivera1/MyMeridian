@@ -49,7 +49,7 @@ export async function withConnectorWork<T>(
       where: { id: connectorId, workLeaseToken: token },
       data: { workLeaseExpiresAt: new Date(Date.now() + CONNECTOR_WORK_LEASE_MS) },
     }).catch((error) =>
-      console.error(`[connector-lease:${connectorId}] heartbeat failed`, error),
+      console.error("[connector-lease:%s] heartbeat failed", connectorId, error),
     );
   }, CONNECTOR_WORK_HEARTBEAT_MS);
   heartbeat.unref?.();
@@ -62,7 +62,7 @@ export async function withConnectorWork<T>(
     } catch (error) {
       // The bounded lease expires by itself. Do not turn successful provider
       // work into a retry merely because cleanup briefly lost the database.
-      console.error(`[connector-lease:${connectorId}] release failed`, error);
+      console.error("[connector-lease:%s] release failed", connectorId, error);
     }
   }
 }

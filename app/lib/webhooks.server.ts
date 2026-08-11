@@ -207,7 +207,12 @@ async function runHandler(
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`[webhook:${context.topic}] ${context.shopDomain}`, error);
+    console.error(
+      "[webhook:%s] %s",
+      context.topic,
+      context.shopDomain,
+      error,
+    );
     if (delivery) {
       try {
         await markWebhookFailed(
@@ -221,7 +226,8 @@ async function runHandler(
         // rejecting this detached promise would instead risk taking down the
         // process after Shopify already received its 200.
         console.error(
-          `[webhook:${context.webhookId}] failed to record delivery failure`,
+          "[webhook:%s] failed to record delivery failure",
+          context.webhookId,
           persistenceError,
         );
       }
@@ -244,7 +250,8 @@ function startLeaseHeartbeat(
       })
       .catch((error) =>
         console.error(
-          `[webhook:${webhookId}] failed to extend delivery lease`,
+          "[webhook:%s] failed to extend delivery lease",
+          webhookId,
           error,
         ),
       );

@@ -38,7 +38,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
   try {
     expectedSecret = decryptSecret(connector.webhookSecretEnc);
   } catch (error) {
-    console.error(`[shipstation-webhook:${connector.id}] invalid stored listener secret`, error);
+    console.error(
+      "[shipstation-webhook:%s] invalid stored listener secret",
+      connector.id,
+      error,
+    );
     return new Response("Listener unavailable", { status: 503 });
   }
   if (!safeEqual(suppliedSecret, expectedSecret)) {

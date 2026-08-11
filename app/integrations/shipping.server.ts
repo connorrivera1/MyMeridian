@@ -605,7 +605,12 @@ async function reconcileCarrierConnectors(
       where: { id: connector.id },
       data: { lastError: message.slice(0, 1000) },
     });
-    console.error(`[shipping:${connector.provider}] ${connector.shop.domain}`, result.reason);
+    console.error(
+      "[shipping:%s] %s",
+      connector.provider,
+      connector.shop.domain,
+      result.reason,
+    );
   }
 }
 

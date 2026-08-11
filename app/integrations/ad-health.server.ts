@@ -366,11 +366,21 @@ async function persistConnectorFailure(
           alert.reason ?? "Connector alert was not delivered.",
           failures,
         );
-        console.error(`[connector-health] ${connector.shop.domain} ${connector.provider}: ${safeFailure}`);
+        console.error(
+          "[connector-health] %s %s: %s",
+          connector.shop.domain,
+          connector.provider,
+          safeFailure,
+        );
       }
     } catch (error) {
       await recordEvent(connector, ConnectorHealthEventKind.ALERT_FAILED, status, safeMessage(error), failures);
-      console.error(`[connector-health] alert failed for ${connector.shop.domain} ${connector.provider}`, error);
+      console.error(
+        "[connector-health] alert failed for %s %s",
+        connector.shop.domain,
+        connector.provider,
+        error,
+      );
     }
   }
 

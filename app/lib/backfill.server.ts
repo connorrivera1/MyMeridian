@@ -683,7 +683,8 @@ function refreshingAdminClient(
           acquiredAt = Date.now();
         } catch (error) {
           console.error(
-            `[backfill] could not refresh the admin session for ${shopDomain}`,
+            "[backfill] could not refresh the admin session for %s",
+            shopDomain,
             error,
           );
           // Deliberately not fatal — the current token may still be valid, and
@@ -754,7 +755,7 @@ export async function startBackfill(
   if (!begun.started) return begun;
 
   void begun.task.catch((error) => {
-    console.error(`[backfill] ${shopId} failed`, error);
+    console.error("[backfill] %s failed", shopId, error);
   });
 
   return { started: true, resumed: begun.resumed };

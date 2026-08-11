@@ -659,7 +659,8 @@ describe("startBackfill: same-process deduplication", () => {
 
     await vi.waitFor(() => {
       expect(consoleError).toHaveBeenCalledWith(
-        "[backfill] shop_1 failed",
+        "[backfill] %s failed",
+        "shop_1",
         expect.objectContaining({ name: "BackfillLeaseLostError" }),
       );
     });

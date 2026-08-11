@@ -25,7 +25,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   } catch (error) {
     if (error instanceof Response) throw error;
     const message = error instanceof Error ? error.message : "Connector setup failed.";
-    console.error(`[connector-oauth:${slug}] callback failed`, error);
+    console.error("[connector-oauth:%s] callback failed", slug, error);
     throw redirect(`/app/settings?connection_error=${encodeURIComponent(message.slice(0, 300))}`);
   }
 }

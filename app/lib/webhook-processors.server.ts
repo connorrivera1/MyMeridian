@@ -83,7 +83,11 @@ export async function processOrdersWebhook({
         // Soft overage must never turn a valid order delivery into a retry. The
         // meter remains visible and Shopify billing can be retried on the next
         // threshold batch.
-        console.error(`[billing] soft overage charge deferred for ${shopDomain}:`, error);
+        console.error(
+          "[billing] soft overage charge deferred for %s:",
+          shopDomain,
+          error,
+        );
       }
     }
   }

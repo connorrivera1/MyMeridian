@@ -37,4 +37,5 @@ COPY --from=build /app/package.json /app/package.json
 
 ENV PORT=8080
 EXPOSE 8080
+USER node
 CMD ["./node_modules/.bin/react-router-serve", "./build/server/index.js"]

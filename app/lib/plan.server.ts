@@ -205,7 +205,8 @@ export async function resolvePlan(ctx: ShopContext): Promise<PlanState> {
       forceBillingRefresh = true;
     } catch (error) {
       console.error(
-        `[billing] could not refresh store type for ${ctx.shop.domain}:`,
+        "[billing] could not refresh store type for %s:",
+        ctx.shop.domain,
         error,
       );
       return emptyState();
@@ -248,15 +249,15 @@ export async function resolvePlan(ctx: ShopContext): Promise<PlanState> {
 
     if (!planId && result.appSubscriptions?.length) {
       console.error(
-        `[billing] ${ctx.shop.domain}: active subscriptions ` +
-          `${result.appSubscriptions.map((s) => `"${s.name}"`).join(", ")} ` +
-          `match no plan in PLANS — the Partner Dashboard names have drifted`,
+        "[billing] %s: active subscriptions %s match no plan in PLANS — the Partner Dashboard names have drifted",
+        ctx.shop.domain,
+        result.appSubscriptions.map((s) => `"${s.name}"`).join(", "),
       );
     }
   } catch (error) {
     // Shopify being unreachable must not lock a paying merchant out of the app
     // they have already been charged for.
-    console.error(`[billing] check failed for ${ctx.shop.domain}:`, error);
+    console.error("[billing] check failed for %s:", ctx.shop.domain, error);
     // This check was forced by SHOP_UPDATE invalidation. The cached row might
     // be an old test subscription on a store that just converted to paid, and
     // Subscription has no trustworthy mode marker. Fail closed until Shopify

@@ -9,6 +9,7 @@ import { addDocumentResponseHeaders } from "./shopify.server";
 import { validateCustomerErasureConfiguration } from "./lib/customer-erasure.server";
 import { startDataRetentionScheduler } from "./lib/data-retention.server";
 import { startWebhookDeliveryWorker } from "./lib/webhooks.server";
+import { startAdIngestion } from "./queue/ads-queue.server";
 
 // This module is loaded with the server process, not when a merchant opens
 // Settings. Retention therefore advances even when the app receives no page
@@ -19,6 +20,12 @@ import { startWebhookDeliveryWorker } from "./lib/webhooks.server";
 validateCustomerErasureConfiguration();
 startDataRetentionScheduler();
 startWebhookDeliveryWorker();
+// Optional by design: without MERIDIAN_REDIS_URL this logs one line and the
+// app runs exactly as before, ad ingestion simply offline. A failure to reach
+// a *configured* Redis must not take the web process down with it either.
+void startAdIngestion().catch((error) =>
+  console.error("[ads] failed to start ingestion queues", error),
+);
 
 const ABORT_DELAY = 5000;
 

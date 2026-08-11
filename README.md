@@ -1,4 +1,4 @@
-# Meridian
+# MyMeridian
 
 A unified profitability dashboard for Shopify stores. Revenue, COGS,
 fulfilment, payment fees and overhead resolved into one number a merchant can
@@ -19,7 +19,7 @@ still never been installed on a real Shopify store, so OAuth, Shopify-delivered
 webhooks, and a real billing approval/return flow remain unproved. Submission is
 also waiting on external decisions and accounts: a non-confusable app name, a
 Fly production origin and managed database, Shopify's Protected Customer Data
-Level 2 and `read_all_orders` requests, Meridian's own domain/publisher/support
+Level 2 and `read_all_orders` requests, MyMeridian's own domain/publisher/support
 identity, and the review assets that require a real install. See `DEPLOY_PLAN.md` and
 `SUBMISSION.md` for the ordered checklist.
 
@@ -69,12 +69,12 @@ match it, and injects `SHOPIFY_API_KEY` / `SHOPIFY_API_SECRET` / `SCOPES` into
 the process. You do not need to put any of those in `.env`.
 
 For a production-hosted App Store review, charge mode is not inferred from
-`NODE_ENV`, a display label, or an operator override. Meridian re-reads
+`NODE_ENV`, a display label, or an operator override. MyMeridian re-reads
 Shopify's durable `ShopPlan.partnerDevelopment` signal immediately before every
 production charge, so the supplied development store receives a test charge.
 
 **5. Install it.** Press `p` to open the install link, pick your dev store,
-approve the scopes. Meridian provisions the shop, registers webhooks, and starts
+approve the scopes. MyMeridian provisions the shop, registers webhooks, and starts
 importing immediately — progress shows at the top of every page.
 
 ### Making the dashboard say something
@@ -124,7 +124,7 @@ resolve to somewhere Shopify cannot reach.
 
 ### Permissions decide what the app can honestly claim
 
-Scopes are not all-or-nothing. Meridian records what the store actually granted
+Scopes are not all-or-nothing. MyMeridian records what the store actually granted
 and gates its GraphQL fields on it, because requesting an unauthorised field
 fails the *entire* query rather than returning null for that field.
 
@@ -134,7 +134,7 @@ fails the *entire* query rather than returning null for that field.
 | `read_products` | No catalogue or pricing analysis. Essential. |
 | `read_inventory` | **No COGS.** Margins read as ~100% and every profit figure is overstated. Requested by default; not protected data. |
 | `read_customers` | No CAC, LTV, payback or customer-lifecycle product classification. **Protected customer data** — needs an approved request in the Partner Dashboard, not just the scope. |
-| `read_fulfillments` | No capacity forecasting. Meridian writes no capacity data at all rather than inferring a backlog that only ever grows. |
+| `read_fulfillments` | No capacity forecasting. MyMeridian writes no capacity data at all rather than inferring a backlog that only ever grows. |
 | `read_reports` | No Shopify Shipping label-cost reconciliation. The `shipping_labels` ShopifyQL schema also requires Level 2 Protected Customer Data approval. |
 
 Missing permissions surface in *Costs & connections → Data access*, and the
@@ -155,7 +155,7 @@ affected screens explain what is unavailable instead of rendering a zero.
   cannot read journey attribution and fall back to Direct; new-order webhooks
   retain landing/referring signals when Shopify supplies them. Operator-provisioned
   credentials are health-checked, refreshed or failed over as described below;
-  that operational monitoring does not pretend Meridian has imported ad spend.
+  that operational monitoring does not pretend MyMeridian has imported ad spend.
 
 ### Tax and carrier reconciliation
 
@@ -357,7 +357,7 @@ remain represented as “not yet”, never `0.00×`.
 ### Pricing
 
 A weighted log-log regression of demand share on price, per variant, from the
-price history Meridian observes from installation onward; pre-install history is
+price history MyMeridian observes from installation onward; pre-install history is
 unknown and never backfilled from the current price.
 
 The regressand is the product's **share of store-wide demand**, not raw units.
@@ -514,7 +514,7 @@ precisely so pruning a spent receipt cannot take the accounting trail with it.
 ## Design system
 
 Dark-first and built for density. Series colours are the validated categorical
-palette, re-validated against Meridian's own surfaces (`#12151C` / `#FFFFFF`) —
+palette, re-validated against MyMeridian's own surfaces (`#12151C` / `#FFFFFF`) —
 slot **order** is the colourblind-safety mechanism, so do not hand-edit a series
 hex without re-running the validator.
 

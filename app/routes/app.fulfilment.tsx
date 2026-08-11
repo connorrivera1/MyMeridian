@@ -223,6 +223,9 @@ export default function Fulfilment() {
                   <tr key={String(day.date)}>
                     <td className="primary-cell">
                       {new Date(day.date).toLocaleDateString("en-US", {
+                        // Forecast dates are merchant-calendar keys stored at
+                        // UTC midnight, not instants to shift into this laptop.
+                        timeZone: "UTC",
                         weekday: "short",
                         month: "short",
                         day: "numeric",

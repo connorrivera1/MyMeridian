@@ -1,27 +1,11 @@
 import type { ActionFunctionArgs } from "react-router";
 
-import prisma from "~/db.server";
+import { processAppUninstalledWebhook } from "~/lib/webhook-processors.server";
 import { handleWebhook } from "~/lib/webhooks.server";
 
-/**
- * app/uninstalled.
- *
- * The access token is dead the moment this arrives, so sessions go immediately.
- * Store data is kept until shop/redact (48h later) — merchants reinstall often,
- * and throwing away six months of cost configuration because someone clicked
- * uninstall by mistake would be its own kind of data loss.
- */
+/** The dead access session goes now; store data stays until shop/redact. */
 export async function action({ request }: ActionFunctionArgs) {
-  return handleWebhook(request, async ({ shopDomain }) => {
-    await prisma.session.deleteMany({ where: { shop: shopDomain } });
-
-    await prisma.shop.updateMany({
-      where: { domain: shopDomain },
-      data: { uninstalledAt: new Date() },
-    });
-
-    console.info(`[app] uninstalled from ${shopDomain}; sessions cleared`);
-  });
+  return handleWebhook(request, processAppUninstalledWebhook);
 }
 
 export const loader = () => new Response(null, { status: 405 });

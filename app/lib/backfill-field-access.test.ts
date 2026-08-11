@@ -61,11 +61,17 @@ vi.mock("~/data/analytics.server", () => ({
   invalidateAnalyticsCache: vi.fn(),
   loadStrategicProductIds: vi.fn(),
 }));
-vi.mock("~/lib/pricing.server", () => ({ generatePricingRecommendations: vi.fn() }));
-vi.mock("~/lib/recompute.server", () => ({ recomputeShopProfitability: vi.fn() }));
+vi.mock("~/lib/pricing.server", () => ({
+  generatePricingRecommendations: vi.fn(),
+}));
+vi.mock("~/lib/recompute.server", () => ({
+  recomputeShopProfitability: vi.fn(),
+}));
 vi.mock("~/lib/sync.server", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/lib/sync.server")>()),
   reconcileFirstOrdersForShop: vi.fn(async () => 0),
+  syncOrderFromShopify: vi.fn(async () => ({ id: "order_row" })),
+  syncFulfillmentFromShopify: vi.fn(async () => null),
 }));
 
 const { importOrders } = await import("./backfill.server");
@@ -82,7 +88,8 @@ const realStore = {
 /** A store that also granted customer access, so journey is probed for. */
 const withCustomers = { ...realStore, customers: true };
 
-const ok = (data: unknown) => ({ json: async () => ({ data }) }) as unknown as Response;
+const ok = (data: unknown) =>
+  ({ json: async () => ({ data }) }) as unknown as Response;
 
 function orderNode(id: string) {
   return {
@@ -104,13 +111,16 @@ function orderNode(id: string) {
  * exactly that, so anything shallower would not reach `ShopifyFieldError`.
  */
 function accessDenied(field: string) {
-  return Object.assign(new Error(`GraphQL Client: Access denied for ${field} field.`), {
-    body: {
-      errors: {
-        graphQLErrors: [{ message: `Access denied for ${field} field.` }],
+  return Object.assign(
+    new Error(`GraphQL Client: Access denied for ${field} field.`),
+    {
+      body: {
+        errors: {
+          graphQLErrors: [{ message: `Access denied for ${field} field.` }],
+        },
       },
     },
-  });
+  );
 }
 
 /**
@@ -216,7 +226,9 @@ describe("importOrders when Shopify refuses a field", () => {
       }),
     };
 
-    await expect(importOrders("shop_1", admin, withCustomers)).rejects.toThrow();
+    await expect(
+      importOrders("shop_1", admin, withCustomers),
+    ).rejects.toThrow();
     // customers (which takes journey with it), then fulfillments, then out.
     expect(admin.queries.length).toBeLessThanOrEqual(4);
   });

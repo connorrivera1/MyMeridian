@@ -13,17 +13,20 @@ primary_region = "iad"
 
 [deploy]
   # Runs on a temporary machine before the new version takes traffic. There are
-  # six migrations in prisma/migrations, none applied to a production database.
-  release_command = "npx prisma migrate deploy"
+  # 16 migrations in prisma/migrations, none applied to a production database.
+  # fly mpg attach gives runtime DATABASE_URL the pooled PgBouncer endpoint.
+  # Prisma Migrate needs a direct session, so only this release process swaps
+  # the separately configured direct URL into the name Prisma reads.
+  release_command = "/bin/sh -lc 'DATABASE_URL=$DIRECT_DATABASE_URL npx prisma migrate deploy'"
 
 [http_service]
   internal_port = 8080
   force_https = true
 
-  # THE IMPORTANT LINES. afterAuth starts the historical import without
-  # awaiting it, so the process must outlive the response that started it.
-  # A machine that suspends when the request queue drains will kill a running
-  # backfill and leave a half-imported store that looks fine.
+  # afterAuth waits for the atomic import claim, then the leased historical
+  # import continues in-process. A machine that suspends when the request queue
+  # drains would interrupt it; the cursor/lease makes that visible and resumable,
+  # but an always-on process is still required to finish without intervention.
   auto_stop_machines = "off"
   auto_start_machines = true
   min_machines_running = 1

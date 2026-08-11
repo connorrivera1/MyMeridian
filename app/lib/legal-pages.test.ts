@@ -31,40 +31,24 @@ describe("public legal pages", () => {
     expect(html).toContain(`href="${sibling}"`);
   });
 
-  /**
-   * The placeholder gate.
-   *
-   * A legal document is the one place a plausible-looking invention is worse
-   * than an obvious hole — "Meridian Ltd" would read as true and be a false
-   * statement about who the merchant is contracting with. The drafts therefore
-   * carry loud `[bracketed]` placeholders, and this fails until every one is
-   * replaced with a real fact.
-   *
-   * It is skipped rather than failing red while the pages are still drafts:
-   * set MERIDIAN_LEGAL_FINAL=true (CI does, before submission) to enforce it.
-   */
-  const enforcing = process.env.MERIDIAN_LEGAL_FINAL === "true";
-  it.skipIf(!enforcing).each(PAGES)(
-    "%s has no unfilled placeholders left",
-    (page) => {
-      const remaining = [...read(page).matchAll(/\[([^\]]{3,60})\]/g)].map(
-        (m) => m[1],
-      );
-      expect(
-        remaining,
-        `${page} still contains drafting placeholders: ${remaining.join(", ")}`,
-      ).toEqual([]);
-    },
-  );
-
-  it("counts the placeholders so the remaining work is visible", () => {
-    const outstanding = PAGES.flatMap((page) =>
-      [...read(page).matchAll(/\[([^\]]{3,60})\]/g)].map((m) => m[1]),
+  it.each(PAGES)("%s has no drafting placeholders", (page) => {
+    const html = read(page);
+    const remaining = [...html.matchAll(/\[([^\]]{3,60})\]/g)].map(
+      (match) => match[1],
     );
-    // Not an assertion about the number — just a fixed record that they exist
-    // and are tracked. When the pages are finalised this drops to zero and the
-    // gate above starts enforcing.
-    expect(new Set(outstanding).size).toBeGreaterThanOrEqual(0);
+    expect(
+      remaining,
+      `${page} contains reviewer-visible drafting placeholders: ${remaining.join(", ")}`,
+    ).toEqual([]);
+    expect(html).not.toContain('class="todo"');
+  });
+
+  it.each(PAGES)("%s is explicit that its legal identity is still pre-launch", (page) => {
+    const html = read(page);
+    expect(html).toContain("Pre-launch draft");
+    expect(html).toContain("Not yet effective");
+    expect(html).not.toContain("Project Kaira");
+    expect(html).not.toContain("trykaira.ai");
   });
 
   it("does not repeat claims the code does not support", () => {
@@ -78,6 +62,8 @@ describe("public legal pages", () => {
     // No ad connector exists in this release — app/lib has no AdSpend writer
     // outside the seed, so the policy must not describe one.
     expect(privacy).toContain("does not connect to any advertising");
+    expect(privacy).toContain("currently pre-launch");
+    expect(privacy).toContain("fly managed postgres");
   });
 
   it("states the retention period the retention worker actually enforces", () => {

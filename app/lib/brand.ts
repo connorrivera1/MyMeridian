@@ -10,7 +10,7 @@ export const APP_NAME = "Meridian";
  * review reads the date, and deriving it from the build clock would make every
  * deploy look like a policy change.
  */
-export const PRIVACY_UPDATED = "6 August 2026";
+export const PRIVACY_UPDATED = "10 August 2026";
 
 export interface ContactDetails {
   supportEmail: string;

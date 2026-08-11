@@ -37,16 +37,18 @@ export default function Support() {
       <ul>
         <li>
           <strong>Margins look too high, or every product shows 100%.</strong>{" "}
-          {APP_NAME} takes cost of goods from the unit cost recorded against each
-          variant&rsquo;s inventory item in Shopify. A variant with no cost set
-          contributes nothing to COGS. Open <em>Products</em> — anything costed
-          from an assumption rather than a measurement is marked.
+          {APP_NAME} takes cost of goods from the unit cost recorded against
+          each variant&rsquo;s inventory item in Shopify. A variant with no cost
+          set contributes nothing to COGS. Open <em>Products</em>: sold units
+          with missing COGS are labelled <em>Needs COGS</em>, and modeled fee or
+          fulfilment inputs are marked separately from measured costs.
         </li>
         <li>
           <strong>History only reaches back 60 days.</strong> Shopify caps order
-          reads at 60 days unless the app is granted <code>read_all_orders</code>
-          , which is an access request approved in the Partner Dashboard rather
-          than a scope the merchant can grant at install.
+          reads at 60 days unless the app is granted{" "}
+          <code>read_all_orders</code>, which is an access request approved in
+          the Partner Dashboard rather than a scope the merchant can grant at
+          install.
         </li>
         <li>
           <strong>Acquisition shows no customer acquisition cost.</strong> CAC,
@@ -57,22 +59,25 @@ export default function Support() {
         <li>
           <strong>Numbers disagree with Shopify&rsquo;s own reports.</strong>{" "}
           They are measuring different things. Shopify reports gross sales;{" "}
-          {APP_NAME} reports what is left after cost of goods, shipping, pick and
-          pack, payment fees, ad spend and overhead. <em>Overview</em> shows every
-          deduction between the two figures in the order it hits the P&amp;L.
+          {APP_NAME} reports what is left after cost of goods, shipping, pick
+          and pack, payment fees and overhead. This release has no ad-spend
+          connector, so <em>Overview</em> labels the result as profit before
+          paid marketing and shows ad spend as unavailable rather than zero.
         </li>
         <li>
-          <strong>A new product shows no cost.</strong> Costs arrive with the
-          historical import. Run <em>Re-import</em> from{" "}
-          <em>Costs &amp; connections</em> after adding a batch of new SKUs.
+          <strong>A new product shows no cost.</strong> Set{" "}
+          <em>Cost per item</em> on the variant in Shopify. Inventory updates
+          keep the catalog current, and each new order snapshots the cost
+          available when Meridian ingests it; an unknown historical cost is
+          never invented.
         </li>
       </ul>
 
       <h2>What to include in a support request</h2>
       <p>
-        Your <code>.myshopify.com</code> domain, the screen you were on, the date
-        range selected, and what you expected the number to be. If a figure looks
-        wrong, one order id that shows the problem is worth more than a
+        Your <code>.myshopify.com</code> domain, the screen you were on, the
+        date range selected, and what you expected the number to be. If a figure
+        looks wrong, one order id that shows the problem is worth more than a
         description of the whole dashboard.
       </p>
 

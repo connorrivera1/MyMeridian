@@ -7,7 +7,12 @@ import {
   computeChannelPerformance,
 } from "./acquisition";
 import { computeProfitForPeriod } from "./profit";
-import { ZERO_COST_RULES, type AdSpendRow, type Channel, type EngineOrder } from "./types";
+import {
+  ZERO_COST_RULES,
+  type AdSpendRow,
+  type Channel,
+  type EngineOrder,
+} from "./types";
 
 const TZ = "America/New_York";
 const PERIOD_START = new Date("2026-01-01T00:00:00Z");
@@ -291,6 +296,52 @@ describe("buildJourneysFromRows", () => {
 });
 
 describe("computeChannelPerformance", () => {
+  it("propagates missing COGS and modeled costs into channel quality", () => {
+    const qualityOrder = order({
+      id: "quality-order",
+      customerId: "quality-customer",
+      at: "2026-01-05T15:00:00Z",
+      channel: "FACEBOOK",
+      campaignId: "quality-campaign",
+      priceCents: 10_000,
+      costCents: 0,
+      isFirstOrder: true,
+    });
+    const modeledRules = {
+      ...ZERO_COST_RULES,
+      paymentFixedPerOrderCents: 30,
+    };
+    const period = computeProfitForPeriod([qualityOrder], [], modeledRules, TZ);
+
+    const [channel] = computeChannelPerformance(
+      [qualityOrder],
+      period.orders,
+      [],
+      { periodStart: PERIOD_START, periodEnd: PERIOD_END },
+    );
+    const [campaign] = computeCampaignPerformance(
+      [qualityOrder],
+      period.orders,
+      [
+        spendRow({
+          date: new Date("2026-01-05T12:00:00Z"),
+          campaignId: "quality-campaign",
+          campaignName: "Quality",
+          spendCents: 100,
+        }),
+      ],
+    );
+
+    expect(channel).toMatchObject({
+      hasMissingCogs: true,
+      usesModeledCosts: true,
+    });
+    expect(campaign).toMatchObject({
+      hasMissingCogs: true,
+      usesModeledCosts: true,
+    });
+  });
+
   it("computes CAC from spend and customers actually acquired", () => {
     const { orders, spend, profits } = buildCohort();
 

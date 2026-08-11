@@ -31,6 +31,9 @@ interface ShopRow {
   isDemo: boolean;
   grantedScopes: string | null;
   syncStatus: SyncStatus;
+  syncStartedAt: Date | null;
+  syncRunToken: string | null;
+  syncLeaseExpiresAt: Date | null;
   syncCursor: string | null;
   syncedOrders: number;
   syncedProducts: number;
@@ -45,32 +48,116 @@ let shopRow: ShopRow;
 let shopUpdates: Record<string, unknown>[];
 
 const variantUpserts: Record<string, unknown>[] = [];
+const priceChangesCreated: Record<string, unknown>[] = [];
 const lineItemsCreated: Record<string, unknown>[] = [];
-const storedVariants: { id: string; shopifyId: string; productId: string; unitCost: string }[] =
-  [];
+let storedOrder: Record<string, any> | null = null;
+let storedFulfillment: Record<string, any> | null = null;
+const storedVariants: {
+  id: string;
+  shopifyId: string;
+  productId: string;
+  unitCost: string;
+}[] = [];
 
 const prismaMock = {
   shop: {
     findUniqueOrThrow: vi.fn(async () => ({ ...shopRow })),
+    updateMany: vi.fn(
+      async ({
+        where,
+        data,
+      }: {
+        where: {
+          id: string;
+          syncStatus: SyncStatus;
+          syncStartedAt?: Date | null;
+          syncRunToken?: string | null;
+          syncLeaseExpiresAt?: Date | null;
+        };
+        data: Record<string, unknown>;
+      }) => {
+        const sameDate = (left: Date | null | undefined, right: Date | null) =>
+          left?.getTime() === right?.getTime();
+        if (
+          where.id !== shopRow.id ||
+          where.syncStatus !== shopRow.syncStatus ||
+          ("syncStartedAt" in where &&
+            !sameDate(where.syncStartedAt, shopRow.syncStartedAt)) ||
+          ("syncRunToken" in where &&
+            where.syncRunToken !== shopRow.syncRunToken) ||
+          ("syncLeaseExpiresAt" in where &&
+            !sameDate(where.syncLeaseExpiresAt, shopRow.syncLeaseExpiresAt))
+        ) {
+          return { count: 0 };
+        }
+
+        shopUpdates.push(data);
+        Object.assign(shopRow, data);
+        return { count: 1 };
+      },
+    ),
     update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
       shopUpdates.push(data);
       Object.assign(shopRow, data);
       return shopRow;
     }),
   },
-  product: { upsert: vi.fn(async () => ({ id: "product_row" })) },
+  product: {
+    findUnique: vi.fn(async () => null),
+    upsert: vi.fn(async () => ({ id: "product_row" })),
+  },
   variant: {
+    findUnique: vi.fn(async () => null),
     upsert: vi.fn(async (args: { create: Record<string, unknown> }) => {
       variantUpserts.push(args.create);
       return { id: "variant_row" };
     }),
     findMany: vi.fn(async () => storedVariants),
   },
+  priceChange: {
+    findFirst: vi.fn(async () => null),
+    create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+      priceChangesCreated.push(data);
+      return { id: "price_change_row", ...data };
+    }),
+  },
   order: {
-    upsert: vi.fn(async () => ({ id: "order_row" })),
+    findUnique: vi.fn(async () => storedOrder),
+    findFirst: vi.fn(async () => storedOrder),
+    count: vi.fn(async () => 0),
+    upsert: vi.fn(
+      async ({
+        create,
+        update,
+      }: {
+        create: Record<string, any>;
+        update: Record<string, any>;
+      }) => {
+        storedOrder = storedOrder
+          ? Object.assign(storedOrder, update)
+          : { id: "order_row", ...create };
+        return storedOrder;
+      },
+    ),
+    update: vi.fn(async ({ data }: { data: Record<string, any> }) =>
+      Object.assign(storedOrder ?? { id: "order_row" }, data),
+    ),
+    updateMany: vi.fn(async () => ({ count: 0 })),
     aggregate: vi.fn(async () => ({ _min: { processedAt: null } })),
   },
-  customer: { upsert: vi.fn(async () => ({ id: "customer_row" })) },
+  customer: {
+    upsert: vi.fn(async ({ create }: { create: Record<string, any> }) => ({
+      id: "customer_row",
+      ...create,
+    })),
+    update: vi.fn(async ({ data }: { data: Record<string, any> }) => ({
+      id: "customer_row",
+      ...data,
+    })),
+  },
+  customerErasure: {
+    findFirst: vi.fn(async () => null as { id: string } | null),
+  },
   orderLineItem: {
     deleteMany: vi.fn(async () => ({})),
     createMany: vi.fn(async ({ data }: { data: Record<string, unknown>[] }) => {
@@ -78,8 +165,24 @@ const prismaMock = {
       return {};
     }),
   },
-  fulfillment: { deleteMany: vi.fn(async () => ({})), createMany: vi.fn(async () => ({})) },
-  capacityDay: { deleteMany: vi.fn(async () => ({})), createMany: vi.fn(async () => ({})) },
+  fulfillment: {
+    findUnique: vi.fn(async () => storedFulfillment),
+    findFirst: vi.fn(async () => storedFulfillment),
+    create: vi.fn(async ({ data }: { data: Record<string, any> }) => {
+      storedFulfillment = { id: "fulfillment_row", ...data };
+      return storedFulfillment;
+    }),
+    update: vi.fn(async ({ data }: { data: Record<string, any> }) =>
+      Object.assign(storedFulfillment ?? { id: "fulfillment_row" }, data),
+    ),
+    count: vi.fn(async () => (storedFulfillment ? 1 : 0)),
+    deleteMany: vi.fn(async () => ({})),
+    createMany: vi.fn(async () => ({})),
+  },
+  capacityDay: {
+    deleteMany: vi.fn(async () => ({})),
+    createMany: vi.fn(async () => ({})),
+  },
   // rebuildCapacityDays is raw SQL and is proven against real Postgres
   // elsewhere. An empty `received` makes it return before it writes anything,
   // which is enough to tell "it ran" from "it did not".
@@ -111,33 +214,42 @@ vi.mock("~/data/analytics.server", () => ({
 }));
 
 const generatePricingRecommendations = vi.fn(async (..._args: unknown[]) => 0);
-const recomputeShopProfitability = vi.fn(async (..._args: unknown[]) => undefined);
+const recomputeShopProfitability = vi.fn(
+  async (..._args: unknown[]): Promise<void> => undefined,
+);
 vi.mock("~/lib/pricing.server", () => ({
   generatePricingRecommendations: (...args: unknown[]) =>
     generatePricingRecommendations(...args),
 }));
 vi.mock("~/lib/recompute.server", () => ({
-  recomputeShopProfitability: (...args: unknown[]) => recomputeShopProfitability(...args),
+  recomputeShopProfitability: (...args: unknown[]) =>
+    recomputeShopProfitability(...args),
 }));
 
 const reconcileFirstOrdersForShop = vi.fn(async (..._args: unknown[]) => 0);
 vi.mock("~/lib/sync.server", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/lib/sync.server")>()),
-  reconcileFirstOrdersForShop: (...args: unknown[]) => reconcileFirstOrdersForShop(...args),
+  reconcileFirstOrdersForShop: (...args: unknown[]) =>
+    reconcileFirstOrdersForShop(...args),
 }));
 
 const unauthenticatedAdmin = vi.fn();
 vi.mock("~/shopify.server", () => ({
-  unauthenticated: { admin: (...args: unknown[]) => unauthenticatedAdmin(...args) },
+  unauthenticated: {
+    admin: (...args: unknown[]) => unauthenticatedAdmin(...args),
+  },
 }));
 
-const { backfillIsStale, runBackfill } = await import("./backfill.server");
+const { backfillIsStale, parseBackfillOrderLimit, runBackfill, startBackfill } =
+  await import("./backfill.server");
+const { claimBackfill } = await import("./backfill-claim.server");
 
 // ---------------------------------------------------------------------------
 // A scripted store
 // ---------------------------------------------------------------------------
 
-const ok = (data: unknown) => ({ json: async () => ({ data }) }) as unknown as Response;
+const ok = (data: unknown) =>
+  ({ json: async () => ({ data }) }) as unknown as Response;
 
 const SHOP_PROFILE = {
   shop: {
@@ -145,7 +257,7 @@ const SHOP_PROFILE = {
     email: "owner@northwind.example",
     currencyCode: "CAD",
     ianaTimezone: "America/Toronto",
-    plan: { displayName: "Shopify Plus" },
+    plan: { displayName: "Shopify Plus", partnerDevelopment: false },
   },
 };
 
@@ -157,7 +269,11 @@ function variantNode(id: string, unitCost: string | null) {
     price: "120.00",
     compareAtPrice: null,
     inventoryQuantity: 7,
-    inventoryItem: unitCost ? { unitCost: { amount: unitCost } } : null,
+    inventoryItem: {
+      id: `gid://shopify/InventoryItem/${id}`,
+      updatedAt: "2026-08-05T18:00:00.000Z",
+      unitCost: unitCost ? { amount: unitCost } : null,
+    },
   };
 }
 
@@ -178,6 +294,7 @@ const DEFAULT_PRODUCTS = [
     productType: "Outerwear",
     vendor: "Northwind",
     status: "ACTIVE",
+    updatedAt: "2026-08-05T18:00:00.000Z",
     variants: {
       pageInfo: { hasNextPage: false, endCursor: null },
       nodes: [variantNode("11", "48.00")],
@@ -191,6 +308,7 @@ function orderNode(id: string, overrides: Record<string, unknown> = {}) {
     name: `#${id}`,
     processedAt: "2026-07-01T12:00:00Z",
     createdAt: "2026-07-01T12:00:00Z",
+    updatedAt: "2026-07-01T12:05:00Z",
     currencyCode: "CAD",
     displayFinancialStatus: "PAID",
     displayFulfillmentStatus: "FULFILLED",
@@ -266,7 +384,11 @@ function scriptedAdmin(script: Script = {}) {
     }
   });
 
-  return { graphql, operations, queries: () => graphql.mock.calls.map((c) => c[0]) };
+  return {
+    graphql,
+    operations,
+    queries: () => graphql.mock.calls.map((c) => c[0]),
+  };
 }
 
 const ALL_SCOPES =
@@ -283,6 +405,9 @@ beforeEach(() => {
     isDemo: false,
     grantedScopes: ALL_SCOPES,
     syncStatus: SyncStatus.PENDING,
+    syncStartedAt: null,
+    syncRunToken: null,
+    syncLeaseExpiresAt: null,
     syncCursor: null,
     syncedOrders: 0,
     syncedProducts: 0,
@@ -293,11 +418,15 @@ beforeEach(() => {
   };
   shopUpdates = [];
   variantUpserts.length = 0;
+  priceChangesCreated.length = 0;
   lineItemsCreated.length = 0;
+  storedOrder = null;
+  storedFulfillment = null;
   storedVariants.length = 0;
   generatePricingRecommendations.mockResolvedValue(0);
   recomputeShopProfitability.mockResolvedValue(undefined);
   unauthenticatedAdmin.mockReset();
+  prismaMock.customerErasure.findFirst.mockResolvedValue(null);
 });
 
 afterEach(() => {
@@ -309,11 +438,31 @@ const finalUpdate = () => shopUpdates[shopUpdates.length - 1]!;
 
 // ---------------------------------------------------------------------------
 
+describe("backfill order limit configuration", () => {
+  it("has no implicit production ceiling", () => {
+    expect(parseBackfillOrderLimit(undefined)).toBeNull();
+    expect(parseBackfillOrderLimit("")).toBeNull();
+    expect(parseBackfillOrderLimit("  ")).toBeNull();
+  });
+
+  it("accepts only an explicit positive integer diagnostic ceiling", () => {
+    expect(parseBackfillOrderLimit("20000")).toBe(20_000);
+    expect(() => parseBackfillOrderLimit("0")).toThrow(/positive integer/);
+    expect(() => parseBackfillOrderLimit("12.5")).toThrow(/positive integer/);
+    expect(() => parseBackfillOrderLimit("many")).toThrow(/positive integer/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
 describe("runBackfill: a completed import", () => {
   it("records the store profile, the counts and the history it found", async () => {
     const admin = scriptedAdmin({
       orders: [
-        orderPage([orderNode("1001", { processedAt: "2023-04-02T08:00:00Z" })], "cursor_p1"),
+        orderPage(
+          [orderNode("1001", { processedAt: "2023-04-02T08:00:00Z" })],
+          "cursor_p1",
+        ),
         orderPage([orderNode("1002")], null),
       ],
     });
@@ -333,17 +482,30 @@ describe("runBackfill: a completed import", () => {
     );
     expect(finalUpdate()).toMatchObject({
       syncStatus: SyncStatus.COMPLETE,
+      syncRunToken: null,
+      syncLeaseExpiresAt: null,
       syncStage: null,
       earliestOrderAt: new Date("2023-04-02T08:00:00Z"),
       // Orders older than sixty days exist, so the store has history the
       // default scope would have hidden.
       hasAllOrdersScope: true,
     });
+    expect(priceChangesCreated).toEqual([
+      expect.objectContaining({
+        shopId: "shop_1",
+        variantId: "variant_row",
+        price: expect.anything(),
+        effectiveAt: new Date("2026-08-06T09:00:00.000Z"),
+      }),
+    ]);
   });
 
   it("throws the resume point away, so the next run does not skip the store", async () => {
     const admin = scriptedAdmin({
-      orders: [orderPage([orderNode("1001")], "cursor_p1"), orderPage([orderNode("1002")], null)],
+      orders: [
+        orderPage([orderNode("1001")], "cursor_p1"),
+        orderPage([orderNode("1002")], null),
+      ],
     });
 
     await runBackfill("shop_1", admin);
@@ -381,7 +543,9 @@ describe("runBackfill: a completed import", () => {
     // Recommendations are a derived nicety; the imported orders are not. A
     // regression in the elasticity fit must not throw six months of history
     // away and report FAILED.
-    generatePricingRecommendations.mockRejectedValue(new Error("not enough price points"));
+    generatePricingRecommendations.mockRejectedValue(
+      new Error("not enough price points"),
+    );
 
     await expect(runBackfill("shop_1", scriptedAdmin())).resolves.toBeTruthy();
 
@@ -390,18 +554,134 @@ describe("runBackfill: a completed import", () => {
   });
 });
 
+describe("startBackfill: same-process deduplication", () => {
+  it("does not schedule a second Shopify walk while this process owns one", async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const scripted = scriptedAdmin();
+    const admin = {
+      ...scripted,
+      graphql: vi.fn(async (...args: Parameters<typeof scripted.graphql>) => {
+        await held;
+        return scripted.graphql(...args);
+      }),
+    };
+
+    await expect(startBackfill("shop_1", admin)).resolves.toEqual({
+      started: true,
+      resumed: false,
+    });
+    await expect(startBackfill("shop_1", admin)).resolves.toEqual({
+      started: false,
+      reason: "active",
+    });
+    expect(admin.graphql).toHaveBeenCalledTimes(1);
+
+    release();
+    await vi.waitFor(() => {
+      expect(shopRow.syncStatus).toBe(SyncStatus.COMPLETE);
+    });
+  });
+
+  it("renews its lease while a long profitability recompute is awaiting", async () => {
+    let releaseRecompute!: () => void;
+    const recomputeHeld = new Promise<void>((resolve) => {
+      releaseRecompute = resolve;
+    });
+    recomputeShopProfitability.mockImplementationOnce(() => recomputeHeld);
+
+    await expect(
+      startBackfill("shop_1", scriptedAdmin()),
+    ).resolves.toMatchObject({ started: true });
+    await vi.waitFor(() => {
+      expect(recomputeShopProfitability).toHaveBeenCalledWith("shop_1");
+    });
+
+    await vi.advanceTimersByTimeAsync(61 * 60 * 1000);
+    expect(shopRow.syncLeaseExpiresAt!.getTime()).toBeGreaterThan(Date.now());
+    await expect(claimBackfill("shop_1", new Date())).resolves.toEqual({
+      claimed: false,
+      reason: "active",
+    });
+
+    releaseRecompute();
+    await vi.waitFor(() => {
+      expect(shopRow.syncStatus).toBe(SyncStatus.COMPLETE);
+      expect(shopRow.syncRunToken).toBeNull();
+      expect(shopRow.syncLeaseExpiresAt).toBeNull();
+    });
+  });
+
+  it("cannot publish terminal state after another owner takes its lease", async () => {
+    let releaseRecompute!: () => void;
+    const recomputeHeld = new Promise<void>((resolve) => {
+      releaseRecompute = resolve;
+    });
+    recomputeShopProfitability.mockImplementationOnce(() => recomputeHeld);
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+
+    await startBackfill("shop_1", scriptedAdmin());
+    await vi.waitFor(() => {
+      expect(recomputeShopProfitability).toHaveBeenCalledWith("shop_1");
+    });
+
+    // Simulate a different Fly process winning an expired-lease takeover while
+    // this worker is suspended inside a long SQL statement.
+    Object.assign(shopRow, {
+      syncStatus: SyncStatus.RUNNING,
+      syncRunToken: "replacement-owner",
+      syncLeaseExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      syncStage: "Replacement is importing order history",
+      syncCursor: "replacement-cursor",
+      syncedOrders: 777,
+    });
+    await vi.advanceTimersByTimeAsync(60 * 1000);
+    releaseRecompute();
+
+    await vi.waitFor(() => {
+      expect(consoleError).toHaveBeenCalledWith(
+        "[backfill] shop_1 failed",
+        expect.objectContaining({ name: "BackfillLeaseLostError" }),
+      );
+    });
+    expect(shopRow).toMatchObject({
+      syncStatus: SyncStatus.RUNNING,
+      syncRunToken: "replacement-owner",
+      syncStage: "Replacement is importing order history",
+      syncCursor: "replacement-cursor",
+      syncedOrders: 777,
+    });
+    consoleError.mockRestore();
+  });
+});
+
 describe("runBackfill: a failed import", () => {
   const longMessage = `Shopify GraphQL: ${"the connection was reset. ".repeat(40)}`;
 
   it("marks the shop failed and keeps the error short enough to store", async () => {
     const admin = scriptedAdmin({
-      failOn: { operation: "MeridianOrders", nth: 1, error: new Error(longMessage) },
+      failOn: {
+        operation: "MeridianOrders",
+        nth: 1,
+        error: new Error(longMessage),
+      },
     });
 
-    await expect(runBackfill("shop_1", admin)).rejects.toThrow(/connection was reset/);
+    await expect(runBackfill("shop_1", admin)).rejects.toThrow(
+      /connection was reset/,
+    );
 
     const update = finalUpdate();
-    expect(update).toMatchObject({ syncStatus: SyncStatus.FAILED, syncStage: null });
+    expect(update).toMatchObject({
+      syncStatus: SyncStatus.FAILED,
+      syncRunToken: null,
+      syncLeaseExpiresAt: null,
+      syncStage: null,
+    });
     // `syncError` is a bounded column; an unbounded Shopify message would
     // fail the very update that exists to record the failure.
     expect(String(update.syncError).length).toBe(500);
@@ -411,7 +691,11 @@ describe("runBackfill: a failed import", () => {
   it("keeps the resume point, so the next attempt does not re-walk the store", async () => {
     const admin = scriptedAdmin({
       orders: [orderPage([orderNode("1001")], "cursor_p1")],
-      failOn: { operation: "MeridianOrders", nth: 2, error: new Error("Shopify GraphQL: 502") },
+      failOn: {
+        operation: "MeridianOrders",
+        nth: 2,
+        error: new Error("Shopify GraphQL: 502"),
+      },
     });
 
     await expect(runBackfill("shop_1", admin)).rejects.toThrow(/502/);
@@ -425,7 +709,11 @@ describe("runBackfill: a failed import", () => {
 
   it("does not mark the import complete when a stage threw", async () => {
     const admin = scriptedAdmin({
-      failOn: { operation: "MeridianShop", nth: 1, error: new Error("Shopify GraphQL: 500") },
+      failOn: {
+        operation: "MeridianShop",
+        nth: 1,
+        error: new Error("Shopify GraphQL: 500"),
+      },
     });
 
     await expect(runBackfill("shop_1", admin)).rejects.toThrow();
@@ -475,22 +763,33 @@ describe("runBackfill: resuming an interrupted import", () => {
     });
   });
 
-  it("stops at the order cap and says so", async () => {
+  it("pauses visibly at an explicit order cap and preserves a safe resume cursor", async () => {
     // MERIDIAN_MAX_BACKFILL_ORDERS is 4 for this file.
     const admin = scriptedAdmin({
       orders: [
-        orderPage([orderNode("1"), orderNode("2"), orderNode("3")], "cursor_p1"),
+        orderPage(
+          [orderNode("1"), orderNode("2"), orderNode("3")],
+          "cursor_p1",
+        ),
         orderPage([orderNode("4"), orderNode("5")], "cursor_p2"),
       ],
     });
 
-    const result = await runBackfill("shop_1", admin);
+    await expect(runBackfill("shop_1", admin)).rejects.toThrow(
+      /Order import paused after 5 orders/,
+    );
 
-    expect(result.orders).toBe(4);
-    expect(result.reachedOrderCap).toBe(true);
-    // The fifth order was on the page but past the cap, and no third page was
-    // ever asked for.
-    expect(admin.operations.filter((op) => op === "MeridianOrders")).toHaveLength(2);
+    // Page two is completed before its end cursor is stored; the old code
+    // stopped after order four, stored cursor_p2, and skipped order five
+    // forever on resume.
+    expect(shopRow.syncedOrders).toBe(5);
+    expect(shopRow.syncCursor).toBe("cursor_p2");
+    expect(shopRow.syncStatus).toBe(SyncStatus.FAILED);
+    expect(shopRow.syncError).toMatch(/Remove or increase/);
+    expect(recomputeShopProfitability).not.toHaveBeenCalled();
+    expect(
+      admin.operations.filter((op) => op === "MeridianOrders"),
+    ).toHaveLength(2);
   });
 });
 
@@ -525,10 +824,14 @@ describe("runBackfill: what the granted scopes change", () => {
     // Asking for `inventoryItem` without the scope fails the entire query
     // rather than nulling that one field, so the whole product import would
     // be lost rather than its costs.
-    const productsQuery = admin.queries().find((q) => q.includes("MeridianProducts"))!;
+    const productsQuery = admin
+      .queries()
+      .find((q) => q.includes("MeridianProducts"))!;
     expect(productsQuery).not.toContain("inventoryItem");
     expect(shopUpdates).toContainEqual(
-      expect.objectContaining({ syncStage: "Importing products (no cost access)" }),
+      expect.objectContaining({
+        syncStage: "Importing products (no cost access)",
+      }),
     );
   });
 
@@ -574,11 +877,15 @@ describe("runBackfill: the admin client's expiring token", () => {
     const replacement = scriptedAdmin({ advanceMsPerCall: 0 });
     unauthenticatedAdmin.mockResolvedValue({ admin: replacement });
 
-    const original = scriptedAdmin({ advanceMsPerCall: ADMIN_CLIENT_MAX_AGE_MS / 2 + 1_000 });
+    const original = scriptedAdmin({
+      advanceMsPerCall: ADMIN_CLIENT_MAX_AGE_MS / 2 + 1_000,
+    });
 
     const result = await runBackfill("shop_1", original);
 
-    expect(unauthenticatedAdmin).toHaveBeenCalledWith("northwind.myshopify.com");
+    expect(unauthenticatedAdmin).toHaveBeenCalledWith(
+      "northwind.myshopify.com",
+    );
     // Two requests on the original client take it past the age limit; the
     // third is served by the refreshed one.
     expect(original.operations).toEqual(["MeridianShop", "MeridianProducts"]);
@@ -589,10 +896,16 @@ describe("runBackfill: the admin client's expiring token", () => {
   it("keeps the current client when the session cannot be refreshed", async () => {
     // The token in hand may still be good, and if it is not the next request
     // fails with a clearer error than an aborted import would give.
-    unauthenticatedAdmin.mockRejectedValue(new Error("no offline session stored"));
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    unauthenticatedAdmin.mockRejectedValue(
+      new Error("no offline session stored"),
+    );
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
-    const original = scriptedAdmin({ advanceMsPerCall: ADMIN_CLIENT_MAX_AGE_MS / 2 + 1_000 });
+    const original = scriptedAdmin({
+      advanceMsPerCall: ADMIN_CLIENT_MAX_AGE_MS / 2 + 1_000,
+    });
 
     const result = await runBackfill("shop_1", original);
 
@@ -609,15 +922,50 @@ describe("runBackfill: the admin client's expiring token", () => {
 });
 
 describe("runBackfill: what one order writes", () => {
-  const lineItem = (id: string, variantId: string | null, quantity: number) => ({
+  const lineItem = (
+    id: string,
+    variantId: string | null,
+    quantity: number,
+  ) => ({
     id: `gid://shopify/LineItem/${id}`,
     title: `Line ${id}`,
     sku: `SKU-${id}`,
     quantity,
     originalUnitPriceSet: { shopMoney: { amount: "120.00" } },
     totalDiscountSet: { shopMoney: { amount: "5.00" } },
-    variant: variantId ? { id: `gid://shopify/ProductVariant/${variantId}` } : null,
+    variant: variantId
+      ? { id: `gid://shopify/ProductVariant/${variantId}` }
+      : null,
     product: { id: "gid://shopify/Product/1" },
+  });
+
+  it("imports a redacted customer's later history without recreating the customer", async () => {
+    prismaMock.customerErasure.findFirst.mockResolvedValue({ id: "erased_1" });
+    const admin = scriptedAdmin({
+      orders: [
+        orderPage(
+          [
+            orderNode("1001", {
+              customer: {
+                id: "gid://shopify/Customer/555",
+                email: "erased@example.com",
+              },
+            }),
+          ],
+          null,
+        ),
+      ],
+    });
+
+    await runBackfill("shop_1", admin);
+
+    expect(prismaMock.customer.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.order.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ customerId: null }),
+        update: expect.objectContaining({ customerId: null }),
+      }),
+    );
   });
 
   it("sums a line item's refunded units across every refund that touched it", async () => {
@@ -638,14 +986,24 @@ describe("runBackfill: what one order writes", () => {
                   id: "gid://shopify/Refund/1",
                   refundLineItems: {
                     pageInfo: { hasNextPage: false, endCursor: null },
-                    nodes: [{ quantity: 2, lineItem: { id: "gid://shopify/LineItem/1" } }],
+                    nodes: [
+                      {
+                        quantity: 2,
+                        lineItem: { id: "gid://shopify/LineItem/1" },
+                      },
+                    ],
                   },
                 },
                 {
                   id: "gid://shopify/Refund/2",
                   refundLineItems: {
                     pageInfo: { hasNextPage: false, endCursor: null },
-                    nodes: [{ quantity: 1, lineItem: { id: "gid://shopify/LineItem/1" } }],
+                    nodes: [
+                      {
+                        quantity: 1,
+                        lineItem: { id: "gid://shopify/LineItem/1" },
+                      },
+                    ],
                   },
                 },
               ],
@@ -696,7 +1054,10 @@ describe("runBackfill: what one order writes", () => {
     });
     // A line whose variant was never imported gets "0", which the engine reads
     // as unknown rather than as free — the alternative is a 100% margin.
-    expect(lineItemsCreated[1]).toMatchObject({ variantId: null, unitCost: "0" });
+    expect(lineItemsCreated[1]).toMatchObject({
+      variantId: null,
+      unitCost: "0",
+    });
   });
 
   it("settles the first order per customer shop-wide rather than from this run", async () => {
@@ -739,7 +1100,11 @@ describe("backfillIsStale", () => {
   });
 
   it("says nothing about an import that is not running", () => {
-    for (const syncStatus of [SyncStatus.COMPLETE, SyncStatus.FAILED, SyncStatus.PENDING]) {
+    for (const syncStatus of [
+      SyncStatus.COMPLETE,
+      SyncStatus.FAILED,
+      SyncStatus.PENDING,
+    ]) {
       expect(backfillIsStale({ syncStatus, syncStartedAt: null })).toBe(false);
     }
   });

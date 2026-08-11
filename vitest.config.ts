@@ -23,12 +23,11 @@ export default defineConfig({
        * Scoped to what the suite actually targets: the pure engine, the
        * server-side libraries and the data layer.
        *
-       * `.tsx` is excluded because `include` above only collects `.test.ts` —
-       * no component is ever rendered, so every route and every design-system
-       * file would report as uncovered and drag the number to noise. That is a
-       * real gap (there are no component or end-to-end tests at all), but it
-       * is a gap to fix by writing those tests, not by letting them distort
-       * the one signal that does mean something.
+       * Route and design-system `.tsx` remain outside this denominator. One
+       * `.test.ts` now server-renders the Acquisition component, but most of
+       * the component layer and every browser-level flow are still untested;
+       * counting every route as zero would drown the engine/library signal
+       * rather than measure that gap honestly.
        */
       include: ["app/engine/**/*.ts", "app/lib/**/*.ts", "app/data/**/*.ts"],
       exclude: ["**/*.test.ts", "**/*.d.ts"],

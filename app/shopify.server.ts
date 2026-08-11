@@ -10,13 +10,22 @@ import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prism
 
 import prisma from "./db.server";
 import { PLANS, TRIAL_DAYS, ANNUAL_SUFFIX } from "./lib/plans";
+import { parseScopes } from "./lib/scopes";
 
 /**
  * Plans live in `lib/plans.ts` so route components can render the price list
  * without dragging this module into the client bundle. Re-exported here
  * because `shopifyApp()`'s billing config is built from them just below.
  */
-export { PLANS, TRIAL_DAYS, ANNUAL_SUFFIX, annualKey, basePlanId, type PlanId, type BillingKey } from "./lib/plans";
+export {
+  PLANS,
+  TRIAL_DAYS,
+  ANNUAL_SUFFIX,
+  annualKey,
+  basePlanId,
+  type PlanId,
+  type BillingKey,
+} from "./lib/plans";
 
 /**
  * The app is buildable and runnable before it has Shopify credentials, so that
@@ -32,7 +41,10 @@ function buildShopify() {
     apiKey: process.env.SHOPIFY_API_KEY!,
     apiSecretKey: process.env.SHOPIFY_API_SECRET!,
     apiVersion: ApiVersion.July26,
-    scopes: process.env.SCOPES?.split(",").map((s) => s.trim()),
+    // Shopify CLI configuration requires commas. Stored session values from
+    // older installs have appeared in both forms, so runtime parsing remains
+    // defensive rather than turning a legacy string into one invalid scope.
+    scopes: [...parseScopes(process.env.SCOPES)],
     appUrl: process.env.SHOPIFY_APP_URL ?? "",
     authPathPrefix: "/auth",
     sessionStorage: new PrismaSessionStorage(prisma),
@@ -101,6 +113,10 @@ function buildShopify() {
         deliveryMethod: DeliveryMethod.Http,
         callbackUrl: "/webhooks/app/uninstalled",
       },
+      SHOP_UPDATE: {
+        deliveryMethod: DeliveryMethod.Http,
+        callbackUrl: "/webhooks/shop/update",
+      },
       ORDERS_CREATE: {
         deliveryMethod: DeliveryMethod.Http,
         callbackUrl: "/webhooks/orders/create",
@@ -117,7 +133,19 @@ function buildShopify() {
         deliveryMethod: DeliveryMethod.Http,
         callbackUrl: "/webhooks/products/update",
       },
+      PRODUCTS_CREATE: {
+        deliveryMethod: DeliveryMethod.Http,
+        callbackUrl: "/webhooks/products/update",
+      },
+      INVENTORY_ITEMS_UPDATE: {
+        deliveryMethod: DeliveryMethod.Http,
+        callbackUrl: "/webhooks/inventory-items/update",
+      },
       FULFILLMENTS_CREATE: {
+        deliveryMethod: DeliveryMethod.Http,
+        callbackUrl: "/webhooks/fulfillments/create",
+      },
+      FULFILLMENTS_UPDATE: {
         deliveryMethod: DeliveryMethod.Http,
         callbackUrl: "/webhooks/fulfillments/create",
       },
@@ -144,7 +172,8 @@ function buildShopify() {
 
         // Every install needs a Shop row and a starting set of cost rules,
         // otherwise the first dashboard load has nothing to reason about.
-        const { ensureShopProvisioned } = await import("./lib/provision.server");
+        const { ensureShopProvisioned } =
+          await import("./lib/provision.server");
         const shop = await ensureShopProvisioned(session.shop);
 
         // Record what the store actually granted. The import gates its
@@ -161,15 +190,16 @@ function buildShopify() {
         // Started in the background: OAuth has to redirect into the app now,
         // and pulling a store's order history takes far longer than a redirect
         // can wait. Progress is polled from the Shop row.
-        const { startBackfill, backfillIsStale } = await import(
-          "./lib/backfill.server"
-        );
+        const { startBackfill, backfillIsStale } =
+          await import("./lib/backfill.server");
 
         const alreadyImported =
           shop.syncStatus === "COMPLETE" || shop.syncStatus === "RUNNING";
 
         if (!alreadyImported || backfillIsStale(shop)) {
-          startBackfill(shop.id, admin);
+          // Wait only for the atomic claim, not the import. This keeps OAuth
+          // fast while ensuring two callbacks cannot start overlapping walks.
+          await startBackfill(shop.id, admin);
         }
       },
     },

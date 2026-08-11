@@ -3,6 +3,7 @@ import {
   ConnectorProvider,
   ConnectorStatus,
   CostRuleKind,
+  CostRuleOrigin,
   CostSource,
   PrismaClient,
   SyncStatus,
@@ -47,7 +48,8 @@ function mulberry32(seed: number) {
 const rand = mulberry32(0x4d455249); // "MERI"
 
 const between = (min: number, max: number) => min + rand() * (max - min);
-const intBetween = (min: number, max: number) => Math.floor(between(min, max + 1));
+const intBetween = (min: number, max: number) =>
+  Math.floor(between(min, max + 1));
 const jitter = (value: number, pct: number) => value * (1 + between(-pct, pct));
 
 function pickWeighted<T>(items: readonly { item: T; weight: number }[]): T {
@@ -351,13 +353,18 @@ function dayIndex(date: Date) {
 }
 
 function totalDays() {
-  return Math.round((PERIOD_END.getTime() - PERIOD_START.getTime()) / DAY_MS) + 1;
+  return (
+    Math.round((PERIOD_END.getTime() - PERIOD_START.getTime()) / DAY_MS) + 1
+  );
 }
 
 function promoFor(date: Date) {
   for (const promo of PROMOS) {
     const start = new Date(`${promo.startIso}T00:00:00Z`).getTime();
-    if (date.getTime() >= start && date.getTime() < start + promo.days * DAY_MS) {
+    if (
+      date.getTime() >= start &&
+      date.getTime() < start + promo.days * DAY_MS
+    ) {
       return promo;
     }
   }
@@ -449,22 +456,30 @@ async function main() {
             label: "Shopify Payments (US online rate)",
             percentRate: "0.029",
             fixedPerOrder: "0.30",
+            origin: CostRuleOrigin.DEMO_SEED,
+            confirmedAt: PERIOD_START,
           },
           {
             kind: CostRuleKind.SHIPPING_DEFAULT,
             label: "Estimated outbound shipping",
             fixedPerOrder: "8.50",
+            origin: CostRuleOrigin.DEMO_SEED,
+            confirmedAt: PERIOD_START,
           },
           {
             kind: CostRuleKind.PICK_PACK,
             label: "Pick, pack and materials",
             fixedPerOrder: "1.75",
             fixedPerItem: "0.35",
+            origin: CostRuleOrigin.DEMO_SEED,
+            confirmedAt: PERIOD_START,
           },
           {
             kind: CostRuleKind.OVERHEAD_MONTHLY,
             label: "Fixed monthly overhead (rent, salaries, software)",
             monthlyAmount: "48500.00",
+            origin: CostRuleOrigin.DEMO_SEED,
+            confirmedAt: PERIOD_START,
           },
         ],
       },
@@ -505,7 +520,8 @@ async function main() {
             provider: ConnectorProvider.WAREHOUSE_3PL,
             status: ConnectorStatus.ERROR,
             displayName: "ShipBob",
-            lastError: "Credentials rejected (401). Reconnect to resume cost sync.",
+            lastError:
+              "Credentials rejected (401). Reconnect to resume cost sync.",
             lastSyncedAt: new Date(PERIOD_END.getTime() - 9 * DAY_MS),
           },
         ],
@@ -588,7 +604,9 @@ async function main() {
 
     for (let n = 0; n < target; n++) {
       const processedAt = new Date(
-        date.getTime() + intBetween(8, 23) * 3_600_000 + intBetween(0, 59) * 60_000,
+        date.getTime() +
+          intBetween(8, 23) * 3_600_000 +
+          intBetween(0, 59) * 60_000,
       );
 
       // Returning-customer share climbs as the base grows.
@@ -615,8 +633,7 @@ async function main() {
           { item: Channel.FACEBOOK, weight: 12 },
           { item: Channel.GOOGLE, weight: 4 },
         ]);
-        campaignId =
-          channel === Channel.FACEBOOK ? "fb-retargeting" : null;
+        campaignId = channel === Channel.FACEBOOK ? "fb-retargeting" : null;
       } else {
         channel = pickWeighted(CHANNEL_MIX);
         const channelCampaigns = CAMPAIGNS.filter((c) => c.channel === channel);
@@ -802,7 +819,9 @@ async function main() {
   }
 
   for (let i = 0; i < lineRows.length; i += 2000) {
-    await prisma.orderLineItem.createMany({ data: lineRows.slice(i, i + 2000) });
+    await prisma.orderLineItem.createMany({
+      data: lineRows.slice(i, i + 2000),
+    });
   }
 
   // --- fulfilment and warehouse capacity ----------------------------------
@@ -831,7 +850,9 @@ async function main() {
       const order = queue[cursor]!;
       if (order._dayIndex > d) break; // not placed yet
 
-      const shippedAt = new Date(PERIOD_START.getTime() + d * DAY_MS + 15 * 3_600_000);
+      const shippedAt = new Date(
+        PERIOD_START.getTime() + d * DAY_MS + 15 * 3_600_000,
+      );
       const itemCount = order._units as number;
 
       fulfillmentRows.push({
@@ -883,6 +904,15 @@ async function main() {
     });
   }
 
+  // Match the live rebuild exactly: capacity is the best order-throughput day
+  // actually observed, and staffed hours stay unknown because Shopify does not
+  // provide a staffing schedule. The demo used to invent 16/40 staffed hours
+  // and a fixed ceiling, so a re-import immediately changed the same screen.
+  const observedCapacity = Math.max(
+    0,
+    ...Array.from(fulfilledByDay.values(), (day) => day.orders),
+  );
+
   await prisma.capacityDay.createMany({
     data: Array.from({ length: totalDays() }, (_, d) => {
       const date = new Date(PERIOD_START.getTime() + d * DAY_MS);
@@ -896,8 +926,8 @@ async function main() {
         ordersFulfilled: fulfilled.orders,
         unitsFulfilled: fulfilled.units,
         backlogEnd: backlogByDay.get(d) ?? 0,
-        staffedHours: (d % 7 === 0 ? 16 : 40).toFixed(2),
-        maxDailyCapacity: WAREHOUSE_CAPACITY,
+        staffedHours: "0",
+        maxDailyCapacity: observedCapacity,
       };
     }),
   });

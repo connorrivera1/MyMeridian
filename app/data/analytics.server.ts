@@ -15,7 +15,9 @@ import {
   type ProductProfit,
 } from "~/engine/products";
 import type { CostRuleSet } from "~/engine/types";
+import { withAnalyticsAdmission } from "~/lib/analytics-admission.server";
 import { RANGE_PRESETS, type RangePreset } from "~/lib/ranges";
+import { capabilitiesForShop } from "~/lib/scopes";
 
 import {
   loadAdSpend,
@@ -84,10 +86,33 @@ interface CacheEntry<T> {
 }
 
 const cache = new Map<string, CacheEntry<ShopAnalytics>>();
+const shopBuildsInFlight = new Map<string, Promise<ShopAnalytics>>();
+const periodBuildsInFlight = new Map<string, Promise<PeriodProfitSummary>>();
+let cacheGeneration = 0;
 
 // Comparison windows are cached separately: they are built by the lean path
 // below and must never be mistaken for a full build of the same window.
-const periodCache = new Map<string, CacheEntry<PeriodProfit>>();
+export type PeriodProfitSummary = Omit<PeriodProfit, "orders">;
+
+const periodCache = new Map<string, CacheEntry<PeriodProfitSummary>>();
+const PERIOD_CACHE_ENTRY_LIMIT = 64;
+
+function trimPeriodCache(keep: string) {
+  const now = Date.now();
+  for (const [key, entry] of periodCache) {
+    if (key !== keep && now - entry.at >= CACHE_TTL_MS) periodCache.delete(key);
+  }
+
+  if (periodCache.size <= PERIOD_CACHE_ENTRY_LIMIT) return;
+
+  const oldest = [...periodCache.entries()].sort(
+    ([, left], [, right]) => left.at - right.at,
+  );
+  for (const [key] of oldest) {
+    if (periodCache.size <= PERIOD_CACHE_ENTRY_LIMIT) return;
+    if (key !== keep) periodCache.delete(key);
+  }
+}
 
 /**
  * How many per-order profit rows the two caches may retain between them.
@@ -99,7 +124,7 @@ const periodCache = new Map<string, CacheEntry<PeriodProfit>>();
  * `EngineOrder[]` above was 8.3MB. Sixty-four of those is ~930MB, and
  * `fly.toml` gives this app a 1024MB VM. The bound could be reached by sixteen
  * shops idly paging through the four range presets, on a store of twelve
- * thousand orders — well below the "unlimited orders" the Scale plan sells.
+ * thousand orders — enough for retained windows to matter in production.
  *
  * Counting rows rather than bytes because rows are what actually varies:
  * `PeriodProfit.orders` is a flat array of fixed-shape records, ~520 bytes
@@ -132,7 +157,11 @@ function cacheKey(shopId: string, range: DateRange, stamp: number) {
  */
 function trimCaches(keep: string) {
   const entries = [
-    ...[...cache.entries()].map(([key, entry]) => ({ store: cache, key, entry })),
+    ...[...cache.entries()].map(([key, entry]) => ({
+      store: cache,
+      key,
+      entry,
+    })),
     ...[...periodCache.entries()].map(([key, entry]) => ({
       store: periodCache,
       key,
@@ -161,62 +190,101 @@ export async function loadShopAnalytics(
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value;
 
-  const startedAt = Date.now();
+  const flightKey = `${key}|${cacheGeneration}`;
+  const existingBuild = shopBuildsInFlight.get(flightKey);
+  if (existingBuild) return existingBuild;
 
-  const cohortRange: DateRange = {
-    from: new Date(range.to.getTime() - COHORT_LOOKBACK_DAYS * 86_400_000),
-    to: range.to,
-  };
+  const generation = cacheGeneration;
+  const build = withAnalyticsAdmission(async () => {
+    // A request ahead of this one may have filled the cache while this build
+    // waited for admission.
+    const queuedHit = cache.get(key);
+    if (queuedHit && Date.now() - queuedHit.at < CACHE_TTL_MS) {
+      return queuedHit.value;
+    }
 
-  const [orders, spend, rules, productMeta, capacityDays, cohortRows] =
-    await Promise.all([
-      loadEngineOrders(shop.id, range),
-      loadAdSpend(shop.id, range),
-      loadCostRules(shop.id),
-      loadProductMeta(shop.id),
-      loadCapacityDays(shop.id, range),
-      loadCohortRows(shop.id, cohortRange),
-    ]);
+    // Admission serializes heavy builds, but an old full-window cache can
+    // still retain tens of thousands of PeriodProfit rows while the next miss
+    // hydrates its order graph. Drop those strong references before any loader
+    // starts so the admitted build owns the heap headroom it was admitted for.
+    cache.clear();
 
-  const cohortJourneys = buildJourneysFromRows(cohortRows);
+    const startedAt = Date.now();
 
-  const period = computeProfitForPeriod(
-    orders,
-    spend,
-    rules,
-    shop.timezone,
-    range,
-  );
+    const cohortRange: DateRange = {
+      from: new Date(range.to.getTime() - COHORT_LOOKBACK_DAYS * 86_400_000),
+      to: range.to,
+    };
+    const includeCustomerCohorts = capabilitiesForShop(
+      shop,
+      process.env.SCOPES,
+    ).customers;
 
-  // `orders` — the hydrated engine input, line items and all — deliberately
-  // does not go into the returned object. Every consumer reads `period.orders`,
-  // the per-order profit rows; nothing outside this function has ever read the
-  // raw input. Returning it meant the cache held the engine's scratch paper for
-  // a minute after the answer was computed, at 57% of the entry's weight.
-  const value: ShopAnalytics = {
-    shop,
-    range,
-    rules,
-    period,
-    products: computeProductProfitability(orders, period.orders, productMeta),
-    channels: computeChannelPerformance(orders, period.orders, spend, {
-      periodStart: range.from,
-      periodEnd: range.to,
-      cohortJourneys,
-      cohortEnd: cohortRange.to,
-    }),
-    campaigns: computeCampaignPerformance(orders, period.orders, spend),
-    capacity: analyseCapacity(capacityDays, {
-      slaDays: shop.fulfillmentSlaDays,
-      today: range.to,
-    }),
-    computedInMs: Date.now() - startedAt,
-  };
+    const [orders, spend, rules, productMeta, capacityDays, cohortRows] =
+      await Promise.all([
+        loadEngineOrders(shop.id, range),
+        loadAdSpend(shop.id, range),
+        loadCostRules(shop.id),
+        loadProductMeta(shop.id),
+        loadCapacityDays(shop.id, range),
+        includeCustomerCohorts
+          ? loadCohortRows(shop.id, cohortRange)
+          : Promise.resolve([]),
+      ]);
 
-  cache.set(key, { at: Date.now(), weight: period.orders.length, value });
-  trimCaches(key);
+    const cohortJourneys = buildJourneysFromRows(cohortRows);
 
-  return value;
+    const period = computeProfitForPeriod(
+      orders,
+      spend,
+      rules,
+      shop.timezone,
+      range,
+    );
+
+    // `orders` — the hydrated engine input, line items and all — deliberately
+    // does not go into the returned object. Every consumer reads `period.orders`,
+    // the per-order profit rows; nothing outside this function has ever read the
+    // raw input. Returning it meant the cache held the engine's scratch paper for
+    // a minute after the answer was computed, at 57% of the entry's weight.
+    const value: ShopAnalytics = {
+      shop,
+      range,
+      rules,
+      period,
+      products: computeProductProfitability(orders, period.orders, productMeta),
+      channels: computeChannelPerformance(orders, period.orders, spend, {
+        periodStart: range.from,
+        periodEnd: range.to,
+        cohortJourneys,
+        cohortEnd: cohortRange.to,
+      }),
+      campaigns: computeCampaignPerformance(orders, period.orders, spend),
+      capacity: analyseCapacity(capacityDays, {
+        slaDays: shop.fulfillmentSlaDays,
+        today: range.to,
+      }),
+      computedInMs: Date.now() - startedAt,
+    };
+
+    // A webhook or recompute can invalidate while the engine is running. Do
+    // not put that now-stale snapshot back after the invalidation.
+    if (generation === cacheGeneration) {
+      cache.set(key, { at: Date.now(), weight: period.orders.length, value });
+      trimCaches(key);
+    }
+
+    return value;
+  });
+
+  shopBuildsInFlight.set(flightKey, build);
+  try {
+    return await build;
+  } finally {
+    if (shopBuildsInFlight.get(flightKey) === build) {
+      shopBuildsInFlight.delete(flightKey);
+    }
+  }
 }
 
 /**
@@ -237,30 +305,80 @@ export async function loadShopAnalytics(
 export async function loadPeriodProfit(
   shop: Shop,
   range: DateRange,
-): Promise<PeriodProfit> {
+): Promise<PeriodProfitSummary> {
   const stamp = shop.lastComputedAt?.getTime() ?? 0;
   const key = cacheKey(shop.id, range, stamp);
 
   // A full build for this window already holds this exact roll-up. Reuse it
   // rather than recomputing, so paging back through ranges stays cheap.
   const full = cache.get(key);
-  if (full && Date.now() - full.at < CACHE_TTL_MS) return full.value.period;
+  if (full && Date.now() - full.at < CACHE_TTL_MS) {
+    const { orders: _discardedOrders, ...summary } = full.value.period;
+    return summary;
+  }
 
   const hit = periodCache.get(key);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value;
 
-  const [orders, spend, rules] = await Promise.all([
-    loadEngineOrders(shop.id, range),
-    loadAdSpend(shop.id, range),
-    loadCostRules(shop.id),
-  ]);
+  const flightKey = `${key}|${cacheGeneration}`;
+  const existingBuild = periodBuildsInFlight.get(flightKey);
+  if (existingBuild) return existingBuild;
 
-  const value = computeProfitForPeriod(orders, spend, rules, shop.timezone, range);
+  const generation = cacheGeneration;
+  const build = withAnalyticsAdmission(async () => {
+    // Re-check both caches after waiting: a full build ahead of this one may
+    // already contain the exact period, or another request may have produced
+    // the scalar comparison.
+    const queuedFull = cache.get(key);
+    if (queuedFull && Date.now() - queuedFull.at < CACHE_TTL_MS) {
+      const { orders: _discardedOrders, ...summary } = queuedFull.value.period;
+      return summary;
+    }
+    const queuedHit = periodCache.get(key);
+    if (queuedHit && Date.now() - queuedHit.at < CACHE_TTL_MS) {
+      return queuedHit.value;
+    }
 
-  periodCache.set(key, { at: Date.now(), weight: value.orders.length, value });
-  trimCaches(key);
+    // The lean comparison discards its result rows, but it still hydrates and
+    // computes the complete order graph while running. A retained full window
+    // must not coexist with that peak either.
+    cache.clear();
 
-  return value;
+    const [orders, spend, rules] = await Promise.all([
+      loadEngineOrders(shop.id, range),
+      loadAdSpend(shop.id, range),
+      loadCostRules(shop.id),
+    ]);
+
+    const value = computeProfitForPeriod(
+      orders,
+      spend,
+      rules,
+      shop.timezone,
+      range,
+    );
+    const { orders: _discardedOrders, ...summary } = value;
+
+    // Comparison routes read scalar deltas only. Keeping `value.orders` here
+    // retained tens of thousands of per-order rows for a result whose callers
+    // never inspect them, directly competing with the current-period cache on a
+    // 1 GB instance.
+    if (generation === cacheGeneration) {
+      periodCache.set(key, { at: Date.now(), weight: 0, value: summary });
+      trimPeriodCache(key);
+    }
+
+    return summary;
+  });
+
+  periodBuildsInFlight.set(flightKey, build);
+  try {
+    return await build;
+  } finally {
+    if (periodBuildsInFlight.get(flightKey) === build) {
+      periodBuildsInFlight.delete(flightKey);
+    }
+  }
 }
 
 /**
@@ -302,6 +420,7 @@ export async function loadCapacityAnalysis(
 }
 
 export function invalidateAnalyticsCache() {
+  cacheGeneration += 1;
   cache.clear();
   periodCache.clear();
 }

@@ -30,8 +30,38 @@ const orderUpdateMany = vi.fn();
 const sessionDeleteMany = vi.fn();
 const webhookEventCreate = vi.fn();
 const webhookEventUpdate = vi.fn();
+const webhookEventUpdateMany = vi.fn();
+const webhookEventFindUnique = vi.fn();
+const webhookEventFindMany = vi.fn();
+const webhookEventDeleteMany = vi.fn();
 const dataRequestUpsert = vi.fn();
 const dataRequestDeleteMany = vi.fn();
+const customerErasureFindFirst = vi.fn();
+const customerErasureCreateMany = vi.fn();
+const executeRaw = vi.fn();
+
+const transactionClient = {
+  $executeRaw: (...args: unknown[]) => executeRaw(...args),
+  customerErasure: {
+    findFirst: (...args: unknown[]) => customerErasureFindFirst(...args),
+    createMany: (...args: unknown[]) => customerErasureCreateMany(...args),
+  },
+  customer: {
+    findFirst: (...args: unknown[]) => customerFindFirst(...args),
+    delete: (...args: unknown[]) => customerDelete(...args),
+  },
+  order: {
+    updateMany: (...args: unknown[]) => orderUpdateMany(...args),
+  },
+  webhookEvent: {
+    findMany: (...args: unknown[]) => webhookEventFindMany(...args),
+    updateMany: (...args: unknown[]) => webhookEventUpdateMany(...args),
+  },
+  dataRequest: {
+    upsert: (...args: unknown[]) => dataRequestUpsert(...args),
+    deleteMany: (...args: unknown[]) => dataRequestDeleteMany(...args),
+  },
+};
 
 vi.mock("~/db.server", () => ({
   default: {
@@ -57,30 +87,44 @@ vi.mock("~/db.server", () => ({
     webhookEvent: {
       create: (...args: unknown[]) => webhookEventCreate(...args),
       update: (...args: unknown[]) => webhookEventUpdate(...args),
+      updateMany: (...args: unknown[]) => webhookEventUpdateMany(...args),
+      findUnique: (...args: unknown[]) => webhookEventFindUnique(...args),
+      findMany: (...args: unknown[]) => webhookEventFindMany(...args),
+      deleteMany: (...args: unknown[]) => webhookEventDeleteMany(...args),
     },
     dataRequest: {
       upsert: (...args: unknown[]) => dataRequestUpsert(...args),
       deleteMany: (...args: unknown[]) => dataRequestDeleteMany(...args),
     },
-    $transaction: (ops: Promise<unknown>[]) => Promise.all(ops),
+    $transaction: (work: unknown) =>
+      typeof work === "function"
+        ? (work as (tx: typeof transactionClient) => unknown)(transactionClient)
+        : Promise.all(work as Promise<unknown>[]),
   },
 }));
 
 const { webhooksSettled } = await import("~/lib/webhooks.server");
+const { customerErasureHashes } = await import("~/lib/customer-erasure.server");
 
 const dataRequest = await import("./webhooks.gdpr.data-request");
 const customersRedact = await import("./webhooks.gdpr.customers-redact");
 const shopRedact = await import("./webhooks.gdpr.shop-redact");
 
 function sign(body: string): string {
-  return crypto.createHmac("sha256", TEST_SECRET).update(body, "utf8").digest("base64");
+  return crypto
+    .createHmac("sha256", TEST_SECRET)
+    .update(body, "utf8")
+    .digest("base64");
 }
 
 function webhookRequest(
   path: string,
   topic: string,
   payload: Record<string, unknown>,
-  { hmac }: { hmac?: string } = {},
+  {
+    hmac,
+    webhookId = crypto.randomUUID(),
+  }: { hmac?: string; webhookId?: string } = {},
 ): Request {
   const body = JSON.stringify(payload);
   return new Request(`https://meridian-test.example.com${path}`, {
@@ -92,7 +136,7 @@ function webhookRequest(
       "X-Shopify-Shop-Domain": SHOP_DOMAIN,
       "X-Shopify-Hmac-Sha256": hmac ?? sign(body),
       "X-Shopify-API-Version": "2026-07",
-      "X-Shopify-Webhook-Id": crypto.randomUUID(),
+      "X-Shopify-Webhook-Id": webhookId,
     },
   });
 }
@@ -123,6 +167,12 @@ beforeEach(() => {
   vi.clearAllMocks();
   webhookEventCreate.mockResolvedValue({});
   webhookEventUpdate.mockResolvedValue({});
+  webhookEventUpdateMany.mockResolvedValue({ count: 1 });
+  webhookEventFindUnique.mockResolvedValue({
+    receivedAt: new Date("2026-08-05T12:00:00.000Z"),
+  });
+  webhookEventFindMany.mockResolvedValue([]);
+  webhookEventDeleteMany.mockResolvedValue({ count: 0 });
   shopFindUnique.mockResolvedValue({ id: "shop_1", domain: SHOP_DOMAIN });
   customerFindFirst.mockResolvedValue(null);
   customerDelete.mockResolvedValue({});
@@ -131,11 +181,18 @@ beforeEach(() => {
   shopDelete.mockResolvedValue({});
   dataRequestUpsert.mockResolvedValue({ id: "dr_1" });
   dataRequestDeleteMany.mockResolvedValue({ count: 0 });
+  customerErasureFindFirst.mockResolvedValue(null);
+  customerErasureCreateMany.mockResolvedValue({ count: 2 });
+  executeRaw.mockResolvedValue(0);
 });
 
 describe("HMAC verification", () => {
   const cases = [
-    ["customers/data_request", "/webhooks/gdpr/customers-data-request", dataRequest],
+    [
+      "customers/data_request",
+      "/webhooks/gdpr/customers-data-request",
+      dataRequest,
+    ],
     ["customers/redact", "/webhooks/gdpr/customers-redact", customersRedact],
     ["shop/redact", "/webhooks/gdpr/shop-redact", shopRedact],
   ] as const;
@@ -144,7 +201,12 @@ describe("HMAC verification", () => {
     it(`${topic}: rejects an invalid HMAC with 401 and touches nothing`, async () => {
       const response = await invoke(
         route,
-        webhookRequest(path, topic, { shop_domain: SHOP_DOMAIN }, { hmac: sign("tampered") }),
+        webhookRequest(
+          path,
+          topic,
+          { shop_domain: SHOP_DOMAIN },
+          { hmac: sign("tampered") },
+        ),
       );
       expect(response.status).toBe(401);
       expect(webhookEventCreate).not.toHaveBeenCalled();
@@ -217,10 +279,14 @@ describe("customers/data_request", () => {
       acquisitionChannel: "GOOGLE",
       orders: [
         {
+          shopifyId: "gid://shopify/Order/1001",
           orderNumber: 1001,
           processedAt: new Date("2026-02-01T00:00:00.000Z"),
           total: "121.00",
-          lineItems: [{ title: "Merino Base Layer", quantity: 1, unitPrice: "84.00" }],
+          lineItems: [
+            { title: "Merino Base Layer", quantity: 1, unitPrice: "84.00" },
+          ],
+          fulfillments: [],
         },
       ],
     });
@@ -247,10 +313,18 @@ describe("customers/data_request", () => {
       };
     };
     expect(stored.create.shopId).toBe("shop_1");
-    expect(stored.create.shopifyCustomerId).toBe("gid://shopify/Customer/5551234");
+    expect(stored.create.shopifyCustomerId).toBe(
+      "gid://shopify/Customer/5551234",
+    );
     expect(stored.create.customerEmail).toBe("shopper@example.com");
     expect(stored.create.ordersIncluded).toBe(1);
     expect(stored.create.report.orders[0]!.orderNumber).toBe(1001);
+    expect(stored.create).toEqual(
+      expect.objectContaining({
+        requestedAt: new Date("2026-08-05T12:00:00.000Z"),
+        expiresAt: new Date("2026-09-05T12:00:00.000Z"),
+      }),
+    );
   });
 
   // "We hold nothing on this person" is the answer to the request, and the
@@ -266,7 +340,11 @@ describe("customers/data_request", () => {
     );
 
     const stored = dataRequestUpsert.mock.calls[0]![0] as {
-      create: { shopifyCustomerId: string; ordersIncluded: number; report: { note?: string } };
+      create: {
+        shopifyCustomerId: string;
+        ordersIncluded: number;
+        report: { note?: string };
+      };
     };
     expect(stored.create.shopifyCustomerId).toBe("404404");
     expect(stored.create.ordersIncluded).toBe(0);
@@ -299,25 +377,206 @@ describe("customers/data_request", () => {
     expect(logged).not.toContain("shopper@example.com");
     info.mockRestore();
   });
+
+  it("answers a post-erasure request without retaining the supplied id or email", async () => {
+    customerErasureFindFirst.mockResolvedValue({ id: "erased_1" });
+
+    await invoke(
+      dataRequest,
+      webhookRequest(
+        "/webhooks/gdpr/customers-data-request",
+        "customers/data_request",
+        {
+          shop_domain: SHOP_DOMAIN,
+          customer: { id: 5551234, email: "erased@example.com" },
+        },
+      ),
+    );
+
+    const stored = dataRequestUpsert.mock.calls[0]![0];
+    expect(stored.create).toEqual(
+      expect.objectContaining({
+        shopifyCustomerId: "redacted-request",
+        customerEmail: null,
+        ordersIncluded: 0,
+        report: expect.objectContaining({
+          customer: null,
+          orders: [],
+          pendingWebhookData: [],
+        }),
+      }),
+    );
+    expect(JSON.stringify(stored)).not.toMatch(/5551234|erased@example\.com/);
+  });
 });
 
 describe("customers/redact", () => {
+  it("uses a dedicated stable key independent of connector-token rotation", () => {
+    const previousErasureKey = process.env.MERIDIAN_CUSTOMER_ERASURE_KEY;
+    const previousEncryptionKey = process.env.MERIDIAN_ENCRYPTION_KEY;
+    try {
+      process.env.MERIDIAN_CUSTOMER_ERASURE_KEY = Buffer.alloc(32, 11).toString(
+        "base64",
+      );
+      process.env.MERIDIAN_ENCRYPTION_KEY = Buffer.alloc(32, 22).toString(
+        "base64",
+      );
+      const beforeRotation = customerErasureHashes("shop_1", { id: 5551234 });
+
+      process.env.MERIDIAN_ENCRYPTION_KEY = Buffer.alloc(32, 33).toString(
+        "base64",
+      );
+      expect(customerErasureHashes("shop_1", { id: 5551234 })).toEqual(
+        beforeRotation,
+      );
+
+      process.env.MERIDIAN_CUSTOMER_ERASURE_KEY = Buffer.alloc(32, 44).toString(
+        "base64",
+      );
+      expect(customerErasureHashes("shop_1", { id: 5551234 })).not.toEqual(
+        beforeRotation,
+      );
+    } finally {
+      if (previousErasureKey === undefined) {
+        delete process.env.MERIDIAN_CUSTOMER_ERASURE_KEY;
+      } else {
+        process.env.MERIDIAN_CUSTOMER_ERASURE_KEY = previousErasureKey;
+      }
+      if (previousEncryptionKey === undefined) {
+        delete process.env.MERIDIAN_ENCRYPTION_KEY;
+      } else {
+        process.env.MERIDIAN_ENCRYPTION_KEY = previousEncryptionKey;
+      }
+    }
+  });
+
+  it("requires the dedicated erasure key in production and rejects a short key", () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    const previousErasureKey = process.env.MERIDIAN_CUSTOMER_ERASURE_KEY;
+    try {
+      process.env.NODE_ENV = "production";
+      delete process.env.MERIDIAN_CUSTOMER_ERASURE_KEY;
+      expect(() => customerErasureHashes("shop_1", { id: 5551234 })).toThrow(
+        /MERIDIAN_CUSTOMER_ERASURE_KEY is required/,
+      );
+
+      process.env.MERIDIAN_CUSTOMER_ERASURE_KEY =
+        Buffer.alloc(31).toString("base64");
+      expect(() => customerErasureHashes("shop_1", { id: 5551234 })).toThrow(
+        /must decode to 32 bytes/,
+      );
+    } finally {
+      process.env.NODE_ENV = previousNodeEnv;
+      if (previousErasureKey === undefined) {
+        delete process.env.MERIDIAN_CUSTOMER_ERASURE_KEY;
+      } else {
+        process.env.MERIDIAN_CUSTOMER_ERASURE_KEY = previousErasureKey;
+      }
+    }
+  });
+
+  it("tombstones identity and scrubs every matching recovery payload", async () => {
+    customerFindFirst.mockResolvedValue({ id: "cust_9" });
+    webhookEventFindMany.mockResolvedValue([
+      {
+        id: "event_current",
+        webhookId: "redact-current",
+        topic: "CUSTOMERS_REDACT",
+        payload: {
+          customer: { id: 5551234, email: "shopper@example.com" },
+        },
+      },
+      {
+        id: "event_order",
+        webhookId: "order-pending",
+        topic: "ORDERS_UPDATED",
+        payload: {
+          id: 1001,
+          total_price: "121.00",
+          landing_site:
+            "/products/base?utm_campaign=private&email=shopper%40example.com",
+          referring_site: "https://personal.example/customer/5551234",
+          customer: { id: 5551234, email: "shopper@example.com" },
+        },
+      },
+      {
+        id: "event_access",
+        webhookId: "access-pending",
+        topic: "CUSTOMERS_DATA_REQUEST",
+        payload: {
+          customer: { id: 5551234, email: "shopper@example.com" },
+        },
+      },
+    ]);
+
+    await invoke(
+      customersRedact,
+      webhookRequest(
+        "/webhooks/gdpr/customers-redact",
+        "customers/redact",
+        {
+          shop_domain: SHOP_DOMAIN,
+          customer: { id: 5551234, email: "shopper@example.com" },
+        },
+        { webhookId: "redact-current" },
+      ),
+    );
+
+    const tombstones = customerErasureCreateMany.mock.calls[0]![0].data as {
+      identifierHash: string;
+    }[];
+    expect(tombstones).toHaveLength(2);
+    expect(
+      tombstones.every((row) => /^[a-f0-9]{64}$/.test(row.identifierHash)),
+    ).toBe(true);
+    expect(JSON.stringify(tombstones)).not.toMatch(
+      /5551234|shopper@example\.com/,
+    );
+
+    expect(webhookEventUpdateMany).toHaveBeenCalledWith({
+      where: { id: "event_current", processedAt: null },
+      data: { payload: { customer: { id: 5551234 } } },
+    });
+    expect(webhookEventUpdateMany).toHaveBeenCalledWith({
+      where: { id: "event_order", processedAt: null },
+      data: { payload: { id: 1001, total_price: "121.00" } },
+    });
+    expect(webhookEventUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "event_access", processedAt: null },
+        data: expect.objectContaining({
+          processedAt: expect.any(Date),
+          payloadExpiresAt: null,
+          leaseToken: null,
+        }),
+      }),
+    );
+  });
+
   it("anonymises orders and deletes the customer row", async () => {
     customerFindFirst.mockResolvedValue({ id: "cust_9" });
 
     const response = await invoke(
       customersRedact,
-      webhookRequest(
-        "/webhooks/gdpr/customers-redact",
-        "customers/redact",
-        { shop_domain: SHOP_DOMAIN, customer: { id: 5551234 } },
-      ),
+      webhookRequest("/webhooks/gdpr/customers-redact", "customers/redact", {
+        shop_domain: SHOP_DOMAIN,
+        customer: { id: 5551234 },
+      }),
     );
 
     expect(response.status).toBe(200);
     expect(orderUpdateMany).toHaveBeenCalledWith({
-      where: { customerId: "cust_9" },
-      data: { customerId: null },
+      where: { shopId: "shop_1", customerId: "cust_9" },
+      data: {
+        customerId: null,
+        isFirstOrder: false,
+        campaignId: null,
+        campaignName: null,
+        utmSource: null,
+        utmMedium: null,
+        utmCampaign: null,
+        landingSite: null,
+      },
     });
     expect(customerDelete).toHaveBeenCalledWith({ where: { id: "cust_9" } });
   });
@@ -330,19 +589,19 @@ describe("customers/redact", () => {
 
     await invoke(
       customersRedact,
-      webhookRequest(
-        "/webhooks/gdpr/customers-redact",
-        "customers/redact",
-        { shop_domain: SHOP_DOMAIN, customer: { id: 5551234 } },
-      ),
+      webhookRequest("/webhooks/gdpr/customers-redact", "customers/redact", {
+        shop_domain: SHOP_DOMAIN,
+        customer: { id: 5551234 },
+      }),
     );
 
     expect(dataRequestDeleteMany).toHaveBeenCalledWith({
       where: {
         shopId: "shop_1",
-        shopifyCustomerId: {
-          in: ["5551234", "gid://shopify/Customer/5551234"],
-        },
+        OR: [
+          { shopifyCustomerId: "5551234" },
+          { shopifyCustomerId: "gid://shopify/Customer/5551234" },
+        ],
       },
     });
   });
@@ -355,11 +614,10 @@ describe("customers/redact", () => {
 
     const response = await invoke(
       customersRedact,
-      webhookRequest(
-        "/webhooks/gdpr/customers-redact",
-        "customers/redact",
-        { shop_domain: SHOP_DOMAIN, customer: { id: 5551234 } },
-      ),
+      webhookRequest("/webhooks/gdpr/customers-redact", "customers/redact", {
+        shop_domain: SHOP_DOMAIN,
+        customer: { id: 5551234 },
+      }),
     );
 
     expect(response.status).toBe(200);
@@ -370,15 +628,72 @@ describe("customers/redact", () => {
   it("still returns 200 when the customer is unknown", async () => {
     const response = await invoke(
       customersRedact,
-      webhookRequest(
-        "/webhooks/gdpr/customers-redact",
-        "customers/redact",
-        { shop_domain: SHOP_DOMAIN, customer: { id: 404404 } },
-      ),
+      webhookRequest("/webhooks/gdpr/customers-redact", "customers/redact", {
+        shop_domain: SHOP_DOMAIN,
+        customer: { id: 404404 },
+      }),
     );
     expect(response.status).toBe(200);
     expect(customerDelete).not.toHaveBeenCalled();
   });
+});
+
+describe("malformed mandatory customer deliveries", () => {
+  it.each([
+    [
+      "customers/data_request",
+      "/webhooks/gdpr/customers-data-request",
+      dataRequest,
+    ],
+    ["customers/redact", "/webhooks/gdpr/customers-redact", customersRedact],
+  ] as const)(
+    "%s remains failed and recoverable when customer.id is missing",
+    async (topic, path, route) => {
+      const consoleError = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+      const response = await invoke(
+        route,
+        webhookRequest(path, topic, {
+          shop_domain: SHOP_DOMAIN,
+          customer: { email: "unresolved@example.com" },
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(webhookEventCreate).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          payload: { customer: { email: "unresolved@example.com" } },
+        }),
+      });
+      const failed = webhookEventUpdateMany.mock.calls
+        .map(([call]) => call)
+        .find(
+          (call) =>
+            typeof call?.data?.error === "string" &&
+            call.data.error.includes("customer.id"),
+        );
+      expect(failed).toEqual(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            error: expect.stringContaining("customer.id"),
+            availableAt: expect.any(Date),
+            leaseToken: null,
+            leaseExpiresAt: null,
+          }),
+        }),
+      );
+      const failedData = (failed as { data: Record<string, unknown> }).data;
+      expect(failedData).not.toHaveProperty("payload");
+      expect(failedData).not.toHaveProperty("processedAt");
+      expect(
+        webhookEventUpdateMany.mock.calls.some(([call]) =>
+          Object.prototype.hasOwnProperty.call(call.data, "payload"),
+        ),
+      ).toBe(false);
+      consoleError.mockRestore();
+    },
+  );
 });
 
 describe("shop/redact", () => {
@@ -391,8 +706,59 @@ describe("shop/redact", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(sessionDeleteMany).toHaveBeenCalledWith({ where: { shop: SHOP_DOMAIN } });
+    expect(sessionDeleteMany).toHaveBeenCalledWith({
+      where: { shop: SHOP_DOMAIN },
+    });
+    expect(webhookEventDeleteMany).toHaveBeenCalledWith({
+      where: { shopDomain: SHOP_DOMAIN },
+    });
     expect(shopDelete).toHaveBeenCalledWith({ where: { id: "shop_1" } });
+    expect(shopDelete.mock.invocationCallOrder[0]).toBeLessThan(
+      webhookEventDeleteMany.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("retains and marks the delivery when the shop delete fails", async () => {
+    const failure = new Error("shop delete timed out");
+    shopDelete.mockRejectedValueOnce(failure);
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    const response = await invoke(
+      shopRedact,
+      webhookRequest("/webhooks/gdpr/shop-redact", "shop/redact", {
+        shop_domain: SHOP_DOMAIN,
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(webhookEventDeleteMany).not.toHaveBeenCalled();
+    expect(webhookEventUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ error: failure.message }),
+      }),
+    );
+    expect(shopDelete.mock.invocationCallOrder[0]).toBeLessThan(
+      webhookEventUpdateMany.mock.invocationCallOrder[0]!,
+    );
+    consoleError.mockRestore();
+  });
+
+  it("erases legacy webhook events even when the shop row is already gone", async () => {
+    shopFindUnique.mockResolvedValue(null);
+
+    await invoke(
+      shopRedact,
+      webhookRequest("/webhooks/gdpr/shop-redact", "shop/redact", {
+        shop_domain: SHOP_DOMAIN,
+      }),
+    );
+
+    expect(webhookEventCreate).not.toHaveBeenCalled();
+    expect(webhookEventDeleteMany).toHaveBeenCalledWith({
+      where: { shopDomain: SHOP_DOMAIN },
+    });
   });
 
   it("returns 200 when the shop was never provisioned", async () => {

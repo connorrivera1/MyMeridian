@@ -1,6 +1,9 @@
 /*
  * Shared styling for the standalone legal documents (privacy.html, terms.html).
  *
+ * Monochrome, matching the landing page: white ground, near-black ink, and
+ * the same dark-mode inversion driven by `data-theme` on <html>.
+ *
  * Deliberately NOT the landing page's scene. These pages are read, not
  * browsed: no shader, no sky, no reveals, no hover lifts. They inherit the
  * tokens, the type and the gold accent so they belong to the same product,
@@ -14,14 +17,15 @@
  */
 
 :root {
-  --ground: #10142a;
-  --raised: #151a33;
-  --ink: #f4efe6;
-  --ink-2: rgba(244, 239, 230, 0.8);
-  --ink-3: rgba(244, 239, 230, 0.62);
-  --gold: #f0c273;
-  --gold-dim: rgba(240, 194, 115, 0.16);
-  --border: rgba(244, 239, 230, 0.14);
+  color-scheme: light;
+  --ground: #ffffff;
+  --raised: #fafafa;
+  --ink: #0a0a0a;
+  --ink-2: rgba(10, 10, 10, 0.7);
+  --ink-3: rgba(10, 10, 10, 0.52);
+  --gold: #0a0a0a;
+  --gold-dim: rgba(10, 10, 10, 0.07);
+  --border: rgba(10, 10, 10, 0.13);
   --font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
     "Helvetica Neue", Arial, sans-serif;
 }
@@ -32,7 +36,7 @@ html, body { margin: 0; padding: 0; }
 
 html {
   background: var(--ground);
-  scrollbar-color: rgba(157, 177, 232, 0.48) var(--ground);
+  scrollbar-color: rgba(10, 10, 10, 0.3) var(--ground);
   scrollbar-width: thin;
 }
 
@@ -48,12 +52,12 @@ html {
   min-height: 42px;
   border: 3px solid var(--ground);
   border-radius: 999px;
-  background: rgba(157, 177, 232, 0.48);
+  background: rgba(10, 10, 10, 0.3);
   background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(240, 194, 115, 0.66);
+  background: rgba(10, 10, 10, 0.5);
   background-clip: padding-box;
 }
 
@@ -79,7 +83,7 @@ a:hover { color: var(--ink); }
   position: sticky;
   top: 0;
   z-index: 10;
-  background: rgba(16, 20, 42, 0.86);
+  background: color-mix(in srgb, var(--ground) 88%, transparent);
   backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--border);
 }
@@ -231,4 +235,90 @@ footer {
 @media (max-width: 700px) {
   main { padding: 46px 0 64px; }
   h2 { margin-top: 42px; }
+}
+
+
+/* -------------------------------------------------------------- dark mode */
+
+/* Set by the shared theme script; a straight inversion of the values above. */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #0a0a0a;
+  --raised: #141414;
+  --ink: #f5f5f5;
+  --ink-2: rgba(245, 245, 245, 0.72);
+  --ink-3: rgba(245, 245, 245, 0.54);
+  --gold: #f5f5f5;
+  --gold-dim: rgba(245, 245, 245, 0.08);
+  --border: rgba(245, 245, 245, 0.16);
+}
+
+
+/* --------------------------------------------------------- theme switch */
+
+/*
+ * These pages do not load landing.css, so the switch needs its own copy of
+ * the rules. Same construction: the trail is the page's ink, the thumb is
+ * the page's ground, so the whole control inverts with the theme for free.
+ */
+.theme-switch {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 18px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.theme-switch-track {
+  position: relative;
+  display: block;
+  width: 58px;
+  height: 30px;
+  border-radius: 999px;
+  background: var(--ink);
+  transition: background 300ms ease;
+}
+
+.theme-switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--ground);
+  color: var(--ink);
+  transition: transform 320ms cubic-bezier(0.16, 1, 0.3, 1), background 300ms ease;
+}
+
+html[data-theme="dark"] .theme-switch-thumb { transform: translateX(28px); }
+
+.theme-icon {
+  grid-area: 1 / 1;
+  width: 15px;
+  height: 15px;
+  transition: opacity 200ms ease;
+}
+
+.theme-icon-moon { opacity: 0; }
+html[data-theme="dark"] .theme-icon-sun { opacity: 0; }
+html[data-theme="dark"] .theme-icon-moon { opacity: 1; }
+
+.theme-switch:focus-visible .theme-switch-track {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
+/* The nav has to be a row now that a control sits in it. */
+.header-nav {
+  display: flex;
+  align-items: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-switch-thumb { transition: none; }
 }

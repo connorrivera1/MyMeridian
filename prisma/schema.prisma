@@ -8,6 +8,12 @@
 //  * Per-order profit is materialized. Recomputing a full order history on every
 //    dashboard load is not viable, so the engine writes results and any cost-rule
 //    change enqueues a recompute.
+//  * Cost is effective-dated (`VariantCost`), not a single current number. That
+//    is what lets a merchant correct a cost they got wrong in March without
+//    either lying about April or silently rewriting a quarter they already
+//    reported. Rewriting history is an explicit, audited operation
+//    (`PeriodRestatement`) that first freezes what was reported
+//    (`PeriodSnapshot`), and it never runs on the request thread (`RecalcJob`).
 
 generator client {
   provider = "prisma-client-js"
@@ -57,15 +63,32 @@ model Session {
 /// Shopify delivers webhooks at-least-once. Recording the delivery id makes
 /// replays idempotent instead of double-counting revenue.
 model WebhookEvent {
-  id          String    @id @default(cuid())
-  webhookId   String    @unique
-  shopDomain  String
-  topic       String
-  receivedAt  DateTime  @default(now())
-  processedAt DateTime?
-  error       String?
+  id               String    @id @default(cuid())
+  webhookId        String    @unique
+  shopDomain       String
+  /// Every retained delivery belongs to a live Shop and cascades with it.
+  /// Deliveries for an unknown/already-redacted shop are acknowledged without
+  /// retaining a new row.
+  shopId           String
+  shop             Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  topic            String
+  /// Kept only while delivery work is pending. It is set to SQL NULL after a
+  /// successful handler. Projected order payloads also have a hard recovery
+  /// deadline; mandatory compliance work does not expire by age.
+  payload          Json?
+  payloadExpiresAt DateTime?
+  receivedAt       DateTime  @default(now())
+  processedAt      DateTime?
+  error            String?
+  attempts         Int       @default(0)
+  availableAt      DateTime  @default(now())
+  lastAttemptAt    DateTime?
+  leaseToken       String?
+  leaseExpiresAt   DateTime?
 
   @@index([shopDomain, topic])
+  @@index([shopId])
+  @@index([processedAt, availableAt, leaseExpiresAt])
 }
 
 // ---------------------------------------------------------------------------
@@ -73,15 +96,19 @@ model WebhookEvent {
 // ---------------------------------------------------------------------------
 
 model Shop {
-  id            String    @id @default(cuid())
-  domain        String    @unique
-  name          String
-  email         String?
-  currency      String    @default("USD")
-  timezone      String    @default("America/New_York")
-  planName      String?
-  installedAt   DateTime  @default(now())
-  uninstalledAt DateTime?
+  id                 String    @id @default(cuid())
+  domain             String    @unique
+  name               String
+  email              String?
+  currency           String    @default("USD")
+  timezone           String    @default("America/New_York")
+  planName           String?
+  /// Shopify's durable development-store signal. Display labels can change
+  /// and are not safe input to billing decisions. Null means the signal has
+  /// not been read yet, or shop/update invalidated it after a store conversion.
+  partnerDevelopment Boolean?
+  installedAt        DateTime  @default(now())
+  uninstalledAt      DateTime?
 
   /// Seeded demo store. Never true for a real install.
   isDemo Boolean @default(false)
@@ -95,15 +122,21 @@ model Shop {
   // Webhooks only ever describe what happens next. Without an initial import
   // a freshly installed store has a dashboard full of zeroes, so install
   // kicks off a paginated Admin API backfill and reports its progress here.
-  syncStatus      SyncStatus @default(PENDING)
-  syncStartedAt   DateTime?
-  syncCompletedAt DateTime?
-  syncStage       String?
-  syncedOrders    Int        @default(0)
-  syncedProducts  Int        @default(0)
+  syncStatus         SyncStatus @default(PENDING)
+  syncStartedAt      DateTime?
+  /// Per-run fencing token. Every progress and terminal write must match it,
+  /// so a worker that wakes after lease takeover cannot overwrite the owner.
+  syncRunToken       String?
+  /// Renewable liveness boundary for detached imports. A missing value is a
+  /// legacy run and falls back to syncStartedAt during rolling deployment.
+  syncLeaseExpiresAt DateTime?
+  syncCompletedAt    DateTime?
+  syncStage          String?
+  syncedOrders       Int        @default(0)
+  syncedProducts     Int        @default(0)
   /// Resume point, so an interrupted import does not start over.
-  syncCursor      String?
-  syncError       String?
+  syncCursor         String?
+  syncError          String?
 
   /// Whether Shopify granted read_all_orders. Without it the Admin API only
   /// returns the last 60 days, and the dashboard must say so rather than
@@ -119,6 +152,11 @@ model Shop {
 
   products           Product[]
   variants           Variant[]
+  variantCosts       VariantCost[]
+  bundleComponents   BundleComponent[]
+  periodSnapshots    PeriodSnapshot[]
+  periodRestatements PeriodRestatement[]
+  recalcJobs         RecalcJob[]
   orders             Order[]
   lineItems          OrderLineItem[]
   customers          Customer[]
@@ -130,8 +168,13 @@ model Shop {
   pricingRecs        PricingRecommendation[]
   priceChanges       PriceChange[]
   dataRequests       DataRequest[]
+  customerErasures   CustomerErasure[]
   subscription       Subscription?
   subscriptionEvents SubscriptionEvent[]
+  webhookEvents      WebhookEvent[]
+  checkouts          Checkout[]
+  usageMeters        UsageMeter[]
+  usageMeterEvents   UsageMeterEvent[]
 
   @@index([domain])
 }
@@ -163,6 +206,10 @@ model Subscription {
 model SubscriptionEvent {
   id         String   @id @default(cuid())
   shopId     String
+  /// Nullable only for event history written before durable webhook delivery.
+  /// Every new row is keyed by Shopify's delivery id so a crash after this
+  /// insert cannot append the same plan transition again during recovery.
+  webhookId  String?  @unique
   /// Cascade, deliberately: the privacy audit caught WebhookEvent surviving
   /// shop/redact because it had no relation. This table must not repeat that.
   shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
@@ -178,23 +225,99 @@ model SubscriptionEvent {
   @@index([occurredAt])
 }
 
+/// The latest low-cost checkout projection. Checkout webhooks are high volume;
+/// keep only the fields Meridian needs for funnel and capacity signals, never
+/// the customer's address, phone, or checkout note.
+model Checkout {
+  id             String   @id @default(cuid())
+  shopId         String
+  shop           Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  token          String
+  cartToken      String?
+  currency       String   @default("USD")
+  total          Decimal  @default(0) @db.Decimal(12, 2)
+  lineCount      Int      @default(0)
+  totalQuantity  Int      @default(0)
+  status         String   @default("open")
+  createdAt      DateTime
+  shopifyUpdatedAt DateTime
+  completedAt    DateTime?
+  receivedAt     DateTime @default(now())
+
+  @@unique([shopId, token])
+  @@index([shopId, shopifyUpdatedAt])
+}
+
+/// Aggregate usage for one metric in one billing month. Overage is deliberately
+/// soft: Meridian keeps processing the store and only records/communicates the
+/// threshold state. Shopify remains the source of truth for any optional usage
+/// charge and its capped amount.
+model UsageMeter {
+  id                   String   @id @default(cuid())
+  shopId               String
+  shop                 Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  metric               String
+  periodStart          DateTime
+  periodEnd            DateTime
+  used                 Int      @default(0)
+  softLimit            Int
+  hardLimit            Int
+  status               String   @default("under_limit")
+  billedUnits          Int      @default(0)
+  billingAttempts      Int      @default(0)
+  billingError         String?
+  lastBillingAttemptAt DateTime?
+  lastUsageRecordId    String?
+  overageNotifiedAt    DateTime?
+  capWarningNotifiedAt DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  events UsageMeterEvent[]
+
+  @@unique([shopId, metric, periodStart])
+  @@index([shopId, metric, periodEnd])
+  @@index([status, updatedAt])
+}
+
+/// One idempotent unit of usage. A Shopify delivery can be replayed and an
+/// order can produce both create and update webhooks; sourceId closes both
+/// duplicate paths without relying on process memory.
+model UsageMeterEvent {
+  id        String     @id @default(cuid())
+  shopId    String
+  shop      Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  meterId   String
+  meter     UsageMeter @relation(fields: [meterId], references: [id], onDelete: Cascade)
+  source    String
+  sourceId  String     @unique
+  quantity  Int        @default(1)
+  createdAt DateTime   @default(now())
+
+  @@index([meterId, createdAt])
+  @@index([shopId, source, createdAt])
+}
+
 // ---------------------------------------------------------------------------
 // Catalog
 // ---------------------------------------------------------------------------
 
 model Product {
-  id          String   @id @default(cuid())
-  shopId      String
-  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  shopifyId   String
-  title       String
-  handle      String
-  productType String?
-  vendor      String?
-  status      String   @default("ACTIVE")
-  imageUrl    String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String    @id @default(cuid())
+  shopId           String
+  shop             Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  shopifyId        String
+  title            String
+  handle           String
+  productType      String?
+  vendor           String?
+  status           String    @default("ACTIVE")
+  imageUrl         String?
+  /// Shopify's own product mutation timestamp. This orders webhook and
+  /// backfill snapshots independently of the order they reach this process.
+  shopifyUpdatedAt DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   variants  Variant[]
   lineItems OrderLineItem[]
@@ -204,19 +327,27 @@ model Product {
 }
 
 model Variant {
-  id        String  @id @default(cuid())
-  shopId    String
-  shop      Shop    @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  shopifyId String
-  sku       String?
-  title     String
+  id                     String    @id @default(cuid())
+  shopId                 String
+  shop                   Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  productId              String
+  product                Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  shopifyId              String
+  /// Stable Shopify identity behind inventory_items/update deliveries.
+  /// Nullable for rows imported before the economic-ingestion migration.
+  inventoryItemShopifyId String?
+  /// InventoryItem.updatedAt orders cost observations independently of
+  /// Product.updatedAt. A cost edit does not necessarily mutate the product.
+  inventoryItemUpdatedAt DateTime?
+  sku                    String?
+  title                  String
 
   price          Decimal  @db.Decimal(12, 2)
   compareAtPrice Decimal? @db.Decimal(12, 2)
 
-  /// Current landed unit cost. Historical orders use their own snapshot.
+  /// Current landed unit cost — the denormalised head of `costHistory`, kept
+  /// because every catalog read wants today's number and none of them want a
+  /// timeline. Historical orders use their own snapshot.
   unitCost   Decimal?   @db.Decimal(12, 4)
   costSource CostSource @default(SHOPIFY)
 
@@ -225,11 +356,228 @@ model Variant {
 
   lineItems    OrderLineItem[]
   priceHistory PriceChange[]
+  costHistory  VariantCost[]
   pricingRecs  PricingRecommendation[]
 
+  /// Edges where this variant is the multi-pack, and where it is the unit.
+  bundleComponents BundleComponent[] @relation("BundleParent")
+  bundledInto      BundleComponent[] @relation("BundleMemberOf")
+
   @@unique([shopId, shopifyId])
+  @@unique([shopId, inventoryItemShopifyId])
   @@index([shopId])
   @@index([productId])
+}
+
+/// Effective-dated landed unit cost — the cost timeline behind `Variant.unitCost`.
+///
+/// `Variant.unitCost` answers "what does this cost today". It cannot answer
+/// "what did it cost in March", and that second question is the whole of
+/// historical profit. Snapshotting onto the line item preserved March, but it
+/// also made March unfixable: a merchant who imported a wrong cost, or who only
+/// learned the freight component a month later, had no way to correct the past
+/// short of editing the database.
+///
+/// So cost is a timeline. Each row means "from this instant, this variant cost
+/// this much", and it is open-ended until the next row supersedes it. A
+/// correction to the past is a row with a past `effectiveAt`, which is a
+/// different act from raising a price today, and the two must not be confused —
+/// which is exactly what a single mutable column forced them to be.
+///
+/// Writing a row changes no reported number by itself. Restating history is the
+/// separate, audited operation in `PeriodRestatement`.
+model VariantCost {
+  id        String  @id @default(cuid())
+  shopId    String
+  shop      Shop    @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  variantId String
+  variant   Variant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  unitCost Decimal    @db.Decimal(12, 4)
+  source   CostSource @default(MANUAL)
+
+  /// The instant this cost became true of the world — a supplier invoice date,
+  /// not the moment Meridian was told. Backdating is the point of the table.
+  effectiveAt DateTime
+  /// When Meridian learned it. `effectiveAt` orders the timeline; this orders
+  /// the audit trail, and the gap between them is what a correction looks like.
+  recordedAt  DateTime @default(now())
+
+  /// Free text from the merchant ("Q2 freight increase"), surfaced in history.
+  note String?
+
+  @@unique([variantId, effectiveAt])
+  @@index([shopId, effectiveAt])
+  @@index([variantId, effectiveAt])
+}
+
+/// One edge of the bundle graph: a bundle variant contains N of a component.
+///
+/// A 3-pack is not a product with its own cost — it is three of something else,
+/// and a store that sells both cannot keep the two costs honest by hand. When
+/// the single unit's cost moves, every multi-pack containing it is wrong until
+/// someone remembers. This table is what lets the rollup remember instead.
+///
+/// A detected mapping is a proposal, not a fact. `confirmedAt` is null until a
+/// merchant agrees, and the rollup ignores unconfirmed edges: inferring from a
+/// SKU suffix that a product's COGS should triple, and then silently doing it,
+/// is precisely the kind of unasked-for accounting that makes a profit number
+/// untrustworthy.
+model BundleComponent {
+  id     String @id @default(cuid())
+  shopId String
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  bundleVariantId String
+  bundleVariant   Variant @relation("BundleParent", fields: [bundleVariantId], references: [id], onDelete: Cascade)
+
+  componentVariantId String
+  componentVariant   Variant @relation("BundleMemberOf", fields: [componentVariantId], references: [id], onDelete: Cascade)
+
+  /// Units of the component in one bundle. Always at least 1.
+  quantity Int
+
+  source   BundleSource @default(MANUAL)
+  /// The evidence for an inferred edge — the SKU or title fragment that matched.
+  /// Kept so a merchant reviewing a proposal can see why it was proposed.
+  evidence String?
+
+  /// Null means proposed but not agreed. The rollup reads confirmed edges only.
+  confirmedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([bundleVariantId, componentVariantId])
+  @@index([shopId, bundleVariantId])
+  @@index([shopId, componentVariantId])
+  @@index([shopId, confirmedAt])
+}
+
+/// What a calendar month was reported to say, frozen before anything rewrites it.
+///
+/// Restating history is useful and dangerous in the same breath. A merchant who
+/// filed taxes, paid a partner, or briefed an investor on March's margin needs
+/// March's *correction* to be visible as a correction — not to find that the
+/// number they quoted no longer exists anywhere.
+///
+/// So the first act of any restatement is to freeze the affected months here if
+/// they are not frozen already. These figures are as-reported and never change
+/// again; the live tables carry the restated truth, and `PeriodRestatement`
+/// carries the difference. A CLOSED period additionally refuses restatement
+/// unless the operation explicitly names it.
+model PeriodSnapshot {
+  id     String @id @default(cuid())
+  shopId String
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  /// Merchant-local calendar month, "YYYY-MM" — the same key the engine buckets
+  /// overhead by, so a snapshot boundary is an engine boundary.
+  periodKey String
+  status    PeriodStatus @default(OPEN)
+
+  orderCount         Int
+  units              Int
+  netRevenue         Decimal @db.Decimal(14, 2)
+  cogs               Decimal @db.Decimal(14, 2)
+  contributionProfit Decimal @db.Decimal(14, 2)
+  netProfit          Decimal @db.Decimal(14, 2)
+
+  capturedAt DateTime  @default(now())
+  closedAt   DateTime?
+
+  /// How many restatements have moved this period away from its frozen figures.
+  restatementCount Int @default(0)
+
+  restatements PeriodRestatement[]
+
+  @@unique([shopId, periodKey])
+  @@index([shopId, status])
+}
+
+/// Append-only record of one restatement's effect on one period.
+///
+/// Nothing updates or deletes these rows except the shop cascade. Together with
+/// the snapshot they answer the only question that matters after a correction:
+/// what did this month say before, what does it say now, and why.
+model PeriodRestatement {
+  id     String @id @default(cuid())
+  shopId String
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  snapshotId String
+  snapshot   PeriodSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  /// The job that applied it. SetNull, not Cascade: pruning finished job rows
+  /// must never quietly delete the accounting trail they produced.
+  jobId String?
+  job   RecalcJob? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  periodKey String
+  reason    String
+
+  ordersAffected    Int
+  lineItemsAffected Int
+
+  cogsBefore               Decimal @db.Decimal(14, 2)
+  cogsAfter                Decimal @db.Decimal(14, 2)
+  contributionProfitBefore Decimal @db.Decimal(14, 2)
+  contributionProfitAfter  Decimal @db.Decimal(14, 2)
+  netProfitBefore          Decimal @db.Decimal(14, 2)
+  netProfitAfter           Decimal @db.Decimal(14, 2)
+
+  appliedAt DateTime @default(now())
+
+  @@index([shopId, periodKey, appliedAt])
+  @@index([snapshotId])
+  @@index([jobId])
+}
+
+/// Durable queue for work that must not run on a request thread.
+///
+/// A restatement rewrites line items across months and then recomputes the whole
+/// shop. That is minutes of work on a large store, so it cannot be an `await` in
+/// a form action, and it cannot be an in-process promise either: a Fly deploy
+/// mid-restatement would leave half a quarter rewritten with nothing recording
+/// that it had started.
+///
+/// The lease columns mirror `WebhookEvent` deliberately — same claim, same
+/// backoff, same recovery loop shape — so there is one durable-work pattern in
+/// this codebase to reason about rather than two.
+model RecalcJob {
+  id     String @id @default(cuid())
+  shopId String
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  kind   RecalcJobKind
+  status RecalcJobStatus @default(QUEUED)
+
+  /// Collapses duplicate enqueues of identical outstanding work — a merchant
+  /// editing six costs in a minute wants one restatement, not six. Cleared when
+  /// the job leaves the queue so the same work can legitimately be asked for
+  /// again later.
+  dedupeKey String? @unique
+
+  payload Json
+  result  Json?
+
+  attempts    Int      @default(0)
+  availableAt DateTime @default(now())
+
+  leaseToken     String?
+  leaseExpiresAt DateTime?
+
+  startedAt  DateTime?
+  finishedAt DateTime?
+  error      String?
+
+  createdAt DateTime @default(now())
+
+  restatements PeriodRestatement[]
+
+  @@index([status, availableAt, leaseExpiresAt])
+  @@index([shopId, kind, createdAt])
+  @@index([shopId, status])
 }
 
 /// Price history is what makes real elasticity estimation possible. Without
@@ -272,6 +620,25 @@ model Customer {
   @@index([shopId, firstOrderAt])
 }
 
+/// A secret-keyed, one-way guard against recreating a shopper after
+/// customers/redact.
+///
+/// Webhooks and the historical import race compliance delivery in ordinary
+/// operation. Deleting Customer alone is therefore insufficient: an already
+/// running order write, a queued delivery, or a later backfill can upsert the
+/// same Shopify customer again. Both identifier hashes are scoped to the Shop;
+/// no raw customer id or email is retained here.
+model CustomerErasure {
+  id             String   @id @default(cuid())
+  shopId         String
+  shop           Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  identifierHash String
+  createdAt      DateTime @default(now())
+
+  @@unique([shopId, identifierHash])
+  @@index([shopId, createdAt])
+}
+
 /// A serviced `customers/data_request`, held for the merchant to collect.
 ///
 /// Shopify makes the merchant the controller and gives them 30 days to answer
@@ -288,8 +655,10 @@ model DataRequest {
   /// instead of stacking copies of the same customer's data.
   webhookId String @unique
 
-  /// As Shopify sent it, so `customers/redact` can find this row without
-  /// depending on a Customer row that redaction is about to delete.
+  /// Normally as Shopify sent it, so `customers/redact` can find this row
+  /// without depending on a Customer row that redaction is about to delete.
+  /// A request serviced after erasure uses the fixed value "redacted-request"
+  /// instead, so answering it does not retain the supplied customer id again.
   shopifyCustomerId String
   customerEmail     String?
 
@@ -310,12 +679,15 @@ model DataRequest {
 }
 
 model Order {
-  id          String   @id @default(cuid())
-  shopId      String
-  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  shopifyId   String
-  orderNumber Int
-  processedAt DateTime
+  id               String    @id @default(cuid())
+  shopId           String
+  shop             Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  shopifyId        String
+  /// Shopify's source mutation time. Delivery time is not chronology: webhook
+  /// retries and the historical import can arrive after a newer snapshot.
+  shopifyUpdatedAt DateTime?
+  orderNumber      Int
+  processedAt      DateTime
 
   customerId String?
   customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
@@ -384,6 +756,15 @@ model OrderLineItem {
   unitCost    Decimal @default(0) @db.Decimal(12, 4)
   refundedQty Int     @default(0)
 
+  /// Which `VariantCost.effectiveAt` this snapshot came from. Null means the
+  /// line predates cost history and was frozen from `Variant.unitCost` — the
+  /// distinction matters, because only the former can be re-derived and checked.
+  costEffectiveAt DateTime?
+  /// Set when a restatement rewrote `unitCost` above. Its presence is why a
+  /// line's COGS may differ from what the order originally reported, and the
+  /// matching `PeriodRestatement` says by how much and why.
+  costRestatedAt  DateTime?
+
   /// Line items are deleted and recreated on every order sync, outside a
   /// transaction. Two concurrent deliveries of the same order could interleave
   /// into two copies of each line, which would double both COGS and units for
@@ -438,7 +819,10 @@ model Fulfillment {
   /// mistook every update for a duplicate and dropped it. Nullable because rows
   /// imported before this column existed have no id to backfill — Postgres treats
   /// NULLs as distinct, so those legacy rows do not collide with each other.
-  shopifyId String?
+  shopifyId        String?
+  /// Shopify's source mutation time, used to keep delayed pre-cancellation
+  /// deliveries from resurrecting a shipment and warehouse capacity.
+  shopifyUpdatedAt DateTime?
 
   status       String    @default("pending")
   createdAt    DateTime
@@ -499,9 +883,15 @@ model CostRule {
   monthlyAmount Decimal? @db.Decimal(12, 2)
 
   appliesToChannel Channel?
-  active           Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  active           Boolean        @default(true)
+  /// Where this rule first came from. Confirmation is separate: a merchant can
+  /// review an install default without erasing the fact that it began as one.
+  origin           CostRuleOrigin @default(MERCHANT_CONFIGURED)
+  /// Null means Meridian has no durable evidence that a merchant reviewed the
+  /// current assumption. A successful Settings save stamps this field.
+  confirmedAt      DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
   @@index([shopId, kind, active])
 }
@@ -574,6 +964,39 @@ enum CostSource {
   SHOPIFY
   MANUAL
   ESTIMATED
+  /// Derived by summing a bundle's components. Never merchant-entered: the
+  /// rollup owns these rows and overwrites them when a component cost moves.
+  BUNDLE_ROLLUP
+}
+
+/// How a bundle's component mapping was established.
+enum BundleSource {
+  /// The merchant drew the mapping themselves.
+  MANUAL
+  /// Inferred from a multi-pack SKU convention ("WIDGET-BLU-3PK").
+  SKU_PATTERN
+  /// Inferred from a multi-pack phrase in the variant or product title.
+  TITLE_PATTERN
+  /// Shopify's own bundle component relationship.
+  SHOPIFY_BUNDLE
+}
+
+enum PeriodStatus {
+  OPEN
+  CLOSED
+}
+
+enum RecalcJobKind {
+  COST_RESTATEMENT
+  BUNDLE_ROLLUP
+  BUNDLE_DETECTION
+}
+
+enum RecalcJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETE
+  FAILED
 }
 
 enum CostRuleKind {
@@ -582,6 +1005,13 @@ enum CostRuleKind {
   PICK_PACK
   OVERHEAD_MONTHLY
   CUSTOM
+}
+
+enum CostRuleOrigin {
+  INSTALL_DEFAULT
+  MERCHANT_CONFIGURED
+  DEMO_SEED
+  LEGACY_UNKNOWN
 }
 
 enum ConnectorProvider {

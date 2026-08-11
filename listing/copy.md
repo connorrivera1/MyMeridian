@@ -1,12 +1,14 @@
-# App Store listing copy — draft
+# App Store listing copy — blocked draft
 
 Written 2026-08-05 (branch `eevee/meridian-triage`). Drafted from what the code
 actually does, checked screen by screen against the routes and the engine, not
 from the plan blurbs in `app/lib/plans.ts`.
 
-**Everything in the boxes below is paste-ready.** Character counts are measured,
-not estimated — see *Character counts* at the end for how to re-check after an
-edit.
+**Nothing below is paste-ready until the public app name is decided.** The copy
+structure is measured, but the working name appears throughout and must be
+replaced and re-counted as one change. A published Shopify app already uses
+Meridian, so another `Meridian + descriptor` variant does not close the naming
+risk.
 
 What still needs Connor is called out in *Needs the owner* at the bottom, and it
 is now business facts and a screencast rather than anything about the code. The
@@ -17,22 +19,9 @@ connect — was closed on 2026-08-06; see *Resolved*.
 
 ## App name — limit 30
 
-```
-Meridian Profit Analytics
-```
-
-**25 characters.** The Partner Dashboard app name is `Meridian` (`shopify.app.toml:3`)
-and the handle is `meridian-profit`. Shopify allows a listing name of the form
-`Brand + short descriptor` and rejects keyword stuffing, so this is about as far
-as it goes.
-
-Alternates, both within the limit:
-
-| Option | Chars |
-|---|---|
-| `Meridian Profit Analytics` | 25 |
-| `Meridian: True Profit` | 21 |
-| `Meridian Profit & Pricing` | 25 |
+**Blocked on the owner&rsquo;s distinctive brand-led name.** Do not paste the
+working name from `shopify.app.toml`, create a `Meridian + descriptor` variant,
+or finalize the icon, handle, site, screenshots, and character counts separately.
 
 ---
 
@@ -41,27 +30,28 @@ Alternates, both within the limit:
 This is the line that appears under the name in search results.
 
 ```
-See the true net profit of every order and product, after COGS, shipping, fees and overhead.
+See order and product profit after COGS, shipping, fees and overhead; missing ad spend is disclosed.
 ```
 
-**92 characters.** It names the four cost components the app actually subtracts
-(`app/engine/profit.ts:267-275`) rather than promising "insights".
+**100 characters.** It names the four cost components the app actually
+subtracts (`app/engine/profit.ts:267-275`) and discloses the live input that is
+not connected rather than calling the result complete net profit.
 
 ---
 
 ## App details — limit 500
 
 ```
-Shopify reports gross sales. Meridian reports what is left.
+Shopify reports gross sales. Meridian reports profit from available inputs.
 
-It imports your orders, products, cost per item and fulfilments, applies your own payment, shipping, pick-and-pack and overhead rules, and gives every order and product a true net profit figure.
+It imports orders, products, item costs and fulfilments, then applies payment, shipping, pick-and-pack and overhead models. Missing costs and ad spend stay visible instead of becoming zero.
 
-See which products carry the business and which quietly bleed, and which loss leaders pay for themselves. Get prices fitted to your own price history, and know which day your warehouse falls behind.
+See qualified profit per order and product. Fit prices to history Meridian observes after install, and see when your warehouse falls behind.
 
 Meridian requests no write access.
 ```
 
-**491 characters**, counting the blank lines between paragraphs. The first draft
+**444 characters**, counting the blank lines between paragraphs. The first draft
 of this paragraph ran to 575 and had to be cut — the limit is tighter than it
 reads, so measure rather than eyeball after any edit.
 
@@ -71,29 +61,29 @@ Every claim in it is load-bearing and checked:
 |---|---|
 | imports orders, products, cost per item, fulfilments | `app/lib/backfill.server.ts:509-624`, five named stages |
 | your own payment / shipping / pick-and-pack / overhead rules | four editable cost rules, `app/routes/app.settings.tsx:233-318` |
-| net profit per order, product and day | `computeOrderProfit`, `computeProductProfitability`, `dailySeries` |
+| qualified profit per order, product and day | `computeOrderProfit`, `computeProductProfitability`, `dailySeries`; missing COGS, modeled costs and unavailable ad spend are disclosed separately |
 | which products carry the business and which bleed | `PROFITABLE` / `BLEEDING` classifications, `app/engine/products.ts:11-15` |
-| loss leaders that genuinely pay for themselves | `STRATEGIC_LOSS_LEADER` needs contribution ≤ 0, ≥5 acquired customers, downstream profit covering the loss, **and** >1.25× the store's average post-first-order value — `app/engine/products.ts:220-242` |
-| prices fitted to your own price history | weighted log-log OLS on the variant's own price points, `app/engine/pricing.ts:99-175` |
+| prices fitted to post-install observed history | weighted log-log OLS on price points Meridian records from first observation onward; pre-install history is never invented |
 | which day your warehouse falls behind | 14-day forecast against demonstrated throughput, `app/engine/capacity.ts:152-182` |
-| requests no write access | `scopes = "read_orders read_products read_fulfillments read_inventory"`, `shopify.app.toml:59` |
+| requests no write access | `scopes = "read_orders,read_products,read_fulfillments,read_inventory"`, `shopify.app.toml:59` |
 
-Deliberately **not** claimed: ad ROI, CAC, LTV, payback, ad-channel connections.
-The in-app plan tiers have now been brought into line with this — see *Resolved*,
-item 1.
+Deliberately **not** claimed: ad ROI, CAC, LTV, payback, ad-channel connections,
+customer-lifecycle product classifications, or location-specific capacity. The
+in-app plan tiers and public landing page have now been brought into line with
+this — see *Resolved*.
 
 ---
 
 ## Feature bullets — limit 80 each
 
 ```
-Net profit per order, after COGS, shipping, payment fees and overhead
+Profit per order after COGS, shipping, payment fees and configured overhead
 ```
 ```
-Find bleeding products, and loss leaders that genuinely pay for themselves
+Find profitable products, thin margins and products that quietly bleed
 ```
 ```
-Price recommendations fitted to your own price history, not a rule of thumb
+Price recommendations fitted to history Meridian observes after installation
 ```
 ```
 Fulfilment backlog alerts before your warehouse falls behind, not after
@@ -102,15 +92,7 @@ Fulfilment backlog alerts before your warehouse falls behind, not after
 Read-only. Meridian requests no write access and changes nothing
 ```
 
-**69 / 74 / 75 / 71 / 64 characters.**
-
-A sixth, if the listing takes more than five and the Protected Customer Data
-request in *Needs the owner* is approved first — it is false without it:
-
-```
-Cost to acquire a customer, and what that customer is worth after 90 days
-```
-**73 characters.**
+**75 / 70 / 75 / 71 / 64 characters.**
 
 ---
 
@@ -132,8 +114,9 @@ omission rather than an answer.
 ```
 Meridian has no separate login. There is no account to create and no third-party
 service to connect — the app authenticates entirely through your Shopify
-session, so installing on the demo store below gives you the full feature set
-immediately.
+session. Follow the steps below to reach every feature available in this release.
+Customer-lifecycle analysis and ad-platform metrics are intentionally unavailable
+on the requested scopes and connections; they are not reviewable paid features.
 
 Demo store: <DEMO STORE URL>
 Storefront password: <PASSWORD>
@@ -142,43 +125,57 @@ Storefront password: <PASSWORD>
    read_orders, read_products, read_fulfillments and read_inventory. It requests
    no write scope and cannot change a price, an order or anything else.
 
-2. Choose a plan when prompted. Starter ($49/mo), Growth ($149/mo) and Scale
-   ($399/mo) each carry a 14-day free trial, and every charge raised on a
-   development store is a test charge, so nothing is billed. Until a plan is
-   active every other screen redirects to the plan page. You can move up or down
-   between all three at any time from the "Plan" item in the sidebar, in-app and
-   without contacting us.
+2. Choose Growth monthly ($149/month) for the simplest review path. It unlocks
+   Pricing and Fulfilment, so every analytic feature available in this release
+   is reachable. Growth is also $1,490/year; Starter is $49/month or $490/year,
+   and Scale is $399/month or $3,990/year. Annual billing gives two months free.
+   Every plan carries a 14-day free trial. The supplied development store uses a
+   Shopify test charge, so nothing is billed. Until a plan is active every other
+   paid analytics screen redirects to the plan page. The authenticated Privacy
+   requests screen remains available so subscription cancellation cannot block a
+   shopper export. You can move up or down between all three plans at any time
+   from the "Plan" item in the sidebar, in-app and without contacting us.
 
 3. The historical import starts on its own as install finishes — orders,
    products, cost per item and fulfilments. The dashboard fills in as it runs.
 
 4. Then walk the sidebar:
-   - Overview — net profit, revenue and margin over the selected date range.
+   - Overview — qualified profit, revenue and margin over the selected date
+     range, with modeled or missing costs and unavailable ad spend disclosed.
    - Profit per order — every order with COGS, shipping, payment fees and
-     overhead subtracted.
-   - Products — which products are profitable, which are bleeding, and which
-     loss leaders pay for themselves through what the customer buys later.
-   - Acquisition — revenue and profit by channel, attributed from each order's
-     UTM parameters and referring site.
-   - Pricing — recommendations fitted to each variant's own price history.
+     configured overhead subtracted; ad spend remains unavailable.
+   - Products — contribution from available inputs; products with missing COGS
+     receive no profitability verdict.
+   - Acquisition — revenue and qualified contribution by channel, attributed
+     from each order's UTM parameters and referring site.
+   - Pricing — recommendations fitted only after Meridian observes enough
+     post-install price history; a new install reports insufficient data.
    - Fulfilment — a 14-day backlog forecast against demonstrated throughput.
-   Settings holds the four cost rules the figures are built from: payment
+   - Privacy requests — shopper exports remain collectable without a paid plan.
+   Settings holds the four modeled cost rules the figures are built from: payment
    processing, shipping, pick-and-pack, and fixed monthly overhead. Editing any
    of them re-computes every screen above.
 
-Two areas are deliberately blank, and the app says why on screen rather than
-showing a zero:
+These inputs and analyses are deliberately unavailable, and the app says why on
+screen rather than showing a zero:
 
-- Ad spend, CAC, ROAS and marketing efficiency on the Acquisition screen.
+- Ad spend, ROAS and marketing efficiency on the Acquisition screen.
   Meridian does not connect to Meta, Google or TikTok yet and never infers spend
-  from orders, so these stay blank on every store, demo included. The revenue
-  and profit by channel on that same screen are measured from the store's own
-  orders and are unaffected.
+  from orders. Live stores and the no-spend demo show those inputs as unavailable
+  rather than zero. Revenue and qualified contribution by channel remain visible
+  from the store's own orders.
+- Customer-lifecycle product classifications, customer counts, CAC, lifetime
+  value and payback. Meridian does not request read_customers in this release.
+  Product contribution remains available from recorded order values and the
+  configured cost inputs, with modeled assumptions and missing COGS flagged. Historical imports
+  cannot read customer-journey attribution and therefore fall back to Direct;
+  new-order webhooks retain landing and referring signals when Shopify supplies
+  them.
 - Order history older than 60 days, unless read_all_orders has been granted.
   Shopify caps the read; the app shows a banner explaining the cap rather than
   presenting a short history as a complete one.
 
-Support: <SUPPORT EMAIL>
+Support: <MERIDIAN SUPPORT EMAIL>
 ```
 
 **Three placeholders have to be real before this is pasted**, and each is
@@ -188,7 +185,7 @@ already tracked in *Needs the owner* above rather than being new work:
 |---|---|
 | `<DEMO STORE URL>` | *Needs the owner*, item 3 — the same store the screenshots came from |
 | `<PASSWORD>` | the demo store's storefront password; **delete both the line and this row** if the store is not password-protected |
-| `<SUPPORT EMAIL>` | `MERIDIAN_SUPPORT_EMAIL`, *Needs the owner*, item 1 |
+| `<MERIDIAN SUPPORT EMAIL>` | Meridian's own monitored inbox, *Needs the owner*, item 1 |
 
 Every claim in the block is traced to the code that makes it true, on the same
 terms as the listing copy above:
@@ -197,13 +194,13 @@ terms as the listing copy above:
 |---|---|
 | no login of its own; Shopify session is the only credential | no sign-up route in `app/routes.ts`; the only unauthenticated documents are `/privacy` and `/support` |
 | four read-only scopes, no write scope | `shopify.app.toml:59` |
-| three plans at $49 / $149 / $399 | `app/lib/plans.ts:35-70` |
+| monthly prices $49 / $149 / $399 and annual prices $490 / $1,490 / $3,990 | `app/lib/plans.ts` |
 | 14-day free trial on every plan | `TRIAL_DAYS = 14`, `app/lib/plans.ts` |
-| charges on a development store are test charges | `billingIsTest = process.env.NODE_ENV !== "production"`, `app/lib/plan.server.ts:101`, passed to `billing.request` at `app/routes/app.plan.tsx:55-59` |
-| every other screen redirects to the plan page until a plan is active | `app/routes.ts` — the `plan` route is the one child reachable without a subscription |
+| the supplied development store uses a test charge | `resolveBillingChargeMode` re-reads Shopify's `ShopPlan.partnerDevelopment` immediately before every production `billing.request`; `shop/update` invalidates the stored signal and forces subscription revalidation after a store conversion |
+| paid analytics screens redirect to the plan page until a plan is active | `app/routes/app.layout.tsx` and `requireActivePlan`; Plan and authenticated Privacy requests remain entitlement-exempt |
 | plan changes are in-app and both directions | sidebar `Plan` link, `app/routes/app.layout.tsx:246-249`; `billing.request` for any of the three, `app/routes/app.plan.tsx:55-59` (requirement 1.2.3) |
 | the import starts by itself at the end of install | `startBackfill` from `afterAuth`, `app/shopify.server.ts:156-163` |
-| the six sidebar screens and their labels | `NAV`, `app/routes/app.layout.tsx:109-114` |
+| the nine app screens and their labels | `NAV` and `TITLES`, `app/routes/app.layout.tsx` |
 | four editable cost rules in Settings | `app/routes/app.settings.tsx:234,260,278,302` — payment processing, shipping, pick-and-pack, fixed monthly overhead |
 | channel attribution from UTM and referring site | `app/lib/sync.server.ts:76-100` |
 | ad spend is never inferred, and the screen says so | `app/routes/app.acquisition.tsx:217-219` |
@@ -225,9 +222,9 @@ The Growth blurb "Unlimited ad channels + blended CAC" and the Starter bullet
 does not have. There is a `Connector` model, encrypted token storage and a UI row
 for Meta, Google and TikTok, but **no OAuth flow and no platform API client
 anywhere in the tree** — `provision.server.ts:97` creates every connector
-`NOT_CONFIGURED` and nothing ever configures one, and the only writer of
-`AdSpend` in the repo is `prisma/seed.ts:949`. So the seeded demo shows spend and
-a real store shows `$0.00` forever.
+`NOT_CONFIGURED` and nothing ever configures one. At the time this defect was
+found, `prisma/seed.ts` was the only `AdSpend` writer and made the demo disagree
+with every real store; that seed writer and its fabricated rows are now gone.
 
 That mattered more than a listing edit, because the plan blurbs are
 merchant-visible on `/app/plan` and a reviewer walks that screen during billing
@@ -245,7 +242,8 @@ tiers are reworded, so nothing merchant-visible sells ad spend:
   plan.
 - Growth keeps its two genuine gates and nothing else: pricing recommendations
   and fulfilment capacity alerts.
-- Prices, names and order caps are untouched.
+- Prices and plan names are untouched. The unenforced order-volume blurbs are
+  removed; they were copy, not a billing or runtime limit.
 
 A second defect surfaced underneath it. `FEATURE_MIN_PLAN.multiChannelAds` was a
 **gate with no call site** — `planAllows(plan, "multiChannelAds")` appeared
@@ -263,21 +261,46 @@ The Acquisition screen degrades honestly on zero spend — CAC and marketing
 efficiency render `—` rather than `0` — but gave no reason, while the missing
 `read_customers` case on the same screen explains itself. It now carries a banner
 saying no ad platform is connected, that spend is never inferred from orders, and
-that the channel figures below are measured from the merchant's own orders and are
-unaffected.
+that the channel figures below contain order-derived revenue plus qualified
+contribution from the available recorded and modeled cost inputs.
+
+### 2. Cohort LTV was removed from Scale — 2026-08-10
+
+Scale sold **"Cohort LTV and payback curves"**, but the requested OAuth scopes do
+not include `read_customers`. That protected scope must not be requested before
+Shopify approves it, so no real subscriber could use the plan's headline feature.
+The claim and its paid gate are removed from the in-app and public price lists.
+The underlying engine remains dormant for a future approved release; it is not a
+paid entitlement today.
+
+Acquisition now keeps the truthful order-derived core visible on current scopes:
+orders, net revenue and contribution profit by channel. Customer metrics and ad
+metrics are layered on only when their real inputs exist, with the historical
+Direct fallback disclosed on screen rather than hidden.
+
+### 3. Customer-lifecycle product and location-specific capacity claims were removed — 2026-08-10
+
+The product engine retains customer-lifecycle classification code for a future
+release with approved `read_customers` access, but the current listing, landing
+page, Products route and Pricing route do not expose or sell it. Negative-margin
+products are presented only from available recorded and modeled order inputs;
+products with missing COGS receive no profitability verdict.
+
+Scale also no longer claims location-specific fulfilment modelling. The current
+rebuild aggregates every fulfilment into a single `primary` capacity series, so
+the public catalogue now promises only the store-wide backlog and capacity work
+that exists end to end. Prices are unchanged.
 
 ---
 
 ## Needs the owner
 
-### 1. Support email and legal entity
+### 1. Meridian domain, publisher and support email
 
-`MERIDIAN_SUPPORT_EMAIL` and `MERIDIAN_LEGAL_ENTITY` (and optionally
-`MERIDIAN_SUPPORT_URL`) are unset, so `/privacy` and `/support` currently render
-an explicit "not configured" notice — deliberately, so a reviewer never emails an
-address that bounces. These need a genuinely monitored inbox and the legal entity
-the app is published under (sole trader / LLC / Ltd). Both are business
-decisions; neither can be guessed. See `app/lib/brand.server.ts:13-24`.
+Buy Meridian's domain, then create a genuinely monitored inbox on it and set
+`MERIDIAN_SUPPORT_EMAIL` and `MERIDIAN_LEGAL_ENTITY` to Meridian's own facts.
+The app and standalone legal drafts intentionally expose the pre-launch gap
+until these are known; do not reuse another product's domain or terms.
 
 ### 2. The setup screencast — an automatic bounce if missing
 
@@ -297,11 +320,11 @@ staging it twice.
 - **Demo store URL** for the reviewer to click through. The store behind it is the
   same one the screenshots come from, and its invented `AdSpend` rows were cleared
   on 2026-08-06 — the local database now holds none.
-- **One screenshot still held** — `acquisition`, in `listing/screenshots-held/`.
-  Re-captured against the cleaned store it is accurate and unshippable: four blank
-  headline tiles over a channel table of dashes. It comes back with a connector.
-  `overview` and `orders` were re-captured and are shipped, so the set is at five
-  of a possible six rather than sitting on Shopify's floor of three.
+- **All listing screenshots need a fresh capture after the August 9–10 UI
+  redraw.** The redesigned Acquisition route now leads with order-derived
+  revenue and contribution profit, so it is useful without spend and is eligible
+  to join the new set. Its old held image remains only as provenance for the
+  fabricated-spend screenshot and must not be restored.
 
 ### 4. The ad-spend claim was not closed where it mattered — 2026-08-06
 
@@ -315,9 +338,9 @@ The cause was the demo seed, which fabricated `AdSpend` and was the only writer
 of that table anywhere in the repo. The seed no longer does. Details, and the
 re-capture steps, are in `listing/screenshots-held/README.md`.
 
-The drafted copy above was already silent on ad performance and needed no change.
-The lesson is that "merchant-visible" includes everything checked into `listing/`,
-not just the routes.
+The draft now also says the release has no ad-spend connector and avoids calling
+its measured result complete net profit. The lesson is that "merchant-visible"
+includes everything checked into `listing/`, not just the routes.
 
 ---
 
@@ -331,16 +354,15 @@ edit, put the text in a file and run:
 node -e 'console.log(require("fs").readFileSync(process.argv[1],"utf8").replace(/\n$/,"").length)' /tmp/draft.txt
 ```
 
-Measured for the drafts above on 2026-08-05:
+Measured for the current blocked draft on 2026-08-10:
 
 | Field | Limit | Draft |
 |---|---|---|
-| Name | 30 | 25 |
-| Introduction | 100 | 92 |
-| Details | 500 | 491 |
-| Feature 1 | 80 | 69 |
-| Feature 2 | 80 | 74 |
+| Name | 30 | blocked — distinctive public name not chosen |
+| Introduction | 100 | 100 |
+| Details | 500 | 444 |
+| Feature 1 | 80 | 75 |
+| Feature 2 | 80 | 70 |
 | Feature 3 | 80 | 75 |
 | Feature 4 | 80 | 71 |
 | Feature 5 | 80 | 64 |
-| Feature 6 (conditional) | 80 | 73 |

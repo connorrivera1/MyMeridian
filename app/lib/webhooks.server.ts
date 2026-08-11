@@ -1,36 +1,86 @@
+import crypto from "node:crypto";
+
+import { Prisma } from "@prisma/client";
+
 import prisma from "~/db.server";
+import { dispatchPersistedWebhook } from "~/lib/webhook-dispatch.server";
+import { minimizeWebhookPayload } from "~/lib/webhook-payload.server";
 import { authenticate, hasShopifyCredentials } from "~/shopify.server";
 
+const WEBHOOK_LEASE_MS = 5 * 60 * 1000;
+const WEBHOOK_HEARTBEAT_MS = 60 * 1000;
+const WEBHOOK_POLL_MS = 10 * 1000;
+const WEBHOOK_BATCH_SIZE = 25;
+export const WEBHOOK_PAYLOAD_RETENTION_DAYS = 7;
+const WEBHOOK_PAYLOAD_RETENTION_MS =
+  WEBHOOK_PAYLOAD_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+const MAX_ERROR_LENGTH = 4_000;
+
+type ClaimedDelivery = {
+  kind: "claimed";
+  leaseToken: string;
+  attempt: number;
+};
+
+type WebhookClaim =
+  ClaimedDelivery | { kind: "replay" } | { kind: "untracked" };
+
 /**
- * Shopify guarantees at-least-once webhook delivery, and retries anything that
- * does not return 2xx within five seconds. Without a delivery-id check a single
- * retried orders/create would book the same revenue twice.
- *
- * Returns false when this delivery has been seen before.
+ * Shopify guarantees at-least-once webhook delivery. The unique delivery id
+ * suppresses replays, while payload + lease fields make the first verified
+ * copy recoverable if this process dies after returning HTTP 200.
  */
 export async function claimWebhook(
   webhookId: string,
   shopDomain: string,
   topic: string,
-): Promise<boolean> {
+  payload: Record<string, unknown>,
+): Promise<WebhookClaim> {
+  const minimizedPayload = minimizeWebhookPayload(topic, payload);
+  // A delivery row belongs to the shop and cascades with shop/redact. Late
+  // deliveries for an already-redacted (or never-provisioned) shop remain
+  // untracked so receiving one cannot recreate store-linked or customer data.
+  const shop = await prisma.shop.findUnique({
+    where: { domain: shopDomain },
+    select: { id: true },
+  });
+  if (!shop) return { kind: "untracked" };
+
+  const now = new Date();
+  const leaseToken = crypto.randomUUID();
+
   try {
     await prisma.webhookEvent.create({
-      data: { webhookId, shopDomain, topic },
+      data: {
+        webhookId,
+        shopDomain,
+        shopId: shop.id,
+        topic,
+        payload: minimizedPayload as Prisma.InputJsonValue,
+        payloadExpiresAt: new Date(
+          now.getTime() + WEBHOOK_PAYLOAD_RETENTION_MS,
+        ),
+        attempts: 1,
+        availableAt: now,
+        lastAttemptAt: now,
+        leaseToken,
+        leaseExpiresAt: new Date(now.getTime() + WEBHOOK_LEASE_MS),
+      },
     });
-    return true;
-  } catch {
-    // Unique violation on webhookId — already handled or in flight.
-    return false;
-  }
-}
+    return { kind: "claimed", leaseToken, attempt: 1 };
+  } catch (error) {
+    // Only the delivery-id uniqueness constraint proves this is a replay. A
+    // connection failure or timeout means the payload was not durably stored,
+    // so it must escape and make Shopify retry the request.
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return { kind: "replay" };
+    }
 
-export async function markWebhookProcessed(webhookId: string, error?: string) {
-  await prisma.webhookEvent
-    .update({
-      where: { webhookId },
-      data: { processedAt: new Date(), error: error ?? null },
-    })
-    .catch(() => undefined);
+    throw error;
+  }
 }
 
 export interface WebhookContext {
@@ -41,58 +91,66 @@ export interface WebhookContext {
   isReplay: boolean;
 }
 
+interface ReceivedWebhook {
+  context: WebhookContext;
+  claim: WebhookClaim;
+}
+
 /**
- * Verify a webhook and set up idempotency.
- *
- * Throws a Response on an invalid HMAC — an unverified webhook is an untrusted
- * request that happens to look like Shopify, and must never reach the database.
+ * Verify a webhook and durably claim its payload before any 200 response.
+ * Invalid HMACs never reach the database.
  */
-export async function receiveWebhook(request: Request): Promise<WebhookContext> {
+export async function receiveWebhook(
+  request: Request,
+): Promise<ReceivedWebhook> {
   if (!hasShopifyCredentials || !authenticate) {
-    throw new Response("Shopify credentials are not configured.", { status: 503 });
+    throw new Response("Shopify credentials are not configured.", {
+      status: 503,
+    });
   }
 
-  // A request with no signature at all is unauthenticated, not malformed.
-  // The library answers it 400, but Shopify's automated review probes these
-  // endpoints for 401 and a 400 is a plausible way to fail submission on a
-  // technicality — so answer the way the requirement is written.
   if (!request.headers.get("x-shopify-hmac-sha256")) {
     throw new Response("Unauthorized", { status: 401 });
   }
 
   const { shop, topic, payload } = await authenticate.webhook(request);
-
-  const webhookId =
-    request.headers.get("x-shopify-webhook-id") ??
-    `${topic}:${shop}:${Date.now()}`;
-
-  const claimed = await claimWebhook(webhookId, shop, topic);
+  const webhookId = request.headers.get("x-shopify-webhook-id")?.trim();
+  if (!webhookId) {
+    // A generated timestamp would turn every retry into a new delivery and
+    // defeat both the outbox claim and processor-level idempotency keys.
+    throw new Response("Missing Shopify webhook delivery id.", { status: 400 });
+  }
+  const parsedPayload = (payload ?? {}) as Record<string, unknown>;
+  const minimizedPayload = minimizeWebhookPayload(topic, parsedPayload);
+  const claim = await claimWebhook(webhookId, shop, topic, minimizedPayload);
 
   return {
-    shopDomain: shop,
-    topic,
-    webhookId,
-    payload: (payload ?? {}) as Record<string, unknown>,
-    isReplay: !claimed,
+    context: {
+      shopDomain: shop,
+      topic,
+      webhookId,
+      payload: minimizedPayload,
+      isReplay: claim.kind === "replay",
+    },
+    claim,
   };
 }
 
-/**
- * Handler work that has been started but has not finished, and that nothing is
- * waiting on — the response for it has already gone back to Shopify.
- *
- * Tracked rather than simply dropped so that `webhooksSettled` exists: a bare
- * floating promise is untestable and unshutdownable, and both matter.
- */
+/** Work started after a verified claim but not awaited by Shopify's request. */
 const inFlight = new Set<Promise<void>>();
 
-/**
- * Wait for every deferred handler to finish.
- *
- * For tests, which need the side effect the response no longer waits for, and
- * for a graceful shutdown, which should not drop a half-written sync on the
- * floor. Loops because a handler may schedule more work as it runs.
- */
+function trackWork(work: Promise<void>): void {
+  inFlight.add(work);
+  // `.finally()` creates a second promise which rejects when `work` rejects;
+  // discarding that promise is itself an unhandled rejection. Two explicit
+  // branches make cleanup safe even if a future caller forgets to catch.
+  void work.then(
+    () => inFlight.delete(work),
+    () => inFlight.delete(work),
+  );
+}
+
+/** Wait for all currently-running handlers. Used by tests and graceful shutdown. */
 export async function webhooksSettled(): Promise<void> {
   while (inFlight.size > 0) {
     await Promise.allSettled([...inFlight]);
@@ -100,72 +158,298 @@ export async function webhooksSettled(): Promise<void> {
 }
 
 /**
- * Wrap a handler with verification, replay suppression and error capture.
+ * Verify, persist, and answer Shopify before route processing finishes.
  *
- * Shopify allows five seconds for the entire request, retries anything slower
- * eight times over four hours, and after eight consecutive failures deletes the
- * subscription outright — which loses every future delivery, not one. So the
- * response is sent as soon as the delivery is verified and claimed, and the
- * handler runs after it. `webhooks.gdpr.data-request.tsx` assembles a shopper's
- * whole order history with every line item; on a large store with a long-lived
- * customer that is not reliably a sub-five-second job, and it was inside the
- * response window.
- *
- * What still happens before the response, and must:
- *  - HMAC verification, so an unverified request is 401 and writes nothing;
- *  - the `claimWebhook` insert, so the reply and the idempotency record are
- *    decided together. Claiming after responding would let a retry that arrives
- *    while the first delivery is still working claim it a second time and
- *    double-book the same order.
- *
- * The handler's own errors are still swallowed into a 200 for the same reason
- * as before — a 500 buys a retry of a payload that will fail again — and are
- * recorded on the event row instead. That now happens after the response has
- * gone, which changes nothing about it: the row is the audit trail, not the
- * reply.
+ * The handler is an exported route processor. A fresh delivery uses that
+ * exact function immediately; crash recovery resolves the same export through
+ * `dispatchPersistedWebhook`, so the retry path cannot drift into a second
+ * implementation of the business logic.
  */
 export async function handleWebhook(
   request: Request,
   handler: (context: WebhookContext) => Promise<void>,
 ): Promise<Response> {
-  const context = await receiveWebhook(request);
+  const { context, claim } = await receiveWebhook(request);
 
-  if (!context.isReplay) {
-    deferAfterResponse(context, handler);
+  if (claim.kind === "claimed") {
+    deferAfterResponse(context, handler, claim);
+  } else if (claim.kind === "untracked") {
+    // Unknown/redacted stores are intentionally not persisted. Their route
+    // processors are no-ops except shop/redact's idempotent legacy cleanup.
+    deferAfterResponse(context, handler, null);
   }
 
   return new Response(null, { status: 200 });
 }
 
-/**
- * Start the handler now and let the response overtake it.
- *
- * Called synchronously, so the handler runs up to its first await before the
- * caller returns: the work is deferred past the response, not past the event
- * loop. Nothing awaits the promise on the request path, so it must never
- * reject — an unhandled rejection here takes the process down and loses every
- * delivery queued behind it.
- */
 function deferAfterResponse(
   context: WebhookContext,
   handler: (context: WebhookContext) => Promise<void>,
+  delivery: ClaimedDelivery | null,
 ): void {
-  const work: Promise<void> = runHandler(context, handler);
-
-  inFlight.add(work);
-  void work.finally(() => inFlight.delete(work));
+  const work = runHandler(context, handler, delivery);
+  trackWork(work);
 }
 
 async function runHandler(
   context: WebhookContext,
   handler: (context: WebhookContext) => Promise<void>,
+  delivery: ClaimedDelivery | null,
 ): Promise<void> {
+  const stopHeartbeat = delivery
+    ? startLeaseHeartbeat(context.webhookId, delivery.leaseToken)
+    : () => undefined;
+
   try {
     await handler(context);
-    await markWebhookProcessed(context.webhookId);
+    if (delivery) {
+      await markWebhookSucceeded(context.webhookId, delivery.leaseToken);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[webhook:${context.topic}] ${context.shopDomain}`, error);
-    await markWebhookProcessed(context.webhookId, message);
+    if (delivery) {
+      try {
+        await markWebhookFailed(
+          context.webhookId,
+          delivery.leaseToken,
+          delivery.attempt,
+          message,
+        );
+      } catch (persistenceError) {
+        // Leave the lease to expire. A later sweep can recover the payload;
+        // rejecting this detached promise would instead risk taking down the
+        // process after Shopify already received its 200.
+        console.error(
+          `[webhook:${context.webhookId}] failed to record delivery failure`,
+          persistenceError,
+        );
+      }
+    }
+  } finally {
+    stopHeartbeat();
   }
+}
+
+function startLeaseHeartbeat(
+  webhookId: string,
+  leaseToken: string,
+): () => void {
+  const timer = setInterval(() => {
+    const leaseExpiresAt = new Date(Date.now() + WEBHOOK_LEASE_MS);
+    void prisma.webhookEvent
+      .updateMany({
+        where: { webhookId, leaseToken, processedAt: null },
+        data: { leaseExpiresAt },
+      })
+      .catch((error) =>
+        console.error(
+          `[webhook:${webhookId}] failed to extend delivery lease`,
+          error,
+        ),
+      );
+  }, WEBHOOK_HEARTBEAT_MS);
+  timer.unref?.();
+  return () => clearInterval(timer);
+}
+
+async function markWebhookSucceeded(
+  webhookId: string,
+  leaseToken: string,
+): Promise<void> {
+  // SQL NULL, not JSON null: no copy of the webhook payload survives success.
+  await prisma.webhookEvent.updateMany({
+    where: { webhookId, leaseToken, processedAt: null },
+    data: {
+      processedAt: new Date(),
+      payload: Prisma.DbNull,
+      payloadExpiresAt: null,
+      error: null,
+      leaseToken: null,
+      leaseExpiresAt: null,
+    },
+  });
+}
+
+async function markWebhookFailed(
+  webhookId: string,
+  leaseToken: string,
+  attempt: number,
+  error: string,
+): Promise<void> {
+  await prisma.webhookEvent.updateMany({
+    where: { webhookId, leaseToken, processedAt: null },
+    data: {
+      error: error.slice(0, MAX_ERROR_LENGTH),
+      availableAt: new Date(Date.now() + retryDelayMs(attempt)),
+      leaseToken: null,
+      leaseExpiresAt: null,
+    },
+  });
+}
+
+function retryDelayMs(attempt: number): number {
+  // 5s, 10s, 20s ... capped at 15m. Poison deliveries remain visible and
+  // retryable instead of being silently marked processed or discarded.
+  return Math.min(15 * 60 * 1000, 5_000 * 2 ** Math.min(10, attempt - 1));
+}
+
+interface LeasedWebhook {
+  context: WebhookContext;
+  delivery: ClaimedDelivery;
+}
+
+/** Atomically lease one due row. Contending processes can only win once. */
+async function leaseNextWebhook(): Promise<LeasedWebhook | null> {
+  // A bounded contention loop prevents two machines that selected the same
+  // row from both stopping while other due rows are waiting.
+  for (let contention = 0; contention < 8; contention += 1) {
+    const now = new Date();
+    const candidate = await prisma.webhookEvent.findFirst({
+      where: {
+        processedAt: null,
+        payload: { not: Prisma.DbNull },
+        availableAt: { lte: now },
+        OR: [{ leaseExpiresAt: null }, { leaseExpiresAt: { lte: now } }],
+      },
+      orderBy: [{ availableAt: "asc" }, { receivedAt: "asc" }],
+      select: {
+        id: true,
+        webhookId: true,
+        shopDomain: true,
+        topic: true,
+        payload: true,
+        attempts: true,
+      },
+    });
+    if (!candidate) return null;
+
+    const leaseToken = crypto.randomUUID();
+    const leased = await prisma.webhookEvent.updateMany({
+      where: {
+        id: candidate.id,
+        processedAt: null,
+        availableAt: { lte: now },
+        OR: [{ leaseExpiresAt: null }, { leaseExpiresAt: { lte: now } }],
+      },
+      data: {
+        attempts: { increment: 1 },
+        lastAttemptAt: now,
+        leaseToken,
+        leaseExpiresAt: new Date(now.getTime() + WEBHOOK_LEASE_MS),
+      },
+    });
+    if (leased.count !== 1) continue;
+
+    return {
+      context: {
+        shopDomain: candidate.shopDomain,
+        topic: candidate.topic,
+        webhookId: candidate.webhookId,
+        payload: candidate.payload as Record<string, unknown>,
+        isReplay: true,
+      },
+      delivery: {
+        kind: "claimed",
+        leaseToken,
+        attempt: candidate.attempts + 1,
+      },
+    };
+  }
+
+  return null;
+}
+
+/**
+ * A poison order delivery must not retain protected customer data forever.
+ * Seven days gives the worker hundreds of retry attempts at the 15-minute
+ * ceiling; after that the event remains as a visible failed audit row but its
+ * projected recovery payload is irreversibly cleared. Mandatory compliance
+ * topics are intentionally excluded: age can never discharge a legal action.
+ */
+export async function expireWebhookRecoveryPayloads(
+  now = new Date(),
+): Promise<number> {
+  const expired = await prisma.webhookEvent.updateMany({
+    where: {
+      processedAt: null,
+      payload: { not: Prisma.DbNull },
+      payloadExpiresAt: { lte: now },
+      topic: { in: ["ORDERS_CREATE", "ORDERS_UPDATED", "orders/create", "orders/updated"] },
+      OR: [{ leaseExpiresAt: null }, { leaseExpiresAt: { lte: now } }],
+    },
+    data: {
+      processedAt: now,
+      payload: Prisma.DbNull,
+      payloadExpiresAt: null,
+      error: `Recovery payload expired after ${WEBHOOK_PAYLOAD_RETENTION_DAYS} days`,
+      leaseToken: null,
+      leaseExpiresAt: null,
+    },
+  });
+  return expired.count;
+}
+
+/** Drain a bounded batch so queue work never monopolises a server process. */
+export async function drainWebhookQueue(): Promise<number> {
+  await expireWebhookRecoveryPayloads();
+  let processed = 0;
+  while (processed < WEBHOOK_BATCH_SIZE) {
+    const leased = await leaseNextWebhook();
+    if (!leased) break;
+    await runHandler(leased.context, dispatchPersistedWebhook, leased.delivery);
+    processed += 1;
+  }
+  return processed;
+}
+
+interface WebhookWorkerState {
+  timer: ReturnType<typeof setInterval> | null;
+  drain: Promise<void> | null;
+}
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __meridianWebhookWorker: WebhookWorkerState | undefined;
+}
+
+const workerState = (global.__meridianWebhookWorker ??= {
+  timer: null,
+  drain: null,
+});
+
+function startDrain(): void {
+  if (workerState.drain) return;
+
+  const work = drainWebhookQueue()
+    .then(() => undefined)
+    .catch((error) =>
+      console.error("[webhooks] durable queue sweep failed", error),
+    );
+  workerState.drain = work;
+  trackWork(work);
+  void work.then(
+    () => {
+      if (workerState.drain === work) workerState.drain = null;
+    },
+    () => {
+      if (workerState.drain === work) workerState.drain = null;
+    },
+  );
+}
+
+/** Recover stale/unprocessed deliveries at process start and on an interval. */
+export function startWebhookDeliveryWorker(): void {
+  if (workerState.timer) return;
+
+  startDrain();
+  workerState.timer = setInterval(startDrain, WEBHOOK_POLL_MS);
+  workerState.timer.unref?.();
+}
+
+/** Stop polling during a graceful shutdown (and isolate fake-timer tests). */
+export function stopWebhookDeliveryWorker(): void {
+  if (!workerState.timer) return;
+  clearInterval(workerState.timer);
+  workerState.timer = null;
 }

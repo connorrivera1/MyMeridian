@@ -34,17 +34,17 @@ export default function Privacy() {
       <p>
         {APP_NAME} is a profitability dashboard for Shopify stores. It reads a
         store&rsquo;s order, product, inventory and fulfilment records, combines
-        them with cost figures the merchant enters, and reports what each order
-        and product actually earned. This policy describes every category of
-        data it touches and what happens to it.
+        them with recorded costs and clearly identified configured assumptions,
+        and estimates the profit of each order and product. This policy
+        describes every category of data it touches and what happens to it.
       </p>
 
       <h2>Who this policy is for</h2>
       <p>
-        The merchant who installs {APP_NAME} is our customer. Their store&rsquo;s
-        shoppers are not — we hold shopper data only as a processor acting on
-        the merchant&rsquo;s instructions, and the merchant remains the
-        controller of it.
+        The merchant who installs {APP_NAME} is our customer. Their
+        store&rsquo;s shoppers are not — we hold shopper data only as a
+        processor acting on the merchant&rsquo;s instructions, and the merchant
+        remains the controller of it.
       </p>
 
       <h2>What we read from Shopify</h2>
@@ -57,9 +57,9 @@ export default function Privacy() {
           <code>read_orders</code> — order totals, discounts, taxes, shipping
           charged, line items and refunds. This is the revenue side of every
           profit number. A Shopify order also carries the customer who placed
-          it, so this scope — and not any customer scope — is how the two
-          shopper fields listed under <em>Personal data specifically</em> below
-          reach {APP_NAME}.
+          it, so this scope — and not any customer scope — is how the two fields
+          selected from Shopify&rsquo;s customer object, listed under{" "}
+          <em>Personal data specifically</em> below, reach {APP_NAME}.
         </li>
         <li>
           <code>read_products</code> — products and variants, so line items can
@@ -92,14 +92,14 @@ export default function Privacy() {
       <h2>Personal data specifically</h2>
       <p>
         Shopper personal data does reach {APP_NAME}, through{" "}
-        <code>read_orders</code>. Exactly two shopper fields are read from
-        Shopify and stored:
+        <code>read_orders</code>. Exactly two fields are selected from
+        Shopify&rsquo;s customer object and stored:
       </p>
       <ul>
         <li>
           the <strong>Shopify customer id</strong> carried on the order — the
-          identifier that links a store&rsquo;s repeat orders to one person, so
-          that lifetime value and acquisition cost can be computed at all; and
+          stable identifier used to link that store&rsquo;s repeat orders and to
+          match access or erasure requests; and
         </li>
         <li>
           the <strong>email address</strong> on that customer record. It is
@@ -110,39 +110,50 @@ export default function Privacy() {
         </li>
       </ul>
       <p>
-        Nothing else about a shopper is read or stored. {APP_NAME} holds no
-        shopper <strong>name</strong>, <strong>phone number</strong>,{" "}
-        <strong>billing or shipping address</strong> or{" "}
-        <strong>IP address</strong>, and it does not read, request or store
-        payment card details or passwords. It requests no scope that would
-        expose them.
+        No other field from that customer object is selected for use or
+        persistence. Shopify may include more fields in an order webhook, but
+        before recovery data is written {APP_NAME} projects the authenticated
+        payload onto the exact fields listed here. It does not retain shopper{" "}
+        <strong>name</strong>, <strong>phone number</strong>,{" "}
+        <strong>billing or shipping address</strong>,{" "}
+        <strong>IP address</strong>, payment card details or passwords.
       </p>
       <p>
-        Derived from those two fields and the orders themselves, {APP_NAME}{" "}
-        stores per customer: the date of their first order, the channel and
-        campaign that acquired them, their order count, and their lifetime
-        revenue and profit. Per order it stores the order number, its
-        timestamps, currency, the money totals above, financial and fulfilment
-        status, the marketing channel, any UTM parameters, and the landing page
-        URL of the visit the order is attributed to. The referring URL is read
-        to classify that channel but is not itself stored. Line items are stored
-        as title, SKU, quantity and unit price.
+        From those fields and the orders themselves, {APP_NAME} stores per
+        customer: the date of their first order, the channel and campaign that
+        acquired them, their order count, and their lifetime revenue and profit.
+        Per order it stores the order number, its processed and Shopify
+        source-update timestamps, currency, the money totals above, financial
+        and fulfilment status, the marketing channel, any UTM parameters, and
+        the landing page URL of the visit the order is attributed to. Marketing
+        URLs can contain personalized query values and are therefore treated as
+        potentially personal data: matching landing, UTM and campaign values are
+        cleared on customer redaction. The referring URL is used to classify
+        that channel and may remain briefly in the minimized recovery copy
+        described below, but is not stored on the order record. Line items are
+        stored as title, SKU, quantity, price, discount, refunded quantity and
+        the cost snapshotted when the order was placed. Fulfilment records
+        linked to the order retain shipment and Shopify source-update
+        timestamps, carrier, service, location, item count and configured costs;
+        tracking numbers and destination addresses are not retained.
       </p>
       <p>
         Because a shopper email address is among the fields read and stored,
         {APP_NAME}&rsquo;s access to orders falls under Shopify&rsquo;s
         protected customer data requirements at the level that covers customer
-        email, and is subject to the approval and the data-handling
-        undertakings that go with it.
+        email, and is subject to the approval and the data-handling undertakings
+        that go with it.
       </p>
 
       <h2>What the merchant gives us directly</h2>
       <p>
-        Cost inputs entered in <em>Costs &amp; connections</em> — payment
+        Cost assumptions shown in <em>Costs &amp; connections</em> — payment
         processing rates, shipping and pick-and-pack estimates, and fixed
-        monthly overhead. Where a merchant connects an advertising account, the
-        access token for that account is encrypted at rest with AES-256-GCM
-        before it is stored, and only ad spend figures are read back.
+        monthly overhead. Meridian supplies visible install defaults until the
+        merchant reviews or replaces them; reviewing a fallback does not turn it
+        into a measured cost. This release does not connect to an advertising
+        account, collect an advertising-platform access token, or import ad
+        spend.
       </p>
 
       <h2>How data is stored and secured</h2>
@@ -156,12 +167,23 @@ export default function Privacy() {
           the browser.
         </li>
         <li>
-          Third-party OAuth tokens are encrypted at rest under a key held
-          outside the database.
-        </li>
-        <li>
           Every webhook Shopify sends is HMAC-verified before it is acted on; an
           unverified request is rejected with 401 and nothing is written.
+        </li>
+        <li>
+          For crash recovery, a verified webhook is reduced to the fields its
+          processor actually uses before it is written. The projected copy is
+          cleared as soon as processing succeeds. A failed projected order copy
+          is retried and is irreversibly cleared after seven days; names,
+          addresses, phone numbers, IP addresses and payment metadata never
+          enter that queue.
+        </li>
+        <li>
+          The minimum customer id and email carried by a mandatory compliance
+          request are purpose-limited recovery state and remain only until that
+          legal action succeeds. <code>shop/redact</code> needs no customer
+          payload. Compliance work is never marked complete merely because an
+          ordinary recovery-retention deadline passed.
         </li>
       </ul>
 
@@ -170,16 +192,23 @@ export default function Privacy() {
         {APP_NAME} does not sell store data, does not share it with advertisers,
         and does not use it to train models. It is disclosed only to the
         infrastructure providers needed to run the service — the database and
-        application host — and to Shopify itself. Where a merchant connects an
-        advertising platform, {APP_NAME} reads spend from that platform; it does
-        not send store data to it.
+        application host — and to Shopify itself. This release does not connect
+        to an advertising platform or disclose store data to one.
       </p>
 
       <h2>How long it is kept</h2>
       <p>
         Store data is retained while the app is installed. On uninstall the
-        store&rsquo;s sessions are deleted immediately, and the remaining records
-        are removed when Shopify sends <code>shop/redact</code>.
+        store&rsquo;s sessions are deleted immediately, and the remaining
+        records are removed when Shopify sends <code>shop/redact</code>.
+      </p>
+      <p>
+        After <code>customers/redact</code>, keyed one-way digests of the
+        Shopify customer id and, when supplied, email remain as pseudonymous
+        erasure guards. The key is held outside the database. These guards are
+        used only to stop a delayed webhook or later historical import from
+        recreating the customer, and they are deleted with the store on{" "}
+        <code>shop/redact</code>.
       </p>
 
       <h2>Requests to access or erase data</h2>
@@ -192,13 +221,35 @@ export default function Privacy() {
           <code>customers/data_request</code> — everything held about the named
           customer is assembled into an export and made available to the
           merchant, who is the controller and responds to the shopper. The
-          merchant collects it from Settings; it is deleted 31 days after the
-          request whether or not they do.
+          export includes every normalized customer, linked order, line-item and
+          fulfilment field, including derived cost and profit fields, plus any
+          still-pending minimized recovery payload that names the customer or
+          belongs to one of their linked orders. The authenticated Privacy
+          requests screen receives metadata only and shows every uncollected
+          obligation; collected history is paginated. The full report is
+          returned only from a shop-scoped, no-store download after the merchant
+          explicitly asks for it, and that same transaction records the first
+          collection time. This handoff remains available without an active
+          subscription. The export expires 31 days after the request whether or
+          not it is collected and is removed by an hourly sweep (and by the
+          startup catch-up sweep after downtime). If erasure has already
+          completed, the response is an empty, de-identified record: it retains
+          neither the supplied customer id nor email and does not recreate
+          erased data.
         </li>
         <li>
-          <code>customers/redact</code> — the customer record is deleted and
-          their orders anonymised in place. The orders are kept without any
-          identifier, because deleting them outright would silently rewrite the
+          <code>customers/redact</code> — the customer record is deleted and its
+          link is removed from every order; the orders retain their own Shopify
+          order id and economic history but no customer link or Shopify customer
+          identifier. Stored landing URLs, UTM values and campaign strings are
+          cleared from those linked orders, and customer and attribution URLs
+          are removed from matching pending order recovery payloads. A different
+          Shopify customer id is not affected merely because it shares an email
+          address. The current redaction delivery may retain only its customer
+          id until completion is durably recorded, so a crash cannot suppress
+          the legal action. The keyed erasure guards described above then
+          prevent in-flight webhooks and later imports from recreating the
+          customer. Deleting the orders outright would silently rewrite the
           merchant&rsquo;s own historical revenue.
         </li>
         <li>

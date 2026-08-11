@@ -3,15 +3,32 @@ import { Channel, CostSource, Prisma, SyncStatus } from "@prisma/client";
 import prisma from "~/db.server";
 import { invalidateAnalyticsCache } from "~/data/analytics.server";
 import {
+  backfillIsStale,
+  claimBackfill,
+  completeBackfill,
+  failBackfill,
+  resumePointFor,
+  startBackfillHeartbeat,
+  updateBackfillProgress,
+  type BackfillClaim,
+  type BackfillOwner,
+  type OrderResumePoint,
+} from "~/lib/backfill-claim.server";
+import {
   deriveChannel,
   fulfillmentDidShip,
   reconcileFirstOrdersForShop,
+  syncFulfillmentFromShopify,
+  syncOrderFromShopify,
 } from "~/lib/sync.server";
-import { withOrderLock } from "~/lib/order-lock.server";
 import { generatePricingRecommendations } from "~/lib/pricing.server";
+import { withProductLock } from "~/lib/product-lock.server";
 import { recomputeShopProfitability } from "~/lib/recompute.server";
 import { capabilitiesForShop, type Capabilities } from "~/lib/scopes";
 import { unauthenticated } from "~/shopify.server";
+
+export { backfillIsStale, resumePointFor };
+export type { OrderResumePoint };
 
 /**
  * Historical import from the Admin GraphQL API.
@@ -61,17 +78,32 @@ const FULFILLMENTS_PER_ORDER = 10;
 const FULFILLMENTS_MAX_PER_ORDER = 250;
 
 /**
- * Safety valve so a dev run against a huge store cannot go on forever.
+ * Optional development safety valve.
  *
- * Validated rather than coerced: `??` only catches undefined, so `Number("")`
- * gave 0 and capped the import at a single order while still reporting success,
- * and any non-numeric value gave NaN, which made `count >= MAX_ORDERS` always
- * false and removed the safety valve entirely.
+ * Production has no implicit order ceiling: silently stopping at 20,000 while
+ * marking the import complete omitted a large store's newest orders and made
+ * an incomplete ledger look current. Operators may still set an explicit
+ * ceiling for a local diagnostic run, but reaching it is a visible FAILED
+ * state with the resume cursor preserved — never a successful partial import.
  */
-const MAX_ORDERS = (() => {
-  const configured = Number(process.env.MERIDIAN_MAX_BACKFILL_ORDERS);
-  return Number.isFinite(configured) && configured > 0 ? configured : 20_000;
-})();
+export function parseBackfillOrderLimit(
+  raw: string | undefined,
+): number | null {
+  if (raw === undefined || raw.trim() === "") return null;
+
+  const configured = Number(raw);
+  if (!Number.isSafeInteger(configured) || configured <= 0) {
+    throw new Error(
+      "MERIDIAN_MAX_BACKFILL_ORDERS must be a positive integer when set",
+    );
+  }
+
+  return configured;
+}
+
+const MAX_ORDERS = parseBackfillOrderLimit(
+  process.env.MERIDIAN_MAX_BACKFILL_ORDERS,
+);
 
 const MAX_THROTTLE_RETRIES = 6;
 
@@ -113,13 +145,19 @@ function isTransient(error: unknown): boolean {
   if (typeof status === "number" && status >= 500 && status <= 599) return true;
 
   const code = typeof candidate?.code === "string" ? candidate.code : "";
-  if (/^(ECONNRESET|ETIMEDOUT|ECONNREFUSED|EPIPE|EAI_AGAIN|ENOTFOUND|EHOSTUNREACH)$/.test(code)) {
+  if (
+    /^(ECONNRESET|ETIMEDOUT|ECONNREFUSED|EPIPE|EAI_AGAIN|ENOTFOUND|EHOSTUNREACH)$/.test(
+      code,
+    )
+  ) {
     return true;
   }
 
   // The Shopify client's own retriable classes.
-  const name = (error as { constructor?: { name?: string } })?.constructor?.name;
-  if (name === "HttpInternalError" || name === "HttpRetriableError") return true;
+  const name = (error as { constructor?: { name?: string } })?.constructor
+    ?.name;
+  if (name === "HttpInternalError" || name === "HttpRetriableError")
+    return true;
 
   const message = error instanceof Error ? error.message : "";
   return /socket hang up|network error|fetch failed|ECONNRESET|ETIMEDOUT/i.test(
@@ -153,13 +191,15 @@ export class ShopifyFieldError extends Error {}
  * whole throttle-backoff and capability-probe path below unreachable.
  */
 function graphQLErrorsFrom(error: unknown): GraphQLError[] {
-  const body = (error as { body?: { errors?: { graphQLErrors?: GraphQLError[] } } })
-    ?.body;
+  const body = (
+    error as { body?: { errors?: { graphQLErrors?: GraphQLError[] } } }
+  )?.body;
   const errors = body?.errors?.graphQLErrors;
   if (Array.isArray(errors) && errors.length) return errors;
 
   // HTTP 429 arrives as HttpThrottlingError with no GraphQL body at all.
-  const name = (error as { constructor?: { name?: string } })?.constructor?.name;
+  const name = (error as { constructor?: { name?: string } })?.constructor
+    ?.name;
   const message = error instanceof Error ? error.message : String(error);
   if (name === "HttpThrottlingError" || /throttl/i.test(message)) {
     return [{ message, extensions: { code: "THROTTLED" } }];
@@ -193,7 +233,10 @@ export async function gql<T>(
       errors = body.errors;
     } catch (error) {
       // A no-data response is our own error, not Shopify's; do not retry it.
-      if (error instanceof Error && error.message === "Shopify returned no data.") {
+      if (
+        error instanceof Error &&
+        error.message === "Shopify returned no data."
+      ) {
         throw error;
       }
       errors = graphQLErrorsFrom(error);
@@ -216,7 +259,9 @@ export async function gql<T>(
 
     // A missing or unauthorised field is a capability difference, not a
     // failure — the caller can retry with a narrower query.
-    if (/doesn't exist|Field .* doesn't|access denied|not approved/i.test(message)) {
+    if (
+      /doesn't exist|Field .* doesn't|access denied|not approved/i.test(message)
+    ) {
       throw new ShopifyFieldError(message);
     }
 
@@ -248,7 +293,7 @@ const SHOP_QUERY = `#graphql
       email
       currencyCode
       ianaTimezone
-      plan { displayName }
+      plan { displayName partnerDevelopment }
     }
   }
 `;
@@ -271,6 +316,7 @@ function productsQuery(includeCost: boolean) {
           productType
           vendor
           status
+          updatedAt
           variants(first: ${VARIANTS_PER_PRODUCT}) {
             pageInfo { hasNextPage endCursor }
             nodes {
@@ -291,7 +337,7 @@ function variantFields(includeCost: boolean) {
     price
     compareAtPrice
     inventoryQuantity
-    ${includeCost ? "inventoryItem { unitCost { amount } }" : ""}
+    ${includeCost ? "inventoryItem { id updatedAt unitCost { amount } }" : ""}
   `;
 }
 
@@ -341,6 +387,7 @@ const ORDER_FIELDS = `
   name
   processedAt
   createdAt
+  updatedAt
   currencyCode
   displayFinancialStatus
   displayFulfillmentStatus
@@ -403,6 +450,7 @@ const REFUND_LINE_ITEMS_QUERY = `#graphql
 const FULFILLMENT_NODE_FIELDS = `
   id
   createdAt
+  updatedAt
   status
   totalQuantity
   trackingInfo(first: 1) { company }
@@ -578,7 +626,10 @@ function refreshingAdminClient(
 
   return {
     async graphql(query, options) {
-      if (unauthenticated && Date.now() - acquiredAt >= ADMIN_CLIENT_MAX_AGE_MS) {
+      if (
+        unauthenticated &&
+        Date.now() - acquiredAt >= ADMIN_CLIENT_MAX_AGE_MS
+      ) {
         try {
           current = (await unauthenticated.admin(shopDomain)).admin;
           acquiredAt = Date.now();
@@ -598,38 +649,96 @@ function refreshingAdminClient(
   };
 }
 
-export function startBackfill(shopId: string, admin: AdminClient): void {
-  void runBackfill(shopId, admin).catch((error) => {
-    console.error(`[backfill] ${shopId} failed`, error);
-  });
+export type BackfillStartResult =
+  { started: true; resumed: boolean } | { started: false; reason: "active" };
+
+const activeBackfills = new Map<string, Promise<BackfillResult>>();
+
+type BegunBackfill =
+  | {
+      started: true;
+      resumed: boolean;
+      task: Promise<BackfillResult>;
+    }
+  | { started: false; reason: "active" };
+
+/** Claim in Postgres before scheduling any Shopify work. */
+async function beginBackfill(
+  shopId: string,
+  admin: AdminClient,
+): Promise<BegunBackfill> {
+  // This is an inexpensive first line of defence for duplicate actions in one
+  // Node process. The compare-and-set in claimBackfill is the authority across
+  // tabs, processes and Fly machines.
+  if (activeBackfills.has(shopId)) {
+    return { started: false, reason: "active" };
+  }
+
+  const claim = await claimBackfill(shopId);
+  if (!claim.claimed) return { started: false, reason: claim.reason };
+
+  const task = runClaimedBackfill(shopId, admin, claim);
+  activeBackfills.set(shopId, task);
+  void task.then(
+    () => {
+      if (activeBackfills.get(shopId) === task) activeBackfills.delete(shopId);
+    },
+    () => {
+      if (activeBackfills.get(shopId) === task) activeBackfills.delete(shopId);
+    },
+  );
+
+  return { started: true, resumed: claim.resume !== null, task };
 }
 
+/**
+ * Claim and detach a historical import for OAuth and Settings actions.
+ *
+ * The returned decision is safe to show to the merchant: `started: true`
+ * means this request won the database claim, not merely that a promise was
+ * created in this process.
+ */
+export async function startBackfill(
+  shopId: string,
+  admin: AdminClient,
+): Promise<BackfillStartResult> {
+  const begun = await beginBackfill(shopId, admin);
+  if (!begun.started) return begun;
+
+  void begun.task.catch((error) => {
+    console.error(`[backfill] ${shopId} failed`, error);
+  });
+
+  return { started: true, resumed: begun.resumed };
+}
+
+/** Claim and wait for completion. Used by tests and explicit maintenance. */
 export async function runBackfill(
   shopId: string,
   admin: AdminClient,
 ): Promise<BackfillResult> {
+  const begun = await beginBackfill(shopId, admin);
+  if (!begun.started) {
+    throw new Error("A historical import is already active for this shop.");
+  }
+  return begun.task;
+}
+
+async function runClaimedBackfill(
+  shopId: string,
+  admin: AdminClient,
+  claim: Extract<BackfillClaim, { claimed: true }>,
+): Promise<BackfillResult> {
   const startedAt = Date.now();
+  const { shop, resume, owner } = claim;
+  const heartbeat = startBackfillHeartbeat(shopId, owner);
+  let heartbeatStopped = false;
 
-  // Read before the reset, because the reset is what used to throw the resume
-  // point away.
-  const shop = await prisma.shop.findUniqueOrThrow({ where: { id: shopId } });
-  const resume = resumePointFor(shop);
-
-  await prisma.shop.update({
-    where: { id: shopId },
-    data: {
-      syncStatus: SyncStatus.RUNNING,
-      syncStartedAt: new Date(),
-      syncStage: resume ? "Resuming order history" : "Reading store settings",
-      syncError: null,
-      // Products are re-imported either way — the cursor only covers orders —
-      // so the product counter always restarts. The order counter carries over,
-      // or MAX_ORDERS would be a per-attempt cap rather than a total one.
-      syncedOrders: resume?.importedOrders ?? 0,
-      syncedProducts: 0,
-      syncCursor: resume?.cursor ?? null,
-    },
-  });
+  const stopHeartbeat = async () => {
+    if (heartbeatStopped) return;
+    heartbeatStopped = true;
+    await heartbeat.stop();
+  };
 
   try {
     const capabilities = capabilitiesForShop(shop, process.env.SCOPES);
@@ -640,61 +749,73 @@ export async function runBackfill(
     // the stores where the import takes longest. See refreshingAdminClient.
     const client = refreshingAdminClient(shop.domain, admin);
 
-    await importShopProfile(shopId, client);
+    await importShopProfile(shopId, client, owner);
 
-    await prisma.shop.update({
-      where: { id: shopId },
-      data: {
-        syncStage: capabilities.inventoryCost
-          ? "Importing products and costs"
-          : "Importing products (no cost access)",
-      },
+    await updateBackfillProgress(shopId, owner, {
+      syncStage: capabilities.inventoryCost
+        ? "Importing products and costs"
+        : "Importing products (no cost access)",
     });
-    const products = await importProducts(shopId, client, capabilities.inventoryCost);
+    const products = await importProducts(
+      shopId,
+      client,
+      capabilities.inventoryCost,
+      owner,
+    );
 
-    await prisma.shop.update({
-      where: { id: shopId },
-      data: { syncStage: "Importing order history" },
+    await updateBackfillProgress(shopId, owner, {
+      syncStage: "Importing order history",
     });
-    const orders = await importOrders(shopId, client, capabilities, resume);
+    const orders = await importOrders(
+      shopId,
+      client,
+      capabilities,
+      resume,
+      owner,
+    );
+
+    if (orders.reachedCap) {
+      throw new Error(
+        `Order import paused after ${orders.count.toLocaleString()} orders at ` +
+          "MERIDIAN_MAX_BACKFILL_ORDERS. Remove or increase that diagnostic " +
+          "limit, then retry from Settings; the resume cursor was preserved.",
+      );
+    }
 
     // Without fulfilment access there are no shipping records, and a capacity
     // series built from orders alone would show a backlog that only ever grows
     // and fire false "you are behind" alerts. Better to have no capacity data
     // and say so than to invent a crisis.
     if (capabilities.fulfillments) {
-      await prisma.shop.update({
-        where: { id: shopId },
-        data: { syncStage: "Rebuilding fulfilment history" },
+      await updateBackfillProgress(shopId, owner, {
+        syncStage: "Rebuilding fulfilment history",
       });
       await rebuildCapacityDays(shopId);
     } else {
       await prisma.capacityDay.deleteMany({ where: { shopId } });
     }
 
-    await prisma.shop.update({
-      where: { id: shopId },
-      data: { syncStage: "Computing profitability" },
+    await updateBackfillProgress(shopId, owner, {
+      syncStage: "Computing profitability",
     });
     await recomputeShopProfitability(shopId);
     await generatePricingRecommendations(shopId).catch(() => 0);
 
     invalidateAnalyticsCache();
 
-    await prisma.shop.update({
-      where: { id: shopId },
-      data: {
-        syncStatus: SyncStatus.COMPLETE,
-        syncCompletedAt: new Date(),
-        syncStage: null,
-        // A finished walk has no resume point. Leaving the last page's cursor
-        // behind would let a later run that dies before the order stage resume
-        // from the end of the previous import and skip the whole store.
-        syncCursor: null,
-        lastSyncedAt: new Date(),
-        earliestOrderAt: orders.earliestOrderAt,
-        hasAllOrdersScope: orders.sawOrdersOlderThan60Days,
-      },
+    // Stop and await the timer before releasing its token. Otherwise an
+    // in-flight renewal can race the terminal update and misreport lease loss.
+    await stopHeartbeat();
+    await completeBackfill(shopId, owner, {
+      syncCompletedAt: new Date(),
+      syncStage: null,
+      // A finished walk has no resume point. Leaving the last page's cursor
+      // behind would let a later run that dies before the order stage resume
+      // from the end of the previous import and skip the whole store.
+      syncCursor: null,
+      lastSyncedAt: new Date(),
+      earliestOrderAt: orders.earliestOrderAt,
+      hasAllOrdersScope: orders.sawOrdersOlderThan60Days,
     });
 
     return {
@@ -706,18 +827,23 @@ export async function runBackfill(
       durationMs: Date.now() - startedAt,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    let failure: unknown = error;
+    try {
+      await stopHeartbeat();
+    } catch (leaseError) {
+      // The replacement owner's row must win. Lease loss is the useful error
+      // even if the old worker was simultaneously failing for another reason.
+      failure = leaseError;
+    }
 
-    await prisma.shop.update({
-      where: { id: shopId },
-      data: {
-        syncStatus: SyncStatus.FAILED,
-        syncStage: null,
-        syncError: message.slice(0, 500),
-      },
+    const message =
+      failure instanceof Error ? failure.message : String(failure);
+    await failBackfill(shopId, owner, {
+      syncStage: null,
+      syncError: message.slice(0, 500),
     });
 
-    throw error;
+    throw failure;
   }
 }
 
@@ -725,29 +851,31 @@ export async function runBackfill(
 // Stages
 // ---------------------------------------------------------------------------
 
-async function importShopProfile(shopId: string, admin: AdminClient) {
+async function importShopProfile(
+  shopId: string,
+  admin: AdminClient,
+  owner: BackfillOwner,
+) {
   const data = await gql<{
     shop: {
       name: string;
       email: string | null;
       currencyCode: string;
       ianaTimezone: string;
-      plan: { displayName: string } | null;
+      plan: { displayName: string; partnerDevelopment: boolean } | null;
     };
   }>(admin, SHOP_QUERY);
 
   // Currency and timezone are not cosmetic: the engine buckets ad spend and
   // orders into the merchant's own days, and getting the zone wrong shifts
   // every evening order into the next day's CAC.
-  await prisma.shop.update({
-    where: { id: shopId },
-    data: {
-      name: data.shop.name,
-      email: data.shop.email,
-      currency: data.shop.currencyCode,
-      timezone: data.shop.ianaTimezone,
-      planName: data.shop.plan?.displayName ?? null,
-    },
+  await updateBackfillProgress(shopId, owner, {
+    name: data.shop.name,
+    email: data.shop.email,
+    currency: data.shop.currencyCode,
+    timezone: data.shop.ianaTimezone,
+    planName: data.shop.plan?.displayName ?? null,
+    partnerDevelopment: data.shop.plan?.partnerDevelopment ?? null,
   });
 }
 
@@ -758,7 +886,11 @@ interface VariantNode {
   price: string;
   compareAtPrice: string | null;
   inventoryQuantity: number | null;
-  inventoryItem: { unitCost: { amount: string } | null } | null;
+  inventoryItem: {
+    id: string;
+    updatedAt: string;
+    unitCost?: { amount: string } | null;
+  } | null;
 }
 
 /**
@@ -802,10 +934,31 @@ export async function remainingVariants(
   return collected;
 }
 
-async function importProducts(
+async function writePageProgress(
+  shopId: string,
+  owner: BackfillOwner | undefined,
+  data: Prisma.ShopUpdateManyMutationInput,
+): Promise<void> {
+  if (owner) {
+    await updateBackfillProgress(shopId, owner, data);
+    return;
+  }
+
+  // importProducts/importOrders are exported so isolated stage tests can drive
+  // Shopify pagination without manufacturing a Shop lease. A real runtime is
+  // never allowed to take that unfenced test path.
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error("Historical import progress requires a run owner.");
+  }
+  await prisma.shop.update({ where: { id: shopId }, data });
+}
+
+export async function importProducts(
   shopId: string,
   admin: AdminClient,
   includeCost: boolean,
+  /** Production orchestration always supplies the fencing owner. */
+  owner?: BackfillOwner,
 ): Promise<number> {
   let cursor: string | null = null;
   let imported = 0;
@@ -821,6 +974,7 @@ async function importProducts(
           productType: string | null;
           vendor: string | null;
           status: string;
+          updatedAt: string;
           variants: {
             pageInfo: { hasNextPage: boolean; endCursor: string | null };
             nodes: VariantNode[];
@@ -833,26 +987,6 @@ async function importProducts(
     });
 
     for (const node of data.products.nodes) {
-      const product = await prisma.product.upsert({
-        where: { shopId_shopifyId: { shopId, shopifyId: node.id } },
-        create: {
-          shopId,
-          shopifyId: node.id,
-          title: node.title,
-          handle: node.handle,
-          productType: node.productType,
-          vendor: node.vendor,
-          status: node.status,
-        },
-        update: {
-          title: node.title,
-          handle: node.handle,
-          productType: node.productType,
-          vendor: node.vendor,
-          status: node.status,
-        },
-      });
-
       const variants = node.variants.pageInfo.hasNextPage
         ? [
             ...node.variants.nodes,
@@ -865,44 +999,143 @@ async function importProducts(
           ]
         : node.variants.nodes;
 
-      for (const variant of variants) {
-        // This is the real COGS, and the single most valuable field in the
-        // whole import — without it every margin in the product is fiction.
-        const unitCost = variant.inventoryItem?.unitCost?.amount ?? null;
+      // This is the first time Meridian can honestly say it observed every
+      // price in this product, including variants fetched from overflow pages.
+      // Product.updatedAt orders source state, but a title or inventory edit
+      // can move it and therefore cannot prove the price existed any earlier.
+      const observedAt = new Date();
 
-        await prisma.variant.upsert({
-          where: { shopId_shopifyId: { shopId, shopifyId: variant.id } },
+      const sourceUpdatedAt = new Date(node.updatedAt);
+      if (Number.isNaN(sourceUpdatedAt.getTime())) {
+        throw new Error(
+          `Shopify returned an invalid updatedAt for product ${node.id}.`,
+        );
+      }
+
+      await withProductLock(shopId, node.id, async (tx) => {
+        const existingProduct = await tx.product.findUnique({
+          where: { shopId_shopifyId: { shopId, shopifyId: node.id } },
+          select: { id: true, shopifyUpdatedAt: true },
+        });
+
+        // A webhook carrying a later Shopify mutation may have committed while
+        // this product page was in flight. The advisory lock prevents the
+        // writes from interleaving; the source watermark prevents the older
+        // page from winning merely because it acquired the lock second.
+        if (
+          existingProduct?.shopifyUpdatedAt &&
+          sourceUpdatedAt < existingProduct.shopifyUpdatedAt
+        ) {
+          return;
+        }
+
+        const product = await tx.product.upsert({
+          where: { shopId_shopifyId: { shopId, shopifyId: node.id } },
           create: {
             shopId,
-            productId: product.id,
-            shopifyId: variant.id,
-            sku: variant.sku,
-            title: variant.title,
-            price: variant.price,
-            compareAtPrice: variant.compareAtPrice,
-            unitCost,
-            costSource: unitCost ? CostSource.SHOPIFY : CostSource.ESTIMATED,
-            inventoryQty: variant.inventoryQuantity ?? 0,
+            shopifyId: node.id,
+            title: node.title,
+            handle: node.handle,
+            productType: node.productType,
+            vendor: node.vendor,
+            status: node.status,
+            shopifyUpdatedAt: sourceUpdatedAt,
           },
           update: {
-            sku: variant.sku,
-            title: variant.title,
-            price: variant.price,
-            compareAtPrice: variant.compareAtPrice,
-            unitCost,
-            costSource: unitCost ? CostSource.SHOPIFY : CostSource.ESTIMATED,
-            inventoryQty: variant.inventoryQuantity ?? 0,
+            title: node.title,
+            handle: node.handle,
+            productType: node.productType,
+            vendor: node.vendor,
+            status: node.status,
+            shopifyUpdatedAt: sourceUpdatedAt,
           },
         });
-      }
+
+        for (const variant of variants) {
+          // This is the real COGS, and the single most valuable field in the
+          // whole import — without it every margin in the product is fiction.
+          const unitCost = variant.inventoryItem?.unitCost?.amount ?? null;
+          const inventoryItemShopifyId = variant.inventoryItem?.id ?? null;
+          const inventoryItemUpdatedAt = variant.inventoryItem?.updatedAt
+            ? new Date(variant.inventoryItem.updatedAt)
+            : null;
+          const price = new Prisma.Decimal(variant.price);
+          const existingVariant = await tx.variant.findUnique({
+            where: { shopId_shopifyId: { shopId, shopifyId: variant.id } },
+            select: {
+              id: true,
+              price: true,
+              _count: { select: { priceHistory: true } },
+            },
+          });
+
+          const record = await tx.variant.upsert({
+            where: { shopId_shopifyId: { shopId, shopifyId: variant.id } },
+            create: {
+              shopId,
+              productId: product.id,
+              shopifyId: variant.id,
+              sku: variant.sku,
+              title: variant.title,
+              price,
+              compareAtPrice: variant.compareAtPrice,
+              unitCost: includeCost ? unitCost : null,
+              costSource:
+                includeCost && unitCost
+                  ? CostSource.SHOPIFY
+                  : CostSource.ESTIMATED,
+              inventoryItemShopifyId,
+              inventoryItemUpdatedAt,
+              inventoryQty: variant.inventoryQuantity ?? 0,
+            },
+            update: {
+              sku: variant.sku,
+              title: variant.title,
+              price,
+              compareAtPrice: variant.compareAtPrice,
+              ...(includeCost
+                ? {
+                    unitCost,
+                    costSource: unitCost
+                      ? CostSource.SHOPIFY
+                      : CostSource.ESTIMATED,
+                  }
+                : {}),
+              inventoryItemShopifyId,
+              inventoryItemUpdatedAt,
+              inventoryQty: variant.inventoryQuantity ?? 0,
+            },
+          });
+
+          const needsPriceFact =
+            !existingVariant ||
+            existingVariant._count.priceHistory === 0 ||
+            !new Prisma.Decimal(existingVariant.price).equals(price);
+          if (!needsPriceFact) continue;
+
+          // The current price and its first honest observation are one fact.
+          // A failed history insert rolls the variant update back with it.
+          const duplicate = await tx.priceChange.findFirst({
+            where: { variantId: record.id, price, effectiveAt: observedAt },
+            select: { id: true },
+          });
+          if (!duplicate) {
+            await tx.priceChange.create({
+              data: {
+                shopId,
+                variantId: record.id,
+                price,
+                effectiveAt: observedAt,
+              },
+            });
+          }
+        }
+      });
 
       imported += 1;
     }
 
-    await prisma.shop.update({
-      where: { id: shopId },
-      data: { syncedProducts: imported },
-    });
+    await writePageProgress(shopId, owner, { syncedProducts: imported });
 
     if (!data.products.pageInfo.hasNextPage) break;
     cursor = data.products.pageInfo.endCursor;
@@ -930,6 +1163,7 @@ interface RefundLineItemNode {
 export interface FulfillmentNode {
   id: string;
   createdAt: string;
+  updatedAt?: string;
   status: string | null;
   /** "Sum of all line item quantities for the fulfillment." */
   totalQuantity: number | null;
@@ -941,6 +1175,7 @@ interface OrderNode {
   name: string;
   processedAt: string | null;
   createdAt: string;
+  updatedAt?: string;
   currencyCode: string;
   displayFinancialStatus: string | null;
   displayFulfillmentStatus: string | null;
@@ -1081,7 +1316,11 @@ async function pageThrough<T>(
 
   for (;;) {
     const page = select(
-      await gql(admin, query, { id, cursor: after, pageSize: LINE_ITEMS_PER_ORDER }),
+      await gql(admin, query, {
+        id,
+        cursor: after,
+        pageSize: LINE_ITEMS_PER_ORDER,
+      }),
     );
     if (!page) break;
 
@@ -1100,6 +1339,8 @@ export async function importOrders(
   admin: AdminClient,
   capabilities: Capabilities,
   resume: OrderResumePoint | null = null,
+  /** Production orchestration always supplies the fencing owner. */
+  owner?: BackfillOwner,
 ) {
   let cursor: string | null = resume?.cursor ?? null;
   let count = resume?.importedOrders ?? 0;
@@ -1125,13 +1366,9 @@ export async function importOrders(
   // had no trading before that date.
   const resumed = await priorOrderHistory(resume ? shopId : null);
   let earliestOrderAt: Date | null = resumed;
-  let sawOrdersOlderThan60Days = resumed ? resumed.getTime() < sixtyDaysAgo : false;
-
-  // Customers seen in this run, so the first order per customer is flagged
-  // correctly without a query per order. A resumed run starts this empty and
-  // will over-flag; `reconcileFirstOrdersForShop` below settles it shop-wide.
-  const customerIdByGid = new Map<string, string>();
-  const firstOrderSeen = new Set<string>();
+  let sawOrdersOlderThan60Days = resumed
+    ? resumed.getTime() < sixtyDaysAgo
+    : false;
 
   for (;;) {
     let page: {
@@ -1204,22 +1441,25 @@ export async function importOrders(
 
       await hydrateOrderOverflow(admin, node);
 
-      await importOneOrder(shopId, node, customerIdByGid, firstOrderSeen);
+      await importOneOrder(shopId, node);
       count += 1;
-
-      if (count >= MAX_ORDERS) {
-        reachedCap = true;
-        break;
-      }
     }
 
-    await prisma.shop.update({
-      where: { id: shopId },
-      data: {
-        syncedOrders: count,
-        syncCursor: page.orders.pageInfo.endCursor,
-      },
-    });
+    const progress = {
+      syncedOrders: count,
+      syncCursor: page.orders.pageInfo.endCursor,
+    };
+    await writePageProgress(shopId, owner, progress);
+
+    // Stop only between complete GraphQL pages. Stopping in the middle and
+    // saving the page's end cursor skipped the unprocessed tail forever on a
+    // resume. A configured limit is therefore a page-granularity diagnostic
+    // ceiling, and a reached ceiling is surfaced as a failed/paused import by
+    // runBackfill rather than as COMPLETE.
+    reachedCap =
+      MAX_ORDERS !== null &&
+      count >= MAX_ORDERS &&
+      page.orders.pageInfo.hasNextPage;
 
     if (reachedCap || !page.orders.pageInfo.hasNextPage) break;
     cursor = page.orders.pageInfo.endCursor;
@@ -1242,12 +1482,7 @@ export async function importOrders(
   };
 }
 
-async function importOneOrder(
-  shopId: string,
-  node: OrderNode,
-  customerIdByGid: Map<string, string>,
-  firstOrderSeen: Set<string>,
-) {
+async function importOneOrder(shopId: string, node: OrderNode) {
   const visit = node.customerJourneySummary?.lastVisit;
 
   const { channel, utm } = deriveChannel({
@@ -1258,141 +1493,82 @@ async function importOneOrder(
     utmCampaign: visit?.utmParameters?.campaign,
   });
 
-  const processedAt = new Date(node.processedAt ?? node.createdAt);
+  const refundLineItems = (node.refunds ?? []).flatMap((refund) =>
+    (refund.refundLineItems?.nodes ?? [])
+      .filter((item) => item.lineItem?.id)
+      .map((item) => ({
+        line_item_id: item.lineItem!.id,
+        quantity: item.quantity,
+      })),
+  );
+  const refundedTotal = money(node.totalRefundedSet);
 
-  // --- customer ---
-  let customerId: string | null = null;
-  if (node.customer?.id) {
-    const cached = customerIdByGid.get(node.customer.id);
-    if (cached) {
-      customerId = cached;
-    } else {
-      const customer = await prisma.customer.upsert({
-        where: { shopId_shopifyId: { shopId, shopifyId: node.customer.id } },
-        create: {
-          shopId,
-          shopifyId: node.customer.id,
-          email: node.customer.email,
-          acquisitionChannel: channel,
-          acquisitionCampaignId: utm.campaign,
-          firstOrderAt: processedAt,
-        },
-        update: { email: node.customer.email },
-      });
-      customerId = customer.id;
-      customerIdByGid.set(node.customer.id, customer.id);
-    }
-  }
-
-  // Orders arrive oldest-first, so the first one seen for a customer in this
-  // run is genuinely their first.
-  const isFirstOrder = customerId ? !firstOrderSeen.has(customerId) : false;
-  if (customerId) firstOrderSeen.add(customerId);
-
-  const refundedQtyByLineItem = new Map<string, number>();
-  for (const refund of node.refunds ?? []) {
-    for (const item of refund.refundLineItems?.nodes ?? []) {
-      if (!item.lineItem?.id) continue;
-      refundedQtyByLineItem.set(
-        item.lineItem.id,
-        (refundedQtyByLineItem.get(item.lineItem.id) ?? 0) + item.quantity,
-      );
-    }
-  }
-
-  const orderData = {
-    orderNumber: orderNumberFrom(node.name),
-    processedAt,
-    customerId,
+  // Use the exact same source-watermarked, advisory-locked transaction as live
+  // webhooks. A page fetched before a newer delivery can therefore finish
+  // later without mixing its header with the newer delivery's children.
+  await syncOrderFromShopify(shopId, {
+    id: node.id,
+    order_number: orderNumberFrom(node.name),
+    processed_at: node.processedAt,
+    created_at: node.createdAt,
+    updated_at: node.updatedAt,
     currency: node.currencyCode,
-    subtotal: money(node.subtotalPriceSet),
-    discountTotal: money(node.totalDiscountsSet),
-    shippingCharged: money(node.totalShippingPriceSet),
-    taxTotal: money(node.totalTaxSet),
-    total: money(node.totalPriceSet),
-    refundedTotal: money(node.totalRefundedSet),
-    financialStatus: (node.displayFinancialStatus ?? "PAID").toLowerCase(),
-    fulfillmentStatus: (node.displayFulfillmentStatus ?? "UNFULFILLED").toLowerCase(),
-    channel,
-    campaignId: utm.campaign,
-    campaignName: utm.campaign,
-    utmSource: utm.source,
-    utmMedium: utm.medium,
-    utmCampaign: utm.campaign,
-    landingSite: visit?.landingPage ?? null,
-    isFirstOrder,
-  };
-
-  const order = await prisma.order.upsert({
-    where: { shopId_shopifyId: { shopId, shopifyId: node.id } },
-    create: { shopId, shopifyId: node.id, ...orderData },
-    update: orderData,
+    subtotal_price: money(node.subtotalPriceSet),
+    total_discounts: money(node.totalDiscountsSet),
+    total_shipping_price_set: {
+      shop_money: { amount: money(node.totalShippingPriceSet) },
+    },
+    total_tax: money(node.totalTaxSet),
+    total_price: money(node.totalPriceSet),
+    financial_status: (node.displayFinancialStatus ?? "PAID").toLowerCase(),
+    fulfillment_status: (
+      node.displayFulfillmentStatus ?? "UNFULFILLED"
+    ).toLowerCase(),
+    landing_site: visit?.landingPage ?? null,
+    referring_site: visit?.referrerUrl ?? null,
+    meridian_utm_source: utm.source,
+    meridian_utm_medium: utm.medium,
+    meridian_utm_campaign: utm.campaign,
+    customer: node.customer
+      ? { id: node.customer.id, email: node.customer.email }
+      : undefined,
+    line_items: node.lineItems.nodes.map((item) => ({
+      id: item.id,
+      variant_id: item.variant?.id,
+      product_id: item.product?.id,
+      title: item.title,
+      sku: item.sku,
+      quantity: item.quantity,
+      price: money(item.originalUnitPriceSet),
+      discount_allocations: [{ amount: money(item.totalDiscountSet) }],
+    })),
+    refunds:
+      refundedTotal !== "0.00" || refundLineItems.length > 0
+        ? [
+            {
+              transactions: [
+                { status: "success", kind: "refund", amount: refundedTotal },
+              ],
+              refund_line_items: refundLineItems,
+            },
+          ]
+        : [],
   });
 
-  // --- line items ---
-  const variantGids = node.lineItems.nodes
-    .map((item) => item.variant?.id)
-    .filter((id): id is string => !!id);
-
-  const variants = variantGids.length
-    ? await prisma.variant.findMany({
-        where: { shopId, shopifyId: { in: variantGids } },
-        select: { id: true, shopifyId: true, productId: true, unitCost: true },
-      })
-    : [];
-  const variantByGid = new Map(variants.map((v) => [v.shopifyId, v]));
-
-  // Mapped before the lock is taken — see order-lock: the critical section
-  // should contain writes and nothing else.
-  const lineItemRows = node.lineItems.nodes.map((item) => {
-        const variant = item.variant?.id
-          ? variantByGid.get(item.variant.id)
-          : undefined;
-
-        return {
-          shopId,
-          orderId: order.id,
-          shopifyId: item.id,
-          variantId: variant?.id ?? null,
-          productId: variant?.productId ?? null,
-          title: item.title,
-          sku: item.sku,
-          quantity: item.quantity,
-          unitPrice: money(item.originalUnitPriceSet),
-          discount: money(item.totalDiscountSet),
-          // Snapshotted from the variant's current landed cost. Historical
-          // costs are not retrievable from Shopify, so this is the best
-          // available basis — and it is frozen here so later cost changes
-          // cannot rewrite this order's profit.
-          unitCost: String(variant?.unitCost ?? "0"),
-          refundedQty: refundedQtyByLineItem.get(item.id) ?? 0,
-        };
-  });
-
-  const fulfillmentRows = node.fulfillments?.length
-    ? fulfillmentRowsForOrder(shopId, order.id, node.fulfillments)
-    : [];
-
-  /*
-   * Both collections in one critical section, not two.
-   *
-   * The import runs concurrently with live webhooks by design — `afterAuth`
-   * starts it without awaiting — so this races `syncOrderFromShopify` on
-   * exactly these rows. Taking the lock once for both keeps an order's line
-   * items and its fulfilments consistent with each other, and halves the
-   * lock traffic versus locking per collection.
-   */
-  await withOrderLock(order.id, async (tx) => {
-    await tx.orderLineItem.deleteMany({ where: { orderId: order.id } });
-    if (lineItemRows.length > 0) {
-      await tx.orderLineItem.createMany({ data: lineItemRows });
-    }
-
-    await tx.fulfillment.deleteMany({ where: { orderId: order.id } });
-    if (fulfillmentRows.length > 0) {
-      await tx.fulfillment.createMany({ data: fulfillmentRows });
-    }
-  });
+  // Fulfilments have their own Shopify source clock. Each write and its
+  // derived Order.fulfillmentStatus update still share the same order lock and
+  // transaction; a delayed pre-cancellation import row cannot win.
+  for (const fulfillment of node.fulfillments ?? []) {
+    await syncFulfillmentFromShopify(shopId, {
+      id: fulfillment.id,
+      order_id: node.id,
+      created_at: fulfillment.createdAt,
+      updated_at: fulfillment.updatedAt ?? fulfillment.createdAt,
+      status: fulfillment.status,
+      tracking_company: fulfillment.trackingInfo?.[0]?.company ?? null,
+      line_items: [{ quantity: fulfillment.totalQuantity ?? 0 }],
+    });
+  }
 }
 
 /**
@@ -1432,6 +1608,9 @@ export function fulfillmentRowsForOrder(
       shopifyId: fulfillment.id,
       status,
       createdAt,
+      shopifyUpdatedAt: new Date(
+        fulfillment.updatedAt ?? fulfillment.createdAt,
+      ),
       shippedAt: fulfillmentDidShip(status) ? createdAt : null,
       carrier: fulfillment.trackingInfo?.[0]?.company ?? null,
       itemCount: fulfillment.totalQuantity ?? 0,
@@ -1589,7 +1768,10 @@ export async function rebuildCapacityDays(shopId: string) {
     };
   });
 
-  const observedCeiling = Math.max(...rows.map((row) => row.ordersFulfilled), 0);
+  const observedCeiling = Math.max(
+    ...rows.map((row) => row.ordersFulfilled),
+    0,
+  );
   for (const row of rows) row.maxDailyCapacity = observedCeiling;
 
   await prisma.capacityDay.deleteMany({ where: { shopId } });
@@ -1599,43 +1781,6 @@ export async function rebuildCapacityDays(shopId: string) {
 }
 
 // ---------------------------------------------------------------------------
-
-export interface OrderResumePoint {
-  /** Shopify's `endCursor` from the last page this shop actually imported. */
-  cursor: string;
-  /** Orders already written by the interrupted run, so the cap stays a total. */
-  importedOrders: number;
-}
-
-/**
- * Where an interrupted import should pick the order walk up again.
- *
- * The cursor has been written after every page since the sync columns were
- * added; nothing ever read it, so an import killed 19,000 orders in — by a
- * deploy, a crash, or the hour-long staleness rule in `backfillIsStale` — began
- * again at the first order and cost the merchant the whole walk a second time.
- *
- * Only an attempt that did not finish may be resumed. COMPLETE means the walk
- * ended and the next run is a genuine re-import; PENDING is set by
- * `ensureShopProvisioned` when the granted scopes change, and those runs must
- * re-read the store from the beginning because the query itself is now asking
- * for different fields.
- */
-export function resumePointFor(shop: {
-  syncStatus: SyncStatus;
-  syncCursor: string | null;
-  syncedOrders: number;
-}): OrderResumePoint | null {
-  if (!shop.syncCursor) return null;
-  if (shop.syncStatus !== SyncStatus.RUNNING && shop.syncStatus !== SyncStatus.FAILED) {
-    return null;
-  }
-
-  return {
-    cursor: shop.syncCursor,
-    importedOrders: Math.max(0, shop.syncedOrders),
-  };
-}
 
 /** Exported for test only — see backfill-resume.test.ts. */
 export function isInvalidCursorError(error: unknown): boolean {
@@ -1653,17 +1798,6 @@ async function priorOrderHistory(shopId: string | null): Promise<Date | null> {
   });
 
   return oldest._min.processedAt ?? null;
-}
-
-export function backfillIsStale(shop: {
-  syncStatus: SyncStatus;
-  syncStartedAt: Date | null;
-}): boolean {
-  // A RUNNING import whose process died would otherwise show a spinner for
-  // ever. Anything still running after an hour is treated as abandoned.
-  if (shop.syncStatus !== SyncStatus.RUNNING) return false;
-  if (!shop.syncStartedAt) return true;
-  return Date.now() - shop.syncStartedAt.getTime() > 3_600_000;
 }
 
 export { Channel };

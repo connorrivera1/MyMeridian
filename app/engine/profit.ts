@@ -99,8 +99,9 @@ export function attributeAdSpend(
     const day = dayKey(row.date, timeZone);
 
     const matched =
-      (row.campaignId ? byCampaignDay.get(`${row.campaignId}|${day}`) : undefined) ??
-      byChannelDay.get(`${row.channel}|${day}`);
+      (row.campaignId
+        ? byCampaignDay.get(`${row.campaignId}|${day}`)
+        : undefined) ?? byChannelDay.get(`${row.channel}|${day}`);
 
     if (!matched || matched.length === 0) {
       unattributedCents += row.spendCents;
@@ -111,9 +112,15 @@ export function attributeAdSpend(
       continue;
     }
 
-    const shares = allocate(row.spendCents, matched.map(() => 1));
+    const shares = allocate(
+      row.spendCents,
+      matched.map(() => 1),
+    );
     matched.forEach((order, i) => {
-      byOrderId.set(order.id, (byOrderId.get(order.id) ?? 0) + (shares[i] ?? 0));
+      byOrderId.set(
+        order.id,
+        (byOrderId.get(order.id) ?? 0) + (shares[i] ?? 0),
+      );
     });
   }
 
@@ -186,7 +193,10 @@ export function allocateOverhead(
       );
     }
 
-    const shares = allocate(amount, monthOrders.map(() => 1));
+    const shares = allocate(
+      amount,
+      monthOrders.map(() => 1),
+    );
     monthOrders.forEach((order, i) => {
       byOrderId.set(order.id, shares[i] ?? 0);
     });
@@ -256,6 +266,18 @@ export function computeOrderProfit(
     applyRate(order.totalCents, rules.paymentPercentRate) +
     rules.paymentFixedPerOrderCents;
 
+  // Confirmation means the merchant reviewed a rule; it does not turn a
+  // modelled fee or fallback into measured order-level data. Keep affected
+  // orders visibly estimated until a real source supplies the cost.
+  const estimatedPaymentFee = paymentFeeCents !== 0;
+  const estimatedShippingDefault =
+    usedDefaultShipping && shippingCostCents !== 0;
+  const estimatedPickPack = usedDefaultPickPack && pickPackCents !== 0;
+  // Monthly overhead participates in the net-profit allocation for every
+  // order in its month. Even when cent rounding gives a particular order a
+  // zero share, its headline still rests on that non-zero monthly assumption.
+  const estimatedOverhead = rules.monthlyOverheadCents !== 0;
+
   const totalCostCents =
     cogsCents +
     shippingCostCents +
@@ -303,12 +325,25 @@ export function computeOrderProfit(
     // meaningless one — a fully refunded order would otherwise report something
     // like 26,000%. Report "no margin to compute" instead.
     contributionMarginPct:
-      netRevenueCents > 0 ? ratio(contributionProfitCents, netRevenueCents) : null,
+      netRevenueCents > 0
+        ? ratio(contributionProfitCents, netRevenueCents)
+        : null,
     netMarginPct:
       netRevenueCents > 0 ? ratio(netProfitCents, netRevenueCents) : null,
 
     units,
-    usesEstimatedCosts: missingCost || usedDefaultShipping || usedDefaultPickPack,
+    hasMissingCogs: missingCost,
+    usesModeledCosts:
+      estimatedPaymentFee ||
+      estimatedShippingDefault ||
+      estimatedPickPack ||
+      estimatedOverhead,
+    usesEstimatedCosts:
+      missingCost ||
+      estimatedPaymentFee ||
+      estimatedShippingDefault ||
+      estimatedPickPack ||
+      estimatedOverhead,
   };
 }
 
@@ -413,6 +448,8 @@ export function computeProfitForPeriod(
     averageOrderValueCents: orderCount
       ? Math.round(netRevenueCents / orderCount)
       : 0,
-    profitPerOrderCents: orderCount ? Math.round(netProfitCents / orderCount) : 0,
+    profitPerOrderCents: orderCount
+      ? Math.round(netProfitCents / orderCount)
+      : 0,
   };
 }

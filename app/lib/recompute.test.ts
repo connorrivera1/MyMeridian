@@ -1,32 +1,25 @@
-import { describe, expect, it, vi } from "vitest";
-
-/**
- * Cover for the raw statements `recompute` writes its results back through.
- *
- * Prisma is mocked rather than hit, in the house style — the assertions here are
- * about the SQL these functions *generate*, which is exactly where the defect
- * they cover lived. The behaviour itself was proved separately against real
- * Postgres inside a rolled-back transaction, because no mock can tell you how a
- * server casts a bound `Date`.
- *
- * `writeCustomerAggregates` cast a bound `Date` straight to `::timestamp` when
- * writing `Customer.firstOrderAt`. That renders the instant in the *session*
- * time zone and then discards the offset, so the stored value was shifted by
- * whatever `TimeZone` the connection had — and shifted by a different amount
- * either side of a DST transition. Measured against the live database on this
- * machine (`America/New_York`): −5h on 2026-03-01, −4h on 2026-03-15, against a
- * Prisma ORM write of the same instant landing at exactly 0h.
- *
- * Every other writer of that column — `syncCustomer`, `reconcileFirstOrder`, the
- * backfill and the seed — goes through Prisma and stores UTC. So this was one
- * column with two writers and two meanings, the same shape as the `shippedAt`
- * defect: `reconcileFirstOrder` would settle a customer's first order and the
- * next `recompute` would quietly move it.
- */
+import { computeProfitForPeriod } from "~/engine/profit";
+import type {
+  AdSpendRow,
+  CostRuleSet,
+  EngineOrder,
+} from "~/engine/types";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const executeRawCalls: unknown[][] = [];
+const queryRawCalls: unknown[][] = [];
 const shopFindUniqueOrThrow = vi.fn();
 const shopUpdate = vi.fn();
+const orderAggregate = vi.fn();
+
+interface Slice {
+  monthKey: string;
+  from: Date;
+  toExclusive: Date;
+}
+
+let monthSlices: Slice[] = [];
+let customerRowsUpdated = 1;
 
 vi.mock("~/db.server", () => ({
   default: {
@@ -34,55 +27,93 @@ vi.mock("~/db.server", () => ({
       findUniqueOrThrow: (...args: unknown[]) => shopFindUniqueOrThrow(...args),
       update: (...args: unknown[]) => shopUpdate(...args),
     },
+    order: {
+      aggregate: (...args: unknown[]) => orderAggregate(...args),
+    },
+    $queryRaw: (...args: unknown[]) => {
+      queryRawCalls.push(args);
+      return Promise.resolve(monthSlices);
+    },
     $executeRaw: (...args: unknown[]) => {
       executeRawCalls.push(args);
-      return Promise.resolve(1);
+      const [strings] = args as [readonly string[]];
+      return Promise.resolve(
+        strings.join("").includes("WITH aggregates") ? customerRowsUpdated : 1,
+      );
     },
   },
 }));
 
-vi.mock("~/data/queries.server", () => ({
-  loadEngineOrders: vi.fn().mockResolvedValue([
-    {
-      id: "order_1",
-      orderNumber: 1001,
-      processedAt: new Date("2026-03-15T02:30:00.000Z"),
-      customerId: "cust_1",
-      channel: "GOOGLE",
-      campaignId: null,
-      isFirstOrder: true,
-      subtotalCents: 10000,
-      discountTotalCents: 0,
-      shippingChargedCents: 0,
-      taxTotalCents: 0,
-      totalCents: 10000,
-      refundedTotalCents: 0,
-      actualShippingCostCents: null,
-      actualPickPackCostCents: null,
-      lineItems: [],
-    },
-  ]),
-  loadAdSpend: vi.fn().mockResolvedValue([]),
-  loadCostRules: vi.fn().mockResolvedValue({
-    paymentPercentRate: 0,
-    paymentFixedPerOrderCents: 0,
-    shippingDefaultPerOrderCents: 0,
-    pickPackPerOrderCents: 0,
-    pickPackPerItemCents: 0,
-    monthlyOverheadCents: 0,
-  }),
-}));
+const DEFAULT_RULES: CostRuleSet = {
+  paymentPercentRate: 0,
+  paymentFixedPerOrderCents: 0,
+  shippingDefaultPerOrderCents: 0,
+  pickPackPerOrderCents: 0,
+  pickPackPerItemCents: 0,
+  monthlyOverheadCents: 0,
+  provenance: {
+    paymentFee: null,
+    shippingDefault: null,
+    pickPack: null,
+    monthlyOverhead: null,
+  },
+};
+
+const loadEngineOrders = vi.fn<
+  (shopId: string, range: { from: Date; to: Date }) => Promise<EngineOrder[]>
+>();
+const loadAdSpend = vi.fn<
+  (shopId: string, range: { from: Date; to: Date }) => Promise<AdSpendRow[]>
+>();
+const loadCostRules = vi.fn(async () => DEFAULT_RULES);
+const assertEngineOrderWindow = vi.fn<
+  (shopId: string, range: { from: Date; to: Date }) => Promise<number>
+>();
+
+vi.mock("~/data/queries.server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/data/queries.server")>();
+  return {
+    ...actual,
+    assertEngineOrderWindow: (
+      ...args: Parameters<typeof assertEngineOrderWindow>
+    ) => assertEngineOrderWindow(...args),
+    loadEngineOrders: (...args: Parameters<typeof loadEngineOrders>) =>
+      loadEngineOrders(...args),
+    loadAdSpend: (...args: Parameters<typeof loadAdSpend>) =>
+      loadAdSpend(...args),
+    loadCostRules: (...args: Parameters<typeof loadCostRules>) =>
+      loadCostRules(...args),
+  };
+});
 
 const { recomputeShopProfitability } = await import("./recompute.server");
-const { loadAdSpend, loadEngineOrders } = await import("~/data/queries.server");
+const { WindowTooLargeError } = await import("~/data/queries.server");
 
-/** Flatten a tagged-template call into the SQL text it would send. */
+const LA = "America/Los_Angeles";
+const DEFAULT_ORDER: EngineOrder = {
+  id: "order_1",
+  orderNumber: 1001,
+  processedAt: new Date("2026-03-15T02:30:00.000Z"),
+  customerId: "cust_1",
+  channel: "GOOGLE",
+  campaignId: null,
+  isFirstOrder: true,
+  subtotalCents: 10_000,
+  discountTotalCents: 0,
+  shippingChargedCents: 0,
+  taxTotalCents: 0,
+  totalCents: 10_000,
+  refundedTotalCents: 0,
+  actualShippingCostCents: null,
+  actualPickPackCostCents: null,
+  lineItems: [],
+};
+
 function sqlTextOf(call: unknown[]): string {
   const [strings, ...values] = call as [readonly string[], ...unknown[]];
   return strings
     .map((part, i) => {
       const value = values[i];
-      // Nested `Prisma.sql` fragments carry their own template strings.
       const nested =
         value && typeof value === "object" && "strings" in (value as object)
           ? (value as { strings: readonly string[] }).strings.join("?")
@@ -92,97 +123,385 @@ function sqlTextOf(call: unknown[]): string {
     .join("");
 }
 
-async function runRecompute() {
-  executeRawCalls.length = 0;
-  vi.mocked(loadEngineOrders).mockClear();
-  vi.mocked(loadAdSpend).mockClear();
-  shopFindUniqueOrThrow.mockResolvedValue({
-    id: "shop_1",
-    timezone: "America/Los_Angeles",
-  });
-  shopUpdate.mockResolvedValue({});
-  await recomputeShopProfitability("shop_1");
-  return executeRawCalls.map(sqlTextOf);
+function slice(
+  monthKey: string,
+  from: string,
+  toExclusive: string,
+): Slice {
+  return {
+    monthKey,
+    from: new Date(from),
+    toExclusive: new Date(toExclusive),
+  };
 }
 
-describe("recompute is whole-history by construction", () => {
-  /**
-   * `writeCustomerAggregates` rolls `ordersCount`, `lifetimeRevenue`,
-   * `lifetimeProfit` and `firstOrderAt` out of the orders this run loaded, and
-   * writes them under lifetime names. That is only true if the run loaded the
-   * customer's whole history. `recomputeShopProfitability` used to take an
-   * optional `range` — unused by all four callers, but public, optional, and
-   * shaped exactly like a safe incremental-update knob. Passing one would have
-   * written window totals under a lifetime label and dragged `firstOrderAt`
-   * forward to the earliest order in the window, undoing `reconcileFirstOrder`
-   * on the very column the timestamptz fix below exists to protect.
-   */
+function order(
+  id: string,
+  processedAt: string,
+  overrides: Partial<EngineOrder> = {},
+): EngineOrder {
+  return {
+    ...DEFAULT_ORDER,
+    id,
+    orderNumber: 2000 + Number(id.replace(/\D/g, "") || 0),
+    processedAt: new Date(processedAt),
+    ...overrides,
+  };
+}
 
-  it("takes only a shop id — no range parameter to pass by mistake", () => {
+function spend(
+  date: string,
+  spendCents: number,
+  overrides: Partial<AdSpendRow> = {},
+): AdSpendRow {
+  return {
+    date: new Date(date),
+    channel: "FACEBOOK",
+    campaignId: null,
+    campaignName: null,
+    spendCents,
+    impressions: 0,
+    clicks: 0,
+    platformConversions: 0,
+    platformRevenueCents: 0,
+    ...overrides,
+  };
+}
+
+beforeEach(() => {
+  executeRawCalls.length = 0;
+  queryRawCalls.length = 0;
+  customerRowsUpdated = 1;
+  monthSlices = [
+    slice(
+      "2026-03",
+      "2026-03-01T08:00:00.000Z",
+      "2026-04-01T07:00:00.000Z",
+    ),
+  ];
+
+  shopFindUniqueOrThrow.mockReset();
+  shopFindUniqueOrThrow.mockResolvedValue({
+    id: "shop_1",
+    timezone: LA,
+  });
+  shopUpdate.mockReset();
+  shopUpdate.mockResolvedValue({});
+  orderAggregate.mockReset();
+  orderAggregate.mockResolvedValue({
+    _min: { processedAt: DEFAULT_ORDER.processedAt },
+  });
+
+  loadEngineOrders.mockReset();
+  loadEngineOrders.mockResolvedValue([DEFAULT_ORDER]);
+  loadAdSpend.mockReset();
+  loadAdSpend.mockResolvedValue([]);
+  loadCostRules.mockReset();
+  loadCostRules.mockResolvedValue(DEFAULT_RULES);
+  assertEngineOrderWindow.mockReset();
+  assertEngineOrderWindow.mockResolvedValue(1);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+async function runRecompute() {
+  const result = await recomputeShopProfitability("shop_1");
+  return {
+    result,
+    statements: executeRawCalls.map(sqlTextOf),
+    monthQuery: queryRawCalls.map(sqlTextOf).join("\n"),
+  };
+}
+
+describe("bounded whole-history recompute", () => {
+  it("takes only a shop id and holds the public whole-history contract", () => {
     expect(recomputeShopProfitability.length).toBe(1);
   });
 
-  it("loads orders and spend from the epoch, not from a window", async () => {
-    await runRecompute();
+  it("discovers order and spend months in the merchant timezone", async () => {
+    const { monthQuery } = await runRecompute();
 
-    for (const loader of [loadEngineOrders, loadAdSpend]) {
-      const [shopId, range] = vi.mocked(loader).mock.calls[0] as [string, { from: Date; to: Date }];
-      expect(shopId).toBe("shop_1");
-      expect(range.from.getTime()).toBe(0);
-      // `to` reaches past now, so an order processed moments ago is still in.
-      expect(range.to.getTime()).toBeGreaterThan(Date.now());
-    }
+    expect(monthQuery).toContain('FROM "Order"');
+    expect(monthQuery).toContain('FROM "AdSpend"');
+    expect(monthQuery).toContain("AT TIME ZONE");
+    expect(monthQuery).toContain("ORDER BY month_key ASC");
   });
 
-  it("passes the same range to every loader, so aggregates cannot straddle windows", async () => {
+  it("loads complete LA calendar months, including the DST boundary", async () => {
+    monthSlices = [
+      slice(
+        "2026-02",
+        "2026-02-01T08:00:00.000Z",
+        "2026-03-01T08:00:00.000Z",
+      ),
+      slice(
+        "2026-03",
+        "2026-03-01T08:00:00.000Z",
+        "2026-04-01T07:00:00.000Z",
+      ),
+    ];
+    loadEngineOrders.mockResolvedValue([]);
+
     await runRecompute();
 
-    const orderRange = vi.mocked(loadEngineOrders).mock.calls[0]![1];
-    const spendRange = vi.mocked(loadAdSpend).mock.calls[0]![1];
+    const ranges = loadEngineOrders.mock.calls.map(([, range]) => range);
+    expect(ranges[0]).toEqual({
+      from: new Date("2026-02-01T08:00:00.000Z"),
+      to: new Date("2026-03-01T07:59:59.999Z"),
+    });
+    // March is 743 hours in Los Angeles because clocks spring forward. A UTC
+    // month would end at 08:00 and overlap April's first local hour.
+    expect(ranges[1]).toEqual({
+      from: new Date("2026-03-01T08:00:00.000Z"),
+      to: new Date("2026-04-01T06:59:59.999Z"),
+    });
+  });
 
-    expect(orderRange.from.getTime()).toBe(spendRange.from.getTime());
-    expect(orderRange.to.getTime()).toBe(spendRange.to.getTime());
+  it("is scalar-equivalent to one-shot computation across partial boundaries, DST, attribution, and pennies", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-20T12:00:00.000Z"));
+
+    monthSlices = [
+      slice(
+        "2026-01",
+        "2026-01-01T08:00:00.000Z",
+        "2026-02-01T08:00:00.000Z",
+      ),
+      // Deliberately spend-only: a month query derived only from Order would
+      // silently drop this money from net profit.
+      slice(
+        "2026-02",
+        "2026-02-01T08:00:00.000Z",
+        "2026-03-01T08:00:00.000Z",
+      ),
+      slice(
+        "2026-03",
+        "2026-03-01T08:00:00.000Z",
+        "2026-04-01T07:00:00.000Z",
+      ),
+    ];
+
+    const orders = [
+      order("order_1", "2026-01-15T20:00:00.000Z", {
+        channel: "FACEBOOK",
+        campaignId: "campaign-a",
+        subtotalCents: 12_345,
+        totalCents: 13_580,
+        taxTotalCents: 1_235,
+        refundedTotalCents: 101,
+      }),
+      order("order_2", "2026-01-20T20:00:00.000Z", {
+        channel: "FACEBOOK",
+      }),
+      // Both instants are March 8 in LA, on opposite sides of the DST jump.
+      order("order_3", "2026-03-08T09:30:00.000Z", {
+        channel: "GOOGLE",
+      }),
+      order("order_4", "2026-03-08T10:30:00.000Z", {
+        channel: "GOOGLE",
+      }),
+    ];
+    const spendRows = [
+      spend("2026-01-15T12:00:00.000Z", 101, {
+        campaignId: "campaign-a",
+      }),
+      spend("2026-01-20T12:00:00.000Z", 37),
+      spend("2026-01-22T12:00:00.000Z", 19), // unattributed
+      spend("2026-02-12T12:00:00.000Z", 777), // spend-only month
+      // One indivisible cent split across two same-day orders.
+      spend("2026-03-08T12:00:00.000Z", 1, { channel: "GOOGLE" }),
+    ];
+    const rules: CostRuleSet = {
+      ...DEFAULT_RULES,
+      paymentPercentRate: 0.029,
+      paymentFixedPerOrderCents: 30,
+      monthlyOverheadCents: 1_001,
+    };
+    const earliest = orders[0]!.processedAt;
+    const globalRange = {
+      from: earliest,
+      to: new Date("2026-03-21T12:00:00.000Z"),
+    };
+
+    orderAggregate.mockResolvedValue({ _min: { processedAt: earliest } });
+    loadCostRules.mockResolvedValue(rules);
+    loadEngineOrders.mockImplementation(async (_shopId, range) =>
+      orders.filter(
+        (row) => row.processedAt >= range.from && row.processedAt <= range.to,
+      ),
+    );
+    loadAdSpend.mockImplementation(async (_shopId, range) =>
+      spendRows.filter((row) => row.date >= range.from && row.date <= range.to),
+    );
+
+    const expected = computeProfitForPeriod(
+      orders,
+      spendRows,
+      rules,
+      LA,
+      globalRange,
+    );
+    const { result } = await runRecompute();
+
+    expect(result).toMatchObject({
+      ordersUpdated: expected.orderCount,
+      netProfitCents: expected.netProfitCents,
+      unattributedAdSpendCents: expected.unattributedAdCostCents,
+    });
+    expect(loadEngineOrders).toHaveBeenCalledTimes(3);
+    expect(loadAdSpend).toHaveBeenCalledTimes(3);
+    // Row reads freeze at the run start; only overhead proration reaches the
+    // following day. A late order cannot slip into the current-month query.
+    expect(loadEngineOrders.mock.calls.at(-1)![1].to).toEqual(
+      new Date("2026-03-20T12:00:00.000Z"),
+    );
+    // February was not skipped merely because it had no orders.
+    expect(
+      loadAdSpend.mock.calls.some(([, range]) =>
+        (range.from as Date) < new Date("2026-02-15T00:00:00.000Z") &&
+        (range.to as Date) > new Date("2026-02-15T00:00:00.000Z"),
+      ),
+    ).toBe(true);
+  });
+
+  it("admits more than 60k lifetime orders when no single month exceeds the guard", async () => {
+    monthSlices = [
+      slice(
+        "2026-01",
+        "2026-01-01T08:00:00.000Z",
+        "2026-02-01T08:00:00.000Z",
+      ),
+      slice(
+        "2026-02",
+        "2026-02-01T08:00:00.000Z",
+        "2026-03-01T08:00:00.000Z",
+      ),
+    ];
+    // Represent 40k in each month without allocating 80k object graphs.
+    assertEngineOrderWindow
+      .mockResolvedValueOnce(40_000)
+      .mockResolvedValueOnce(40_000);
+    loadEngineOrders.mockResolvedValue([]);
+
+    await expect(recomputeShopProfitability("shop_1")).resolves.toMatchObject({
+      ordersUpdated: 0,
+    });
+    expect(assertEngineOrderWindow).toHaveBeenCalledTimes(2);
+    expect(loadEngineOrders).toHaveBeenCalledTimes(2);
+  });
+
+  it("preflights every month so a later oversized month cannot leave partial writes", async () => {
+    monthSlices = [
+      slice(
+        "2026-01",
+        "2026-01-01T08:00:00.000Z",
+        "2026-02-01T08:00:00.000Z",
+      ),
+      slice(
+        "2026-02",
+        "2026-02-01T08:00:00.000Z",
+        "2026-03-01T08:00:00.000Z",
+      ),
+    ];
+    assertEngineOrderWindow
+      .mockResolvedValueOnce(40_000)
+      .mockRejectedValueOnce(new WindowTooLargeError(60_001, 60_000));
+
+    await expect(recomputeShopProfitability("shop_1")).rejects.toBeInstanceOf(
+      WindowTooLargeError,
+    );
+    expect(assertEngineOrderWindow).toHaveBeenCalledTimes(2);
+    expect(loadEngineOrders).not.toHaveBeenCalled();
+    expect(shopUpdate).not.toHaveBeenCalled();
+    // Not even January's order UPDATE ran before February refused admission.
+    expect(executeRawCalls).toHaveLength(0);
+  });
+
+  it("deduplicates concurrent recomputes and admits the whole run only once", async () => {
+    let releaseOrders!: (orders: EngineOrder[]) => void;
+    loadEngineOrders.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseOrders = resolve;
+        }),
+    );
+
+    const first = recomputeShopProfitability("shop_1");
+    const second = recomputeShopProfitability("shop_1");
+
+    expect(first).toBe(second);
+    await vi.waitFor(() => expect(loadEngineOrders).toHaveBeenCalledTimes(1));
+    releaseOrders([]);
+    await Promise.all([first, second]);
+    expect(loadEngineOrders).toHaveBeenCalledTimes(1);
   });
 });
 
-describe("writeCustomerAggregates timestamp binding", () => {
-  it("casts firstOrderAt through timestamptz and back to UTC", async () => {
-    const statements = await runRecompute();
-    const customerWrite = statements.find((s) => s.includes('"firstOrderAt"'));
+describe("SQL customer lifetime reset", () => {
+  it("aggregates every shop customer and resets customers with no orders", async () => {
+    loadEngineOrders.mockResolvedValue([]);
+    orderAggregate.mockResolvedValue({ _min: { processedAt: null } });
+    customerRowsUpdated = 7;
 
-    expect(customerWrite).toBeDefined();
-    expect(customerWrite).toContain("::timestamptz AT TIME ZONE 'UTC'");
-  });
+    const { result, statements } = await runRecompute();
+    const customerWrite = statements.find((sql) =>
+      sql.includes("WITH aggregates"),
+    )!;
 
-  it("never casts a bound Date straight to ::timestamp", async () => {
-    const statements = await runRecompute();
-    const customerWrite = statements.find((s) => s.includes('"firstOrderAt"'))!;
-
-    // The bug was a single missing `tz`. `::timestamp` immediately followed by
-    // anything other than `tz` is the shape that silently drops the offset.
-    expect(customerWrite).not.toMatch(/::timestamp(?!tz)/);
-  });
-
-  it("still writes the other customer aggregate columns", async () => {
-    const statements = await runRecompute();
-    const customerWrite = statements.find((s) => s.includes('"firstOrderAt"'))!;
-
-    for (const column of ['"ordersCount"', '"lifetimeRevenue"', '"lifetimeProfit"']) {
-      expect(customerWrite).toContain(column);
-    }
-    // The write stays scoped to the shop — a VALUES join with no shop predicate
-    // would let one shop's recompute update another's customer row.
+    expect(result.customersUpdated).toBe(7);
+    expect(customerWrite).toContain('FROM "Customer" AS c');
+    expect(customerWrite).toContain('LEFT JOIN "Order" AS o');
+    expect(customerWrite).toContain("COUNT(o.id)");
+    expect(customerWrite).toContain('MIN(o."processedAt")');
     expect(customerWrite).toContain('c."shopId"');
   });
 
-  it("leaves the order profit write on server-side NOW() for computedAt", async () => {
-    const statements = await runRecompute();
-    const orderWrite = statements.find((s) => s.includes('"netProfit"'));
+  it("applies JavaScript rounding to each ex-tax refund before summing revenue", async () => {
+    const { statements } = await runRecompute();
+    const customerWrite = statements.find((sql) =>
+      sql.includes("WITH aggregates"),
+    )!;
 
-    expect(orderWrite).toBeDefined();
-    // `computedAt` is the one timestamp here that is not a bound Date, so it
-    // never had the offset problem and should stay as it is.
-    expect(orderWrite).toContain('"computedAt"         = NOW()');
-    expect(orderWrite).not.toMatch(/::timestamp(?!tz)/);
+    const roundAt = customerWrite.indexOf("FLOOR(");
+    const sumAt = customerWrite.indexOf("SUM(");
+    // FLOOR(x + 0.5), JavaScript's Math.round rule, is nested inside SUM rather
+    // than applied to the customer total.
+    expect(sumAt).toBeGreaterThanOrEqual(0);
+    expect(roundAt).toBeGreaterThan(sumAt);
+    expect(customerWrite).toContain('o."refundedTotal" * 100');
+    expect(customerWrite).toContain('o.total - o."taxTotal"');
+    expect(customerWrite).toContain("+ 0.5");
+  });
+
+  it("keeps post-cutoff orders out of customer totals without losing empty customers", async () => {
+    const { statements } = await runRecompute();
+    const customerWrite = statements.find((sql) =>
+      sql.includes("WITH aggregates"),
+    )!;
+
+    const joinAt = customerWrite.indexOf('LEFT JOIN "Order" AS o');
+    const cutoffAt = customerWrite.indexOf('o."processedAt" <=');
+    const whereAt = customerWrite.indexOf('WHERE c."shopId"');
+    expect(joinAt).toBeGreaterThanOrEqual(0);
+    expect(cutoffAt).toBeGreaterThan(joinAt);
+    // In the JOIN predicate, not WHERE: otherwise the LEFT JOIN collapses and
+    // stale customers with no eligible orders never receive their reset.
+    expect(cutoffAt).toBeLessThan(whereAt);
+    expect(customerWrite).toContain("::timestamptz AT TIME ZONE 'UTC'");
+  });
+
+  it("updates the shop stamp only after every order and customer write", async () => {
+    vi.useFakeTimers();
+    const cutoff = new Date("2026-08-10T17:45:00.000Z");
+    vi.setSystemTime(cutoff);
+    await runRecompute();
+
+    expect(shopUpdate).toHaveBeenCalledWith({
+      where: { id: "shop_1" },
+      data: { lastComputedAt: cutoff },
+    });
+    expect(executeRawCalls.map(sqlTextOf).at(-1)).toContain("WITH aggregates");
   });
 });

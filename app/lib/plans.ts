@@ -16,9 +16,9 @@
  * There is a `Connector` model, encrypted token storage and a settings row for
  * Meta, Google and TikTok, but no OAuth flow and no platform API client
  * anywhere in the tree — `provision.server.ts` creates every connector
- * `NOT_CONFIGURED` and nothing ever configures one, and the only writer of
- * `AdSpend` in the repo is `prisma/seed.ts`. So the seeded demo shows spend and
- * a real store shows `$0.00` forever.
+ * `NOT_CONFIGURED` and nothing ever configures one. The seed no longer writes
+ * `AdSpend` either, so both demo and real stores disclose spend as unavailable
+ * unless a future connector or explicit import creates measured rows.
  *
  * Starter used to sell "One ad channel connected" and Growth "Unlimited ad
  * channels + blended CAC". A reviewer walks `/app/plan` during billing review
@@ -27,10 +27,18 @@
  * claim is put back; lift that test when the connectors ship, not before.
  *
  * What survives is what the code actually does without a platform token:
- * orders are attributed to a channel from their UTM parameters and referring
- * site (`sync.server.ts`), and each channel carries real revenue and
- * contribution profit (`ChannelPerformance`). That is true on Starter, so it is
- * sold there.
+   * orders are attributed to a channel from their UTM parameters and referring
+   * site (`sync.server.ts`), and each channel carries order-derived revenue plus
+   * contribution from the available cost inputs (`ChannelPerformance`). Missing
+   * COGS and modeled costs remain visibly qualified. That is true on Starter, so
+   * it is sold there.
+ *
+ * Cohort LTV and payback are equally real engine capabilities and equally
+ * unavailable to a normal install: both need `read_customers`, which is not in
+ * the requested scope set and must not be added before Shopify approves the
+ * protected-customer-data request. Scale used to sell those curves anyway.
+ * The engine remains ready for an approved future release, but no paid plan may
+ * promise the feature before that scope is both approved and requested.
  */
 export const PLANS = {
   starter: {
@@ -38,9 +46,9 @@ export const PLANS = {
     name: "Starter",
     price: 49,
     annualPrice: 490,
-    blurb: "Up to 1,000 orders / month",
+    blurb: "Core profitability reporting",
     features: [
-      "True profit per order",
+      "Order profit after configured costs",
       "Product margin analysis",
       "Revenue and profit by channel",
     ],
@@ -50,7 +58,7 @@ export const PLANS = {
     name: "Growth",
     price: 149,
     annualPrice: 1490,
-    blurb: "Up to 10,000 orders / month",
+    blurb: "Pricing and fulfilment tools",
     features: [
       "Everything in Starter",
       "Pricing recommendations",
@@ -62,11 +70,9 @@ export const PLANS = {
     name: "Scale",
     price: 399,
     annualPrice: 3990,
-    blurb: "Unlimited orders",
+    blurb: "Growth tools with priority support",
     features: [
       "Everything in Growth",
-      "Multi-location capacity modelling",
-      "Cohort LTV and payback curves",
       "Priority support",
     ],
   },

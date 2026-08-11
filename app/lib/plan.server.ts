@@ -1,7 +1,9 @@
 import prisma from "~/db.server";
+import { redirect } from "react-router";
 import type { ShopContext } from "~/lib/auth.server";
 import { planIdForSubscriptionName } from "~/lib/billing.server";
-import { PLANS, type PlanId } from "~/shopify.server";
+import { PLANS, type PlanId } from "~/lib/plans";
+import { refreshShopPlanSignal } from "~/lib/shop-plan.server";
 
 /**
  * Which plan a store is on, and what that entitles it to.
@@ -49,19 +51,23 @@ const PLAN_RANK: Record<PlanId, number> = {
  * `multiChannelAds: "growth"` used to sit here, and it was the same defect this
  * module was written to fix, one layer down: it was advertised on `/app/plan`,
  * asserted by a test, and passed to `planAllows` from nowhere at all — the
- * other three gates each have a real call site. It could not have had one,
+ * other gates each have a real call site. It could not have had one,
  * because no code path in the repo connects an ad platform or writes `AdSpend`
  * outside `prisma/seed.ts`. A gate over a capability that cannot exist is not a
- * gate; removing it is what makes the remaining three mean something. See the
+ * gate; removing it is what makes the remaining gates mean something. See the
  * header of `plans.ts` for what has to ship before it comes back.
+ *
+ * `cohorts: "scale"` was removed for the same product-truth reason. The gate
+ * had a call site, but the default OAuth request has no `read_customers` scope,
+ * so no real subscriber could satisfy the data prerequisite. Protected-data
+ * approval, the requested scope, and a real-store verification must land before
+ * cohort analysis can become a paid entitlement again.
  */
 export const FEATURE_MIN_PLAN = {
   /** Pricing recommendations from fitted demand curves. */
   pricing: "growth",
   /** Fulfilment capacity modelling and backlog alerts. */
   capacity: "growth",
-  /** Cohort lifetime value and payback curves. */
-  cohorts: "scale",
 } as const satisfies Record<string, PlanId>;
 
 export type Feature = keyof typeof FEATURE_MIN_PLAN;
@@ -93,12 +99,53 @@ export function planFor(feature: Feature): (typeof PLANS)[PlanId] {
 }
 
 /**
- * Charges are only real in production. A test charge on a development store
- * shows the full approval screen without ever taking money, which is what a
- * Shopify reviewer needs; a real charge against a dev store is rejected by
- * Shopify outright.
+ * Whether Shopify should create/read test charges for this store.
+ *
+ * Runtime mode is not store type. Fly correctly runs with NODE_ENV=production,
+ * including during App Store review, while the review install uses a
+ * development store that rejects real charges. Shopify's durable
+ * ShopPlan.partnerDevelopment field is the only production store-type signal;
+ * display labels and operator overrides can both become stale after a store
+ * conversion.
  */
-export const billingIsTest = process.env.NODE_ENV !== "production";
+export function billingIsTestForShop(
+  shop: {
+    domain: string;
+    partnerDevelopment?: boolean | null;
+    isDemo?: boolean;
+  },
+  env: { NODE_ENV?: string } = {
+    NODE_ENV: process.env.NODE_ENV,
+  },
+): boolean {
+  if (shop.isDemo || env.NODE_ENV !== "production") return true;
+  return shop.partnerDevelopment === true;
+}
+
+/**
+ * Resolve charge mode immediately before creating a subscription.
+ *
+ * A development store can later become a paid merchant store. The stored
+ * signal is useful for read-only UI and billing checks, but is never trusted
+ * for a new charge in production: every charge refreshes
+ * ShopPlan.partnerDevelopment from Shopify first. A failed lookup blocks the
+ * request; guessing `isTest` could either take real money from a review store
+ * or create a non-paying test subscription for a live merchant.
+ */
+export async function resolveBillingChargeMode(
+  ctx: ShopContext,
+  env: { NODE_ENV?: string } = {
+    NODE_ENV: process.env.NODE_ENV,
+  },
+): Promise<boolean> {
+  if (ctx.isDemo || env.NODE_ENV !== "production") return true;
+
+  if (!ctx.admin) {
+    throw new Error("Cannot verify Shopify store type without an Admin session");
+  }
+
+  return refreshShopPlanSignal(ctx.shop.id, ctx.admin);
+}
 
 /**
  * How long a stored plan is trusted before it is re-read from Shopify.
@@ -124,12 +171,43 @@ export async function resolvePlan(ctx: ShopContext): Promise<PlanState> {
     };
   }
 
+  let billingIsTest = billingIsTestForShop(ctx.shop);
+  let forceBillingRefresh = false;
+
+  // SHOP_UPDATE deliberately clears the signal because development stores can
+  // be converted to paid stores. Before trusting a cached subscription again,
+  // resolve that uncertainty and re-check the matching test/real subscription
+  // namespace. Otherwise a converted store could retain app access forever on
+  // its old test charge simply because the Subscription row was still fresh.
+  if (
+    process.env.NODE_ENV === "production" &&
+    typeof ctx.shop.partnerDevelopment !== "boolean"
+  ) {
+    if (!ctx.admin || !ctx.billing) return emptyState();
+    try {
+      billingIsTest = await refreshShopPlanSignal(ctx.shop.id, ctx.admin);
+      // The loader that called resolvePlan still holds this Shop object. Keep
+      // its in-request snapshot aligned with the persisted row so the Plan
+      // page's test-charge banner cannot contradict the mode just resolved.
+      ctx.shop.partnerDevelopment = billingIsTest;
+      forceBillingRefresh = true;
+    } catch (error) {
+      console.error(
+        `[billing] could not refresh store type for ${ctx.shop.domain}:`,
+        error,
+      );
+      return emptyState();
+    }
+  }
+
   const stored = await prisma.subscription.findUnique({
     where: { shopId: ctx.shop.id },
   });
 
   const fresh =
-    stored && Date.now() - stored.updatedAt.getTime() < PLAN_CACHE_MS;
+    !forceBillingRefresh &&
+    stored &&
+    Date.now() - stored.updatedAt.getTime() < PLAN_CACHE_MS;
 
   if (fresh) return fromRow(stored);
 
@@ -141,7 +219,9 @@ export async function resolvePlan(ctx: ShopContext): Promise<PlanState> {
   let status = "none";
 
   try {
-    const result = await ctx.billing.check({ isTest: billingIsTest });
+    const result = await ctx.billing.check({
+      isTest: billingIsTest,
+    });
 
     // A store can technically hold more than one active charge — take the most
     // generous, so a merchant mid-upgrade is never gated below what they pay.
@@ -165,6 +245,11 @@ export async function resolvePlan(ctx: ShopContext): Promise<PlanState> {
     // Shopify being unreachable must not lock a paying merchant out of the app
     // they have already been charged for.
     console.error(`[billing] check failed for ${ctx.shop.domain}:`, error);
+    // This check was forced by SHOP_UPDATE invalidation. The cached row might
+    // be an old test subscription on a store that just converted to paid, and
+    // Subscription has no trustworthy mode marker. Fail closed until Shopify
+    // can confirm a matching subscription instead of restoring stale access.
+    if (forceBillingRefresh) return emptyState();
     return stored ? fromRow(stored) : emptyState();
   }
 
@@ -181,6 +266,31 @@ export async function resolvePlan(ctx: ShopContext): Promise<PlanState> {
   });
 
   return fromRow(row);
+}
+
+/**
+ * Security boundary for paid child loaders/actions.
+ *
+ * React Router can execute a child loader without its parent during selective
+ * single-fetch requests. The layout redirect is useful navigation UX, but it
+ * cannot be the entitlement check. Every paid data path calls this shared
+ * guard before touching analytics or merchant settings; `/app/plan` is the
+ * deliberate exception and calls resolvePlan directly.
+ */
+export async function requireActivePlan(
+  ctx: ShopContext,
+  request: Request,
+): Promise<PlanState & { planId: PlanId }> {
+  const plan = await resolvePlan(ctx);
+  if (plan.planId) return plan as PlanState & { planId: PlanId };
+
+  const url = new URL(request.url);
+  const search = new URLSearchParams(url.searchParams);
+  // Internal selective-fetch controls must not survive into the browser URL.
+  search.delete("_routes");
+  search.delete("index");
+  const suffix = search.size ? `?${search.toString()}` : "";
+  throw redirect(`/app/plan${suffix}`);
 }
 
 function fromRow(row: {

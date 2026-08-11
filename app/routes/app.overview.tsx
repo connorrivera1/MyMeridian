@@ -32,8 +32,17 @@ import { change, loadDashboard } from "~/lib/route-data.server";
 import { bucketWeekly, dailySeries } from "~/lib/series";
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { shop, analytics, previous, rangeLabel, preset, capabilities, plan } =
-    await loadDashboard(request);
+  const dashboard = await loadDashboard(request);
+  const {
+    shop,
+    analytics,
+    previous,
+    rangeLabel,
+    preset,
+    capabilities,
+    plan,
+    adSpendCoverage,
+  } = dashboard;
 
   const p = analytics.period;
   const prior = previous.period;
@@ -73,8 +82,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
     contribution: daily.map((d) => d.contributionProfitCents),
     adSpend: daily.map((d) => d.adCostCents),
     orders: daily.map((d) => d.orders),
-    perOrder: daily.map((d) => (d.orders ? Math.round(d.netProfitCents / d.orders) : 0)),
-    aov: daily.map((d) => (d.orders ? Math.round(d.netRevenueCents / d.orders) : 0)),
+    perOrder: daily.map((d) =>
+      d.orders ? Math.round(d.netProfitCents / d.orders) : 0,
+    ),
+    aov: daily.map((d) =>
+      d.orders ? Math.round(d.netRevenueCents / d.orders) : 0,
+    ),
   };
 
   const bridge: BridgeStep[] = [
@@ -83,28 +96,49 @@ export async function loader({ request }: LoaderFunctionArgs) {
     { label: "Shipping", value: -p.shippingCostCents, kind: "cost" },
     { label: "Pick & pack", value: -p.pickPackCents, kind: "cost" },
     { label: "Payment fees", value: -p.paymentFeeCents, kind: "cost" },
-    { label: "Ad spend", value: -p.totalAdCostCents, kind: "cost" },
+    ...(adSpendCoverage.mode === "unavailable" && p.totalAdCostCents === 0
+      ? []
+      : ([
+          {
+            label: "Recorded ad spend",
+            value: -p.totalAdCostCents,
+            kind: "cost",
+          },
+        ] satisfies BridgeStep[])),
     { label: "Overhead", value: -p.overheadCents, kind: "cost" },
-    { label: "Net profit", value: p.netProfitCents, kind: "total" },
+    {
+      label:
+        adSpendCoverage.mode === "unavailable"
+          ? "Profit before paid marketing"
+          : "Profit after available costs",
+      value: p.netProfitCents,
+      kind: "total",
+    },
   ];
 
   const ranked = [...analytics.products].sort(
     (a, b) => b.contributionProfitCents - a.contributionProfitCents,
   );
+  const verdictReadyProducts = ranked.filter(
+    (product) => !product.hasMissingCogs,
+  );
 
-  const estimatedOrders = p.orders.filter((o) => o.usesEstimatedCosts).length;
+  const missingCogsOrders = p.orders.filter((o) => o.hasMissingCogs).length;
+  const modeledCostOrders = p.orders.filter((o) => o.usesModeledCosts).length;
 
   return {
     rangeLabel,
     preset,
     currency: shop.currency,
+    timezone: shop.timezone,
     capabilities,
+    adSpendCoverage,
     greeting,
     kickerDate,
     shopName: shop.name,
     // Cost access can be granted and still unused if the merchant never filled
     // in "Cost per item", so the check is on the data, not just the scope.
-    missingCogs: p.cogsCents === 0 && p.orderCount > 0,
+    missingCogs: missingCogsOrders > 0,
     kpi: {
       netProfitCents: p.netProfitCents,
       netProfitChange: change(p.netProfitCents, prior.netProfitCents),
@@ -128,7 +162,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
       orderChange: change(p.orderCount, prior.orderCount),
       aovCents: p.averageOrderValueCents,
       unattributedAdCents: p.unattributedAdCostCents,
-      estimatedOrders,
+      missingCogsOrders,
+      modeledCostOrders,
     },
     bridge,
     spark,
@@ -137,8 +172,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
       profit: point.netProfitCents,
       revenue: point.netRevenueCents,
     })),
-    winners: ranked.slice(0, 4).map(compactProduct),
-    losers: ranked
+    winners: verdictReadyProducts
+      .filter((product) => product.contributionProfitCents >= 0)
+      .slice(0, 4)
+      .map(compactProduct),
+    losers: verdictReadyProducts
       .filter((product) => product.contributionProfitCents < 0)
       .slice(-4)
       .reverse()
@@ -193,7 +231,18 @@ const CHANNEL_ORDER: Channel[] = [
 
 export default function Overview() {
   const data = useLoaderData<typeof loader>();
+
+  return <OverviewView data={data} />;
+}
+
+type OverviewData = Awaited<ReturnType<typeof loader>>;
+
+export function OverviewView({ data }: { data: OverviewData }) {
   const { kpi } = data;
+  const adSpendMeasured = data.adSpendCoverage.mode !== "unavailable";
+  const profitBasis = adSpendMeasured
+    ? "after available costs"
+    : "before paid marketing";
 
   const seriesPoints = data.series.map((point) => ({
     date: new Date(point.date),
@@ -204,7 +253,10 @@ export default function Overview() {
     <>
       {/* The opening move, straight on the sky: the merchant is greeted by
           name, and the number they came for stands under it in sunlight. */}
-      <section className="greet sky-text" aria-label="Net profit summary">
+      <section
+        className="greet sky-text"
+        aria-label={`Profit ${profitBasis} summary`}
+      >
         <p className="greet-kicker">
           {data.kickerDate} · last {data.rangeLabel}
         </p>
@@ -212,8 +264,7 @@ export default function Overview() {
             so the greeting has to BE the h1 — otherwise this page starts at h2
             and has no top-level heading at all. */}
         <h1 className="greet-title">
-          {data.greeting}{" "}
-          <span className="greet-shop">{data.shopName}</span>
+          {data.greeting} <span className="greet-shop">{data.shopName}</span>
         </h1>
         <div className="greet-figure-row">
           <div className="greet-amount">
@@ -225,18 +276,21 @@ export default function Overview() {
           </div>
           <Delta value={kpi.netProfitChange} />
           <span className="greet-caption">
-            net profit kept, vs previous {data.rangeLabel}
+            profit {profitBasis}
+            , vs previous {data.rangeLabel}
           </span>
         </div>
         <div className="greet-meta">
           <span className="chip">
-            {kpi.netMarginPct === null ? "—" : formatPercent(kpi.netMarginPct)} net margin
+            {kpi.netMarginPct === null ? "—" : formatPercent(kpi.netMarginPct)}{" "}
+            margin {profitBasis}
           </span>
           <span className="chip">
             <AnimatedInt value={kpi.orderCount} /> orders
           </span>
           <span className="chip">
-            <Money cents={kpi.aovCents} currency={data.currency} /> average order
+            <Money cents={kpi.aovCents} currency={data.currency} /> average
+            order
           </span>
           <a className="chip solid" href="#bridge">
             Where the money went
@@ -244,27 +298,56 @@ export default function Overview() {
         </div>
       </section>
 
+      <Banner tone="warn">
+          <strong style={{ color: "var(--ink-primary)" }}>
+            {adSpendMeasured
+              ? "Unconnected paid-marketing spend is excluded."
+              : "Paid-marketing spend is not measured."}
+          </strong>{" "}
+          {adSpendMeasured ? (
+            <>
+              {data.adSpendCoverage.syncedSourceCount.toLocaleString()} paid
+              marketing{" "}
+              {data.adSpendCoverage.syncedSourceCount === 1
+                ? "source has"
+                : "sources have"}{" "}
+              completed a sync. Every profit, contribution and margin figure
+              includes recorded spend from synced sources only; spend from any
+              unconnected account or platform remains outside the calculation.
+            </>
+          ) : (
+            <>
+              No paid-marketing source has completed a sync. If this store runs
+              ads, every profit, contribution and margin figure excludes that
+              cost and may be overstated. The headline is qualified as profit
+              before paid marketing, and Ad spend is shown as a dash rather than
+              a false zero.
+            </>
+          )}
+      </Banner>
+
       {data.missingCogs && (
         <Banner tone="warn">
           <strong style={{ color: "var(--ink-primary)" }}>
-            Every profit figure below is overstated.
+            {kpi.missingCogsOrders === kpi.orderCount
+              ? "Every order in this period is missing at least one COGS input."
+              : `${kpi.missingCogsOrders.toLocaleString()} of ${kpi.orderCount.toLocaleString()} ${kpi.missingCogsOrders === 1 ? "order is" : "orders are"} missing at least one COGS input.`}
           </strong>{" "}
-          Meridian has no cost of goods for these orders, so margin is being
-          computed as if your products were free.{" "}
+          Sold units without a Shopify <em>Cost per item</em> contribute zero
+          COGS, so profit for those orders and every rollup containing them may
+          be overstated.{" "}
           {data.capabilities.inventoryCost ? (
             <>
-              Set <em>Cost per item</em> on your product variants in Shopify, then
-              re-import from{" "}
-              <Link to={`/app/settings?range=${data.preset}`}>
-                Costs &amp; connections
-              </Link>
-              .
+              Set <em>Cost per item</em> on the affected variants in Shopify.
+              Future orders snapshot the new cost; an unknown historical cost is
+              never invented.
             </>
           ) : (
             <>
               This app was installed without the <code>read_inventory</code>{" "}
-              scope, which is what exposes cost per item. Add it to{" "}
-              <code>shopify.app.toml</code> and reinstall.
+              scope, which is what exposes cost per item. Contact{" "}
+              <Link to="/support">support</Link> or re-authorise the app if
+              Shopify prompts you after an approved permissions update.
             </>
           )}
         </Banner>
@@ -274,7 +357,10 @@ export default function Overview() {
         <Card
           title="Needs attention"
           actions={
-            <Link className="btn sm" to={`/app/fulfilment?range=${data.preset}`}>
+            <Link
+              className="btn sm"
+              to={`/app/fulfilment?range=${data.preset}`}
+            >
               View capacity
             </Link>
           }
@@ -300,7 +386,14 @@ export default function Overview() {
           tone="var(--mark-structure)"
           icon={<IconOrders />}
           label="Net revenue"
-          value={<AnimatedMoney cents={kpi.netRevenueCents} currency={data.currency} compact decimals={false} />}
+          value={
+            <AnimatedMoney
+              cents={kpi.netRevenueCents}
+              currency={data.currency}
+              compact
+              decimals={false}
+            />
+          }
           spark={data.spark.revenue}
           meta={<Delta value={kpi.netRevenueChange} />}
         />
@@ -308,7 +401,12 @@ export default function Overview() {
           tone="var(--series-2)"
           icon={<IconPricing />}
           label="Profit per order"
-          value={<AnimatedMoney cents={kpi.profitPerOrderCents} currency={data.currency} />}
+          value={
+            <AnimatedMoney
+              cents={kpi.profitPerOrderCents}
+              currency={data.currency}
+            />
+          }
           spark={data.spark.perOrder}
           meta={<Delta value={kpi.profitPerOrderChange} />}
         />
@@ -316,17 +414,41 @@ export default function Overview() {
           tone="var(--series-4)"
           icon={<IconProducts />}
           label="Contribution profit"
-          value={<AnimatedMoney cents={kpi.contributionProfitCents} currency={data.currency} compact decimals={false} />}
+          value={
+            <AnimatedMoney
+              cents={kpi.contributionProfitCents}
+              currency={data.currency}
+              compact
+              decimals={false}
+            />
+          }
           spark={data.spark.contribution}
           meta={<Delta value={kpi.contributionChange} />}
         />
         <Tile
           tone="var(--series-3)"
           icon={<IconChannels />}
-          label="Ad spend"
-          value={<AnimatedMoney cents={kpi.adCostCents} currency={data.currency} compact decimals={false} />}
-          spark={data.spark.adSpend}
-          meta={<Delta value={kpi.adCostChange} invert />}
+          label={adSpendMeasured ? "Recorded ad spend" : "Ad spend"}
+          value={
+            adSpendMeasured ? (
+              <AnimatedMoney
+                cents={kpi.adCostCents}
+                currency={data.currency}
+                compact
+                decimals={false}
+              />
+            ) : (
+              "—"
+            )
+          }
+          spark={adSpendMeasured ? data.spark.adSpend : undefined}
+          meta={
+            adSpendMeasured ? (
+              <Delta value={kpi.adCostChange} invert />
+            ) : (
+              <span>no synced source</span>
+            )
+          }
         />
         <Tile
           tone="var(--series-5)"
@@ -340,7 +462,9 @@ export default function Overview() {
           tone="var(--series-6)"
           icon={<IconFulfilment />}
           label="Average order value"
-          value={<AnimatedMoney cents={kpi.aovCents} currency={data.currency} />}
+          value={
+            <AnimatedMoney cents={kpi.aovCents} currency={data.currency} />
+          }
           spark={data.spark.aov}
           meta={<span>net of discounts and refunds</span>}
         />
@@ -349,26 +473,32 @@ export default function Overview() {
       <Card
         id="bridge"
         title="Where the money went"
-        hint="Every cost between the revenue you booked and the profit you kept. Costs are shown in the order they hit the P&L."
+        hint="Available recorded and modeled costs between booked revenue and the profit shown above. Missing inputs and unconnected paid-marketing spend are excluded."
       >
         <ProfitBridge steps={data.bridge} />
-        {(kpi.unattributedAdCents > 0 || kpi.estimatedOrders > 0) && (
+        {(kpi.unattributedAdCents > 0 || kpi.modeledCostOrders > 0) && (
           <p className="card-hint" style={{ marginTop: 12 }}>
             {kpi.unattributedAdCents > 0 && (
               <>
-                <Money cents={kpi.unattributedAdCents} currency={data.currency} decimals={false} />{" "}
-                of ad spend fell on days with no matching orders. It is real money,
-                so it is charged against profit here rather than dropped.{" "}
+                <Money
+                  cents={kpi.unattributedAdCents}
+                  currency={data.currency}
+                  decimals={false}
+                />{" "}
+                of ad spend fell on days with no matching orders. It is real
+                money, so it is charged against profit here rather than
+                dropped.{" "}
               </>
             )}
-            {kpi.estimatedOrders > 0 && (
+            {kpi.modeledCostOrders > 0 && (
               <>
-                {kpi.estimatedOrders.toLocaleString()} orders use at least one
-                estimated cost.{" "}
+                {kpi.modeledCostOrders.toLocaleString()} orders use at least one
+                configured fee, fulfilment fallback or overhead allocation.{" "}
                 <Link to={`/app/settings?range=${data.preset}`}>
-                  Confirm your cost inputs
+                  Review modeled inputs
                 </Link>{" "}
-                to firm these numbers up.
+                to acknowledge them. Review does not turn a model into measured
+                order-level cost, so those orders remain marked amber.
               </>
             )}
           </p>
@@ -378,17 +508,30 @@ export default function Overview() {
       <Card title="Profit and revenue over time" flush>
         <Legend
           items={[
-            { label: "Net profit", color: "var(--mark-result)" },
+            {
+              label: `Profit ${profitBasis}`,
+              color: "var(--mark-result)",
+            },
             { label: "Net revenue", color: "var(--mark-structure)" },
           ]}
         />
         <div style={{ padding: "4px 16px 14px" }}>
           <TimeSeriesChart
             data={seriesPoints}
+            timeZone={data.timezone}
             zeroLine
             series={[
-              { key: "profit", label: "Net profit", color: "var(--mark-result)", area: true },
-              { key: "revenue", label: "Net revenue", color: "var(--mark-structure)" },
+              {
+                key: "profit",
+                label: `Profit ${profitBasis}`,
+                color: "var(--mark-result)",
+                area: true,
+              },
+              {
+                key: "revenue",
+                label: "Net revenue",
+                color: "var(--mark-structure)",
+              },
             ]}
           />
         </div>
@@ -397,7 +540,7 @@ export default function Overview() {
       <div className="grid cols-2">
         <Card
           title="Carrying the business"
-          hint="Highest contribution profit after their share of shipping, fees and ad spend."
+          hint="Highest non-negative contribution after available product-level costs. Overhead and unconnected spend are excluded."
           flush
         >
           <ProductList items={data.winners} currency={data.currency} />
@@ -405,7 +548,7 @@ export default function Overview() {
 
         <Card
           title="Losing money"
-          hint="Negative contribution once every allocated cost is counted."
+          hint="Negative contribution after available product-level costs; overhead is excluded. Products with missing COGS receive no verdict."
           flush
         >
           {data.losers.length === 0 ? (
@@ -417,8 +560,12 @@ export default function Overview() {
       </div>
 
       <Card
-        title="Paid channels"
-        hint="A channel is judged on the customers it acquired, measured to 90 days — not on the orders that happened to carry its name."
+        title="Customer acquisition metrics"
+        hint={
+          data.capabilities.customers
+            ? "Customer value is evaluated only at cohort ages old enough to answer."
+            : "Unavailable in this release because read_customers is not requested."
+        }
         actions={
           <Link className="btn sm" to={`/app/acquisition?range=${data.preset}`}>
             Full breakdown
@@ -426,8 +573,17 @@ export default function Overview() {
         }
         flush
       >
-        {data.channels.length === 0 ? (
-          <Empty>No ad spend recorded in this period.</Empty>
+        {!data.capabilities.customers ? (
+          <Empty>
+            New-customer counts, CAC, lifetime value and payback are unavailable;
+            order-derived channel revenue remains on Acquisition.
+          </Empty>
+        ) : data.channels.length === 0 ? (
+          <Empty>
+            {adSpendMeasured
+              ? "No ad spend recorded in this period."
+              : "Paid-channel metrics are unavailable until a spend source completes a sync."}
+          </Empty>
         ) : (
           <div className="table-wrap">
             <table className="data">
@@ -437,7 +593,10 @@ export default function Overview() {
                   <th className="right">Spend</th>
                   <th className="right">New customers</th>
                   <th className="right">CAC</th>
-                  <th className="right" title="90-day customer value against acquisition cost. Value is measured across every cohort old enough to answer, not just this window.">
+                  <th
+                    className="right"
+                    title="90-day customer value against acquisition cost. Value is measured across every cohort old enough to answer, not just this window."
+                  >
                     LTV : CAC
                   </th>
                   <th>Verdict</th>
@@ -458,9 +617,15 @@ export default function Overview() {
                       </span>
                     </td>
                     <td className="right">
-                      <Money cents={row.spendCents} currency={data.currency} decimals={false} />
+                      <Money
+                        cents={row.spendCents}
+                        currency={data.currency}
+                        decimals={false}
+                      />
                     </td>
-                    <td className="right num">{row.newCustomers.toLocaleString()}</td>
+                    <td className="right num">
+                      {row.newCustomers.toLocaleString()}
+                    </td>
                     <td className="right">
                       {row.cacCents === null ? (
                         "—"
@@ -511,10 +676,16 @@ function ProductList({
               <td className="primary-cell">{item.title}</td>
               <td className="right num">{item.units.toLocaleString()}</td>
               <td className="right num">
-                {item.marginPct === null ? "—" : formatPercent(item.marginPct, 0)}
+                {item.marginPct === null
+                  ? "—"
+                  : formatPercent(item.marginPct, 0)}
               </td>
               <td className="right">
-                <Money cents={item.contributionProfitCents} currency={currency} decimals={false} />
+                <Money
+                  cents={item.contributionProfitCents}
+                  currency={currency}
+                  decimals={false}
+                />
               </td>
             </tr>
           ))}

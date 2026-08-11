@@ -3,6 +3,7 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -141,6 +142,7 @@ export interface TimeSeriesPoint {
 export function TimeSeriesChart({
   data,
   series,
+  timeZone,
   height = 240,
   format = shortMoney,
   zeroLine = false,
@@ -153,6 +155,8 @@ export function TimeSeriesChart({
     /** Fill a soft gradient under this series — reserved for the headline. */
     area?: boolean;
   }[];
+  /** The merchant's IANA zone; chart dates name shop-local calendar buckets. */
+  timeZone: string;
   height?: number;
   format?: (v: number) => string;
   zeroLine?: boolean;
@@ -170,7 +174,12 @@ export function TimeSeriesChart({
   }
 
   // Right padding leaves room for the end-labels rather than clipping them.
-  const pad = { top: 12, right: series.length <= 4 ? 96 : 14, bottom: 26, left: 52 };
+  /*
+   * No outboard gutter for the end labels any more — see the note where they
+   * are drawn. "Profit before paid marketing" needs ~200px at this size and a
+   * gutter that wide eats the plot; the labels sit inside it instead.
+   */
+  const pad = { top: 12, right: 16, bottom: 26, left: 52 };
   const plotW = Math.max(1, width - pad.left - pad.right);
   const plotH = Math.max(1, height - pad.top - pad.bottom);
 
@@ -314,11 +323,23 @@ export function TimeSeriesChart({
               const placed = Math.max(y, previous + 12);
               previous = placed;
               return (
+                /*
+                 * Inside the plot, right-aligned, sitting just above the line's
+                 * final point.
+                 *
+                 * These used to hang in a 96px gutter outside the plot, which
+                 * silently clipped every label longer than that — including
+                 * "Profit before paid marketing", the one label on this chart
+                 * that must never be abbreviated, because an unqualified
+                 * "PROFIT" is exactly the claim this product refuses to make.
+                 * Widening the gutter to fit it would have cost a fifth of the
+                 * plot; putting the text inside costs nothing.
+                 */
                 <text
                   key={`end-${s.key}`}
-                  x={width - pad.right + 4}
-                  y={placed + 3}
-                  textAnchor="start"
+                  x={width - pad.right - 2}
+                  y={placed - 14}
+                  textAnchor="end"
                   className="series-end-label"
                   style={{ fill: s.color }}
                 >
@@ -354,7 +375,11 @@ export function TimeSeriesChart({
         {data.map((d, i) =>
           i % Math.ceil(data.length / 7) === 0 ? (
             <text key={i} x={xAt(i)} y={height - 8} textAnchor="middle">
-              {d.date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+              {d.date.toLocaleDateString("en-US", {
+                timeZone,
+                month: "short",
+                day: "numeric",
+              })}
             </text>
           ) : null,
         )}
@@ -368,6 +393,7 @@ export function TimeSeriesChart({
                 x: xAt(hoverIndex!),
                 y: pad.top + 6,
                 title: point.date.toLocaleDateString("en-US", {
+                  timeZone,
                   weekday: "short",
                   month: "short",
                   day: "numeric",
@@ -913,7 +939,9 @@ export function CapacityChart({
     capacity,
   );
 
-  const xAt = (i: number) => pad.left + (i / (combined.length - 1)) * plotW;
+  const xAt = (i: number) =>
+    pad.left +
+    (combined.length === 1 ? plotW / 2 : (i / (combined.length - 1)) * plotW);
   const yAt = (v: number) => pad.top + plotH - (v / (max || 1)) * plotH;
 
   const firstForecast = history.length;
@@ -1086,7 +1114,13 @@ export function CapacityChart({
         {combined.map((c, i) =>
           i % Math.ceil(combined.length / 7) === 0 ? (
             <text key={i} x={xAt(i)} y={height - 8} textAnchor="middle">
-              {c.date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+              {c.date.toLocaleDateString("en-US", {
+                // CapacityDay.date is a calendar key encoded at UTC midnight,
+                // not an instant to reinterpret in the viewer's zone.
+                timeZone: "UTC",
+                month: "short",
+                day: "numeric",
+              })}
             </text>
           ) : null,
         )}
@@ -1100,6 +1134,7 @@ export function CapacityChart({
                 x: xAt(hover),
                 y: pad.top + 6,
                 title: `${combined[hover]!.date.toLocaleDateString("en-US", {
+                  timeZone: "UTC",
                   month: "short",
                   day: "numeric",
                 })}${combined[hover]!.projected ? " · projected" : ""}`,
@@ -1335,9 +1370,9 @@ export function ThemeToggle() {
       root.dataset.theme = next;
       window.localStorage.setItem("meridian-theme", next);
 
-      // Keep the browser/OS chrome on the same sky as the page.
+      // Keep the browser/OS chrome on the same ground as the page.
       document.querySelectorAll('meta[name="theme-color"]').forEach((tag) => {
-        tag.setAttribute("content", next === "light" ? "#f4efe5" : "#161c36");
+        tag.setAttribute("content", next === "light" ? "#ffffff" : "#0a0a0a");
         tag.removeAttribute("media");
       });
 
@@ -1345,9 +1380,41 @@ export function ThemeToggle() {
     });
   }, []);
 
+  /*
+   * The same switch the marketing site uses.
+   *
+   * It was a text glyph in a button — "☾" or "☀" — which renders in whatever
+   * emoji or symbol face the OS happens to pick, so it was the one control in
+   * the app that looked like a different product on every machine. This is
+   * drawn: a track in the page's ink, a thumb in the page's ground, and one
+   * icon at a time showing the mode you are in.
+   */
   return (
-    <button className="btn sm" onClick={toggle} aria-label="Toggle colour theme">
-      {theme === "dark" ? "☾" : "☀"}
+    <button
+      className="theme-switch"
+      type="button"
+      onClick={toggle}
+      aria-label="Switch between light and dark"
+      aria-pressed={theme === "dark"}
+    >
+      <span className="theme-switch-track" aria-hidden="true">
+        <span className="theme-switch-thumb">
+          <svg className="theme-icon theme-icon-sun" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <circle cx="10" cy="10" r="3.4" stroke="currentColor" strokeWidth="1.6" />
+            <g stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+              <path d="M10 2.6v2M10 15.4v2M2.6 10h2M15.4 10h2M4.8 4.8l1.4 1.4M13.8 13.8l1.4 1.4M15.2 4.8l-1.4 1.4M6.2 13.8l-1.4 1.4" />
+            </g>
+          </svg>
+          <svg className="theme-icon theme-icon-moon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path
+              d="M16 12.4A6.8 6.8 0 0 1 7.6 4a6.8 6.8 0 1 0 8.4 8.4Z"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
+      </span>
     </button>
   );
 }
@@ -1364,5 +1431,182 @@ export function ChartFrame({
       {legend}
       {children}
     </>
+  );
+}
+
+/*
+ * The order field.
+ *
+ * One mark per order in the range, losses picked out. This began life on the
+ * marketing page, arguing that a losing order is invisible on a sales report —
+ * which was a strange place for it to live and nowhere else, because the
+ * merchant who believes the argument then has no way to act on it. Here the
+ * field is a control: point at a mark to read the order, click it to open the
+ * receipt.
+ *
+ * Canvas rather than 3,000 DOM nodes. The field is redrawn on hover, on
+ * resize, and when the theme changes — CSS cannot recolour a bitmap, so the
+ * ink is read back out of the computed style each paint.
+ */
+export function OrderField({
+  numbers,
+  profits,
+  focused,
+  onPick,
+}: {
+  numbers: readonly number[];
+  profits: readonly number[];
+  focused: number | null;
+  onPick: (orderNumber: number) => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [hover, setHover] = useState<number | null>(null);
+  const [geometry, setGeometry] = useState({ cols: 1, rows: 1, cell: 1 });
+
+  const total = numbers.length;
+  const losses = useMemo(
+    () => profits.reduce((n, cents) => (cents < 0 ? n + 1 : n), 0),
+    [profits],
+  );
+
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || total === 0) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const cssWidth = canvas.clientWidth || 640;
+    // A constant 3:2 field: the cell shrinks with the column rather than the
+    // shape changing, so the mass reads the same at any width.
+    const rows = Math.max(6, Math.round(Math.sqrt(total / 1.5)));
+    const cols = Math.ceil(total / rows);
+    const cell = cssWidth / cols;
+    const cssHeight = rows * cell;
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(cssWidth * dpr);
+    canvas.height = Math.round(cssHeight * dpr);
+    canvas.style.height = `${cssHeight.toFixed(2)}px`;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssWidth, cssHeight);
+
+    const styles = getComputedStyle(document.documentElement);
+    const ink = styles.getPropertyValue("--ink-rgb").trim() || "245, 245, 245";
+    const radius = Math.max(1, cell * 0.26);
+
+    // Kept orders: one path, one fill. Three thousand fillStyle writes is the
+    // difference between painting in a frame and dropping them.
+    ctx.fillStyle = `rgba(${ink}, 0.22)`;
+    ctx.beginPath();
+    for (let i = 0; i < total; i++) {
+      if ((profits[i] ?? 0) < 0) continue;
+      const x = ((i % cols) + 0.5) * cell;
+      const y = (Math.floor(i / cols) + 0.5) * cell;
+      ctx.moveTo(x + radius, y);
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+    }
+    ctx.fill();
+
+    // Losses at full ink and the same radius. Enlarging them is the obvious
+    // move and the one this cannot make: area is the quantity the eye totals,
+    // so a bigger dot would overstate how many there are.
+    ctx.fillStyle = `rgba(${ink}, 1)`;
+    ctx.beginPath();
+    for (let i = 0; i < total; i++) {
+      if ((profits[i] ?? 0) >= 0) continue;
+      const x = ((i % cols) + 0.5) * cell;
+      const y = (Math.floor(i / cols) + 0.5) * cell;
+      ctx.moveTo(x + radius, y);
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+    }
+    ctx.fill();
+
+    const ring = (index: number, alpha: number, r: number) => {
+      const x = ((index % cols) + 0.5) * cell;
+      const y = (Math.floor(index / cols) + 0.5) * cell;
+      ctx.strokeStyle = `rgba(${ink}, ${alpha})`;
+      ctx.lineWidth = Math.max(1, cell * 0.13);
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.stroke();
+    };
+
+    const focusedIndex = focused === null ? -1 : numbers.indexOf(focused);
+    if (focusedIndex >= 0) ring(focusedIndex, 0.95, radius * 2.2);
+    if (hover !== null && hover !== focusedIndex) ring(hover, 0.55, radius * 1.9);
+
+    setGeometry({ cols, rows, cell });
+  }, [numbers, profits, total, focused, hover]);
+
+  useEffect(() => {
+    draw();
+  }, [draw]);
+
+  useEffect(() => {
+    const onResize = () => draw();
+    window.addEventListener("resize", onResize, { passive: true });
+    return () => window.removeEventListener("resize", onResize);
+  }, [draw]);
+
+  const indexAt = (clientX: number, clientY: number): number | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const box = canvas.getBoundingClientRect();
+    const { cols, rows, cell } = geometry;
+    const x = ((clientX - box.left) / box.width) * (cols * cell);
+    const y = ((clientY - box.top) / box.height) * (rows * cell);
+    const col = Math.floor(x / cell);
+    const row = Math.floor(y / cell);
+    if (col < 0 || col >= cols || row < 0 || row >= rows) return null;
+    const index = row * cols + col;
+    if (index < 0 || index >= total) return null;
+    // Only inside the mark itself, not the whitespace around it.
+    const cx = (col + 0.5) * cell;
+    const cy = (row + 0.5) * cell;
+    const reach = Math.max(cell * 0.45, 5);
+    if ((x - cx) ** 2 + (y - cy) ** 2 > reach ** 2) return null;
+    return index;
+  };
+
+  const hoveredProfit = hover === null ? null : (profits[hover] ?? null);
+
+  return (
+    <div className="order-field">
+      <div className="order-field-plot">
+        <canvas
+          ref={canvasRef}
+          className="order-field-canvas"
+          role="img"
+          aria-label={`A field of ${total.toLocaleString()} marks, one per order in the range, with ${losses.toLocaleString()} marked as losing money.`}
+          onPointerMove={(event) => {
+            const next = indexAt(event.clientX, event.clientY);
+            if (next !== hover) setHover(next);
+          }}
+          onPointerLeave={() => setHover(null)}
+          onClick={(event) => {
+            const index = indexAt(event.clientX, event.clientY);
+            const picked = index === null ? undefined : numbers[index];
+            if (picked !== undefined) onPick(picked);
+          }}
+        />
+        {hover !== null && (
+          <div className="order-field-readout" aria-hidden="true">
+            Order #{numbers[hover]} ·{" "}
+            {hoveredProfit !== null && hoveredProfit < 0
+              ? "lost money"
+              : "profitable"}
+          </div>
+        )}
+      </div>
+      <p className="order-field-key">
+        <span>
+          <i className="key-kept" /> {(total - losses).toLocaleString()} profitable
+        </span>
+        <span>
+          <i className="key-loss" /> {losses.toLocaleString()} losing money
+        </span>
+        <span className="order-field-hint">Point at any order; click to open it.</span>
+      </p>
+    </div>
   );
 }

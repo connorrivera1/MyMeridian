@@ -1,8 +1,12 @@
-import { ConnectorStatus, CostRuleKind } from "@prisma/client";
+import {
+  ConnectorStatus,
+  CostRuleKind,
+  CostRuleOrigin,
+  SyncStatus,
+} from "@prisma/client";
 import {
   Form,
   useActionData,
-  useFetcher,
   useLoaderData,
   useNavigation,
 } from "react-router";
@@ -11,14 +15,10 @@ import { z } from "zod";
 
 import prisma from "~/db.server";
 import { invalidateAnalyticsCache } from "~/data/analytics.server";
-import { Badge, Banner, Card, Empty, Stat } from "~/design/components";
+import { Badge, Banner, Card, Stat } from "~/design/components";
 import { requireShopContext } from "~/lib/auth.server";
-import {
-  DATA_REQUEST_RETENTION_DAYS,
-  listDataRequests,
-  markDataRequestCollected,
-} from "~/lib/data-request.server";
-import { resolvePlan } from "~/lib/plan.server";
+import { backfillIsStale } from "~/lib/backfill-claim.server";
+import { requireActivePlan } from "~/lib/plan.server";
 import { recomputeShopProfitability } from "~/lib/recompute.server";
 import { scopeReport } from "~/lib/scopes";
 import { PLANS } from "~/lib/plans";
@@ -26,19 +26,21 @@ import { PLANS } from "~/lib/plans";
 export async function loader({ request }: LoaderFunctionArgs) {
   const ctx = await requireShopContext(request);
   const { shop } = ctx;
-  const plan = await resolvePlan(ctx);
+  const plan = await requireActivePlan(ctx, request);
+  const staleBackfill = backfillIsStale(shop);
 
-  const [costRules, connectors, orderCount, productCount, dataRequests] =
-    await Promise.all([
-      prisma.costRule.findMany({ where: { shopId: shop.id }, orderBy: { kind: "asc" } }),
-      prisma.connector.findMany({
-        where: { shopId: shop.id },
-        orderBy: { provider: "asc" },
-      }),
-      prisma.order.count({ where: { shopId: shop.id } }),
-      prisma.product.count({ where: { shopId: shop.id } }),
-      listDataRequests(shop.id),
-    ]);
+  const [costRules, connectors, orderCount, productCount] = await Promise.all([
+    prisma.costRule.findMany({
+      where: { shopId: shop.id },
+      orderBy: { kind: "asc" },
+    }),
+    prisma.connector.findMany({
+      where: { shopId: shop.id },
+      orderBy: { provider: "asc" },
+    }),
+    prisma.order.count({ where: { shopId: shop.id } }),
+    prisma.product.count({ where: { shopId: shop.id } }),
+  ]);
 
   return {
     shopName: shop.name,
@@ -50,7 +52,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
     isDemo: shop.isDemo,
     scopes: shop.isDemo
       ? []
-      : scopeReport(shop.grantedScopes ?? process.env.SCOPES),
+      : scopeReport(
+          shop.grantedScopes ?? process.env.SCOPES,
+          process.env.SCOPES,
+        ),
     sync: {
       status: shop.syncStatus,
       stage: shop.syncStage,
@@ -63,6 +68,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
       completedAt: shop.syncCompletedAt,
       earliestOrderAt: shop.earliestOrderAt,
       hasAllOrdersScope: shop.hasAllOrdersScope,
+      isStale: staleBackfill,
+      hasResumeCursor: Boolean(shop.syncCursor),
     },
     costRules: costRules.map((rule) => ({
       id: rule.id,
@@ -73,6 +80,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
       fixedPerItem: rule.fixedPerItem ? Number(rule.fixedPerItem) : null,
       monthlyAmount: rule.monthlyAmount ? Number(rule.monthlyAmount) : null,
       active: rule.active,
+      origin: rule.origin,
+      confirmedAt: rule.confirmedAt,
     })),
     connectors: connectors.map((connector) => ({
       provider: connector.provider,
@@ -81,26 +90,65 @@ export async function loader({ request }: LoaderFunctionArgs) {
       lastSyncedAt: connector.lastSyncedAt,
       lastError: connector.lastError,
     })),
-    // The export travels with the page rather than sitting behind a download
-    // URL: this loader is already the merchant's authenticated session, and a
-    // separate endpoint serving personal data would be a second thing to get
-    // right. The list is capped and expired exports are purged before it.
-    dataRequests,
-    retentionDays: DATA_REQUEST_RETENTION_DAYS,
     plan: plan.planId,
   };
 }
 
-const CostRuleUpdate = z.object({
-  id: z.string().min(1),
-  percentRate: z.coerce.number().min(0).max(1).optional(),
-  fixedPerOrder: z.coerce.number().min(0).max(100_000).optional(),
-  fixedPerItem: z.coerce.number().min(0).max(100_000).optional(),
-  monthlyAmount: z.coerce.number().min(0).max(10_000_000).optional(),
-});
+const CostRuleUpdate = z
+  .object({
+    id: z.string().min(1),
+    percentRate: z.coerce.number().min(0).max(1).optional(),
+    fixedPerOrder: z.coerce.number().min(0).max(100_000).optional(),
+    fixedPerItem: z.coerce.number().min(0).max(100_000).optional(),
+    monthlyAmount: z.coerce.number().min(0).max(10_000_000).optional(),
+  })
+  .refine(
+    (value) =>
+      value.percentRate !== undefined ||
+      value.fixedPerOrder !== undefined ||
+      value.fixedPerItem !== undefined ||
+      value.monthlyAmount !== undefined,
+    { message: "A cost value is required." },
+  );
+
+function valuesForRuleKind(
+  kind: CostRuleKind,
+  input: z.infer<typeof CostRuleUpdate>,
+): Record<string, string> | null {
+  switch (kind) {
+    case CostRuleKind.PAYMENT_FEE:
+      return input.percentRate !== undefined &&
+        input.fixedPerOrder !== undefined
+        ? {
+            percentRate: input.percentRate.toFixed(5),
+            fixedPerOrder: input.fixedPerOrder.toFixed(4),
+          }
+        : null;
+    case CostRuleKind.SHIPPING_DEFAULT:
+      return input.fixedPerOrder !== undefined
+        ? { fixedPerOrder: input.fixedPerOrder.toFixed(4) }
+        : null;
+    case CostRuleKind.PICK_PACK:
+      return input.fixedPerOrder !== undefined &&
+        input.fixedPerItem !== undefined
+        ? {
+            fixedPerOrder: input.fixedPerOrder.toFixed(4),
+            fixedPerItem: input.fixedPerItem.toFixed(4),
+          }
+        : null;
+    case CostRuleKind.OVERHEAD_MONTHLY:
+      return input.monthlyAmount !== undefined
+        ? { monthlyAmount: input.monthlyAmount.toFixed(2) }
+        : null;
+    case CostRuleKind.CUSTOM:
+      return null;
+  }
+}
 
 export async function action({ request }: ActionFunctionArgs) {
-  const { shop, admin } = await requireShopContext(request);
+  const ctx = await requireShopContext(request);
+  await requireActivePlan(ctx, request);
+  const { shop, admin } = ctx;
   const form = await request.formData();
 
   if (form.get("intent") === "resync") {
@@ -113,20 +161,22 @@ export async function action({ request }: ActionFunctionArgs) {
     }
 
     const { startBackfill } = await import("~/lib/backfill.server");
-    startBackfill(shop.id, admin);
+    const started = await startBackfill(shop.id, admin);
+
+    if (!started.started) {
+      return {
+        ok: false,
+        message:
+          "An import is already active. This request did not start another one.",
+      };
+    }
 
     return {
       ok: true,
-      message: "Import started. Progress appears at the top of the page.",
+      message: started.resumed
+        ? "Interrupted import resumed from its saved order-history checkpoint."
+        : "Import started. Progress appears at the top of the page.",
     };
-  }
-
-  if (form.get("intent") === "data-request-collected") {
-    const id = String(form.get("id") ?? "");
-    // Not an error if it was already collected — the merchant may download the
-    // same export twice, and only the first time is what the audit trail claims.
-    await markDataRequestCollected(shop.id, id);
-    return { ok: true, message: "Export downloaded and marked as collected." };
   }
 
   if (form.get("intent") === "recompute") {
@@ -149,29 +199,26 @@ export async function action({ request }: ActionFunctionArgs) {
 
   // Scoped to the shop so an id from elsewhere cannot be edited.
   const rule = await prisma.costRule.findFirst({
-    where: { id: parsed.data.id, shopId: shop.id },
+    where: { id: parsed.data.id, shopId: shop.id, active: true },
   });
   if (!rule) return { ok: false, message: "Cost rule not found." };
+
+  const values = valuesForRuleKind(rule.kind, parsed.data);
+  if (!values) {
+    return {
+      ok: false,
+      message: "That cost rule is missing a required figure.",
+    };
+  }
 
   await prisma.costRule.update({
     where: { id: rule.id },
     data: {
-      percentRate:
-        parsed.data.percentRate !== undefined
-          ? parsed.data.percentRate.toFixed(5)
-          : undefined,
-      fixedPerOrder:
-        parsed.data.fixedPerOrder !== undefined
-          ? parsed.data.fixedPerOrder.toFixed(4)
-          : undefined,
-      fixedPerItem:
-        parsed.data.fixedPerItem !== undefined
-          ? parsed.data.fixedPerItem.toFixed(4)
-          : undefined,
-      monthlyAmount:
-        parsed.data.monthlyAmount !== undefined
-          ? parsed.data.monthlyAmount.toFixed(2)
-          : undefined,
+      ...values,
+      // A saved card is durable evidence that the merchant reviewed the
+      // current assumption. Keep `origin` unchanged so an install default does
+      // not lose its provenance merely because it has been confirmed.
+      confirmedAt: new Date(),
     },
   });
 
@@ -199,9 +246,126 @@ const CONNECTOR_PURPOSE: Record<string, string> = {
   FACEBOOK_ADS: "Ad spend and campaign attribution",
   GOOGLE_ADS: "Ad spend and campaign attribution",
   TIKTOK_ADS: "Ad spend and campaign attribution",
-  STRIPE: "Actual processing fees, replacing the estimate",
-  WAREHOUSE_3PL: "Real per-shipment carrier and pick/pack cost",
+  STRIPE:
+    "Unavailable in this release; processing uses the configured fee model",
+  WAREHOUSE_3PL:
+    "Unavailable in this release; fulfilment uses recorded costs or configured fallbacks",
 };
+
+export interface DisplayCostRule {
+  percentRate: number | null;
+  fixedPerOrder: number | null;
+  fixedPerItem: number | null;
+  monthlyAmount: number | null;
+  active: boolean;
+  origin: CostRuleOrigin;
+  confirmedAt: Date | string | null;
+}
+
+export function ruleHasNonZeroValue(
+  rule: DisplayCostRule | undefined,
+): boolean {
+  if (!rule?.active) return false;
+  return [
+    rule.percentRate,
+    rule.fixedPerOrder,
+    rule.fixedPerItem,
+    rule.monthlyAmount,
+  ].some((value) => value !== null && value !== 0);
+}
+
+export function ruleNeedsConfirmation(
+  rule: DisplayCostRule | undefined,
+): boolean {
+  return ruleHasNonZeroValue(rule) && rule?.confirmedAt == null;
+}
+
+function CostRuleState({ rule }: { rule: DisplayCostRule | undefined }) {
+  if (!rule?.active) return <Badge tone="critical">Missing</Badge>;
+  if (!ruleHasNonZeroValue(rule))
+    return <Badge tone="neutral">No cost applied</Badge>;
+  if (rule.confirmedAt) return <Badge tone="good">Reviewed assumption</Badge>;
+
+  return (
+    <Badge tone="warning" dot>
+      {rule.origin === CostRuleOrigin.INSTALL_DEFAULT
+        ? "Unconfirmed install default"
+        : "Unconfirmed assumption"}
+    </Badge>
+  );
+}
+
+export function backfillControlFor(sync: {
+  status: SyncStatus;
+  isStale: boolean;
+  hasResumeCursor: boolean;
+}) {
+  if (sync.status === SyncStatus.RUNNING && !sync.isStale) {
+    return {
+      buttonLabel: "Importing…",
+      statusLabel: "Importing",
+      disabled: true,
+      recoveryCopy: null,
+    };
+  }
+
+  if (sync.status === SyncStatus.RUNNING && sync.isStale) {
+    return {
+      buttonLabel: sync.hasResumeCursor ? "Resume import" : "Restart import",
+      statusLabel: "Interrupted",
+      disabled: false,
+      recoveryCopy: sync.hasResumeCursor
+        ? "The previous import's server claim expired. Resume from its saved order-history checkpoint."
+        : "The previous import's server claim expired before it saved an order-history checkpoint. Restart it safely.",
+    };
+  }
+
+  if (sync.status === SyncStatus.FAILED) {
+    return {
+      buttonLabel: sync.hasResumeCursor ? "Resume import" : "Retry import",
+      statusLabel: "Stopped early",
+      disabled: false,
+      recoveryCopy: sync.hasResumeCursor
+        ? "A saved order-history checkpoint is ready. Resume without re-reading completed pages."
+        : null,
+    };
+  }
+
+  if (sync.status === SyncStatus.COMPLETE) {
+    return {
+      buttonLabel: "Re-import",
+      statusLabel: "Up to date",
+      disabled: false,
+      recoveryCopy: null,
+    };
+  }
+
+  return {
+    buttonLabel: "Start import",
+    statusLabel: "Not started",
+    disabled: false,
+    recoveryCopy: null,
+  };
+}
+
+export function BackfillButton({
+  control,
+  busy,
+}: {
+  control: ReturnType<typeof backfillControlFor>;
+  busy: boolean;
+}) {
+  return (
+    <button
+      className="btn sm"
+      name="intent"
+      value="resync"
+      disabled={busy || control.disabled}
+    >
+      {control.buttonLabel}
+    </button>
+  );
+}
 
 export default function Settings() {
   const data = useLoaderData<typeof loader>();
@@ -210,12 +374,21 @@ export default function Settings() {
   const busy = navigation.state !== "idle";
 
   const rule = (kind: CostRuleKind) =>
-    data.costRules.find((candidate) => candidate.kind === kind);
+    data.costRules.find(
+      (candidate) => candidate.kind === kind && candidate.active,
+    );
 
   const payment = rule(CostRuleKind.PAYMENT_FEE);
   const shipping = rule(CostRuleKind.SHIPPING_DEFAULT);
   const pickPack = rule(CostRuleKind.PICK_PACK);
   const overhead = rule(CostRuleKind.OVERHEAD_MONTHLY);
+  const unconfirmedAppliedRules = [
+    payment,
+    shipping,
+    pickPack,
+    overhead,
+  ].filter(ruleNeedsConfirmation);
+  const backfillControl = backfillControlFor(data.sync);
 
   return (
     <>
@@ -223,16 +396,32 @@ export default function Settings() {
         <Banner tone={result.ok ? "neutral" : "warn"}>{result.message}</Banner>
       )}
 
-      <Banner>
-        Every profit figure in Meridian is only as good as these inputs. Anything
-        left at a default is marked with an amber dot in the order table so you
-        can tell a measured cost from an assumed one.
+      <Banner tone={unconfirmedAppliedRules.length > 0 ? "warn" : "neutral"}>
+        {unconfirmedAppliedRules.length > 0 ? (
+          <>
+            {unconfirmedAppliedRules.length} active cost{" "}
+            {unconfirmedAppliedRules.length === 1
+              ? "assumption is"
+              : "assumptions are"}{" "}
+            still unconfirmed. Review and save each corresponding card so the
+            audit trail records your acknowledgement; affected orders remain
+            amber while they use an assumption rather than measured cost data.
+          </>
+        ) : (
+          <>
+            All active, non-zero cost assumptions have been reviewed. A reviewed
+            fallback is still an assumption. This release has no Stripe or 3PL
+            connector to replace fee and fulfilment models automatically;
+            affected orders remain amber.
+          </>
+        )}
       </Banner>
 
       <div className="grid cols-2">
         <Card
           title="Payment processing"
           hint="Charged on the full captured amount including tax and shipping. Processors do not refund their fee when you refund an order, and Meridian models it that way."
+          actions={<CostRuleState rule={payment} />}
         >
           <Form method="post" className="stack">
             <input type="hidden" name="id" value={payment?.id} />
@@ -258,7 +447,8 @@ export default function Settings() {
 
         <Card
           title="Shipping"
-          hint="Used when a shipment has no measured carrier cost. Connect a 3PL to replace this estimate with the real figure per order."
+          hint="Used when a shipment has no measured carrier cost. This release has no 3PL connector, so review the fallback as an assumption; affected orders remain amber."
+          actions={<CostRuleState rule={shipping} />}
         >
           <Form method="post" className="stack">
             <input type="hidden" name="id" value={shipping?.id} />
@@ -275,7 +465,10 @@ export default function Settings() {
           </Form>
         </Card>
 
-        <Card title="Pick, pack and materials">
+        <Card
+          title="Pick, pack and materials"
+          actions={<CostRuleState rule={pickPack} />}
+        >
           <Form method="post" className="stack">
             <input type="hidden" name="id" value={pickPack?.id} />
             <Field
@@ -301,6 +494,7 @@ export default function Settings() {
         <Card
           title="Fixed monthly overhead"
           hint="Rent, salaries, software — anything you pay whether or not you sell. Amortised evenly across each month's orders, to the cent."
+          actions={<CostRuleState rule={overhead} />}
         >
           <Form method="post" className="stack">
             <input type="hidden" name="id" value={overhead?.id} />
@@ -328,14 +522,7 @@ export default function Settings() {
         actions={
           !data.isDemo && (
             <Form method="post">
-              <button
-                className="btn sm"
-                name="intent"
-                value="resync"
-                disabled={busy || data.sync.status === "RUNNING"}
-              >
-                {data.sync.status === "RUNNING" ? "Importing…" : "Re-import"}
-              </button>
+              <BackfillButton control={backfillControl} busy={busy} />
             </Form>
           )
         }
@@ -346,15 +533,7 @@ export default function Settings() {
             label="Import status"
             value={
               <span className="secondary">
-                {data.sync.status === "COMPLETE"
-                  ? "Up to date"
-                  : data.sync.status === "RUNNING"
-                    ? "Importing"
-                    : data.sync.status === "FAILED"
-                      ? "Stopped early"
-                      : data.isDemo
-                        ? "Seeded"
-                        : "Not started"}
+                {data.isDemo ? "Seeded" : backfillControl.statusLabel}
               </span>
             }
             meta={<span>{data.sync.stage ?? ""}</span>}
@@ -362,12 +541,16 @@ export default function Settings() {
           <Stat
             small
             label="Orders held"
-            value={<span className="num">{data.sync.orders.toLocaleString()}</span>}
+            value={
+              <span className="num">{data.sync.orders.toLocaleString()}</span>
+            }
           />
           <Stat
             small
             label="Products held"
-            value={<span className="num">{data.sync.products.toLocaleString()}</span>}
+            value={
+              <span className="num">{data.sync.products.toLocaleString()}</span>
+            }
           />
           <Stat
             small
@@ -375,11 +558,15 @@ export default function Settings() {
             value={
               <span className="secondary">
                 {data.sync.earliestOrderAt
-                  ? new Date(data.sync.earliestOrderAt).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })
+                  ? new Date(data.sync.earliestOrderAt).toLocaleDateString(
+                      "en-US",
+                      {
+                        timeZone: data.timezone,
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      },
+                    )
                   : "—"}
               </span>
             }
@@ -393,6 +580,11 @@ export default function Settings() {
         {data.sync.error && (
           <p className="card-hint" style={{ marginTop: 10 }}>
             Last error: {data.sync.error}
+          </p>
+        )}
+        {backfillControl.recoveryCopy && (
+          <p className="card-hint" style={{ marginTop: 10 }}>
+            {backfillControl.recoveryCopy}
           </p>
         )}
       </Card>
@@ -441,58 +633,19 @@ export default function Settings() {
           </div>
           {data.scopes.some((s) => !s.granted) && (
             <p className="card-hint" style={{ padding: "12px 16px 14px" }}>
-              To change these, edit <code>[access_scopes]</code> in{" "}
-              <code>shopify.app.toml</code>, run <code>npm run shopify:dev</code>,
-              and reinstall the app so the merchant re-approves.{" "}
-              {data.scopes.some((s) => !s.granted && s.protectedData) && (
-                <>
-                  <code>read_customers</code> additionally needs a Protected
-                  Customer Data request approved in the Partner Dashboard under{" "}
-                  <em>App → API access</em>.
-                </>
-              )}
+              A missing permission cannot be enabled from this screen. Contact{" "}
+              <a href="/support">support</a>; Shopify will ask you to
+              re-authorise only when an approved app update adds the required
+              access. Protected customer-data permissions, including order
+              access, also require approval obtained by the app publisher.
             </p>
           )}
         </Card>
       )}
 
       <Card
-        title="Customer data requests"
-        hint={`When a shopper asks what your store holds on them, Shopify sends the request here and Meridian assembles the export for you to hand over. You are the controller and reply to the shopper; Meridian never contacts them. Exports are deleted ${data.retentionDays} days after the request.`}
-        flush
-      >
-        {data.dataRequests.length === 0 ? (
-          <div style={{ padding: "14px 16px" }}>
-            <Empty>
-              No requests. One appears here within seconds of a shopper asking
-              through Shopify.
-            </Empty>
-          </div>
-        ) : (
-          <div className="table-wrap">
-            <table className="data">
-              <thead>
-                <tr>
-                  <th>Customer</th>
-                  <th>Requested</th>
-                  <th>Contents</th>
-                  <th>Status</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {data.dataRequests.map((request) => (
-                  <DataRequestRow key={request.id} request={request} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
-
-      <Card
         title="Connections"
-        hint="Meridian reads from these. Where a connection is missing, the matching cost falls back to the rule above."
+        hint="Configured data sources appear here. This release has no setup flow for ad platforms, Stripe or 3PL sources; unavailable sources remain Not connected, and their costs are never inferred."
         actions={
           <Form method="post">
             <button
@@ -543,10 +696,14 @@ export default function Settings() {
                   </td>
                   <td className="tiny muted">
                     {connector.lastSyncedAt
-                      ? new Date(connector.lastSyncedAt).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                        })
+                      ? new Date(connector.lastSyncedAt).toLocaleDateString(
+                          "en-US",
+                          {
+                            timeZone: data.timezone,
+                            month: "short",
+                            day: "numeric",
+                          },
+                        )
                       : "—"}
                   </td>
                 </tr>
@@ -583,9 +740,17 @@ export default function Settings() {
 
       <Card title="Store">
         <div className="grid cols-4">
-          <Stat small label="Domain" value={<span className="tiny">{data.shopDomain}</span>} />
+          <Stat
+            small
+            label="Domain"
+            value={<span className="tiny">{data.shopDomain}</span>}
+          />
           <Stat small label="Currency" value={data.currency} />
-          <Stat small label="Timezone" value={<span className="tiny">{data.timezone}</span>} />
+          <Stat
+            small
+            label="Timezone"
+            value={<span className="tiny">{data.timezone}</span>}
+          />
           <Stat
             small
             label="Last computed"
@@ -605,86 +770,6 @@ export default function Settings() {
         </div>
       </Card>
     </>
-  );
-}
-
-type LoadedDataRequest = Awaited<ReturnType<typeof loader>>["dataRequests"][number];
-
-/**
- * One request, with the export attached.
- *
- * The download is built in the browser from data the loader already sent, so
- * collecting an export is not a second authenticated endpoint serving personal
- * data. Marking it collected is a separate, deliberate write: the audit trail
- * should record that the merchant took it, not that they looked at the page.
- */
-function DataRequestRow({ request }: { request: LoadedDataRequest }) {
-  const fetcher = useFetcher();
-  const requestedAt = new Date(request.requestedAt);
-  const expiresAt = new Date(request.expiresAt);
-
-  const download = () => {
-    const blob = new Blob([JSON.stringify(request.report, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `data-request-${request.shopifyCustomerId.replace(
-      /[^\w.-]+/g,
-      "-",
-    )}-${requestedAt.toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
-
-    fetcher.submit(
-      { intent: "data-request-collected", id: request.id },
-      { method: "post" },
-    );
-  };
-
-  return (
-    <tr>
-      <td className="primary-cell">
-        {request.customerEmail ?? "Email not held"}
-        <div className="cell-sub">
-          <code>{request.shopifyCustomerId}</code>
-        </div>
-      </td>
-      <td className="tiny muted">
-        {requestedAt.toLocaleString("en-US", {
-          month: "short",
-          day: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-        })}
-        <div className="cell-sub">
-          deleted {expiresAt.toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-          })}
-        </div>
-      </td>
-      <td className="secondary tiny">
-        {request.ordersIncluded > 0
-          ? `${request.ordersIncluded} order${request.ordersIncluded === 1 ? "" : "s"}, with line items`
-          : "Nothing held on this shopper"}
-      </td>
-      <td>
-        {request.collectedAt ? (
-          <Badge tone="good">Collected</Badge>
-        ) : (
-          <Badge tone="warning">Awaiting collection</Badge>
-        )}
-      </td>
-      <td>
-        <button className="btn sm" type="button" onClick={download}>
-          Download JSON
-        </button>
-      </td>
-    </tr>
   );
 }
 

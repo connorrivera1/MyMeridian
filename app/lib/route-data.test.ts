@@ -19,9 +19,14 @@ vi.mock("~/lib/auth.server", () => ({
   requireShopContext: (...args: unknown[]) => requireShopContext(...args),
 }));
 
-const resolvePlan = vi.fn();
+const requireActivePlan = vi.fn();
 vi.mock("~/lib/plan.server", () => ({
-  resolvePlan: (...args: unknown[]) => resolvePlan(...args),
+  requireActivePlan: (...args: unknown[]) => requireActivePlan(...args),
+}));
+
+const loadAdSpendCoverage = vi.fn();
+vi.mock("~/lib/ad-spend-coverage.server", () => ({
+  loadAdSpendCoverage: (...args: unknown[]) => loadAdSpendCoverage(...args),
 }));
 
 const loadShopAnalytics = vi.fn();
@@ -52,7 +57,7 @@ function shopContext(overrides: Partial<{ shop: Shop; isDemo: boolean }> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   requireShopContext.mockResolvedValue(shopContext());
-  resolvePlan.mockResolvedValue({
+  requireActivePlan.mockResolvedValue({
     planId: "growth",
     status: "active",
     trialEndsAt: null,
@@ -60,6 +65,10 @@ beforeEach(() => {
   });
   loadShopAnalytics.mockResolvedValue({ analytics: "stub" });
   loadPeriodProfit.mockResolvedValue({ profit: "stub" });
+  loadAdSpendCoverage.mockResolvedValue({
+    mode: "unavailable",
+    syncedSourceCount: 0,
+  });
 });
 
 describe("loadDashboard", () => {
@@ -123,6 +132,30 @@ describe("loadDashboard", () => {
     expect(previousRange.to.getTime()).not.toBe(currentRange.to.getTime());
   });
 
+  it("finishes the current analytics build before starting the previous window", async () => {
+    let releaseCurrent!: (value: { analytics: string }) => void;
+    loadShopAnalytics.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseCurrent = resolve;
+        }),
+    );
+
+    const pending = loadDashboard(
+      new Request("https://example.com/app/overview?range=30d"),
+    );
+
+    await vi.waitFor(() => expect(loadShopAnalytics).toHaveBeenCalledTimes(1));
+    expect(loadPeriodProfit).not.toHaveBeenCalled();
+    // The lightweight coverage aggregate is still allowed to overlap.
+    expect(loadAdSpendCoverage).toHaveBeenCalledTimes(1);
+
+    releaseCurrent({ analytics: "current" });
+    await pending;
+
+    expect(loadPeriodProfit).toHaveBeenCalledTimes(1);
+  });
+
   it("does not anchor to stored data for a real (non-demo) shop", async () => {
     // `resolveRange`'s own anchoring behaviour is covered in
     // app/data/ranges.test.ts; what belongs to loadDashboard is only that it
@@ -140,13 +173,14 @@ describe("loadDashboard", () => {
     );
   });
 
-  it("resolves the plan through resolvePlan with the shop context", async () => {
+  it("enforces the active plan through the shared child-loader guard", async () => {
     const request = new Request("https://example.com/app/overview?range=30d");
     const result = await loadDashboard(request);
 
-    expect(resolvePlan).toHaveBeenCalledTimes(1);
-    expect(resolvePlan).toHaveBeenCalledWith(
+    expect(requireActivePlan).toHaveBeenCalledTimes(1);
+    expect(requireActivePlan).toHaveBeenCalledWith(
       expect.objectContaining({ shop: SHOP, isDemo: false }),
+      request,
     );
     expect(result.plan).toEqual({
       planId: "growth",
@@ -156,7 +190,24 @@ describe("loadDashboard", () => {
     });
   });
 
-  it("assembles shop, isDemo, capabilities and both analytics results onto the returned object", async () => {
+  it("loads no analytics when a selective child request has no active plan", async () => {
+    requireActivePlan.mockRejectedValueOnce(
+      new Response(null, {
+        status: 302,
+        headers: { Location: "/app/plan?shop=meridian-test.myshopify.com" },
+      }),
+    );
+    const request = new Request(
+      "https://example.com/app.data?_routes=routes/app.overview&shop=meridian-test.myshopify.com",
+    );
+
+    await expect(loadDashboard(request)).rejects.toMatchObject({ status: 302 });
+    expect(loadShopAnalytics).not.toHaveBeenCalled();
+    expect(loadPeriodProfit).not.toHaveBeenCalled();
+    expect(loadAdSpendCoverage).not.toHaveBeenCalled();
+  });
+
+  it("assembles shop, isDemo, capabilities, spend coverage and both analytics results onto the returned object", async () => {
     requireShopContext.mockResolvedValue(
       shopContext({
         shop: { ...SHOP, grantedScopes: "read_orders,read_products" } as Shop,
@@ -170,6 +221,11 @@ describe("loadDashboard", () => {
     expect(result.isDemo).toBe(false);
     expect(result.analytics).toEqual({ analytics: "stub" });
     expect(result.previous.period).toEqual({ profit: "stub" });
+    expect(result.adSpendCoverage).toEqual({
+      mode: "unavailable",
+      syncedSourceCount: 0,
+    });
+    expect(loadAdSpendCoverage).toHaveBeenCalledWith("shop_1", false);
     expect(result.capabilities).toBeDefined();
   });
 
@@ -187,6 +243,7 @@ describe("loadDashboard", () => {
     // this is the one branch loadDashboard's own wiring could get backwards
     // (e.g. by forgetting to pass isDemo through on the shop object).
     expect(Object.values(result.capabilities).every(Boolean)).toBe(true);
+    expect(loadAdSpendCoverage).toHaveBeenCalledWith("shop_1", true);
   });
 });
 

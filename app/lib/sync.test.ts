@@ -17,6 +17,9 @@ const orderUpdate = vi.fn();
 const orderUpdateMany = vi.fn();
 const customerUpsert = vi.fn();
 const customerUpdate = vi.fn();
+const customerErasureFindFirst = vi.fn();
+const lineItemDeleteMany = vi.fn();
+const lineItemCreateMany = vi.fn();
 let orderRows: any[] = [];
 let customerRows: any[] = [];
 const fulfillmentFindUnique = vi.fn();
@@ -50,9 +53,12 @@ vi.mock("~/db.server", () => {
       upsert: (...args: unknown[]) => customerUpsert(...args),
       update: (...args: unknown[]) => customerUpdate(...args),
     },
+    customerErasure: {
+      findFirst: (...args: unknown[]) => customerErasureFindFirst(...args),
+    },
     orderLineItem: {
-      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
-      createMany: vi.fn().mockResolvedValue({ count: 0 }),
+      deleteMany: (...args: unknown[]) => lineItemDeleteMany(...args),
+      createMany: (...args: unknown[]) => lineItemCreateMany(...args),
     },
     fulfillment: {
       findUnique: (...args: unknown[]) => fulfillmentFindUnique(...args),
@@ -73,7 +79,8 @@ vi.mock("~/db.server", () => {
   return { default: client };
 });
 
-const { syncOrderFromShopify, syncFulfillmentFromShopify } = await import("./sync.server");
+const { syncOrderFromShopify, syncFulfillmentFromShopify } =
+  await import("./sync.server");
 
 const SHOP_ID = "shop_1";
 const PROCESSED_AT = "2026-07-01T10:00:00Z";
@@ -85,6 +92,7 @@ function orderPayload(overrides: Record<string, unknown> = {}) {
     order_number: 1001,
     processed_at: PROCESSED_AT,
     created_at: PROCESSED_AT,
+    updated_at: "2026-07-01T10:05:00Z",
     currency: "USD",
     subtotal_price: "100.00",
     total_discounts: "0.00",
@@ -102,6 +110,7 @@ function fulfillmentPayload(overrides: Record<string, unknown> = {}) {
     id: 77700001,
     order_id: 99900001,
     created_at: "2026-07-02T09:00:00Z",
+    updated_at: "2026-07-02T09:05:00Z",
     status: "success",
     tracking_company: "UPS",
     service: "ground",
@@ -137,6 +146,9 @@ beforeEach(() => {
   // been written cannot see it, and would pass against the bug.
   orderRows = [];
   customerRows = [];
+  customerErasureFindFirst.mockResolvedValue(null);
+  lineItemDeleteMany.mockResolvedValue({ count: 0 });
+  lineItemCreateMany.mockResolvedValue({ count: 0 });
 
   customerUpsert.mockImplementation(async ({ where, create, update }: any) => {
     const key = where.shopId_shopifyId;
@@ -169,16 +181,17 @@ beforeEach(() => {
     orderRows.push(row);
     return row;
   });
-  orderCount.mockImplementation(async ({ where }: any) =>
-    orderRows.filter(
-      (row) =>
-        row.shopId === where.shopId &&
-        row.customerId === where.customerId &&
-        (where.shopifyId?.not === undefined ||
-          row.shopifyId !== where.shopifyId.not) &&
-        (where.processedAt?.lt === undefined ||
-          row.processedAt < where.processedAt.lt),
-    ).length,
+  orderCount.mockImplementation(
+    async ({ where }: any) =>
+      orderRows.filter(
+        (row) =>
+          row.shopId === where.shopId &&
+          row.customerId === where.customerId &&
+          (where.shopifyId?.not === undefined ||
+            row.shopifyId !== where.shopifyId.not) &&
+          (where.processedAt?.lt === undefined ||
+            row.processedAt < where.processedAt.lt),
+      ).length,
   );
   orderFindFirst.mockImplementation(async ({ where, orderBy }: any) => {
     const matched = orderRows
@@ -246,6 +259,16 @@ beforeEach(() => {
 });
 
 describe("syncOrderFromShopify — isFirstOrder", () => {
+  it("imports a post-redaction delivery anonymously instead of recreating the customer", async () => {
+    customerErasureFindFirst.mockResolvedValue({ id: "erased_1" });
+
+    const order = await syncOrderFromShopify(SHOP_ID, orderPayload());
+
+    expect(customerUpsert).not.toHaveBeenCalled();
+    expect(order.customerId).toBeNull();
+    expect(order.isFirstOrder).toBe(false);
+  });
+
   it("excludes the order being written from its own first-order test", async () => {
     // Shopify redelivers the same order as orders/created, orders/updated and
     // again inside refunds/create. If the count includes the order itself,
@@ -368,7 +391,8 @@ describe("syncOrderFromShopify — isFirstOrder", () => {
       orderPayload({
         id: 99900002,
         order_number: 1002,
-        landing_site: "/?utm_source=facebook&utm_medium=cpc&utm_campaign=retarget",
+        landing_site:
+          "/?utm_source=facebook&utm_medium=cpc&utm_campaign=retarget",
       }),
     );
     expect(customerRows[0].acquisitionChannel).toBe("FACEBOOK");
@@ -428,6 +452,35 @@ describe("syncOrderFromShopify — isFirstOrder", () => {
     expect(redelivered.isFirstOrder).toBe(false);
     expect(orderRows.filter((row) => row.isFirstOrder)).toHaveLength(1);
   });
+
+  it("ignores a delayed older snapshot before touching header, customer or children", async () => {
+    orderFindUnique.mockResolvedValueOnce({
+      id: "order_1",
+      shopId: SHOP_ID,
+      shopifyId: "gid://shopify/Order/99900001",
+      total: "150.00",
+      refundedTotal: "20.00",
+      financialStatus: "refunded",
+      fulfillmentStatus: "unfulfilled",
+      shopifyUpdatedAt: new Date("2026-07-01T11:00:00Z"),
+    });
+
+    const result = await syncOrderFromShopify(
+      SHOP_ID,
+      orderPayload({
+        updated_at: "2026-07-01T10:00:00Z",
+        total_price: "100.00",
+        financial_status: "paid",
+        line_items: [{ id: 1, quantity: 1, price: "100.00" }],
+      }),
+    );
+
+    expect(result.total).toBe("150.00");
+    expect(orderUpsert).not.toHaveBeenCalled();
+    expect(customerUpsert).not.toHaveBeenCalled();
+    expect(lineItemDeleteMany).not.toHaveBeenCalled();
+    expect(lineItemCreateMany).not.toHaveBeenCalled();
+  });
 });
 
 describe("syncFulfillmentFromShopify", () => {
@@ -469,8 +522,14 @@ describe("syncFulfillmentFromShopify", () => {
   it("keeps two shipments created in the same second apart", async () => {
     // Both carry the same created_at, so the old triple match collapsed the
     // second into the first and lost a shipment from the capacity series.
-    await syncFulfillmentFromShopify(SHOP_ID, fulfillmentPayload({ id: 77700001 }));
-    await syncFulfillmentFromShopify(SHOP_ID, fulfillmentPayload({ id: 77700002 }));
+    await syncFulfillmentFromShopify(
+      SHOP_ID,
+      fulfillmentPayload({ id: 77700001 }),
+    );
+    await syncFulfillmentFromShopify(
+      SHOP_ID,
+      fulfillmentPayload({ id: 77700002 }),
+    );
 
     expect(fulfillmentCreate).toHaveBeenCalledTimes(2);
     expect(fulfillmentUpdate).not.toHaveBeenCalled();
@@ -480,7 +539,10 @@ describe("syncFulfillmentFromShopify", () => {
     // Rows imported before shopifyId existed carry none. The first update to
     // one of them must claim it, not write a second row beside it.
     fulfillmentFindUnique.mockResolvedValue(null);
-    fulfillmentFindFirst.mockResolvedValue({ id: "ful_legacy", shopifyId: null });
+    fulfillmentFindFirst.mockResolvedValue({
+      id: "ful_legacy",
+      shopifyId: null,
+    });
 
     await syncFulfillmentFromShopify(SHOP_ID, fulfillmentPayload());
 
@@ -494,26 +556,69 @@ describe("syncFulfillmentFromShopify", () => {
   it("stops claiming an order is fulfilled once its only shipment is cancelled", async () => {
     fulfillmentCount.mockResolvedValue(0);
 
-    await syncFulfillmentFromShopify(SHOP_ID, fulfillmentPayload({ status: "cancelled" }));
+    await syncFulfillmentFromShopify(
+      SHOP_ID,
+      fulfillmentPayload({ status: "cancelled" }),
+    );
 
-    expect(orderUpdate.mock.calls[0]![0].data.fulfillmentStatus).toBe("unfulfilled");
-    expect(fulfillmentCount.mock.calls[0]![0].where.status.notIn).toContain("cancelled");
+    expect(orderUpdate.mock.calls[0]![0].data.fulfillmentStatus).toBe(
+      "unfulfilled",
+    );
+    expect(fulfillmentCount.mock.calls[0]![0].where.status.notIn).toContain(
+      "cancelled",
+    );
   });
 
   it("still reports fulfilled while another shipment is active", async () => {
     fulfillmentCount.mockResolvedValue(1);
 
-    await syncFulfillmentFromShopify(SHOP_ID, fulfillmentPayload({ status: "cancelled" }));
+    await syncFulfillmentFromShopify(
+      SHOP_ID,
+      fulfillmentPayload({ status: "cancelled" }),
+    );
 
-    expect(orderUpdate.mock.calls[0]![0].data.fulfillmentStatus).toBe("fulfilled");
+    expect(orderUpdate.mock.calls[0]![0].data.fulfillmentStatus).toBe(
+      "fulfilled",
+    );
   });
 
   it("ignores a fulfilment for an order it has never seen", async () => {
     orderFindUnique.mockResolvedValue(null);
 
-    const result = await syncFulfillmentFromShopify(SHOP_ID, fulfillmentPayload());
+    const result = await syncFulfillmentFromShopify(
+      SHOP_ID,
+      fulfillmentPayload(),
+    );
 
     expect(result).toBeNull();
     expect(fulfillmentCreate).not.toHaveBeenCalled();
+  });
+
+  it("does not let a delayed pre-cancellation delivery resurrect shipment state", async () => {
+    await syncFulfillmentFromShopify(
+      SHOP_ID,
+      fulfillmentPayload({ updated_at: "2026-07-02T09:05:00Z" }),
+    );
+    fulfillmentCount.mockResolvedValue(0);
+    await syncFulfillmentFromShopify(
+      SHOP_ID,
+      fulfillmentPayload({
+        status: "cancelled",
+        updated_at: "2026-07-02T10:00:00Z",
+      }),
+    );
+
+    orderUpdate.mockClear();
+    await syncFulfillmentFromShopify(
+      SHOP_ID,
+      fulfillmentPayload({
+        status: "success",
+        updated_at: "2026-07-02T09:30:00Z",
+      }),
+    );
+
+    expect(fulfillmentRows[0].status).toBe("cancelled");
+    expect(fulfillmentRows[0].shippedAt).toBeNull();
+    expect(orderUpdate).not.toHaveBeenCalled();
   });
 });

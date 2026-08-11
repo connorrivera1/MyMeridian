@@ -9,7 +9,6 @@ import {
 import type { LoaderFunctionArgs } from "react-router";
 
 import styles from "./design/meridian.css?url";
-import satoshiUrl from "./fonts/satoshi/Satoshi-Variable.woff2?url";
 
 /**
  * App Bridge has to be resolved here rather than in the embedded layout.
@@ -30,22 +29,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
 }
 
 export const links = () => [
-  // The whole surface is set in one variable font; preloading it means the
-  // splash wordmark never flashes a fallback face.
-  {
-    rel: "preload",
-    href: satoshiUrl,
-    as: "font",
-    type: "font/woff2",
-    crossOrigin: "anonymous" as const,
-  },
   { rel: "stylesheet", href: styles },
   { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
   { rel: "preconnect", href: "https://cdn.shopify.com" },
 ];
 
 export const meta = () => [
-  { title: "Meridian — true profit for your store" },
+  { title: "Meridian — qualified profit from available inputs" },
   { name: "viewport", content: "width=device-width, initial-scale=1" },
   // Media-scoped so the browser chrome follows the sky. The toggle also
   // rewrites these at runtime, since data-theme can override the OS setting.

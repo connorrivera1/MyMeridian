@@ -1,7 +1,9 @@
-import { Channel } from "@prisma/client";
+import { Channel, CostSource, Prisma } from "@prisma/client";
 
 import prisma from "~/db.server";
+import { customerErasureStateInTransaction } from "~/lib/customer-erasure.server";
 import { withOrderLock } from "~/lib/order-lock.server";
+import { withProductLock } from "~/lib/product-lock.server";
 
 /**
  * Translation layer between Shopify's webhook payloads and Meridian's schema.
@@ -12,18 +14,22 @@ import { withOrderLock } from "~/lib/order-lock.server";
 
 type Payload = Record<string, any>;
 
-const gid = (kind: string, id: unknown) => `gid://shopify/${kind}/${id}`;
+const gid = (kind: string, id: unknown) => {
+  const value = String(id ?? "").trim();
+  return value.startsWith("gid://shopify/")
+    ? value
+    : `gid://shopify/${kind}/${value}`;
+};
 
-/**
- * Variant GIDs carried by a products/create or products/update payload.
- *
- * Exists so the webhook can ask Shopify for the one field the payload never
- * carries — the unit cost on each variant's inventory item.
- */
-export function variantGidsIn(payload: Payload): string[] {
-  return (payload.variants ?? [])
-    .map((variant: Payload) => gid("ProductVariant", variant.id))
-    .filter(Boolean);
+function sourceTime(value: unknown, label: string): Date | null {
+  if (value === undefined || value === null || String(value).trim() === "") {
+    return null;
+  }
+  const parsed = new Date(String(value));
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`Shopify returned an invalid ${label}: ${String(value)}`);
+  }
+  return parsed;
 }
 
 function decimal(value: unknown, fallback = "0.00"): string {
@@ -50,9 +56,10 @@ export interface AttributionSignals {
   utmCampaign?: string | null;
 }
 
-export function deriveChannel(
-  signals: AttributionSignals,
-): { channel: Channel; utm: Record<string, string | null> } {
+export function deriveChannel(signals: AttributionSignals): {
+  channel: Channel;
+  utm: Record<string, string | null>;
+} {
   const { landingSite, referringSite } = signals;
 
   const utm: Record<string, string | null> = {
@@ -77,7 +84,8 @@ export function deriveChannel(
   const source = (utm.source ?? "").toLowerCase();
   const medium = (utm.medium ?? "").toLowerCase();
 
-  if (/facebook|meta|instagram|fb/.test(source)) return { channel: Channel.FACEBOOK, utm };
+  if (/facebook|meta|instagram|fb/.test(source))
+    return { channel: Channel.FACEBOOK, utm };
   if (/google|adwords/.test(source)) {
     return {
       channel: /organic/.test(medium) ? Channel.ORGANIC_SEARCH : Channel.GOOGLE,
@@ -88,11 +96,13 @@ export function deriveChannel(
   if (/klaviyo|mailchimp|email|newsletter/.test(source) || medium === "email") {
     return { channel: Channel.EMAIL, utm };
   }
-  if (/affiliate|partner/.test(medium)) return { channel: Channel.AFFILIATE, utm };
+  if (/affiliate|partner/.test(medium))
+    return { channel: Channel.AFFILIATE, utm };
 
   const referrer = (referringSite ?? "").toLowerCase();
   if (referrer) {
-    if (/facebook|instagram/.test(referrer)) return { channel: Channel.FACEBOOK, utm };
+    if (/facebook|instagram/.test(referrer))
+      return { channel: Channel.FACEBOOK, utm };
     if (/tiktok/.test(referrer)) return { channel: Channel.TIKTOK, utm };
     if (/google|bing|duckduckgo|yahoo/.test(referrer)) {
       return { channel: Channel.ORGANIC_SEARCH, utm };
@@ -132,61 +142,22 @@ export function refundedTotalFrom(refunds: unknown): string {
 
 export async function syncOrderFromShopify(shopId: string, payload: Payload) {
   const shopifyId = gid("Order", payload.id);
+  const shopifyUpdatedAt = sourceTime(payload.updated_at, "order updated_at");
 
   const { channel, utm } = deriveChannel({
     landingSite: payload.landing_site,
     referringSite: payload.referring_site,
+    utmSource: payload.meridian_utm_source,
+    utmMedium: payload.meridian_utm_medium,
+    utmCampaign: payload.meridian_utm_campaign,
   });
-
-  // Customer first, so the order can be linked in one write.
-  let customerId: string | null = null;
-  let customerFirstOrderAt: Date | null = null;
-  if (payload.customer?.id) {
-    const customer = await prisma.customer.upsert({
-      where: {
-        shopId_shopifyId: {
-          shopId,
-          shopifyId: gid("Customer", payload.customer.id),
-        },
-      },
-      create: {
-        shopId,
-        shopifyId: gid("Customer", payload.customer.id),
-        email: payload.customer.email ?? null,
-        acquisitionChannel: channel,
-        acquisitionCampaignId: utm.campaign,
-        firstOrderAt: new Date(payload.processed_at ?? payload.created_at),
-      },
-      update: { email: payload.customer.email ?? undefined },
-    });
-    customerId = customer.id;
-    customerFirstOrderAt = customer.firstOrderAt ?? null;
-  }
 
   const refundedTotal = refundedTotalFrom(payload.refunds);
 
   const processedAt = new Date(payload.processed_at ?? payload.created_at);
-
-  // Whether this is the customer's first order must be decided by comparison
-  // against their OTHER orders, never by a bare count.
-  //
-  // Shopify redelivers the same order routinely — orders/create is followed by
-  // orders/updated, and refunds/create arrives later with the order nested
-  // inside. On every redelivery the order is already stored, so a plain
-  // `count({ customerId }) === 0` counts the order against itself and flips a
-  // genuine first order to false. That silently destroys new-customer counts,
-  // and CAC is spend divided by new customers, so the acquisition screen
-  // overstates CAC for every redelivered order.
-  const isFirstOrder = customerId
-    ? (await prisma.order.count({
-        where: {
-          shopId,
-          customerId,
-          shopifyId: { not: shopifyId },
-          processedAt: { lt: processedAt },
-        },
-      })) === 0
-    : false;
+  if (Number.isNaN(processedAt.getTime())) {
+    throw new Error(`Shopify order ${shopifyId} has no valid processed time`);
+  }
 
   const shippingCharged =
     payload.total_shipping_price_set?.shop_money?.amount ??
@@ -199,7 +170,7 @@ export async function syncOrderFromShopify(shopId: string, payload: Payload) {
   const orderData = {
     orderNumber: Number(payload.order_number ?? payload.number ?? 0),
     processedAt,
-    customerId,
+    shopifyUpdatedAt,
     currency: payload.currency ?? "USD",
     subtotal: decimal(payload.subtotal_price),
     discountTotal: decimal(payload.total_discounts),
@@ -215,28 +186,170 @@ export async function syncOrderFromShopify(shopId: string, payload: Payload) {
     utmMedium: utm.medium,
     utmCampaign: utm.campaign,
     landingSite: payload.landing_site ?? null,
-    isFirstOrder,
   };
 
-  const order = await prisma.order.upsert({
-    where: { shopId_shopifyId: { shopId, shopifyId } },
-    create: { shopId, shopifyId, ...orderData },
-    update: orderData,
+  const lineItems: Payload[] = payload.line_items ?? [];
+  const refundedByLineItem = new Map<string, number>();
+  for (const refund of payload.refunds ?? []) {
+    for (const item of refund.refund_line_items ?? []) {
+      const key = String(item.line_item_id);
+      refundedByLineItem.set(
+        key,
+        (refundedByLineItem.get(key) ?? 0) + Number(item.quantity ?? 0),
+      );
+    }
+  }
+
+  // The stable Shopify identity is available before an Order row exists and
+  // is shared by webhook and backfill writers. Using a database cuid here left
+  // two concurrent creates outside the same lock domain.
+  return withOrderLock(`${shopId}|${shopifyId}`, async (tx) => {
+    const existing = await tx.order.findUnique({
+      where: { shopId_shopifyId: { shopId, shopifyId } },
+    });
+    if (
+      existing?.shopifyUpdatedAt &&
+      (!shopifyUpdatedAt || shopifyUpdatedAt < existing.shopifyUpdatedAt)
+    ) {
+      return existing;
+    }
+
+    // Customer erasure check and association are inside the same transaction
+    // as the order and children. Redaction can therefore win before this lock
+    // (the order becomes anonymous) or after commit (the cascade/set-null path
+    // removes identity), but can never land in a recreation gap between them.
+    let customerId: string | null = null;
+    let customerFirstOrderAt: Date | null = null;
+    if (payload.customer?.id) {
+      const customerShopifyId = gid("Customer", payload.customer.id);
+      const erasure = await customerErasureStateInTransaction(tx, shopId, {
+        id: customerShopifyId,
+      });
+      if (!erasure.erased) {
+        const customer = await tx.customer.upsert({
+          where: {
+            shopId_shopifyId: { shopId, shopifyId: customerShopifyId },
+          },
+          create: {
+            shopId,
+            shopifyId: customerShopifyId,
+            email: payload.customer.email ?? null,
+            acquisitionChannel: channel,
+            acquisitionCampaignId: utm.campaign,
+            firstOrderAt: processedAt,
+          },
+          update: { email: payload.customer.email ?? undefined },
+        });
+        customerId = customer.id;
+        customerFirstOrderAt = customer.firstOrderAt;
+      }
+    }
+
+    // Whether this is the customer's first order must exclude this order on a
+    // replay. The shop/customer lock above serialises two different orders for
+    // the same shopper; the reconciliation below settles out-of-order arrival.
+    const isFirstOrder = customerId
+      ? (await tx.order.count({
+          where: {
+            shopId,
+            customerId,
+            shopifyId: { not: shopifyId },
+            processedAt: { lt: processedAt },
+          },
+        })) === 0
+      : false;
+
+    const order = await tx.order.upsert({
+      where: { shopId_shopifyId: { shopId, shopifyId } },
+      create: {
+        shopId,
+        shopifyId,
+        ...orderData,
+        customerId,
+        isFirstOrder,
+      },
+      update: { ...orderData, customerId },
+    });
+
+    const variantGids = lineItems
+      .filter((item) => item.variant_id)
+      .map((item) => gid("ProductVariant", item.variant_id));
+    const variants = await tx.variant.findMany({
+      where: { shopId, shopifyId: { in: variantGids } },
+      select: { id: true, shopifyId: true, productId: true, unitCost: true },
+    });
+    const variantByGid = new Map(
+      variants.map((variant) => [variant.shopifyId, variant]),
+    );
+
+    const rows = lineItems.map((item) => {
+      const variant = item.variant_id
+        ? variantByGid.get(gid("ProductVariant", item.variant_id))
+        : undefined;
+      const lineDiscount = (item.discount_allocations ?? []).reduce(
+        (sum: number, allocation: Payload) =>
+          sum + Number(allocation.amount ?? 0),
+        0,
+      );
+      return {
+        shopId,
+        orderId: order.id,
+        shopifyId: gid("LineItem", item.id),
+        variantId: variant?.id ?? null,
+        productId: variant?.productId ?? null,
+        title: item.title ?? item.name ?? "Item",
+        sku: item.sku ?? null,
+        quantity: Number(item.quantity ?? 0),
+        unitPrice: decimal(item.price),
+        discount: decimal(lineDiscount.toFixed(2)),
+        unitCost: decimal(variant?.unitCost ?? "0", "0.0000"),
+        refundedQty: refundedByLineItem.get(String(item.id)) ?? 0,
+      };
+    });
+
+    await tx.orderLineItem.deleteMany({ where: { orderId: order.id } });
+    if (rows.length > 0) await tx.orderLineItem.createMany({ data: rows });
+
+    // Once a fulfilment webhook has supplied authoritative rows, derive the
+    // header from those rows instead of allowing an order replay to resurrect
+    // a shipment that was cancelled on an independent source clock.
+    const hasFulfillmentRows = await tx.fulfillment.findFirst({
+      where: { shopId, orderId: order.id },
+      select: { id: true },
+    });
+    let fulfillmentStatus = order.fulfillmentStatus;
+    if (hasFulfillmentRows) {
+      const active = await tx.fulfillment.count({
+        where: {
+          shopId,
+          orderId: order.id,
+          status: { notIn: [...INACTIVE_FULFILLMENT_STATUSES] },
+        },
+      });
+      fulfillmentStatus = active > 0 ? "fulfilled" : "unfulfilled";
+      if (fulfillmentStatus !== order.fulfillmentStatus) {
+        await tx.order.update({
+          where: { id: order.id },
+          data: { fulfillmentStatus },
+        });
+      }
+    }
+
+    const earliest = customerId
+      ? await reconcileFirstOrderInTransaction(
+          tx,
+          shopId,
+          customerId,
+          customerFirstOrderAt,
+        )
+      : null;
+
+    return {
+      ...order,
+      fulfillmentStatus,
+      isFirstOrder: earliest ? earliest.id === order.id : order.isFirstOrder,
+    };
   });
-
-  // The count above can only see what has already arrived, and webhooks are not
-  // ordered. A customer's second order delivered first finds no earlier order
-  // and claims the flag; when the genuine first order turns up later it also
-  // finds nothing earlier — the two orders differ in age, not in what each can
-  // see — so both read as first and nothing ever demotes the impostor. Decide it
-  // again from all of the customer's orders now that this one is stored.
-  const earliest = customerId
-    ? await reconcileFirstOrder(shopId, customerId, customerFirstOrderAt)
-    : null;
-
-  await syncLineItems(shopId, order.id, payload);
-
-  return earliest ? { ...order, isFirstOrder: earliest.id === order.id } : order;
 }
 
 /**
@@ -253,9 +366,24 @@ export async function reconcileFirstOrder(
   customerId: string,
   knownFirstOrderAt: Date | null = null,
 ) {
-  const earliest = await prisma.order.findFirst({
+  return prisma.$transaction((tx) =>
+    reconcileFirstOrderInTransaction(tx, shopId, customerId, knownFirstOrderAt),
+  );
+}
+
+async function reconcileFirstOrderInTransaction(
+  tx: Prisma.TransactionClient,
+  shopId: string,
+  customerId: string,
+  knownFirstOrderAt: Date | null = null,
+) {
+  const earliest = await tx.order.findFirst({
     where: { shopId, customerId },
-    orderBy: [{ processedAt: "asc" }, { orderNumber: "asc" }, { shopifyId: "asc" }],
+    orderBy: [
+      { processedAt: "asc" },
+      { orderNumber: "asc" },
+      { shopifyId: "asc" },
+    ],
     select: {
       id: true,
       isFirstOrder: true,
@@ -266,13 +394,13 @@ export async function reconcileFirstOrder(
   });
   if (!earliest) return null;
 
-  await prisma.order.updateMany({
+  await tx.order.updateMany({
     where: { shopId, customerId, isFirstOrder: true, id: { not: earliest.id } },
     data: { isFirstOrder: false },
   });
 
   if (!earliest.isFirstOrder) {
-    await prisma.order.update({
+    await tx.order.update({
       where: { id: earliest.id },
       data: { isFirstOrder: true },
     });
@@ -284,7 +412,7 @@ export async function reconcileFirstOrder(
   // recompute would eventually correct `firstOrderAt`; it never touches the
   // channel, and CAC is reported per channel.
   if (knownFirstOrderAt?.getTime() !== earliest.processedAt.getTime()) {
-    await prisma.customer.update({
+    await tx.customer.update({
       where: { id: customerId },
       data: {
         firstOrderAt: earliest.processedAt,
@@ -325,139 +453,205 @@ export async function reconcileFirstOrdersForShop(shopId: string) {
   `;
 }
 
-async function syncLineItems(shopId: string, orderId: string, payload: Payload) {
-  const lineItems: Payload[] = payload.line_items ?? [];
-
-  // Refunded quantities live on the refunds array, not the line items.
-  const refundedByLineItem = new Map<string, number>();
-  for (const refund of payload.refunds ?? []) {
-    for (const item of refund.refund_line_items ?? []) {
-      const key = String(item.line_item_id);
-      refundedByLineItem.set(key, (refundedByLineItem.get(key) ?? 0) + Number(item.quantity ?? 0));
-    }
-  }
-
-  // Resolve variants once so each line can snapshot the current landed cost.
-  const variantGids = lineItems
-    .filter((item) => item.variant_id)
-    .map((item) => gid("ProductVariant", item.variant_id));
-
-  const variants = await prisma.variant.findMany({
-    where: { shopId, shopifyId: { in: variantGids } },
-    select: { id: true, shopifyId: true, productId: true, unitCost: true },
-  });
-  const variantByGid = new Map(variants.map((v) => [v.shopifyId, v]));
-
-  // Built before the lock is taken: this is pure mapping, and every statement
-  // inside the critical section is time a competing writer spends waiting.
-  const rows = lineItems.map((item) => {
-      const variant = item.variant_id
-        ? variantByGid.get(gid("ProductVariant", item.variant_id))
-        : undefined;
-
-      const lineDiscount = (item.discount_allocations ?? []).reduce(
-        (sum: number, allocation: Payload) => sum + Number(allocation.amount ?? 0),
-        0,
-      );
-
-      return {
-        shopId,
-        orderId,
-        shopifyId: gid("LineItem", item.id),
-        variantId: variant?.id ?? null,
-        productId: variant?.productId ?? null,
-        title: item.title ?? item.name ?? "Item",
-        sku: item.sku ?? null,
-        quantity: Number(item.quantity ?? 0),
-        unitPrice: decimal(item.price),
-        discount: decimal(lineDiscount.toFixed(2)),
-        // Snapshot, not a reference: a supplier price rise next month must not
-        // retroactively change what this order earned.
-        unitCost: decimal(variant?.unitCost ?? "0", "0.0000"),
-        refundedQty: refundedByLineItem.get(String(item.id)) ?? 0,
-      };
-  });
-
-  // Delete and recreate atomically, serialised per order. See order-lock for
-  // why both halves are required.
-  await withOrderLock(orderId, async (tx) => {
-    await tx.orderLineItem.deleteMany({ where: { orderId } });
-    if (rows.length > 0) {
-      await tx.orderLineItem.createMany({ data: rows });
-    }
-  });
-}
-
 export async function syncProductFromShopify(shopId: string, payload: Payload) {
   const shopifyId = gid("Product", payload.id);
+  const observedAt = new Date();
+  const sourceUpdatedAt = sourceTime(payload.updated_at, "product updated_at");
 
-  const product = await prisma.product.upsert({
-    where: { shopId_shopifyId: { shopId, shopifyId } },
-    create: {
-      shopId,
-      shopifyId,
-      title: payload.title ?? "Untitled",
-      handle: payload.handle ?? String(payload.id),
-      productType: payload.product_type ?? null,
-      vendor: payload.vendor ?? null,
-      status: (payload.status ?? "active").toUpperCase(),
-      imageUrl: payload.image?.src ?? null,
-    },
-    update: {
-      title: payload.title ?? "Untitled",
-      handle: payload.handle ?? String(payload.id),
-      productType: payload.product_type ?? null,
-      vendor: payload.vendor ?? null,
-      status: (payload.status ?? "active").toUpperCase(),
-      imageUrl: payload.image?.src ?? null,
-    },
-  });
-
-  for (const variant of payload.variants ?? []) {
-    const variantGid = gid("ProductVariant", variant.id);
-    const price = decimal(variant.price);
-
-    const existing = await prisma.variant.findUnique({
-      where: { shopId_shopifyId: { shopId, shopifyId: variantGid } },
+  return withProductLock(shopId, shopifyId, async (tx) => {
+    const existingProduct = await tx.product.findUnique({
+      where: { shopId_shopifyId: { shopId, shopifyId } },
     });
 
-    const record = await prisma.variant.upsert({
-      where: { shopId_shopifyId: { shopId, shopifyId: variantGid } },
-      create: {
-        shopId,
-        productId: product.id,
-        shopifyId: variantGid,
-        sku: variant.sku ?? null,
-        title: variant.title ?? "Default",
-        price,
-        compareAtPrice: variant.compare_at_price ? decimal(variant.compare_at_price) : null,
-        inventoryQty: Number(variant.inventory_quantity ?? 0),
-        weightGrams: variant.grams ? Number(variant.grams) : null,
-      },
-      update: {
-        sku: variant.sku ?? null,
-        title: variant.title ?? "Default",
-        price,
-        compareAtPrice: variant.compare_at_price ? decimal(variant.compare_at_price) : null,
-        inventoryQty: Number(variant.inventory_quantity ?? 0),
-      },
-    });
+    // The lock establishes one atomic writer, but lock acquisition order is
+    // not Shopify mutation order. A delayed 12:02 delivery must never replace
+    // catalog state already published from 12:03. A payload without Shopify's
+    // source timestamp can initialise legacy state, but it cannot outrank a
+    // row whose source chronology is already known.
+    const publishesCurrentState =
+      !existingProduct ||
+      !existingProduct.shopifyUpdatedAt ||
+      (sourceUpdatedAt !== null &&
+        sourceUpdatedAt >= existingProduct.shopifyUpdatedAt);
 
-    // Record price moves as they happen — this history is the only thing that
-    // makes elasticity estimable later, and it cannot be reconstructed.
-    if (!existing || String(existing.price) !== price) {
-      await prisma.priceChange.create({
-        data: {
-          shopId,
-          variantId: record.id,
-          price,
-          effectiveAt: new Date(payload.updated_at ?? Date.now()),
+    const product = publishesCurrentState
+      ? await tx.product.upsert({
+          where: { shopId_shopifyId: { shopId, shopifyId } },
+          create: {
+            shopId,
+            shopifyId,
+            title: payload.title ?? "Untitled",
+            handle: payload.handle ?? String(payload.id),
+            productType: payload.product_type ?? null,
+            vendor: payload.vendor ?? null,
+            status: (payload.status ?? "active").toUpperCase(),
+            imageUrl: payload.image?.src ?? null,
+            shopifyUpdatedAt: sourceUpdatedAt,
+          },
+          update: {
+            title: payload.title ?? "Untitled",
+            handle: payload.handle ?? String(payload.id),
+            productType: payload.product_type ?? null,
+            vendor: payload.vendor ?? null,
+            status: (payload.status ?? "active").toUpperCase(),
+            imageUrl: payload.image?.src ?? null,
+            shopifyUpdatedAt: sourceUpdatedAt,
+          },
+        })
+      : existingProduct;
+
+    for (const variant of payload.variants ?? []) {
+      const variantGid = gid("ProductVariant", variant.id);
+      const price = new Prisma.Decimal(decimal(variant.price));
+
+      const existing = await tx.variant.findUnique({
+        where: { shopId_shopifyId: { shopId, shopifyId: variantGid } },
+        select: {
+          id: true,
+          price: true,
+          inventoryItemShopifyId: true,
+          inventoryItemUpdatedAt: true,
+          _count: { select: { priceHistory: true } },
         },
       });
-    }
-  }
 
-  return product;
+      const inventoryItemShopifyId = variant.inventory_item_gid
+        ? gid("InventoryItem", variant.inventory_item_gid)
+        : null;
+      const inventoryItemUpdatedAt = sourceTime(
+        variant.inventory_item_updated_at,
+        "inventory item updated_at",
+      );
+      const publishesInventoryState =
+        inventoryItemShopifyId !== null &&
+        (!existing?.inventoryItemUpdatedAt ||
+          (inventoryItemUpdatedAt !== null &&
+            inventoryItemUpdatedAt >= existing.inventoryItemUpdatedAt));
+      const unitCostKnown = variant.unit_cost_known === true;
+      const weightUpdate = Object.prototype.hasOwnProperty.call(
+        variant,
+        "grams",
+      )
+        ? {
+            weightGrams:
+              variant.grams === null || variant.grams === undefined
+                ? null
+                : Number(variant.grams),
+          }
+        : {};
+      const inventoryData = publishesInventoryState
+        ? {
+            inventoryItemShopifyId,
+            inventoryItemUpdatedAt,
+            ...(unitCostKnown
+              ? {
+                  unitCost:
+                    variant.unit_cost === null ||
+                    variant.unit_cost === undefined
+                      ? null
+                      : decimal(variant.unit_cost, "0.0000"),
+                  costSource:
+                    variant.unit_cost === null ||
+                    variant.unit_cost === undefined
+                      ? CostSource.ESTIMATED
+                      : CostSource.SHOPIFY,
+                }
+              : {}),
+          }
+        : {};
+
+      // A late webhook remains valuable evidence of the price that existed at
+      // its own Shopify timestamp. Preserve that fact once, but never let it
+      // alter current Product/Variant fields.
+      if (!publishesCurrentState) {
+        if (existing && publishesInventoryState) {
+          await tx.variant.update({
+            where: { id: existing.id },
+            data: inventoryData,
+          });
+        }
+        if (!existing || !sourceUpdatedAt) continue;
+        const duplicate = await tx.priceChange.findFirst({
+          where: {
+            variantId: existing.id,
+            price,
+            effectiveAt: sourceUpdatedAt,
+          },
+          select: { id: true },
+        });
+        if (!duplicate) {
+          await tx.priceChange.create({
+            data: {
+              shopId,
+              variantId: existing.id,
+              price,
+              effectiveAt: sourceUpdatedAt,
+            },
+          });
+        }
+        continue;
+      }
+
+      const record = await tx.variant.upsert({
+        where: { shopId_shopifyId: { shopId, shopifyId: variantGid } },
+        create: {
+          shopId,
+          productId: product.id,
+          shopifyId: variantGid,
+          sku: variant.sku ?? null,
+          title: variant.title ?? "Default",
+          price,
+          compareAtPrice: variant.compare_at_price
+            ? decimal(variant.compare_at_price)
+            : null,
+          inventoryQty: Number(variant.inventory_quantity ?? 0),
+          weightGrams:
+            variant.grams === null || variant.grams === undefined
+              ? null
+              : Number(variant.grams),
+          ...inventoryData,
+        },
+        update: {
+          sku: variant.sku ?? null,
+          title: variant.title ?? "Default",
+          price,
+          compareAtPrice: variant.compare_at_price
+            ? decimal(variant.compare_at_price)
+            : null,
+          inventoryQty: Number(variant.inventory_quantity ?? 0),
+          ...weightUpdate,
+          ...inventoryData,
+        },
+      });
+
+      // Current price and its irreconstructible history commit together. A
+      // failed insert rolls the price back, so durable replay still observes
+      // the old price and appends exactly one transition.
+      const needsPriceFact =
+        !existing ||
+        existing._count.priceHistory === 0 ||
+        !new Prisma.Decimal(existing.price).equals(price);
+      if (!needsPriceFact) continue;
+
+      const effectiveAt = sourceUpdatedAt ?? observedAt;
+      const duplicate = await tx.priceChange.findFirst({
+        where: { variantId: record.id, price, effectiveAt },
+        select: { id: true },
+      });
+      if (!duplicate) {
+        await tx.priceChange.create({
+          data: {
+            shopId,
+            variantId: record.id,
+            price,
+            effectiveAt,
+          },
+        });
+      }
+    }
+
+    return product;
+  });
 }
 
 /** Shopify fulfilment states that mean nothing shipped, or that it came back. */
@@ -476,7 +670,9 @@ export const INACTIVE_FULFILLMENT_STATUSES = new Set([
  * import stamped it unconditionally. One column, two writers, two meanings.
  */
 export function fulfillmentDidShip(status: string | null | undefined): boolean {
-  return !INACTIVE_FULFILLMENT_STATUSES.has(String(status ?? "success").toLowerCase());
+  return !INACTIVE_FULFILLMENT_STATUSES.has(
+    String(status ?? "success").toLowerCase(),
+  );
 }
 
 /**
@@ -488,14 +684,22 @@ export function fulfillmentDidShip(status: string | null | undefined): boolean {
  * and carrier corrections never landed, and two shipments created in the same
  * second collapsed into one row.
  */
-export async function syncFulfillmentFromShopify(shopId: string, payload: Payload) {
-  const order = await prisma.order.findUnique({
-    where: { shopId_shopifyId: { shopId, shopifyId: gid("Order", payload.order_id) } },
-  });
-  if (!order) return null;
-
+export async function syncFulfillmentFromShopify(
+  shopId: string,
+  payload: Payload,
+) {
+  const orderShopifyId = gid("Order", payload.order_id);
   const shopifyId = payload.id ? gid("Fulfillment", payload.id) : null;
   const createdAt = new Date(payload.created_at);
+  if (Number.isNaN(createdAt.getTime())) {
+    throw new Error(
+      `Shopify fulfillment ${shopifyId ?? "without id"} has no valid created_at`,
+    );
+  }
+  const shopifyUpdatedAt = sourceTime(
+    payload.updated_at,
+    "fulfillment updated_at",
+  );
   const status = String(payload.status ?? "success").toLowerCase();
   const shipped = !INACTIVE_FULFILLMENT_STATUSES.has(status);
 
@@ -507,6 +711,7 @@ export async function syncFulfillmentFromShopify(shopId: string, payload: Payloa
   const fields = {
     status,
     createdAt,
+    shopifyUpdatedAt,
     // A cancelled fulfilment never shipped, and one that was cancelled after
     // the fact did not stay shipped. Clearing this keeps the fulfilment engine
     // from counting it against the warehouse's throughput.
@@ -517,50 +722,63 @@ export async function syncFulfillmentFromShopify(shopId: string, payload: Payloa
     location: String(payload.location_id ?? "primary"),
   };
 
-  // Rows imported before `shopifyId` existed carry none, and neither does a
-  // payload without an id. Fall back to the old triple match so an update to
-  // one of those adopts the row instead of writing a second one beside it.
-  const existing = shopifyId
-    ? ((await prisma.fulfillment.findUnique({
-        where: { shopId_shopifyId: { shopId, shopifyId } },
-      })) ??
-      (await prisma.fulfillment.findFirst({
-        where: { shopId, orderId: order.id, createdAt, shopifyId: null },
-      })))
-    : await prisma.fulfillment.findFirst({
-        where: { shopId, orderId: order.id, createdAt },
-      });
+  return withOrderLock(`${shopId}|${orderShopifyId}`, async (tx) => {
+    const order = await tx.order.findUnique({
+      where: {
+        shopId_shopifyId: { shopId, shopifyId: orderShopifyId },
+      },
+    });
+    if (!order) return null;
 
-  const fulfillment = existing
-    ? await prisma.fulfillment.update({
-        where: { id: existing.id },
-        data: { ...fields, shopifyId: shopifyId ?? existing.shopifyId },
-      })
-    : await prisma.fulfillment.create({
-        data: {
-          shopId,
-          orderId: order.id,
-          shopifyId,
-          ...fields,
-          // Real carrier cost arrives from the 3PL connector, not from Shopify.
-          // Left at zero so the engine falls back to the merchant's cost rule
-          // rather than silently claiming this shipment was free.
-          shippingCost: "0.00",
-          pickPackCost: "0.00",
-        },
-      });
+    // Rows imported before `shopifyId` existed carry none. Fall back to the
+    // old time match once so the first current update adopts that row.
+    const existing = shopifyId
+      ? ((await tx.fulfillment.findUnique({
+          where: { shopId_shopifyId: { shopId, shopifyId } },
+        })) ??
+        (await tx.fulfillment.findFirst({
+          where: { shopId, orderId: order.id, createdAt, shopifyId: null },
+        })))
+      : await tx.fulfillment.findFirst({
+          where: { shopId, orderId: order.id, createdAt },
+        });
 
-  // Derived, not asserted: the order is only fulfilled while at least one of
-  // its fulfilments is. Stamping "fulfilled" unconditionally left an order
-  // whose single shipment was cancelled reading as shipped forever.
-  const active = await prisma.fulfillment.count({
-    where: { shopId, orderId: order.id, status: { notIn: [...INACTIVE_FULFILLMENT_STATUSES] } },
+    if (
+      existing?.shopifyUpdatedAt &&
+      (!shopifyUpdatedAt || shopifyUpdatedAt < existing.shopifyUpdatedAt)
+    ) {
+      return existing;
+    }
+
+    const fulfillment = existing
+      ? await tx.fulfillment.update({
+          where: { id: existing.id },
+          data: { ...fields, shopifyId: shopifyId ?? existing.shopifyId },
+        })
+      : await tx.fulfillment.create({
+          data: {
+            shopId,
+            orderId: order.id,
+            shopifyId,
+            ...fields,
+            // Real carrier cost arrives from the 3PL connector, not Shopify.
+            shippingCost: "0.00",
+            pickPackCost: "0.00",
+          },
+        });
+
+    const active = await tx.fulfillment.count({
+      where: {
+        shopId,
+        orderId: order.id,
+        status: { notIn: [...INACTIVE_FULFILLMENT_STATUSES] },
+      },
+    });
+    await tx.order.update({
+      where: { id: order.id },
+      data: { fulfillmentStatus: active > 0 ? "fulfilled" : "unfulfilled" },
+    });
+
+    return fulfillment;
   });
-
-  await prisma.order.update({
-    where: { id: order.id },
-    data: { fulfillmentStatus: active > 0 ? "fulfilled" : "unfulfilled" },
-  });
-
-  return fulfillment;
 }

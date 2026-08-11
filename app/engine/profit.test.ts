@@ -16,6 +16,12 @@ const RULES: CostRuleSet = {
   pickPackPerOrderCents: 175,
   pickPackPerItemCents: 35,
   monthlyOverheadCents: 0,
+  provenance: {
+    paymentFee: { origin: "INSTALL_DEFAULT", confirmed: true },
+    shippingDefault: { origin: "INSTALL_DEFAULT", confirmed: true },
+    pickPack: { origin: "INSTALL_DEFAULT", confirmed: true },
+    monthlyOverhead: { origin: "INSTALL_DEFAULT", confirmed: true },
+  },
 };
 
 const TZ = "America/New_York";
@@ -86,8 +92,14 @@ describe("computeOrderProfit", () => {
   });
 
   it("never counts sales tax as revenue", () => {
-    const withTax = computeOrderProfit(makeOrder({ taxTotalCents: 5000 }), RULES);
-    const withoutTax = computeOrderProfit(makeOrder({ taxTotalCents: 0 }), RULES);
+    const withTax = computeOrderProfit(
+      makeOrder({ taxTotalCents: 5000 }),
+      RULES,
+    );
+    const withoutTax = computeOrderProfit(
+      makeOrder({ taxTotalCents: 0 }),
+      RULES,
+    );
 
     expect(withTax.netRevenueCents).toBe(withoutTax.netRevenueCents);
   });
@@ -157,29 +169,157 @@ describe("computeOrderProfit", () => {
     expect(refunded.paymentFeeCents).toBe(notRefunded.paymentFeeCents);
   });
 
+  it("applies a merchant's custom processing structure to a partial refund", () => {
+    const customRules: CostRuleSet = {
+      ...RULES,
+      paymentPercentRate: 0.035,
+      paymentFixedPerOrderCents: 49,
+    };
+    const order = makeOrder({ refundedTotalCents: 4850 });
+
+    const profit = computeOrderProfit(order, customRules);
+
+    // The $48.50 refund reverses $45.00 of ex-tax revenue, but the processor
+    // keeps its 3.5% + $0.49 fee on the original $97.00 capture.
+    expect(profit.refundCents).toBe(4500);
+    expect(profit.netRevenueCents).toBe(4500);
+    expect(profit.paymentFeeCents).toBe(389);
+  });
+
+  it("uses custom merchant fee structures exactly, including a zero fixed fee", () => {
+    const customRules: CostRuleSet = {
+      ...RULES,
+      paymentPercentRate: 0.0175,
+      paymentFixedPerOrderCents: 0,
+    };
+
+    const profit = computeOrderProfit(makeOrder(), customRules);
+
+    // 1.75% of the $97.00 captured total, rounded to the nearest cent.
+    expect(profit.paymentFeeCents).toBe(170);
+    expect(profit.netProfitCents).toBe(4409 + 311 - 170);
+  });
+
   it("prefers real fulfilment costs over default estimates", () => {
+    const measuredRules: CostRuleSet = {
+      ...RULES,
+      paymentPercentRate: 0,
+      paymentFixedPerOrderCents: 0,
+    };
     const profit = computeOrderProfit(
-      makeOrder({ actualShippingCostCents: 1200, actualPickPackCostCents: 400 }),
-      RULES,
+      makeOrder({
+        actualShippingCostCents: 1200,
+        actualPickPackCostCents: 400,
+      }),
+      measuredRules,
     );
 
     expect(profit.shippingCostCents).toBe(1200);
     expect(profit.pickPackCents).toBe(400);
+    expect(profit.hasMissingCogs).toBe(false);
+    expect(profit.usesModeledCosts).toBe(false);
     expect(profit.usesEstimatedCosts).toBe(false);
   });
 
-  it("flags orders whose numbers rest on estimates", () => {
-    expect(computeOrderProfit(makeOrder(), RULES).usesEstimatedCosts).toBe(true);
-
+  it("flags missing product cost independently of confirmed defaults", () => {
     const noCogs = makeOrder({
-      lineItems: makeOrder().lineItems.map((i) => ({ ...i, unitCostMicros: 0 })),
+      lineItems: makeOrder().lineItems.map((i) => ({
+        ...i,
+        unitCostMicros: 0,
+      })),
     });
+    const profit = computeOrderProfit(noCogs, RULES);
+    expect(profit.hasMissingCogs).toBe(true);
+    expect(profit.usesEstimatedCosts).toBe(true);
+  });
+
+  it("flags a reviewed payment-fee model even with measured fulfilment", () => {
+    const rules: CostRuleSet = {
+      ...RULES,
+      provenance: {
+        ...RULES.provenance,
+        paymentFee: { origin: "INSTALL_DEFAULT", confirmed: true },
+      },
+    };
+    const order = makeOrder({
+      actualShippingCostCents: 1200,
+      actualPickPackCostCents: 400,
+    });
+
+    const profit = computeOrderProfit(order, rules);
+    expect(profit.hasMissingCogs).toBe(false);
+    expect(profit.usesModeledCosts).toBe(true);
+    expect(profit.usesEstimatedCosts).toBe(true);
+  });
+
+  it("flags reviewed fulfilment fallbacks only when the order uses them", () => {
+    const rules: CostRuleSet = {
+      ...RULES,
+      paymentPercentRate: 0,
+      paymentFixedPerOrderCents: 0,
+      provenance: {
+        ...RULES.provenance,
+        shippingDefault: { origin: "INSTALL_DEFAULT", confirmed: true },
+        pickPack: { origin: "INSTALL_DEFAULT", confirmed: true },
+      },
+    };
+
+    expect(computeOrderProfit(makeOrder(), rules).usesEstimatedCosts).toBe(
+      true,
+    );
     expect(
-      computeOrderProfit(noCogs, {
-        ...RULES,
-        shippingDefaultPerOrderCents: 0,
-      }).usesEstimatedCosts,
+      computeOrderProfit(
+        makeOrder({
+          actualShippingCostCents: 1200,
+          actualPickPackCostCents: 400,
+        }),
+        rules,
+      ).usesEstimatedCosts,
+    ).toBe(false);
+  });
+
+  it("flags non-zero reviewed overhead across every order in its month", () => {
+    const rules: CostRuleSet = {
+      ...RULES,
+      paymentPercentRate: 0,
+      paymentFixedPerOrderCents: 0,
+      shippingDefaultPerOrderCents: 0,
+      pickPackPerOrderCents: 0,
+      pickPackPerItemCents: 0,
+      monthlyOverheadCents: 1,
+      provenance: {
+        ...RULES.provenance,
+        monthlyOverhead: { origin: "INSTALL_DEFAULT", confirmed: true },
+      },
+    };
+
+    // The individual allocation can round to zero; the headline still rests
+    // on the modelled monthly amount.
+    expect(
+      computeOrderProfit(makeOrder(), rules, 0, 0).usesEstimatedCosts,
     ).toBe(true);
+  });
+
+  it("does not flag zero-value fallbacks even when they are unconfirmed", () => {
+    const zeroRules: CostRuleSet = {
+      ...RULES,
+      paymentPercentRate: 0,
+      paymentFixedPerOrderCents: 0,
+      shippingDefaultPerOrderCents: 0,
+      pickPackPerOrderCents: 0,
+      pickPackPerItemCents: 0,
+      provenance: {
+        paymentFee: { origin: "INSTALL_DEFAULT", confirmed: false },
+        shippingDefault: { origin: "INSTALL_DEFAULT", confirmed: false },
+        pickPack: { origin: "INSTALL_DEFAULT", confirmed: false },
+        monthlyOverhead: { origin: "INSTALL_DEFAULT", confirmed: false },
+      },
+    };
+
+    expect(
+      computeOrderProfit(makeOrder({ lineItems: [] }), zeroRules)
+        .usesEstimatedCosts,
+    ).toBe(false);
   });
 
   it("reports a null margin rather than dividing by zero", () => {
@@ -255,6 +395,20 @@ describe("attributeAdSpend", () => {
     expect(result.byOrderId.get("a")).toBe(10_000);
     expect(result.unattributedCents).toBe(7500);
     expect(result.unattributedByChannel.get("FACEBOOK")).toBe(7500);
+  });
+
+  it("treats a zero-spend ad day as no cost, not an unattributed gap", () => {
+    const orders = [makeOrder({ id: "a" })];
+
+    const result = attributeAdSpend(
+      orders,
+      [spendRow({ spendCents: 0 })],
+      TZ,
+    );
+
+    expect(result.byOrderId.get("a")).toBeUndefined();
+    expect(result.unattributedCents).toBe(0);
+    expect(result.unattributedByChannel.size).toBe(0);
   });
 
   it("prefers campaign-level matching over channel-level", () => {

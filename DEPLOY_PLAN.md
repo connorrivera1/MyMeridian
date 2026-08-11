@@ -1,7 +1,13 @@
 # Meridian deploy plan
 
-Branch `eevee/meridian-triage`, no git remote. Nothing here has been deployed,
+Canonical checkout: branch `main`, no git remote. Nothing here has been deployed,
 pushed or submitted.
+
+**Current snapshot, 2026-08-10.** This snapshot overrides stale "now" claims in
+the dated audit history below. In particular, billing is enforced, the suite has
+648 tests, Docker and flyctl are installed, and the remaining release gates are
+external configuration, access requests, business decisions, and real-Shopify
+acceptance testing.
 
 **Version 2, 2026-08-05 23:58.** This supersedes the version written earlier the
 same day at 18:53. That version's hosting analysis was sound and is carried
@@ -21,62 +27,70 @@ the ordered path from here to a submitted listing.
 
 ## 1. Current state, verified now
 
-| Check | Result |
-|---|---|
-| `git status` | Clean but for `shopify.app.toml` (a comment block from an earlier session, no functional change) and this file. |
-| `npm run typecheck` | **Clean.** `react-router typegen && tsc --noEmit`. |
-| `npx vitest run` | **360 tests, 30 files, all passing** (2026-08-07; was 212/20 when this row was last written — see `SUBMISSION.md` for the intervening work). |
-| `npm run build` | **Clean.** `build/client` and `build/server` both produced. |
-| `npx tsx scripts/verify-data.ts` | **Clean, and byte-identical to before this session's engine changes.** P&L, product profitability, channel CAC/LTV, capacity and pricing all compute against the seeded demo shop on live Postgres. |
-| `npx shopify app config --help` | Subcommands are `link`, `pull`, `use`, `validate`. **There is no `config push`.** See §8. |
-| Docker / flyctl on this machine | **Neither is installed.** `docker` and `fly` are both `command not found`. Nothing containerised in §4 has been built or run. |
+| Check                             | Result                                                                                                                                                                                                                                                                                                                          |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run ci`                      | **Passes** (2026-08-10): typecheck, coverage thresholds and production build.                                                                                                                                                                                                                                                   |
+| `npx vitest run`                  | **648 collected: 619 passed, 29 skipped** across 65 files. All 29 skipped cases are opt-in PostgreSQL integration tests; the explicit seven-file real-PostgreSQL run passes **29/29**.                                                                                                                                              |
+| Billing enforcement               | **Implemented and tested locally.** `resolvePlan` reads/caches Billing API state, the app layout redirects stores without an active plan, `planAllows` enforces the paid capabilities, the pricing action re-checks its gate, and `/app/plan` calls `billing.request`. The real Shopify approval/return flow is still untested. |
+| `npx shopify app config validate` | **Passes.** On CLI 4.x, `app config` has `link`, `pull`, `use`, and `validate`; **there is no `config push`**. Config is published by `shopify app deploy` because `include_config_on_deploy = true`.                                                                                                                           |
+| Docker / flyctl                   | **Installed.** Docker CLI 29.7.1 and flyctl 0.4.79 are present. The image was previously built and booted locally (§11); the Docker daemon was stopped during this verification. flyctl is not authenticated (`fly auth whoami` returns `no access token available`).                                                           |
+| Production state                  | `Dockerfile`, `.dockerignore`, and `fly.toml` exist, but there is no Fly app, managed Postgres cluster, production origin, or deployment. The app has never been installed on a real Shopify store.                                                                                                                             |
 
 The code is in good shape. Nothing here blocks starting deployment work.
 
 ---
 
-## 2. Blocker #1 — `application_url`
+## 2. External blocker — production origin
 
 Still true: `shopify.app.toml` has
 `application_url = "https://shopify.dev/apps/default-app-home"`, `redirect_urls`
 points at the same placeholder host, and every webhook `uri` is relative and
-resolves against it. So all four mandatory webhooks currently resolve to a host
-Shopify cannot deliver to. Shopify separately rejects an `application_url`
+resolves against it. So the three mandatory compliance webhooks and every other
+relative webhook subscription currently resolve to a host Shopify cannot
+deliver to. Shopify separately rejects an `application_url`
 containing the word "Shopify", so this exact string fails twice over.
 
-Nothing else in the repo names a deployment target: no `Dockerfile`, `fly.toml`,
-`vercel.json`, `render.yaml` or `railway.json`; `SHOPIFY_APP_URL` in `.env` is
-`http://localhost:3000`; `.shopify/` holds a CLI project link and no host.
+The deployment files now exist, but their current Fly slug is provisional and
+there is still no deployed origin. Do not replace the placeholder until the app
+name is decided and the first Fly deployment returns the real stable HTTPS
+origin. `SHOPIFY_APP_URL` in the local `.env` remains
+`http://localhost:3000`; `.shopify/` contains only the CLI project link.
 
-This is the one item everything else waits on.
+This blocks OAuth callbacks and webhook delivery. It is not the only critical
+path: the app-name decision and Shopify access requests can start before a host
+exists and should run in parallel.
 
 ---
 
 ## 3. Hosting decision — Fly.io
 
 Carried forward from v1, and re-verified. The deciding constraint is not
-framework preference, it is that **this app does long-running work in the
-request process**:
+framework preference, it is that **this app owns long-running workers inside
+the web process**:
 
-- `app/shopify.server.ts`'s `afterAuth` calls `startBackfill(shop.id, admin)`
-  **without `await`** — genuinely fire-and-forget, kicked off from the handler
-  that is about to return the OAuth redirect.
-- The backfill walks the store's entire order history (cap 20,000 orders) and
+- `afterAuth` awaits only `startBackfill`'s atomic database claim; the claimed
+  import then runs in-process after the OAuth handler returns.
+- The backfill walks the store's entire accessible order history with no
+  implicit ceiling and
   re-acquires its admin token every 40 minutes because it expects to outlive an
   hour-long access token.
-- It holds a real TCP connection to Postgres throughout.
+- A five-minute lease is heartbeated every minute, progress and terminal writes
+  are fenced to the current owner, and the saved cursor makes an interrupted run
+  visible and resumable. No external queue restarts it automatically.
+- The same always-on process runs the ten-second durable-webhook recovery worker
+  and hourly privacy-retention sweep.
 
 Anything that treats the process as disposable once the response is written will
-kill that import mid-run and leave a plausible-looking partial dataset — the
-worst possible failure, because it looks like data rather than like an error.
+interrupt those workers. The lease prevents a silent false completion, but a
+merchant still needs the process to remain alive for uninterrupted progress.
 
-| Option | Fit | Why |
-|---|---|---|
-| **Fly.io** | **Recommended** | Long-lived container, managed Postgres or bring-your-own, cheap always-on small VM, `fly deploy` from a Dockerfile, custom domain and free TLS. The in-process backfill keeps working correctly with no code change. |
-| Railway | Close second | Same long-lived-process model, easier Postgres, but usage-based pricing is less predictable. Fine as a fallback. |
-| Render | Viable | Long-lived service plus managed Postgres. The free tier spins down on idle, which would kill a backfill on a cold start — paid tier from day one or not at all. |
-| Vercel | **Not as-is** | Serverless functions have execution limits and no guarantee the process outlives the response. Directly hostile to the current backfill. Would need a real job queue first, which is a genuine architecture change and the wrong thing to do just to unblock submission. |
-| ngrok / cloudflared | **Test only** | A tunnel is enough to exercise OAuth, webhooks and billing locally (Phase 2), but Shopify does not accept a tunnel URL as `application_url` — it is not stable and disappears with the dev session. Use it to test, never to submit. |
+| Option              | Fit             | Why                                                                                                                                                                                                                                                                      |
+| ------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Fly.io**          | **Recommended** | Long-lived container, managed Postgres or bring-your-own, cheap always-on small VM, `fly deploy` from a Dockerfile, custom domain and free TLS. The in-process backfill keeps working correctly with no code change.                                                     |
+| Railway             | Close second    | Same long-lived-process model, easier Postgres, but usage-based pricing is less predictable. Fine as a fallback.                                                                                                                                                         |
+| Render              | Viable          | Long-lived service plus managed Postgres. The free tier spins down on idle, which would kill a backfill on a cold start — paid tier from day one or not at all.                                                                                                          |
+| Vercel              | **Not as-is**   | Serverless functions have execution limits and no guarantee the process outlives the response. Directly hostile to the current backfill. Would need a real job queue first, which is a genuine architecture change and the wrong thing to do just to unblock submission. |
+| ngrok / cloudflared | **Test only**   | A tunnel is enough to exercise OAuth, webhooks and billing locally (Phase 2), but Shopify does not accept a tunnel URL as `application_url` — it is not stable and disappears with the dev session. Use it to test, never to submit.                                     |
 
 **Decision: Fly.io.** Deploy there, take the `*.fly.dev` subdomain (or attach a
 real domain if there is one), set that as `application_url`, and do not block
@@ -161,17 +175,17 @@ primary_region = "iad"
 
 [deploy]
   # Runs on a temporary machine before the new version takes traffic. There are
-  # six migrations in prisma/migrations, none applied to a production database.
-  release_command = "npx prisma migrate deploy"
+  # 16 migrations in prisma/migrations, none applied to a production database.
+  release_command = "/bin/sh -lc 'DATABASE_URL=$DIRECT_DATABASE_URL npx prisma migrate deploy'"
 
 [http_service]
   internal_port = 8080
   force_https = true
 
-  # THE IMPORTANT LINES. afterAuth starts the historical import without
-  # awaiting it, so the process must outlive the response that started it.
-  # A machine that suspends when the request queue drains will kill a running
-  # backfill and leave a half-imported store that looks fine.
+  # afterAuth waits for the atomic import claim, then the leased historical
+  # import continues in-process. A machine that suspends when the request queue
+  # drains would interrupt it; the cursor/lease makes that visible and resumable,
+  # but an always-on process is still required to finish without intervention.
   auto_stop_machines = "off"
   auto_start_machines = true
   min_machines_running = 1
@@ -196,56 +210,90 @@ primary_region = "iad"
 
 ## 5. Exact deploy sequence
 
-Run from the repo root. Steps 3 and 6 touch credentials and are **Connor's to
-run** — nothing in this session has read or written a Shopify secret.
+Run from the repo root only after choosing the public app name and Fly slug.
+Authentication, provisioning, secrets, deployment, and Partner Dashboard writes
+change external state and incur charges; none has been run from this repository.
+The task-specific shell variables below are deliberately blank decisions, not
+suggested production values.
 
 ```sh
-# 1. Write the two files from §4 into the repo root.
+# 1. Fill these only after the public name/slug decision.
+MERIDIAN_FLY_APP="<chosen-fly-app-slug>"
+MERIDIAN_FLY_DB="<chosen-managed-postgres-name>"
+MERIDIAN_FLY_DB_ID="<cluster-id returned by fly mpg create>"
+MERIDIAN_PROD_ORIGIN="https://${MERIDIAN_FLY_APP}.fly.dev"
+# Generate each lifetime key once, store it in the credential vault, and paste
+# the preserved value here. Never put openssl generation inside the retryable
+# `fly secrets set` command.
+MERIDIAN_ENCRYPTION_KEY="<stable value retrieved from credential vault>"
+MERIDIAN_CUSTOMER_ERASURE_KEY="<stable value retrieved from credential vault>"
 
-# 2. Create the app and its database. `fly launch` will offer to generate its
-#    own Dockerfile — decline, the one in §4 handles Prisma's OpenSSL and the
-#    migrate CLI.
-fly launch --no-deploy --name meridian-profit --region iad
-fly postgres create --name meridian-db --region iad
-fly postgres attach meridian-db --app meridian-profit   # sets DATABASE_URL
+# 2. Authenticate, create the app shell, and provision managed Postgres.
+fly auth login
+fly launch --no-deploy --copy-config --name "$MERIDIAN_FLY_APP" --region iad
+fly mpg create --name "$MERIDIAN_FLY_DB" --region iad
+fly mpg attach "$MERIDIAN_FLY_DB_ID" --app "$MERIDIAN_FLY_APP"   # sets pooled DATABASE_URL
 
-# 3. Secrets. CONNOR — this line carries credentials.
+# 3. Secrets. Replace every angle-bracket placeholder before running.
 #    MERIDIAN_ENCRYPTION_KEY must be generated ONCE and never rotated casually:
 #    it decrypts stored connector tokens, and a new key orphans them silently.
+#    MERIDIAN_CUSTOMER_ERASURE_KEY is a separate lifetime key. Preserve its
+#    exact value across deploys and restores: replacing it invalidates every
+#    customer-erasure guard and can let delayed imports recreate erased data.
+#    SCOPES is the same approved set as the TOML, comma-delimited for runtime.
 fly secrets set \
   SHOPIFY_API_KEY="<from Partner Dashboard>" \
   SHOPIFY_API_SECRET="<from Partner Dashboard>" \
   SCOPES="read_orders,read_products,read_fulfillments,read_inventory" \
-  SHOPIFY_APP_URL="https://meridian-profit.fly.dev" \
-  MERIDIAN_ENCRYPTION_KEY="$(openssl rand -base64 32)" \
-  MERIDIAN_SUPPORT_EMAIL="<a real, monitored inbox>" \
-  MERIDIAN_LEGAL_ENTITY="<the entity the app is published under>" \
-  --app meridian-profit
+  SHOPIFY_APP_URL="$MERIDIAN_PROD_ORIGIN" \
+  DIRECT_DATABASE_URL="<direct URL from the MPG Connect tab>" \
+  MERIDIAN_ENCRYPTION_KEY="$MERIDIAN_ENCRYPTION_KEY" \
+  MERIDIAN_CUSTOMER_ERASURE_KEY="$MERIDIAN_CUSTOMER_ERASURE_KEY" \
+  MERIDIAN_SUPPORT_EMAIL="<Meridian's monitored inbox on its final domain>" \
+  MERIDIAN_LEGAL_ENTITY="<Meridian's actual publishing entity>" \
+  --app "$MERIDIAN_FLY_APP"
 
-# 4. Deploy. release_command applies the six migrations first.
-fly deploy --app meridian-profit
+# 4. Deploy with Fly's remote builder. release_command applies migrations first.
+fly deploy --app "$MERIDIAN_FLY_APP"
 
 # 5. Confirm the origin is real before pointing Shopify at it. Both are public
-#    and unauthenticated, and both must show a real support contact rather than
-#    the "not configured" notice — that notice means step 3's last two secrets
-#    did not land.
-curl -sS -o /dev/null -w '%{http_code}\n' https://meridian-profit.fly.dev/privacy
-curl -sS -o /dev/null -w '%{http_code}\n' https://meridian-profit.fly.dev/support
-fly logs --app meridian-profit          # expect no boot error
+#    and unauthenticated, and both must show Meridian's real publisher and
+#    monitored inbox rather than the explicit pre-launch configuration gap.
+MERIDIAN_PRIVACY_HTML="$(curl --fail-with-body -sS "$MERIDIAN_PROD_ORIGIN/privacy")"
+MERIDIAN_SUPPORT_HTML="$(curl --fail-with-body -sS "$MERIDIAN_PROD_ORIGIN/support")"
+if printf '%s\n%s\n' "$MERIDIAN_PRIVACY_HTML" "$MERIDIAN_SUPPORT_HTML" | grep -Fqi "not configured"; then
+  echo "Public contact configuration is still missing" >&2
+  exit 1
+fi
+fly logs --app "$MERIDIAN_FLY_APP"          # expect no boot error
 
-# 6. Point the app config at it. CONNOR — this writes to the Partner Dashboard.
-#    Edit shopify.app.toml first (see below), then:
+# 6. Point the app config at it. This writes to the Partner Dashboard.
+#    Edit shopify.app.toml first (see below), validate, inspect the diff, then:
 npx shopify app config validate
 npx shopify app deploy --message "Real production origin"
 ```
 
+Charge mode has no operator override. Every production charge queries
+Shopify's durable `ShopPlan.partnerDevelopment` signal immediately before it is
+requested; a failed lookup creates no charge. The `shop/update` webhook
+invalidates the stored signal when a development store is converted to a paid
+merchant store, and access remains blocked until the matching real/test
+subscription can be confirmed.
+
+Keep the two database URLs distinct. `fly mpg attach` supplies the pooled
+PgBouncer `DATABASE_URL` used by the running app. Copy the separate
+`direct.<cluster>.flympg.net` URL from the MPG dashboard's **Connect** tab into
+`DIRECT_DATABASE_URL`; Fly's release command temporarily maps that direct value
+to `DATABASE_URL` for `prisma migrate deploy`. Migrations and their advisory
+locks must not run through the pooled endpoint.
+
 ### The `shopify.app.toml` edit in step 6
 
 ```toml
-application_url = "https://meridian-profit.fly.dev"
+application_url = "<production-origin>"
 
 [auth]
-redirect_urls = [ "https://meridian-profit.fly.dev/auth/callback" ]
+redirect_urls = [ "<production-origin>/auth/callback" ]
 ```
 
 `/auth/callback` and not `/api/auth` — `authPathPrefix` is `/auth`, and the
@@ -254,13 +302,14 @@ already fixed; it just has to keep tracking the host.
 
 The webhook `uri` values are relative and need no edit at all. That is the whole
 point of them being relative, and it is why fixing `application_url` fixes all
-four mandatory webhooks at once.
+relative webhook destinations at once.
 
-**Then change one more line, or this will come undone:**
+**Change one more line in the production config at the same time, or this will
+come undone:**
 
 ```toml
 [build]
-automatically_update_urls_on_dev = false   # currently true
+automatically_update_urls_on_dev = false   # keep true until a production origin exists
 ```
 
 While it is `true`, `shopify app dev` rewrites `application_url` and
@@ -271,8 +320,14 @@ Phase 2, is a second linked config — `shopify app config link` writes
 `shopify.app.<name>.toml` and `shopify app config use` switches between them —
 so the dev tunnel never touches the production file.
 
+For now the canonical config deliberately remains `true`: changing it while the
+URL is still the placeholder would break the convenient tunnel rewrite used by
+`shopify app dev` without protecting any real production URL. Once production
+exists, either turn it off in the production config or keep a separate linked
+development config.
+
 `include_config_on_deploy = true` is already set, which is what makes
-`shopify app deploy` push `application_url` and the webhook subscriptions along
+`shopify app deploy` publish `application_url` and the webhook subscriptions
 with the version. There is no separate config-push step; see §8.
 
 ---
@@ -281,6 +336,13 @@ with the version. There is no separate config-push step; see §8.
 
 None of this is code and none of it can be done from this repo. It needs a
 signed-in Partner account.
+
+**Precondition — decide the public app name.** The current `Meridian` value is a
+development working name, not an approved listing decision. A published Shopify
+app already uses Meridian, so the final name must start with a distinctive brand
+identifier and be checked for confusion before the Fly slug, logo, landing page,
+listing copy, and screenshots are finalized. Do not rename the linked development
+app piecemeal; make the config and asset changes together after the decision.
 
 **a. Opt into manual pricing (Billing API), not Shopify App Pricing.**
 Partner Dashboard → the app → Pricing. The app creates its own charges from
@@ -296,7 +358,8 @@ billing implementation that is already finished and gated. Re-verified against
 live shopify.dev docs on 6 August 2026; quotes and URLs are in `SUBMISSION.md`
 § "Billing". An earlier version of this paragraph said App Pricing plans could
 not be read from a merchant session at all, which is wrong. The three plans are
-Starter $49, Growth $149, Scale $399, all 30-day interval, USD, 14-day trial.
+Starter $49/mo or $490/yr, Growth $149/mo or $1,490/yr, and Scale $399/mo or
+$3,990/yr, all USD with a 14-day trial.
 
 **b. Protected Customer Data request, Level 2 — gates `read_orders`, not just
 `read_customers`. This is a hard gate, and it is the single longest-lead item
@@ -346,11 +409,11 @@ Partner Dashboard → the app → App setup. Email **and phone**, and it is a
 different field from the support contact on the listing. Needs Connor's real
 phone number.
 
-**e. Support email and legal entity.**
-Not a Dashboard field but the same category of decision — set as the secrets in
-§5 step 3. `/privacy` and `/support` render an explicit "not configured" notice
-until they are, which a reviewer will see. See `listing/copy.md` §*Needs the
-owner*.
+**e. Meridian support domain, publisher and email.**
+Set these only after Meridian's own domain, monitored inbox and publishing
+entity are selected. `/privacy` and `/support` intentionally show an explicit
+pre-launch configuration gap until then; do not borrow another product's legal
+identity to make the pages look complete.
 
 **f. Demo store URL for the reviewer.**
 A development store in the Partner org with the app installed and enough real
@@ -360,23 +423,25 @@ data to click through. Depends on Phase 2.
 
 ## 7. Listing
 
-Copy is now drafted and paste-ready in **`listing/copy.md`** — name, intro,
-details and feature bullets, every one measured against its character limit
-rather than estimated, and every claim traced to the code that makes it true.
+Copy exists in **`listing/copy.md`** and its reviewer instructions now include
+monthly and annual Billing API prices. It is not paste-ready because the public
+name is unresolved and the demo-store, storefront-password and Meridian support
+email placeholders still need owner values. Re-measure every bounded field
+after the name is changed.
 
 Assets state:
 
-| Item | State |
-|---|---|
-| App icon 1200×1200 | Done — `listing/app-icon-1200.png` |
-| Screenshots 1600×900 ×6 | Done — `listing/screenshots/` |
-| Privacy policy URL | Done — `/privacy`, public |
-| Support page | Done — `/support`, public |
-| Name / intro / details / features | **Drafted** — `listing/copy.md` |
-| Support email + legal entity | **Owner** — §6e |
-| Feature media (1600×900 or 2–3 min video) | **Missing** |
-| Demo store URL | **Missing** — §6f |
-| Setup screencast | **Missing — automatic bounce without it** |
+| Item                                      | State                                                                                                                                            |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| App icon 1200×1200                        | File exists, but re-check after the name/brand decision                                                                                          |
+| Screenshots 1600×900                      | **Stale.** The five files predate the 2026-08-09/10 broadsheet and chart redraw; re-shoot all of them from the final UI and a real review store. |
+| Privacy policy URL                        | Done — `/privacy`, public                                                                                                                        |
+| Support page                              | Done — `/support`, public                                                                                                                        |
+| Name / intro / details / features         | **Needs revision** — final name is not reflected; annual pricing is current                                                                      |
+| Meridian domain, publisher + support email | **Owner** — §6e; must belong to Meridian, not another product                                                                                |
+| Feature media (1600×900 or 2–3 min video) | **Missing**                                                                                                                                      |
+| Demo store URL                            | **Missing** — §6f                                                                                                                                |
+| Setup screencast                          | **Missing — automatic bounce without it**                                                                                                        |
 
 The screencast is the one that cannot be worked around. It has to show a real
 OAuth install through to a first dashboard view; the app has never been
@@ -384,12 +449,23 @@ installed on any store, and it cannot be filmed against the demo bypass because
 that bypass is precisely what the recording exists to prove is not being used.
 Record it during Phase 2's real install rather than staging the whole flow twice.
 
-`listing/copy.md` also raises one thing that is not a copy question: the app
-sells "unlimited ad channels + blended CAC" on the plan screen and has no ad
-platform OAuth at all — `AdSpend` rows are written only by the seed script. The
-drafted copy claims nothing about ad performance for that reason. Reconciling the
-plan blurbs is Connor's call and it is worth making before a reviewer walks the
-billing screen.
+The Scale cohort claim has been removed without expanding access:
+`read_customers` remains absent and no paid plan promises LTV/payback. Scale is
+still **not commercially resolved**, however: at $399/month its only incremental
+promise is priority support, while no support address, plan-aware routing or SLA
+has been configured. The owner must remove/reprice Scale or define and staff that
+support promise before submission. No live ad-platform OAuth exists, so the
+listing must also continue avoiding ad-attribution claims until a real connector
+ships.
+
+The remaining catalogue is also scoped to what the runtime enforces. Plan copy
+does not claim order-volume limits, because billing never counts or blocks
+monthly orders; Scale does not claim location-specific capacity, because the
+capacity rebuild currently writes one store-wide `primary` series; and public
+copy does not expose the dormant customer-lifecycle product classifier. Prices
+are unchanged. The redesigned Acquisition page is now useful without spend, so
+a fresh screenshot may be included in the required full re-shoot; only the old
+fabricated-spend image remains held as provenance.
 
 ---
 
@@ -400,13 +476,14 @@ them because the work landed:
 
 1. **`shopify app config push` does not exist.** v1's step 8 said to run it. On
    the pinned CLI (`@shopify/cli ^4.6.0`, checked with `npx shopify app config
-   --help`) the subcommands are `link`, `pull`, `use` and `validate`. Config is
+--help`) the subcommands are `link`, `pull`, `use` and `validate`. Config is
    pushed by `shopify app deploy`, which works here because
    `include_config_on_deploy = true`. Following v1 literally would have failed
    at the last and most important step.
-2. **Test count.** v1 said 178 tests in 16 files. It is now **212 in 20** — the
-   first-order, resume and data-export commits landed after v1 was written, plus
-   15 from this session.
+2. **Test count.** v1 said 178 tests in 16 files and this section previously
+   recorded the intermediate 212-in-20 milestone. The current baseline is the
+   §1 result: **648 collected, 619 passed, 29 skipped**; the explicit
+   real-PostgreSQL integration run passes **29/29**.
 3. **`Shop.syncCursor` is no longer write-only.** v1 listed "written but never
    read" as a fast-follow. Commit `200a350` reads it; an interrupted import now
    resumes from the cursor instead of restarting.
@@ -414,23 +491,31 @@ them because the work landed:
    listed it as an outstanding gap. Commit `e98b83d` refetches at 250 when
    `fulfillmentsCount` says there are more.
 
-v1's §5 also treated the unbounded dashboard loaders as a pure fast-follow. Half
-of that is now done — see §9.
+v1's §5 also treated the dashboard loaders as an unbounded fast-follow. The
+runtime is now memory-bounded and whole-history recompute is month-sliced; see
+§9 for the remaining supported-volume boundary.
 
 ---
 
 ## 9. Worklist
 
 ### Must happen before submission
+
+- **Decide the public app name** (§6 precondition). Do this before finalizing the
+  Fly slug, logo, landing page, copy, or screenshots.
 - **Protected Customer Data request, Level 2** (§6b). The longest-lead item on
   this page and a hard gate — start it first, everything else can proceed in
   parallel while it's on Shopify's clock.
-- **Blocker #1 — a real `application_url`** (§2–§5). Cannot pass review without it.
-- **Partner Dashboard items** (§6a, §6d) and the listing gaps in §7.
-- **Support email / legal entity actually set** (§6e), or a reviewer sees the
-  "not configured" notice on the two pages the listing links to.
+- **Request `read_all_orders` access** (§6c). Do not add the scope to the config
+  until Shopify approves it.
+- **Authenticate to Fly, provision Managed Postgres, deploy, and set the real
+  `application_url`** (§2–§5). Cannot exercise OAuth or webhooks without it.
+- **Partner Dashboard items** (§6a, §6d) and the refreshed listing assets in §7.
+- **Buy Meridian's domain and set its own publisher/support identity** (§6e),
+  or a reviewer sees the explicit pre-launch configuration gap.
 
 ### Done this session, previously on this list
+
 - **Dashboard loaders.** Two of the three costs named in `SUBMISSION.md`
   blocker 4 are fixed. `loadEngineOrders` no longer hydrates every fulfilment
   row to add two columns up in JavaScript — Postgres does the sum
@@ -441,17 +526,17 @@ of that is now done — see §9.
   Both were proved number-for-number: 15 new tests, and `verify-data.ts` output
   byte-identical against live Postgres.
 
-### Still open, safe as a fast-follow
-- **`loadEngineOrders` is still unbounded.** The current window still has no
-  `take`, and it cannot simply get one: the P&L, the ad attribution and the
-  overhead proration are all period-wide, so a truncated set of orders would
-  produce a confidently wrong profit figure rather than a slow one. Bounding it
-  properly means computing the roll-up in SQL, which means a second
-  implementation of the profit formula — the exact duplicate-definition bug this
-  codebase has spent the session removing elsewhere. Worth doing deliberately
-  and with a live-database differential test, not as a quick patch, and not
-  before submission: Shopify samples Core Web Vitals post-install over 28 days,
-  not at review.
+### Still open
+
+- **One accepted analytics window or merchant-local recompute month is capped
+  at 60,000 orders.** `loadEngineOrders` deliberately has no `take`: truncating
+  P&L, ad attribution or overhead would create a confidently wrong answer.
+  Instead, an index-backed count refuses a larger window before hydration, all
+  heavy builds share a process-wide admission gate, and whole-history recompute
+  preflights then processes exact merchant-local months. A real-Postgres
+  differential proves the chunked result against the one-shot engine. The SQL
+  roll-up is now the work required to support more than 60,000 orders in one
+  selected window or one local month, not an unbounded-memory optimization.
 - **Orders table pages a materialised array.** `PAGE_SIZE = 60` slices in
   memory, so the database work is identical on page 1 and page 40. Same root
   cause as above. **Partially addressed 2026-08-07:** page 2+ was previously
@@ -459,18 +544,20 @@ of that is now done — see §9.
   dropped every order past the 60th in the current sort. That's fixed
   (`paginateOrders` in `app/routes/app.orders.tsx`, with Previous/Next
   controls and out-of-range clamping); a store can now actually see every
-  order in its window. What's still open is the underlying cost: the full
-  period is still fetched from Postgres and sorted in memory on every page
-  request, same as `loadEngineOrders` above — reaching page 40 now works, it
-  just isn't cheap yet. The real fix is the same SQL-side rollup work.
-- **In-process backfill and recompute.** Designed around in §3 rather than
-  fixed. Correct to defer — fixing it means a real job queue, which is an
-  architecture change with its own risk. Do it if the host ever changes.
-- **Thin coverage on `backfill.server.ts`.** 1,261 lines, no direct unit test
-  file; the adjacent pagination and GraphQL-shaping tests do not touch the
-  orchestration. Not a review criterion, but it is the highest-blast-radius path
-  in the app. Phase 2's real-store run is the integration test that matters most
-  right now.
+  order in an accepted window. What's still open is the underlying cost: the
+  full accepted period is fetched from Postgres and sorted in memory on every
+  page request — reaching page 40 works, but it is not cheaper than page 1.
+  The real fix is the same SQL-side roll-up work.
+- **Backfill and recompute still execute in-process.** Backfill now has a
+  database-backed owner token, five-minute lease, heartbeat, owner-fenced
+  progress writes and cursor-preserving takeover; recompute preflights and runs
+  one merchant-local month at a time. That makes process death recoverable on
+  the selected long-lived Fly host, but moving to a serverless host would still
+  require a durable job queue.
+- **Real-Shopify import coverage remains the missing proof.** Backfill has 29
+  direct orchestration tests plus pagination, resume, field-access and real-
+  PostgreSQL claim suites. What those cannot prove is the first historical walk
+  against Shopify's live GraphQL responses; Phase 2 remains that acceptance run.
 - **Order-level stored profit is a write-only cache**, and **ad connectors have
   no live OAuth** (§7). Neither affects OAuth, webhook or billing compliance.
 
@@ -479,14 +566,18 @@ of that is now done — see §9.
 ## 10. Phases
 
 ```
+Phase 0 — Decisions and access requests (start immediately)
+  0a. Decide the non-confusable public app name
+  0b. Submit Protected Customer Data Level 2 and read_all_orders requests
+
 Phase 1 — A real origin
-  1a. Write Dockerfile and fly.toml from §4
-  1b. fly launch, fly postgres create/attach
-  1c. fly secrets set  (CONNOR — credentials)
-  1d. fly deploy; curl /privacy and /support for 200 and a real contact
+  1a. fly auth login; choose the Fly app slug after Phase 0a
+  1b. fly launch; fly mpg create/attach (Managed Postgres)
+  1c. fly secrets set  (credentials + real support/legal values)
+  1d. fly deploy with the remote builder; verify /privacy and /support
   1e. Edit shopify.app.toml: application_url, redirect_urls,
       automatically_update_urls_on_dev = false
-  1f. shopify app deploy  (CONNOR — writes to the Partner Dashboard)
+  1f. shopify app deploy  (publishes config to the Partner Dashboard)
   -> Unblocks webhook delivery, the OAuth callback, and everything after
 
 Phase 2 — Exercise it for real
@@ -504,10 +595,10 @@ Phase 2 — Exercise it for real
   -> Unblocks the screencast, and confidence in everything above
 
 Phase 3 — Partner Dashboard        Phase 4 — Listing
-  §6a manual pricing                 4a. Paste from listing/copy.md
+  §6a manual pricing                 4a. Update copy for final name + annual plans
   §6b protected customer data        4b. Feature media
-  §6c read_all_orders                4c. Attach the Phase 2 screencast
-  §6d emergency contact              4d. Reconcile the ad-spend claim (§7)
+  §6c read_all_orders                4c. Re-shoot every screenshot from final UI
+  §6d emergency contact              4d. Attach the Phase 2 screencast
   §6f demo store URL
   -> Both run in parallel with each other and with the tail of Phase 2.
      Start 3b and 3c first: they run on Shopify's clock, not ours.
@@ -517,31 +608,38 @@ Phase 5 — Submit
   5b. Submit for review
 ```
 
-Critical path: Phase 1 blocks Phase 2; Phase 2's real install blocks the
-screencast and blocks knowing the backfill survives real data. Phases 3 and 4
-run alongside.
+Critical path: Phase 0's access requests run on Shopify's clock and should start
+now. Phase 1 blocks Phase 2; Phase 2's real install blocks the screencast and
+blocks knowing the backfill survives real data. Phases 3 and 4 run alongside.
 
 ---
 
 ## Where this leaves it
 
-The code is submission-ready in the sense that matters: it typechecks, 212 tests
-pass, it builds, and the engine produces correct numbers against a live
-database — the same numbers, verified, after this session's changes to it.
+The local code gate is green: `npm run ci` passes, with 648 tests collected (619
+passed and 29 opt-in integration tests skipped), coverage thresholds met, and a
+clean production build. All seven real-PostgreSQL integration files pass 29/29
+against a fresh database after all 16 migrations. Billing is enforced in code
+rather than merely declared.
 
-What remains is almost entirely infrastructure and business decisions:
+What remains before submission is infrastructure, external approval, business
+decisions, assets, and real-platform proof:
 
 1. **Nobody has run a deploy.** The host is picked and, as of 2026-08-06, the
    §4 files are built and booted rather than merely written (§11). What is left
-   is a Fly account and the six commands in §5 — a sequence to execute, and now
-   one that has been rehearsed everywhere it can be without an account.
-2. **Nothing has ever touched real Shopify credentials.** Phase 2 is the first
-   trial by fire for the session-storage fix, the backfill and billing, all of
-   which have only ever been verified against mocks or a local unauthenticated
-   server.
-3. **Three things genuinely need Connor** and cannot be produced here: the
-   support email and legal entity, the emergency contact phone number, and the
-   setup screencast — which needs a real install that does not exist yet.
+   is a final app/Fly name, Fly authentication, Managed Postgres, and the
+   production sequence in §5. flyctl is installed but not authenticated.
+2. **No real Shopify app flow has run.** The CLI is linked to the development
+   app. A 2026-08-10 `shopify app dev` attempt reached dev-preview preparation,
+   then Shopify rejected the protected-customer-data webhook subscriptions
+   because this app is not approved for that data; the failed preview was
+   cleaned and the active app version restored. Phase 2 is therefore still the
+   first trial by fire for OAuth, session storage, backfill, live webhook
+   delivery and billing after PCD approval.
+3. **Owner/Partner decisions remain:** final public name, Protected Customer Data
+   Level 2 and `read_all_orders` requests, Meridian domain/support identity,
+   emergency contact, real-store install, refreshed
+   screenshots, feature media, demo-store details, and the setup screencast.
 
 ---
 
@@ -557,39 +655,40 @@ never installed and Colima needs no license and no GUI. Docker daemon 29.5.2,
 
 ### What was verified against the actual image
 
-| Check | Result |
-|---|---|
-| `docker build .` | **Succeeds**, first attempt, no edits to §4's Dockerfile. 790 MB image. |
-| Prisma client survives `npm prune --omit=dev` | **Yes.** `require('@prisma/client')` loads and reports 6.19.3, and `libquery_engine-linux-arm64-openssl-3.0.x.so.node` is present in the runtime stage. This was the step most likely to silently break, and it does not. |
-| `openssl` / `ca-certificates` in base | **Load-bearing and correct.** The computed binary target is `openssl-3.0.x`, which is what bookworm-slim provides once those packages are installed. |
-| Server boots | **Yes.** `react-router-serve` comes up and is serving in about two seconds, so fly.toml's 20s `grace_period` is comfortable. |
-| `GET /privacy` | **200.** The health check path in fly.toml is right. |
-| `GET /support` | **200.** |
-| `release_command` — `npx prisma migrate deploy` | **Runs from inside the image** against a real Postgres, finds **6 migrations**, exits clean. The prisma CLI reinstalled after the prune resolves without a network fetch. |
-| `/privacy` and `/support` contact block | Both render the **"not configured on this deployment"** notice when `MERIDIAN_SUPPORT_EMAIL` / `MERIDIAN_LEGAL_ENTITY` are unset — confirming §6e is a real reviewer-visible gate, not a theoretical one. |
-| `fly.toml` | Parses, and every key lands where Fly's schema expects it. `fly config validate` itself needs an account and was not run. |
-| `npx vitest run` | **290 tests in 24 files, all passing.** §1 and §8 say 212 in 20; more landed after this plan was written. |
+| Check                                           | Result                                                                                                                                                                                                                    |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docker build .`                                | **Succeeds**, first attempt, no edits to §4's Dockerfile. 790 MB image.                                                                                                                                                   |
+| Prisma client survives `npm prune --omit=dev`   | **Yes.** `require('@prisma/client')` loads and reports 6.19.3, and `libquery_engine-linux-arm64-openssl-3.0.x.so.node` is present in the runtime stage. This was the step most likely to silently break, and it does not. |
+| `openssl` / `ca-certificates` in base           | **Load-bearing and correct.** The computed binary target is `openssl-3.0.x`, which is what bookworm-slim provides once those packages are installed.                                                                      |
+| Server boots                                    | **Yes.** `react-router-serve` comes up and is serving in about two seconds, so fly.toml's 20s `grace_period` is comfortable.                                                                                              |
+| `GET /privacy`                                  | **200.** The health check path in fly.toml is right.                                                                                                                                                                      |
+| `GET /support`                                  | **200.**                                                                                                                                                                                                                  |
+| `release_command` — `npx prisma migrate deploy` | **Runs from inside the image** against a real Postgres. The current migration-set proof is repeated in the release verification below; the Prisma CLI reinstalled after the prune resolves without a network fetch.        |
+| `/privacy` and `/support` contact block         | Both show an explicit pre-launch configuration gap while Meridian's domain, publisher and monitored inbox are unset.                                                                                                  |
+| `fly.toml`                                      | Parses, and every key lands where Fly's schema expects it. `fly config validate` itself needs an account and was not run.                                                                                                 |
+| `npx vitest run`                                | **Historical 2026-08-06 result:** 290 tests in 24 files, all passing. The current baseline is in §1.                                                                                                                      |
 
 ### The one fix the build required
 
 **`.dockerignore` did not exist, and the Dockerfile needs one.** §4 runs
-`npm ci --include=dev` and *then* `COPY . .`. With no ignore file, the host's
+`npm ci --include=dev` and _then_ `COPY . .`. With no ignore file, the host's
 `node_modules` is copied straight over the freshly installed Linux tree — every
 native binary in it, Prisma's query engine included, is darwin-arm64. `COPY . .`
 also swept in `.env`, baking the local Postgres URL and Shopify keys into the
 image layers. Both are fixed by the committed `.dockerignore`; nothing in §4's
 two files was changed.
 
-### Corrections to §5
+### Corrections discovered here and folded into §5 on 2026-08-10
 
-1. **§5 has no `fly auth login`.** Step 2 opens with `fly launch`, which fails
-   with `no access token available` on a fresh flyctl. Log in first.
-2. **`fly launch` will stop and ask about the existing `fly.toml`.** It now
+1. **The old §5 had no `fly auth login`.** `fly launch` fails with
+   `no access token available` on this machine. The current sequence logs in
+   first.
+2. **`fly launch` otherwise stops and asks about the existing `fly.toml`.** It now
    exists in the repo root, so the command prompts to reuse it. Answer yes, or
    pass `--copy-config` to skip the question. Do **not** let it write its own
    Dockerfile — it will not, because one is already present, which is the
    outcome §5's "decline" note was after.
-3. **`fly postgres` is now the *unmanaged* option and says so.** flyctl 0.4.79
+3. **`fly postgres` is now the _unmanaged_ option and says so.** flyctl 0.4.79
    prints a banner: unmanaged Postgres "is not supported by Fly.io Support and
    users are responsible for operations, management, and disaster recovery",
    pointing at `fly mpg` (Managed Postgres) instead. §5's commands still exist
@@ -601,8 +700,8 @@ two files was changed.
 
    **Decided 2026-08-08: Fly Managed Postgres (`fly mpg`), same region as the
    app (`iad`).** See §12 for the reasoning, the commands, and the restore
-   procedure. §5's `fly postgres create/attach` lines are superseded — do not
-   run them.
+   procedure. The old §5 `fly postgres create/attach` lines are superseded and
+   have now been replaced with `fly mpg` in the current sequence.
 
 Two further things were confirmed while the image was up, both of which back
 claims made elsewhere in this file: the container idles at **51 MiB** serving
@@ -636,13 +735,14 @@ NODE_ENV=production` — so §4's comment on that line is accurate.
   What follows from this is one rule: **do not run `fly deploy --local-only`**
   on this machine. It would either fail the same way, or push an arm64 image to
   an amd64 machine. The default remote builder is correct; let it do the work.
+
 - **The app name.** `meridian-profit` is assumed free on Fly; confirming that
   needs an account. If it is taken, the new name has to change in four places
   at once: `app` in `fly.toml`, `SHOPIFY_APP_URL` in §5 step 3, and
   `application_url` plus `redirect_urls` in `shopify.app.toml`.
 
-Nothing in this session touched a Fly account, a Shopify secret, or the Partner
-Dashboard. §5 steps 2 through 6 are unchanged and remain Connor's to run.
+Nothing in this verification touched a Fly account, a Shopify secret, or the
+Partner Dashboard. The commands in §5 remain unexecuted external steps.
 
 ---
 
@@ -656,23 +756,13 @@ Dashboard. §5 steps 2 through 6 are unchanged and remain Connor's to run.
 
 Three things drove it, in order of weight.
 
-1. **Latency dominates, because the backfill is round-trip-bound.**
-   `importOneOrder` performs roughly six sequential writes per order
-   (`app/lib/backfill.server.ts`), 25 orders per page — about 150 sequential
-   round-trips per page, and ~120,000 for a 20,000-order import. That makes
-   network distance the single largest factor in import time:
-
-   | Round trip | Pure DB latency for a 20k-order import |
-   |---|---|
-   | ~1 ms (same region) | ~2 minutes |
-   | ~15 ms (off-platform, region-matched) | ~30 minutes |
-   | ~30 ms (region-mismatched) | ~1 hour |
-
-   `backfillIsStale` declares a run abandoned after **one hour**, so a distant
-   database does not merely slow large imports — it can make them self-abort.
-   Co-locating the database with the app is worth more here than any feature
-   difference between providers. (The N+1 write pattern is the real defect;
-   latency is a multiplier on it. Fixing it is tracked separately.)
+1. **The import and recovery workers are database-heavy.** Order ingestion now
+   commits the source-watermarked header, customer association and child rows in
+   one advisory-locked transaction; it is no longer the old six-independent-
+   writes path. Co-locating Postgres still avoids multiplying every page and
+   worker lease operation by cross-region latency. A healthy run renews a
+   five-minute lease every minute, so duration alone never makes it stale; the
+   one-hour rule exists only for legacy rows created before leases were added.
 
 2. **The requirement is backups, not a platform.** The gap this closes is that
    nothing backed the database up at all. Managed Postgres gives automated
@@ -692,32 +782,36 @@ Three things drove it, in order of weight.
 Requires a logged-in flyctl (`fly auth login`) and starts billing.
 
 ```
-fly mpg create --name meridian-db --region iad
-fly mpg attach meridian-db --app meridian-profit   # sets DATABASE_URL
+fly mpg create --name <chosen-managed-postgres-name> --region iad
+# Record the cluster ID returned by create; `attach` takes that ID, not the name.
+fly mpg attach <cluster-id> --app <chosen-fly-app-slug>   # sets pooled DATABASE_URL
 ```
 
-`fly.toml`'s `release_command = "npx prisma migrate deploy"` applies the schema
-on first deploy. **Verified 2026-08-08** against a throwaway PostgreSQL 16
-cluster: all six migrations apply cleanly to an empty database,
+Set `DIRECT_DATABASE_URL` from the MPG dashboard's separate direct connection
+string as shown in the canonical command block above. `fly.toml` maps that
+value to `DATABASE_URL` only inside `prisma migrate deploy`; the application
+continues using the pooled URL supplied by attach. The release command applies
+the schema on first deploy. **Verified 2026-08-08** against a throwaway PostgreSQL 16
+cluster: all migrations present at that checkpoint applied cleanly to an empty database,
 `prisma migrate diff` reports no drift between the migrations and
 `schema.prisma`, the seed's full recompute runs the chunked raw-SQL `UPDATE`
 path successfully, and the analytics read path completes over 12,379 orders and
 19,532 line items in ~1.4 s at a ~49 MB peak footprint. Nothing in the
 migration path is unproven any more.
 
-If a connection pooler is used later, Prisma needs `directUrl` in
-`schema.prisma` pointing at the direct (non-pooled) endpoint, or
-`migrate deploy` will fail against a transaction-mode pooler.
+This split is required now, not a future optimization: Fly MPG attaches the
+pooled PgBouncer URL by default, while Prisma's migration engine requires a
+direct connection.
 
 ### RTO / RPO
 
 State them honestly, because half the data is not reconstructible.
 
-| | Value |
-|---|---|
-| **RPO — Shopify-derived data** | Backup interval. Also re-derivable by re-running the backfill: shop profile, products, variants, unit costs, customers, orders, line items, refunds, fulfilments, capacity days. |
-| **RPO — merchant-entered data** | **Backup interval, and nothing else.** Not reconstructible from Shopify at any price. |
-| **RTO** | Restore time of the managed snapshot, plus a redeploy. Minutes, not the previously-unbounded "recreate and hope every merchant notices the banner". |
+|                                 | Value                                                                                                                                                                            |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **RPO — Shopify-derived data**  | Backup interval. Source fields are re-fetchable only inside the history Shopify still exposes. Historical COGS snapshots, observed price changes and data older than the accessible order window are not reconstructible. |
+| **RPO — merchant-entered data** | **Backup interval, and nothing else.** Not reconstructible from Shopify at any price.                                                                                            |
+| **RTO**                         | Restore time of the managed snapshot, plus a redeploy. Minutes, not the previously-unbounded "recreate and hope every merchant notices the banner".                              |
 
 **What a restore must recover, because re-importing cannot:**
 
@@ -728,8 +822,16 @@ State them honestly, because half the data is not reconstructible.
 - `PriceChange` — the price history the elasticity model is fitted to.
   `sync.server.ts` says it directly: it cannot be reconstructed.
 - `Connector` — credentials and configuration.
-- Order history older than 60 days for a store without `read_all_orders`, and
-  anything beyond `MAX_ORDERS` (20,000).
+- `DataRequest` and unprocessed `WebhookEvent` rows — held shopper exports and
+  mandatory compliance work cannot be recreated after loss.
+- `CustomerErasure` together with the exact external
+  `MERIDIAN_CUSTOMER_ERASURE_KEY` that keyed it. The table is in the database;
+  the secret is not. Back up that secret in the production credential vault
+  and never generate a replacement during restore, or the guards become
+  unusable and delayed Shopify history can recreate erased shoppers.
+- The exact external `MERIDIAN_ENCRYPTION_KEY`; restored connector tokens are
+  unusable without it.
+- Order history older than 60 days for a store without `read_all_orders`.
 
 ### Restore procedure
 
@@ -737,18 +839,24 @@ State them honestly, because half the data is not reconstructible.
 2. Restore to a new cluster at the chosen timestamp (`fly mpg restore`; check
    `fly mpg restore --help` for the current flag spelling before relying on it).
 3. `fly mpg attach <restored> --app meridian-profit` to repoint `DATABASE_URL`.
-4. `fly deploy` — `release_command` runs `prisma migrate deploy`, which is a
+4. Confirm the app still has the preserved `MERIDIAN_CUSTOMER_ERASURE_KEY` and
+   `MERIDIAN_ENCRYPTION_KEY`. If restoring into a replacement Fly app, set the
+   exact values recovered from the credential vault; do not generate either
+   key again.
+5. `fly deploy` — `release_command` runs `prisma migrate deploy`, which is a
    no-op if the snapshot is already at the current migration.
-5. **Verify before announcing recovery.** Check `CostRule` first, since its
+6. **Verify before announcing recovery.** Check `CostRule` first, since its
    loss is the silent one:
    ```
-   select "shopId", kind, "percentRate", "fixedPerOrder", "updatedAt"
+   select "shopId", kind, active, origin, "confirmedAt", "percentRate",
+          "fixedPerOrder", "updatedAt"
      from "CostRule" order by "shopId", kind;
    ```
    Then confirm order counts per shop against what the merchant expects, and
    re-run a recompute so materialised profit matches the restored rules.
-6. Only re-run a backfill for shops with a genuine gap — it is expensive and,
-   above `MAX_ORDERS`, incomplete.
+7. Only re-run a backfill for shops with a genuine gap — it is expensive, and
+   a configured diagnostic `MERIDIAN_MAX_BACKFILL_ORDERS` limit must be removed
+   or raised before the run can complete.
 
 **Untested.** This procedure is written from the product's behaviour, not from
 a rehearsal. Do a restore drill on a throwaway cluster before relying on it;

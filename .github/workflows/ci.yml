@@ -67,13 +67,21 @@ jobs:
       - name: Test with coverage thresholds
         run: npm run test:coverage
 
-      # Concurrency is invisible through a mocked Prisma: the delete-then-
-      # recreate race passes whether or not the advisory lock is there, which
-      # is exactly why this one needs a real server.
+      # Concurrency and SQL-NULL semantics are invisible through mocked Prisma:
+      # backfill claims, order/product advisory locks, transaction rollback and
+      # durable webhook lease/payload erasure all need a real server.
       - name: Integration tests against a real Postgres
         env:
           MERIDIAN_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/meridian_ci
-        run: npx vitest run app/lib/order-lock.integration.test.ts
+        run: >-
+          npx vitest run
+          app/lib/backfill-claim.integration.test.ts
+          app/lib/data-request.integration.test.ts
+          app/lib/order-lock.integration.test.ts
+          app/lib/product-sync.integration.test.ts
+          app/lib/economic-ingestion.integration.test.ts
+          app/lib/recompute.integration.test.ts
+          app/lib/webhooks.integration.test.ts
 
       - name: Build
         run: npm run build

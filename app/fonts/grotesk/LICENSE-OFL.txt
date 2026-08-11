@@ -1,0 +1,12 @@
+Space Grotesk (SpaceGrotesk-Variable.woff2)
+
+Copyright (c) 2020 Florian Karsten, with Reserved Font Name "Space Grotesk".
+
+Licensed under the SIL Open Font License, Version 1.1, which permits bundling
+and serving the font file. The full licence text is reproduced in
+../jakarta/LICENSE-OFL.txt, which governs the other face in this tree under
+the same terms.
+
+Space Grotesk is the display face shared by the marketing site and the
+application: the wordmark, every heading, and every figure are set in it, so
+the two surfaces read as one product.

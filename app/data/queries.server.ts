@@ -9,6 +9,7 @@ import type {
   AdSpendRow,
   Channel,
   CostRuleSet,
+  EngineCostRuleProvenance,
   EngineOrder,
 } from "~/engine/types";
 
@@ -28,6 +29,15 @@ export interface DateRange {
 export function toCostRuleSet(rules: readonly CostRule[]): CostRuleSet {
   const active = rules.filter((r) => r.active);
   const find = (kind: CostRuleKind) => active.find((r) => r.kind === kind);
+  const provenance = (
+    rule: CostRule | undefined,
+  ): EngineCostRuleProvenance | null =>
+    rule
+      ? {
+          origin: rule.origin,
+          confirmed: rule.confirmedAt !== null,
+        }
+      : null;
 
   const payment = find(CostRuleKind.PAYMENT_FEE);
   const shipping = find(CostRuleKind.SHIPPING_DEFAULT);
@@ -41,6 +51,12 @@ export function toCostRuleSet(rules: readonly CostRule[]): CostRuleSet {
     pickPackPerOrderCents: toCents(pickPack?.fixedPerOrder),
     pickPackPerItemCents: toCents(pickPack?.fixedPerItem),
     monthlyOverheadCents: toCents(overhead?.monthlyAmount),
+    provenance: {
+      paymentFee: provenance(payment),
+      shippingDefault: provenance(shipping),
+      pickPack: provenance(pickPack),
+      monthlyOverhead: provenance(overhead),
+    },
   };
 }
 
@@ -64,10 +80,10 @@ export async function loadCostRules(shopId: string): Promise<CostRuleSet> {
  * At 60,000 orders that extrapolates to roughly 390 MB in a 1024 MB VM, which
  * is where one build starts to threaten the process.
  *
- * In practice this should never fire: `MAX_ORDERS` caps the import at 20,000.
- * It exists because that cap is an environment variable — raising
- * `MERIDIAN_MAX_BACKFILL_ORDERS` without also raising the VM would otherwise
- * re-create the OOM silently, and this turns that into a legible error.
+ * The historical import deliberately has no implicit order ceiling, so this
+ * guard is reachable on a large store or a long window. Refusing the window is
+ * intentional: it turns memory pressure into a legible error instead of a
+ * partial profit answer or a process-wide OOM.
  */
 const MAX_ENGINE_ORDERS = (() => {
   const configured = Number(process.env.MERIDIAN_MAX_ANALYTICS_ORDERS);
@@ -89,18 +105,28 @@ export class WindowTooLargeError extends Error {
   }
 }
 
-export async function loadEngineOrders(
+/** Refuse an engine window before any order graph is hydrated. */
+export async function assertEngineOrderWindow(
   shopId: string,
   range: DateRange,
-): Promise<EngineOrder[]> {
-  // A count is an index-only scan against @@index([shopId, processedAt]) —
-  // cheap next to the hydration it guards.
+): Promise<number> {
+  // An index-backed count is cheap next to the graph read. Recompute also uses
+  // this as a whole-run preflight so a too-large later month cannot leave the
+  // earlier months partially materialised before failing.
   const count = await prisma.order.count({
     where: { shopId, processedAt: { gte: range.from, lte: range.to } },
   });
   if (count > MAX_ENGINE_ORDERS) {
     throw new WindowTooLargeError(count, MAX_ENGINE_ORDERS);
   }
+  return count;
+}
+
+export async function loadEngineOrders(
+  shopId: string,
+  range: DateRange,
+): Promise<EngineOrder[]> {
+  await assertEngineOrderWindow(shopId, range);
 
   // The engine wants two totals per order, not the fulfilment rows themselves,
   // so the sum is done in Postgres. A store that splits shipments has several
@@ -154,7 +180,12 @@ export async function loadEngineOrders(
           },
         },
       },
-      orderBy: { processedAt: "asc" },
+      // Allocation hands indivisible ad/overhead pennies to the first matching
+      // orders. `processedAt` alone is not a total order, so Postgres was free
+      // to change which otherwise-identical order received the remainder from
+      // one recompute to the next. The id tie-breaker makes materialisation
+      // reproducible without changing the chronological ordering.
+      orderBy: [{ processedAt: "asc" }, { id: "asc" }],
     }),
     prisma.fulfillment.groupBy({
       by: ["orderId"],
@@ -238,12 +269,18 @@ export async function loadCohortRows(
   shopId: string,
   range: DateRange,
 ): Promise<CohortRow[]> {
+  const where = {
+    shopId,
+    processedAt: { gte: range.from, lte: range.to },
+    customerId: { not: null },
+  };
+  const count = await prisma.order.count({ where });
+  if (count > MAX_ENGINE_ORDERS) {
+    throw new WindowTooLargeError(count, MAX_ENGINE_ORDERS);
+  }
+
   const rows = await prisma.order.findMany({
-    where: {
-      shopId,
-      processedAt: { gte: range.from, lte: range.to },
-      customerId: { not: null },
-    },
+    where,
     select: {
       customerId: true,
       processedAt: true,
@@ -256,7 +293,7 @@ export async function loadCohortRows(
       contributionProfit: true,
       adCostAttributed: true,
     },
-    orderBy: { processedAt: "asc" },
+    orderBy: [{ processedAt: "asc" }, { id: "asc" }],
   });
 
   return rows.map((row) => ({
@@ -276,7 +313,14 @@ export async function loadAdSpend(
 ): Promise<AdSpendRow[]> {
   const rows = await prisma.adSpend.findMany({
     where: { shopId, date: { gte: range.from, lte: range.to } },
-    orderBy: { date: "asc" },
+    // Stable ordering keeps diagnostics and any future row-wise reconciliation
+    // reproducible when several campaigns share a day.
+    orderBy: [
+      { date: "asc" },
+      { channel: "asc" },
+      { campaignId: "asc" },
+      { id: "asc" },
+    ],
   });
 
   return rows.map((row) => ({
@@ -426,7 +470,8 @@ export async function loadPricingInputs(
         (toCents(item.discount) * units) / item.quantity,
       );
       existing.units += units;
-      existing.revenueCents += toCents(item.unitPrice) * units - discountForSoldUnits;
+      existing.revenueCents +=
+        toCents(item.unitPrice) * units - discountForSoldUnits;
     }
 
     perVariant.set(dayIso, existing);
@@ -446,8 +491,13 @@ export async function loadPricingInputs(
       const date = new Date(range.from.getTime() + i * 86_400_000);
       const dayIso = date.toISOString().slice(0, 10);
 
-      const listPriceThatDay =
-        priceInForce(variant.priceHistory, date) ?? toCents(variant.price);
+      const listPriceThatDay = priceInForce(variant.priceHistory, date);
+
+      // The current Variant price says nothing about days before Meridian
+      // first observed it. Filling that gap with today's price hands future
+      // catalog state to older zero-sale days and manufactures elasticity.
+      // An unmeasured day is omitted; the model will report insufficient data.
+      if (listPriceThatDay === null) continue;
 
       const sold = sales.get(dayIso);
 
@@ -474,7 +524,9 @@ export async function loadPricingInputs(
       currentPriceCents: toCents(variant.price),
       unitCostMicros: toMicros(variant.unitCost),
       observations,
-      isStrategicLossLeader: options.strategicProductIds?.has(variant.product.id),
+      isStrategicLossLeader: options.strategicProductIds?.has(
+        variant.product.id,
+      ),
     };
   });
 }

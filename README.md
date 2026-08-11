@@ -1,18 +1,35 @@
 # Meridian
 
-A unified profitability dashboard for Shopify stores. Revenue, COGS, fulfilment,
-ad spend and overhead resolved into one number a merchant can act on.
+A unified profitability dashboard for Shopify stores. Revenue, COGS,
+fulfilment, payment fees and overhead resolved into one number a merchant can
+act on. That number is calculated from available recorded and modeled inputs: this release has no live
+ad-spend connector, so ad spend is disclosed as unavailable and the result must
+not be marketed as complete net profit.
 
 Built as a real embedded Shopify app: React Router 7, Prisma/PostgreSQL,
-read-only Shopify scopes and the mandatory GDPR webhooks. Billing is configured
-but not yet enforced — see *Known gaps*.
+read-only Shopify scopes and the mandatory GDPR webhooks. Billing is enforced:
+the app resolves the active Billing API subscription, redirects an unsubscribed
+store to the plan screen, gates paid features, and re-checks the plan before a
+protected pricing mutation.
+
+**Release status (verified 2026-08-10):** `npm run ci` passes with 648 tests
+collected (619 passed, 29 opt-in PostgreSQL tests skipped), and the explicit
+real-PostgreSQL integration run passes 29/29 across seven files. The app has
+still never been installed on a real Shopify store, so OAuth, Shopify-delivered
+webhooks, and a real billing approval/return flow remain unproved. Submission is
+also waiting on external decisions and accounts: a non-confusable app name, a
+Fly production origin and managed database, Shopify's Protected Customer Data
+Level 2 and `read_all_orders` requests, Meridian's own domain/publisher/support
+identity, and the review assets that require a real install. See `DEPLOY_PLAN.md` and
+`SUBMISSION.md` for the ordered checklist.
 
 ---
 
-## Installing on a real store
+## Installing on a development store
 
-Everything below is the whole list. There is no Shopify configuration to fill in
-by hand — the CLI writes it.
+This is the local development path. The CLI supplies the linked app credentials
+and temporary tunnel URLs, but production submission still requires the Partner
+Dashboard decisions and access requests listed above.
 
 **1. Prerequisites** — a free [Shopify Partner account](https://partners.shopify.com),
 and local Postgres.
@@ -50,6 +67,11 @@ The CLI logs you in, offers to create the app in your Partner account, writes
 `client_id` into `shopify.app.toml`, opens a tunnel, rewrites the app URLs to
 match it, and injects `SHOPIFY_API_KEY` / `SHOPIFY_API_SECRET` / `SCOPES` into
 the process. You do not need to put any of those in `.env`.
+
+For a production-hosted App Store review, charge mode is not inferred from
+`NODE_ENV`, a display label, or an operator override. Meridian re-reads
+Shopify's durable `ShopPlan.partnerDevelopment` signal immediately before every
+production charge, so the supplied development store receives a test charge.
 
 **5. Install it.** Press `p` to open the install link, pick your dev store,
 approve the scopes. Meridian provisions the shop, registers webhooks, and starts
@@ -108,10 +130,10 @@ fails the *entire* query rather than returning null for that field.
 
 | Scope | Without it |
 |---|---|
-| `read_orders` | Nothing works. Essential. |
+| `read_orders` | Nothing works. Essential, and itself gated by an approved Protected Customer Data request. |
 | `read_products` | No catalogue or pricing analysis. Essential. |
 | `read_inventory` | **No COGS.** Margins read as ~100% and every profit figure is overstated. Requested by default; not protected data. |
-| `read_customers` | No CAC, LTV, payback or loss-leader detection. **Protected customer data** — needs an approved request in the Partner Dashboard, not just the scope. |
+| `read_customers` | No CAC, LTV, payback or customer-lifecycle product classification. **Protected customer data** — needs an approved request in the Partner Dashboard, not just the scope. |
 | `read_fulfillments` | No capacity forecasting. Meridian writes no capacity data at all rather than inferring a backlog that only ever grows. |
 
 Missing permissions surface in *Costs & connections → Data access*, and the
@@ -125,10 +147,12 @@ affected screens explain what is unavailable instead of rendering a zero.
   app detects this and says so in a banner rather than implying the store had no
   earlier trading. Add the scope to `shopify.app.toml` only once it is approved —
   requesting an ungranted scope fails OAuth.
-- **Ad spend has no live connector yet.** Facebook/Google/TikTok are modelled and
-  encrypted end to end but not wired to their OAuth flows, so on a real store the
-  acquisition screen will show organic and direct traffic with zero spend. The
-  profit, product, pricing and fulfilment screens are fully live.
+- **Ad spend has no live connector yet.** Facebook/Google/TikTok are modelled but
+  not wired to OAuth, so CAC, ROAS, payback and marketing efficiency are
+  unavailable rather than zero. Acquisition still shows order-derived channel
+  revenue and contribution profit. Historical imports without customer access
+  cannot read journey attribution and fall back to Direct; new-order webhooks
+  retain landing/referring signals when Shopify supplies them.
 
 ## Running the demo without Shopify
 
@@ -151,7 +175,7 @@ and must never be reachable there.
 | `npm run shopify:dev` | Run against a real store via the Shopify CLI |
 | `npm run dev` | Dev server (demo / no Shopify) |
 | `npm run db:migrate` | Apply migrations |
-| `npm test` | Test suite (387 tests) |
+| `npm test` | Test suite (648 collected: 619 pass, 29 integration tests skipped) |
 | `npm run test:coverage` | Tests with coverage thresholds enforced |
 | `npm run ci` | Everything CI runs: typecheck, coverage, build |
 | `npm run typecheck` | Types |
@@ -183,11 +207,13 @@ dependency audit. **Nothing runs it yet**; it is committed ready for the day a
 remote exists.
 
 Coverage is measured over `app/engine`, `app/lib` and `app/data` — the code the
-suite actually targets. `.tsx` is excluded because no component is ever
-rendered by a test; that is a real gap to close by writing component and
-end-to-end tests, not by letting them dilute the one number that means
-something. Thresholds are floors set just under the current measurement, so the
-build fails on regression rather than on ambition.
+suite targets most deeply. Route and design-system `.tsx` files remain outside
+the coverage denominator, but server-rendered regressions now cover Overview,
+Orders, Products, Acquisition, Pricing, Settings, Plan, the app layout, Privacy
+requests and chart date labels. Fulfilment, auth/home and the legal wrappers do
+not yet have dedicated route tests, and the browser-level Shopify install flow
+still needs end-to-end coverage. Thresholds are floors set just under the
+current measurement, so the build fails on regression rather than on ambition.
 
 ## Architecture
 
@@ -197,7 +223,7 @@ app/
   data/       Prisma -> engine input translation, and the assembled picture.
   lib/        Auth boundary, webhooks, sync, recompute, crypto.
   design/     Tokens, primitives, hand-built SVG charts.
-  routes/     Seven screens and eight webhook endpoints.
+  routes/     Nine app screens and eleven webhook endpoints.
 ```
 
 **The engine is the product.** `app/engine/` holds pure functions with no
@@ -243,38 +269,26 @@ Decisions worth knowing about:
 
 ### Products
 
-Contribution profit per product, with order-level costs pushed down by revenue
-share. The interesting part is classifying a loss:
-
-A product losing money is **strategic** only if its buyers go on to be worth
-meaningfully more than the store's average customer (1.25×, minimum cohort of 5).
-Merely covering the loss is not enough — almost any product clears that bar,
-because the customers who bought it go on to buy other things regardless.
+Contribution profit per product, with order-level shipping, payment,
+pick-and-pack and any recorded ad cost allocated by revenue share. Fixed monthly
+overhead remains an order-net-profit cost and is not pushed into product
+contribution. A product with sold units but missing COGS receives no profitable
+or bleeding verdict; modeled inputs stay visibly qualified.
 
 ### Acquisition
 
-CAC is spend divided by the customers a channel actually acquired.
-
-Two things this gets right that are easy to get wrong:
-
-- **Payback is measured against contribution *before* marketing cost.** Comparing
-  a figure that already has acquisition cost deducted back against CAC charges
-  the merchant for the same ad twice, and makes healthy channels read "never".
-- **Cohorts are only counted at checkpoints they have aged into.** A customer
-  acquired last week cannot contribute to a 90-day figure; averaging them in as
-  zero is the most common way LTV gets understated. Unmeasurable checkpoints
-  render as "not yet", never as `0.00×`.
-
-Value is measured across a 365-day cohort lookback regardless of the reporting
-window, because "what is a customer worth" cannot be answered inside 30 days.
-Platform-reported revenue is kept alongside measured revenue so the attribution
-gap is visible — on the demo store the platforms collectively claim 82% more than
-can be tied to orders.
+The current release attributes order-derived revenue and qualified contribution
+to channels from UTM and referring signals. It has no live ad-platform connector,
+so spend, CAC, ROAS and marketing efficiency remain unavailable rather than
+becoming zero. The dormant cohort engine is also hidden because the requested
+scope set does not include `read_customers`; unmeasurable cohort checkpoints
+remain represented as “not yet”, never `0.00×`.
 
 ### Pricing
 
 A weighted log-log regression of demand share on price, per variant, from the
-store's own price history.
+price history Meridian observes from installation onward; pre-install history is
+unknown and never backfilled from the current price.
 
 The regressand is the product's **share of store-wide demand**, not raw units.
 This matters enormously: a growing store's volume rises over time and price
@@ -292,8 +306,9 @@ Guard rails, all enforced and tested:
   inventing an elasticity.
 - A **positive** fitted elasticity is reported as a broken fit — something other
   than price moved demand — not as pricing headroom.
-- A working loss leader returns `STRATEGIC_HOLD`. Repricing the tripwire that
-  feeds the funnel is the most expensive "optimisation" this tool could suggest.
+- Customer-lifecycle hold logic remains in the engine for a future approved
+  `read_customers` release, but it is dormant: current routes and public copy do
+  not surface or sell it.
 
 Estimates on observational data are attenuated; that is a genuine property of the
 data, not a bug, and is exactly why the caps and confidence gating exist. The
@@ -323,20 +338,22 @@ backoff, a resumable cursor, and a capability probe for
 `customerJourneySummary`, which is not readable on every store and degrades to
 referrer-based attribution instead of failing the run.
 
-It starts in the background, because OAuth has to redirect the merchant into the
-app immediately and reading a store's history takes far longer than a redirect
-can wait. Progress is written to the `Shop` row and polled by the UI.
+`afterAuth` waits only for an atomic database claim, then the import continues in
+the background because Shopify's OAuth redirect cannot wait for store history.
+A five-minute lease is renewed every minute; owner-fenced progress and terminal
+writes, plus a saved cursor, make interruption visible and safely resumable.
+There is still no external queue that restarts an abandoned run automatically.
 
 ## Shopify integration
 
 - **Read-only scopes.** An analytics app should not be able to change a price, an
   order, or a customer. Accepted pricing recommendations are recorded, not
   written back to Shopify.
-- **Webhook idempotency.** Delivery is at-least-once; the `X-Shopify-Webhook-Id`
-  is recorded so a retried `orders/create` cannot book revenue twice.
-- **Verified webhooks return 200 even when the handler throws.** A 500 makes
-  Shopify retry, and enough failures disable the subscription. Failures are
-  recorded for deliberate replay instead.
+- **Durable webhook recovery.** An authenticated payload is minimized and
+  durably claimed before HTTP 200. A leased worker retries failures with
+  backoff; successful payloads are erased. Failed ordinary recovery payloads
+  expire after seven days, while mandatory compliance work never ages out
+  before it succeeds.
 - **All three mandatory GDPR topics** are implemented. `customers/redact`
   anonymises orders in place rather than deleting them — erasing the personal
   data without silently rewriting the merchant's financial history.
@@ -363,25 +380,19 @@ and fought with over mark geometry.
 
 ## Known gaps
 
-- Ad platform connectors are modelled and encrypted end-to-end but not wired to
-  live Facebook/Google/TikTok OAuth — that needs credentials. On a real store the
-  acquisition screen therefore shows organic and direct traffic with no spend.
+- Ad platform connectors are modelled but not wired to live
+  Facebook/Google/TikTok OAuth. The Acquisition screen therefore leaves spend,
+  CAC and ROAS unavailable while keeping order-derived channel revenue and
+  contribution profit visible.
 - Historical COGS is not retrievable from Shopify. The import snapshots each
   variant's *current* landed cost onto its line items, which is the best
   available basis; from then on webhooks snapshot the cost in force at the time.
 - Accepted price changes are recorded, not pushed to Shopify (requires
   `write_products`, deliberately not requested).
-- **Billing is declared but never enforced, and this is the main thing standing
-  between the app and submission.** `app/shopify.server.ts` configures three
-  Billing API plans with a 14-day trial, while `shopify.app.toml` and the
-  `app_subscriptions/update` handler describe managed pricing instead — two
-  mutually exclusive models, half-wired each. Nothing in `app/` ever calls
-  `billing.require`, `billing.check` or `billing.request`, and no loader or
-  action branches on `Subscription.plan`; it is read only to render a badge in
-  *Costs & connections*. Every feature advertised as Growth- or Scale-only is
-  served unconditionally on the default `trial`. A merchant can therefore be
-  charged and get nothing gated, or pay nothing and get everything. Pick one
-  model, add a real check and an upgrade path, and delete the loser.
+- Billing is implemented and enforced with the Billing API, but its real Shopify
+  approval screen, return redirect, subscription lookup, and webhook delivery
+  have never been exercised. That is a deployment acceptance test, not a
+  missing gate in the code.
 - The backfill and recompute both run in-process. That is correct on a
   long-lived server and wrong on a serverless platform, where the process may
   not outlive the response — both belong in a job queue before deploying there.

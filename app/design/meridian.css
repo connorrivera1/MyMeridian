@@ -52,136 +52,160 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: "Space Grotesk Variable";
+  src: url("../fonts/grotesk/SpaceGrotesk-Variable.woff2") format("woff2-variations");
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   color-scheme: dark;
 
-  /* the sky — dusk. --plane is the zenith, the scene gradient does the rest. */
-  --plane: #161c36;
-  --sky-zenith: #141a33;
-  --sky-upper: #232c52;
-  --sky-mid: #3a4671;
-  --sky-haze: #5d6493;
-  --sky-veil: #8a7590;
-  --horizon-ember: #c08a6e;
-  --horizon-glow: #e7ae78;
-
-  /* legacy surface steps, kept for small fills (code chips, track beds) */
-  --surface-1: #1a2140;
-  --surface-2: #202950;
-  --surface-3: rgba(244, 239, 230, 0.07);
-  --surface-hover: rgba(244, 239, 230, 0.12);
+  /* Ink as a channel, so alpha rules work in both themes. */
+  --ink-rgb: 245, 245, 245;
 
   /*
-   * glass — indigo-tinted so ink stays readable over the bright horizon band.
+   * Type, shared with the marketing site.
    *
-   * The opacity here is a legibility floor, not a taste setting. The sky is
-   * `position: fixed`, so a panel's effective backdrop changes as the page
-   * scrolls, and at the bottom of the viewport it is the peach horizon. At the
-   * original 0.5 the muted ink inside a panel measured 2.60:1 over the sun's
-   * glow. 0.72 is the lowest value at which every ink below clears WCAG AA at
-   * *every* scroll position — see the ratios noted on each token.
+   * Space Grotesk sets the wordmark, every heading and every figure; Plus
+   * Jakarta sets running prose. A merchant clicking through from the page
+   * into the app should not be able to tell where one ends and the other
+   * begins, and type is most of what carries that.
+   *
+   * (These tokens were briefly missing, which is worth recording: `--font`
+   * had been defined in the block this system replaced, so every rule below
+   * resolved `font-family: var(--font)` to nothing and the whole interface
+   * silently fell back to the browser's default serif. An undefined custom
+   * property fails at computed-value time and takes the declaration with it.)
    */
-  --glass: rgba(21, 26, 51, 0.72);
-  --glass-strong: rgba(18, 23, 46, 0.88);
-  --glass-edge: rgba(255, 255, 255, 0.14);
+  --font-display: "Space Grotesk Variable", ui-sans-serif, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font: "Plus Jakarta Sans Variable", ui-sans-serif, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 
-  /* ink — warm cream, never pure white. Alphas are contrast-derived: over
-     --glass at the horizon, muted measures 4.79:1 and secondary 5.93:1. */
-  --ink-primary: #f4efe6;
-  --ink-secondary: rgba(244, 239, 230, 0.8);
-  --ink-muted: rgba(244, 239, 230, 0.68);
+  /*
+   * Monochrome — night.
+   *
+   * The golden-hour scene is retired. The marketing site is white and black
+   * and the app now matches it: one ink, one ground, and every distinction
+   * carried by VALUE rather than hue. That is a harder discipline than a
+   * palette and a better fit for the product — a page of figures should not
+   * have eight colours competing with the numbers on it.
+   *
+   * The one rule that survives intact: profit is the strongest mark on the
+   * screen. It used to be gold; here it is pure white on black, which is the
+   * same idea with the colour taken out.
+   */
+
+  /* ground — the sky is gone, these are flat planes now */
+  --plane: #0a0a0a;
+  --sky-zenith: #0a0a0a;
+  --sky-upper: #0a0a0a;
+  --sky-mid: #0a0a0a;
+  --sky-haze: #0a0a0a;
+  --sky-veil: #0a0a0a;
+  --horizon-ember: #0a0a0a;
+  --horizon-glow: #0a0a0a;
+
+  --surface-1: #121212;
+  --surface-2: #171717;
+  --surface-3: rgba(245, 245, 245, 0.06);
+  --surface-hover: rgba(245, 245, 245, 0.1);
+
+  /* panels are solid, not glass: there is no scene left to show through */
+  --glass: #101010;
+  --glass-strong: #141414;
+  --glass-edge: rgba(245, 245, 245, 0.1);
+
+  /* ink */
+  --ink-primary: #f5f5f5;
+  --ink-secondary: rgba(245, 245, 245, 0.74);
+  --ink-muted: rgba(245, 245, 245, 0.6);
 
   /* line work */
-  --border: rgba(244, 239, 230, 0.13);
-  --border-strong: rgba(244, 239, 230, 0.24);
-  --edge-light: rgba(255, 255, 255, 0.1);
-  --gridline: rgba(244, 239, 230, 0.08);
-  --baseline: rgba(244, 239, 230, 0.22);
+  --border: rgba(245, 245, 245, 0.14);
+  --border-strong: rgba(245, 245, 245, 0.26);
+  --edge-light: rgba(245, 245, 245, 0.08);
+  --gridline: rgba(245, 245, 245, 0.08);
+  --baseline: rgba(245, 245, 245, 0.22);
 
-  /* brand — sunlight. Reserved for profit and the lit meridian. */
-  --accent: #f0c273;
-  --accent-2: #e69f5c;
-  --accent-soft: #f6d9a4;
-  --accent-dim: rgba(240, 194, 115, 0.16);
-  --accent-glow: rgba(240, 194, 115, 0.45);
-  --accent-ink: #241c33;
+  /* brand — reserved for the number the merchant came for */
+  --accent: #ffffff;
+  --accent-2: #d6d6d6;
+  --accent-soft: #ffffff;
+  --accent-dim: rgba(245, 245, 245, 0.1);
+  --accent-glow: rgba(245, 245, 245, 0.28);
+  --accent-ink: #0a0a0a;
 
-  /* solid pill buttons — the only opaque objects in the scene */
-  --pill: #f6f1e7;
-  --pill-ink: #232a4d;
+  --pill: #f5f5f5;
+  --pill-ink: #0a0a0a;
 
-  /* status — how far past sunset the problem is. These are TEXT colours on
-     dark glass, so each had to move lighter, not more saturated, to separate
-     from a panel sitting over the lit horizon. Worst-case ratios: good 4.9,
-     warning 5.3, serious 4.9, critical 4.9. */
-  --status-good: #ecc06e;
-  --status-warning: #f7b678;
-  --status-serious: #f8a892;
-  --status-critical: #fca3ad;
+  /*
+   * Status is a value ramp: the more serious it is, the brighter it gets.
+   * All four clear AA on --glass; with hue gone, severity has to be carried
+   * by luminance and by the wording beside it.
+   */
+  --status-good: #8e8e8e;
+  --status-warning: #b4b4b4;
+  --status-serious: #d8d8d8;
+  --status-critical: #ffffff;
 
-  /* money polarity — sunlight up, afterglow down */
-  --delta-up: #efc06f;
-  --delta-down: #faae9e;
-  --delta-up-wash: rgba(240, 194, 115, 0.15);
-  --delta-down-wash: color-mix(in srgb, var(--delta-down) 15%, transparent);
+  /* money polarity — up is bright, down is recessive */
+  --delta-up: #ffffff;
+  --delta-down: #8a8a8a;
+  --delta-up-wash: rgba(245, 245, 245, 0.12);
+  --delta-down-wash: rgba(245, 245, 245, 0.06);
 
   /* semantic chart marks */
-  --mark-structure: #9db1e8;
-  --mark-cost: #9aa0c6;
-  --mark-result: #f0c273;
+  --mark-structure: #5c5c5c;
+  --mark-cost: #8a8a8a;
+  --mark-result: #ffffff;
 
-  /* categorical series, sampled across the scene so neighbours differ */
-  --series-1: #9db1e8;
-  --series-2: #eec983;
-  --series-3: #f2a582;
-  --series-4: #bda6e8;
-  --series-5: #93c6d4;
-  --series-6: #e98fa7;
-  --series-7: #e6d7b2;
-  --series-8: #97a0c4;
+  /* categorical series — a value ladder with enough separation between
+     neighbours to be told apart without hue */
+  --series-1: #f5f5f5;
+  --series-2: #b9b9b9;
+  --series-3: #7d7d7d;
+  --series-4: #d7d7d7;
+  --series-5: #9b9b9b;
+  --series-6: #616161;
+  --series-7: #e8e8e8;
+  --series-8: #4a4a4a;
 
-  /* legacy hue names, re-aimed at the scene. Routes address tiles by these;
-     the old neon meanings map onto sky hues (mint was profit → gold). */
+  /* legacy hue names, re-aimed at the ramp; routes still address these */
   --viz-mint: var(--accent);
-  --viz-teal: #93c6d4;
-  --viz-blue: #9db1e8;
-  --viz-violet: #bda6e8;
-  --viz-pink: #e98fa7;
-  --viz-amber: #eec983;
-  --viz-orange: #f2a582;
-  --viz-rose: #ee8570;
+  --viz-teal: #9b9b9b;
+  --viz-blue: #7d7d7d;
+  --viz-violet: #b9b9b9;
+  --viz-pink: #d7d7d7;
+  --viz-amber: #e8e8e8;
+  --viz-orange: #8a8a8a;
+  --viz-rose: #616161;
+
+  /* Inset for type in a full-bleed ledger; the rules ignore it. */
+  --ledger-gutter: 22px;
+
+  /*
+   * Easing.
+   *
+   * These went missing with the palette rewrite and took 22 animations with
+   * them — an `animation` shorthand naming an undefined custom property is
+   * invalid, so the declaration is dropped entirely. Anything whose resting
+   * state was `opacity: 0` simply never appeared, which is why the splash
+   * showed its globe (no base opacity) but never its wordmark (opacity: 0
+   * waiting on an animation that no longer parsed).
+   */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 
   --radius: 22px;
   --radius-sm: 13px;
   --shadow:
-    0 2px 8px rgba(8, 10, 26, 0.35),
-    0 28px 70px -30px rgba(8, 10, 26, 0.7);
-
-  /*
-   * Plus Jakarta Sans Variable, self-hosted.
-   *
-   * The type in here was drawn for a variable geometric face — weights of 320
-   * and 460, tracking down to -0.03em — and when Satoshi was removed for
-   * licensing, all of that kept being applied to the reader's system UI font.
-   * Those weights do not exist in SF or Segoe, so every one of them snapped to
-   * the nearest static cut and the negative tracking, drawn for Satoshi's wide
-   * geometric shapes, closed up the narrower system letterforms. That single
-   * substitution is why the interface read as badly spaced everywhere at once.
-   *
-   * Plus Jakarta Sans is the closest geometric grotesque with a licence that
-   * permits self-hosting: SIL OFL 1.1, which explicitly allows bundling and
-   * serving the file (see fonts/jakarta/LICENSE-OFL.txt). One variable file,
-   * 27KB, covering the whole 200-800 range this design uses.
-   */
-  --font: "Plus Jakarta Sans Variable", ui-sans-serif, -apple-system,
-    BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-  /* expo.out — the long tail is what makes a movement read as expensive rather
-     than merely fast. Reserved for entrances and the sliding range indicator. */
-  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
-  /* A small overshoot for press-release, so a button springs back rather than
-     stopping dead. Kept mild: past ~1.6 on the third handle it reads as bouncy. */
-  --ease-spring: cubic-bezier(0.34, 1.42, 0.64, 1);
+    0 2px 8px rgba(0, 0, 0, 0.5),
+    0 28px 70px -30px rgba(0, 0, 0, 0.8);
 
   /* Micro-interactions live in 150-300ms. Anything slower stops feeling like a
      response to the pointer and starts feeling like a wait. */
@@ -189,92 +213,95 @@
   --micro: 220ms;
 }
 
-/* Daybreak — the same scene a few hours later. Warm ivory paper, pale sky at
-   the top of the field, ink turned to deep indigo. */
+/*
+ * Daylight — the same system inverted.
+ *
+ * Paper ground, near-black ink, and the identical value ramp turned upside
+ * down: profit is now the darkest mark rather than the brightest. Matches the
+ * marketing site exactly, so a merchant who clicks through from the page into
+ * the app does not change worlds.
+ */
 :root[data-theme="light"] {
   color-scheme: light;
 
-  --plane: #f4efe5;
-  --sky-zenith: #f7f3ea;
-  --sky-upper: #e9e9ec;
-  --sky-mid: #dee5f2;
-  --sky-haze: #e6e3e6;
-  --sky-veil: #f2e5d5;
-  --horizon-ember: #f3d9b6;
-  --horizon-glow: #f7e6c6;
+  --ink-rgb: 10, 10, 10;
 
-  --surface-1: #fbf8f1;
+  --plane: #ffffff;
+  --sky-zenith: #ffffff;
+  --sky-upper: #ffffff;
+  --sky-mid: #ffffff;
+  --sky-haze: #ffffff;
+  --sky-veil: #ffffff;
+  --horizon-ember: #ffffff;
+  --horizon-glow: #ffffff;
+
+  --surface-1: #fafafa;
   --surface-2: #ffffff;
-  --surface-3: rgba(38, 43, 74, 0.06);
-  --surface-hover: rgba(38, 43, 74, 0.1);
+  --surface-3: rgba(10, 10, 10, 0.05);
+  --surface-hover: rgba(10, 10, 10, 0.08);
 
-  --glass: rgba(255, 253, 248, 0.75);
-  --glass-strong: rgba(255, 253, 248, 0.92);
-  --glass-edge: rgba(255, 255, 255, 0.85);
+  --glass: #ffffff;
+  --glass-strong: #ffffff;
+  --glass-edge: rgba(10, 10, 10, 0.08);
 
-  /* Daybreak's sky is near-uniform in luminance, so its contrast failure was
-     global rather than positional: muted at 0.55 measured 3.31:1 on every
-     surface at every scroll position. At 0.68 it is 4.82:1 in a panel and
-     4.50:1 even on bare sky. */
-  --ink-primary: #262b4a;
-  --ink-secondary: rgba(38, 43, 74, 0.76);
-  --ink-muted: rgba(38, 43, 74, 0.68);
+  --ink-primary: #0a0a0a;
+  --ink-secondary: rgba(10, 10, 10, 0.72);
+  --ink-muted: rgba(10, 10, 10, 0.58);
 
-  --border: rgba(38, 43, 74, 0.13);
-  --border-strong: rgba(38, 43, 74, 0.24);
-  --edge-light: rgba(255, 255, 255, 0.9);
-  --gridline: rgba(38, 43, 74, 0.08);
-  --baseline: rgba(38, 43, 74, 0.24);
+  --border: rgba(10, 10, 10, 0.13);
+  --border-strong: rgba(10, 10, 10, 0.26);
+  --edge-light: rgba(10, 10, 10, 0.06);
+  --gridline: rgba(10, 10, 10, 0.08);
+  --baseline: rgba(10, 10, 10, 0.24);
 
-  /* #b07f2a measured 3.24:1 — fine as a large figure, but this token is also
-     the body-text link colour and the focus ring, both of which need more. */
-  --accent: #8a6410;
-  --accent-2: #a3560f;
-  --accent-soft: #7a5407;
-  --accent-dim: rgba(176, 127, 42, 0.13);
-  --accent-glow: rgba(194, 141, 51, 0.35);
-  --accent-ink: #fffdf8;
+  --accent: #0a0a0a;
+  --accent-2: #333333;
+  --accent-soft: #0a0a0a;
+  --accent-dim: rgba(10, 10, 10, 0.07);
+  --accent-glow: rgba(10, 10, 10, 0.2);
+  --accent-ink: #ffffff;
 
-  /* in daylight the solid pill inverts: indigo object on ivory paper */
-  --pill: #232a4d;
-  --pill-ink: #f6f1e7;
+  --pill: #0a0a0a;
+  --pill-ink: #ffffff;
 
-  --status-good: #8a6410;
-  --status-warning: #a35c17;
-  --status-serious: #b0491d;
-  --status-critical: #c03540;
+  /* Severity darkens on paper, the mirror of the night ramp. */
+  --status-good: #8a8a8a;
+  --status-warning: #6a6a6a;
+  --status-serious: #3d3d3d;
+  --status-critical: #0a0a0a;
 
-  --delta-up: #8a6410;
-  --delta-down: #bf4936;
-  --delta-up-wash: rgba(138, 100, 16, 0.12);
-  --delta-down-wash: rgba(191, 73, 54, 0.11);
+  --delta-up: #0a0a0a;
+  --delta-down: #8a8a8a;
+  --delta-up-wash: rgba(10, 10, 10, 0.09);
+  --delta-down-wash: rgba(10, 10, 10, 0.05);
 
-  --mark-structure: #4d68b8;
-  --mark-cost: #7c83a6;
-  --mark-result: #c28d33;
+  --mark-structure: #8e8e8e;
+  --mark-cost: #b4b4b4;
+  --mark-result: #0a0a0a;
 
-  --series-1: #4d68b8;
-  --series-2: #b98a2e;
-  --series-3: #c56a3d;
-  --series-4: #7d5fb3;
-  --series-5: #3d8ba0;
-  --series-6: #b8547a;
-  --series-7: #8a7a4a;
-  --series-8: #6a7396;
+  --series-1: #0a0a0a;
+  --series-2: #4a4a4a;
+  --series-3: #7d7d7d;
+  --series-4: #262626;
+  --series-5: #616161;
+  --series-6: #949494;
+  --series-7: #363636;
+  --series-8: #a8a8a8;
 
-  --viz-mint: var(--mark-result);
-  --viz-teal: #3d8ba0;
-  --viz-blue: #4d68b8;
-  --viz-violet: #7d5fb3;
-  --viz-pink: #b8547a;
-  --viz-amber: #b98a2e;
-  --viz-orange: #c56a3d;
-  --viz-rose: #bf4936;
+  --viz-mint: var(--accent);
+  --viz-teal: #757575;
+  --viz-blue: #9a9a9a;
+  --viz-violet: #575757;
+  --viz-pink: #2e2e2e;
+  --viz-amber: #414141;
+  --viz-orange: #8a8a8a;
+  --viz-rose: #b5b5b5;
 
   --shadow:
-    0 1px 3px rgba(52, 48, 80, 0.07),
-    0 22px 60px -28px rgba(52, 48, 80, 0.28);
+    0 1px 3px rgba(10, 10, 10, 0.06),
+    0 22px 50px -28px rgba(10, 10, 10, 0.3);
 }
+
 
 /* ------------------------------------------------------------------- reset */
 
@@ -304,7 +331,7 @@ body {
  */
 :root {
   color-scheme: dark;
-  scrollbar-color: rgba(157, 177, 232, 0.42) transparent;
+  scrollbar-color: rgba(var(--ink-rgb), 0.42) transparent;
   scrollbar-width: thin;
 }
 
@@ -321,10 +348,10 @@ body {
   background-clip: padding-box;
   border: 3px solid transparent;
   border-radius: 999px;
-  background-color: rgba(157, 177, 232, 0.34);
+  background-color: rgba(var(--ink-rgb), 0.34);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(157, 177, 232, 0.58);
+  background-color: rgba(var(--ink-rgb), 0.58);
 }
 ::-webkit-scrollbar-corner {
   background: transparent;
@@ -346,10 +373,19 @@ body {
 }
 
 /*
- * The scene. A fixed sky behind everything: indigo zenith falling through
- * periwinkle haze to a warm band of light low in the viewport, with the sun's
- * glow bleeding up from the horizon. Content scrolls over it; the sky holds
- * still the way a sky does.
+ * The scene is one flat plane.
+ *
+ * This used to be a fixed sky: indigo zenith falling through periwinkle haze
+ * to a warm band of light low in the viewport, with the sun's glow bleeding up
+ * from the horizon. It was the best thing in the old design and it is the
+ * first thing that had to go, because a monochrome system cannot have a
+ * gradient doing its emotional work — the moment there is a coloured wash
+ * behind the panels, the greys stop reading as a deliberate ramp and start
+ * reading as an absence.
+ *
+ * The grain stays. On a flat near-black or near-white field it is the only
+ * thing standing between the eye and visible banding, and it is what keeps
+ * the surface feeling printed rather than filled.
  */
 body::before {
   content: "";
@@ -357,53 +393,9 @@ body::before {
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  background:
-    radial-gradient(
-      120rem 44rem at 50% 118%,
-      rgba(231, 174, 120, 0.5),
-      rgba(192, 138, 110, 0.22) 38%,
-      transparent 66%
-    ),
-    radial-gradient(
-      70rem 30rem at 78% 108%,
-      rgba(240, 194, 115, 0.32),
-      transparent 60%
-    ),
-    linear-gradient(
-      180deg,
-      var(--sky-zenith) 0%,
-      var(--sky-upper) 30%,
-      var(--sky-mid) 54%,
-      var(--sky-haze) 72%,
-      var(--sky-veil) 84%,
-      var(--horizon-ember) 100%
-    );
+  background: var(--plane);
 }
 
-:root[data-theme="light"] body::before {
-  background:
-    radial-gradient(
-      110rem 40rem at 50% -18%,
-      rgba(222, 229, 242, 0.9),
-      transparent 62%
-    ),
-    radial-gradient(
-      80rem 34rem at 82% 112%,
-      rgba(247, 230, 198, 0.85),
-      transparent 58%
-    ),
-    linear-gradient(
-      180deg,
-      var(--sky-upper) 0%,
-      var(--sky-zenith) 34%,
-      var(--plane) 60%,
-      var(--sky-veil) 100%
-    );
-}
-
-/* Film grain over the sky, killing gradient banding. A long smooth gradient
-   with no texture is exactly the "washed out" surface this design must never
-   be — the grain is what makes the light feel photographed. */
 body::after {
   content: "";
   position: fixed;
@@ -411,12 +403,14 @@ body::after {
   pointer-events: none;
   z-index: 0;
   opacity: 0.05;
-  mix-blend-mode: overlay;
+  mix-blend-mode: screen;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
+/* On paper the grain has to bite, not lift. */
 :root[data-theme="light"] body::after {
-  opacity: 0.035;
+  opacity: 0.028;
+  mix-blend-mode: multiply;
 }
 
 a {
@@ -451,11 +445,11 @@ code {
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(244, 239, 230, 0.2) transparent;
+  scrollbar-color: rgba(var(--ink-rgb), 0.2) transparent;
 }
 
 :root[data-theme="light"] * {
-  scrollbar-color: rgba(38, 43, 74, 0.25) transparent;
+  scrollbar-color: rgba(var(--ink-rgb), 0.25) transparent;
 }
 
 ::-webkit-scrollbar {
@@ -464,14 +458,14 @@ code {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(244, 239, 230, 0.2);
+  background: rgba(var(--ink-rgb), 0.2);
   border-radius: 8px;
   border: 3px solid transparent;
   background-clip: content-box;
 }
 
 :root[data-theme="light"] ::-webkit-scrollbar-thumb {
-  background: rgba(38, 43, 74, 0.25);
+  background: rgba(var(--ink-rgb), 0.25);
   border-radius: 8px;
   border: 3px solid transparent;
   background-clip: content-box;
@@ -605,7 +599,7 @@ code {
   pointer-events: none;
   background: radial-gradient(
     44rem 24rem at 50% 78%,
-    rgba(240, 194, 115, 0.16),
+    rgba(var(--ink-rgb), 0.16),
     transparent 66%
   );
 }
@@ -808,7 +802,7 @@ code {
   height: 30rem;
   top: -12rem;
   right: -8rem;
-  background: radial-gradient(closest-side, rgba(240, 194, 115, 0.32), transparent 70%);
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 26%, transparent), transparent 70%);
 }
 
 .app-shell::after {
@@ -816,14 +810,14 @@ code {
   height: 26rem;
   top: 22%;
   left: -14rem;
-  background: radial-gradient(closest-side, rgba(157, 177, 232, 0.26), transparent 70%);
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--mark-structure) 30%, transparent), transparent 70%);
 }
 
 :root[data-theme="light"] .app-shell::before {
-  background: radial-gradient(closest-side, rgba(194, 141, 51, 0.13), transparent 70%);
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 13%, transparent), transparent 70%);
 }
 :root[data-theme="light"] .app-shell::after {
-  background: radial-gradient(closest-side, rgba(77, 104, 184, 0.1), transparent 70%);
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--mark-structure) 14%, transparent), transparent 70%);
 }
 
 @keyframes drift-a {
@@ -925,8 +919,8 @@ code {
   background: linear-gradient(
     100deg,
     color-mix(in srgb, var(--accent) 18%, transparent),
-    rgba(244, 239, 230, 0.1) 48%,
-    rgba(244, 239, 230, 0.05)
+    rgba(var(--ink-rgb), 0.1) 48%,
+    rgba(var(--ink-rgb), 0.05)
   );
   color: var(--ink-primary);
   font-weight: 540;
@@ -936,8 +930,8 @@ code {
 }
 
 :root[data-theme="light"] .nav-link[aria-current="page"] {
-  background: rgba(38, 43, 74, 0.08);
-  box-shadow: inset 0 0 0 1px rgba(38, 43, 74, 0.1);
+  background: rgba(var(--ink-rgb), 0.08);
+  box-shadow: inset 0 0 0 1px rgba(var(--ink-rgb), 0.1);
 }
 
 /* The lit meridian marking the current page. It grows from the centre out on
@@ -1061,10 +1055,10 @@ code {
   border-radius: 50%;
   background: radial-gradient(
     68% 108% at 30% 50%,
-    rgba(11, 15, 33, 0.88) 0%,
-    rgba(11, 15, 33, 0.8) 40%,
-    rgba(11, 15, 33, 0.42) 68%,
-    rgba(11, 15, 33, 0) 92%
+    rgba(0, 0, 0, 0.88) 0%,
+    rgba(0, 0, 0, 0.8) 40%,
+    rgba(0, 0, 0, 0.42) 68%,
+    rgba(0, 0, 0, 0) 92%
   );
 }
 
@@ -1073,10 +1067,10 @@ code {
 :root[data-theme="light"] .sky-text::before {
   background: radial-gradient(
     68% 108% at 30% 50%,
-    rgba(255, 253, 248, 0.88) 0%,
-    rgba(255, 253, 248, 0.78) 40%,
-    rgba(255, 253, 248, 0.4) 68%,
-    rgba(255, 253, 248, 0) 92%
+    rgba(255, 255, 255, 0.88) 0%,
+    rgba(255, 255, 255, 0.78) 40%,
+    rgba(255, 255, 255, 0.4) 68%,
+    rgba(255, 255, 255, 0) 92%
   );
 }
 
@@ -1159,20 +1153,13 @@ code {
      full accent measures 2.93:1 against the sun's glow — just under the 3.0
      that large text needs — and the lighter gold clears it at 3.55:1 while
      looking identical at a glance. */
-  background: linear-gradient(
-    172deg,
-    var(--ink-primary) 10%,
-    #f9e4bb 58%,
-    var(--accent-soft) 98%
-  );
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 42px color-mix(in srgb, var(--accent) 34%, transparent));
+  /* Was a gold gradient clipped to the text. In a monochrome system the
+     greeting is simply the primary ink — the emphasis comes from its size. */
+  color: var(--ink-primary);
 }
 
 :root[data-theme="light"] .greet-amount {
-  background: linear-gradient(172deg, var(--ink-primary) 20%, #6b4d0c 80%, var(--accent) 100%);
+  background: var(--accent);
   -webkit-background-clip: text;
   background-clip: text;
   filter: none;
@@ -1213,7 +1200,7 @@ code {
   gap: 7px;
   padding: 8px 16px;
   border-radius: 999px;
-  background: rgba(244, 239, 230, 0.1);
+  background: rgba(var(--ink-rgb), 0.1);
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -1226,8 +1213,8 @@ code {
 }
 
 :root[data-theme="light"] .chip {
-  background: rgba(255, 253, 248, 0.55);
-  border-color: rgba(38, 43, 74, 0.14);
+  background: rgba(255, 255, 255, 0.55);
+  border-color: rgba(var(--ink-rgb), 0.14);
 }
 
 /* Interactive chips borrow the button's sweep so the two read as one family.
@@ -1262,7 +1249,7 @@ button.chip::before {
 
 a.chip:hover,
 button.chip:hover {
-  background: rgba(244, 239, 230, 0.18);
+  background: rgba(var(--ink-rgb), 0.18);
   transform: translateY(-1px);
 }
 
@@ -1274,7 +1261,7 @@ button.chip:active { transform: translateY(0) scale(0.97); transition-duration: 
 
 :root[data-theme="light"] a.chip:hover,
 :root[data-theme="light"] button.chip:hover {
-  background: rgba(255, 253, 248, 0.85);
+  background: rgba(255, 255, 255, 0.85);
 }
 
 /* Doubly-scoped: the light-theme .chip override outranks a bare .chip.solid,
@@ -1285,7 +1272,7 @@ button.chip:active { transform: translateY(0) scale(0.97); transition-duration: 
   border-color: transparent;
   color: var(--pill-ink);
   font-weight: 560;
-  box-shadow: 0 10px 30px -12px rgba(8, 10, 26, 0.6);
+  box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.6);
 }
 
 a.chip.solid:hover,
@@ -1312,7 +1299,7 @@ a.chip.solid:hover,
   border-color: var(--border-strong);
   box-shadow:
     inset 0 1px 0 var(--glass-edge),
-    0 30px 70px -30px rgba(8, 10, 26, 0.8);
+    0 30px 70px -30px rgba(0, 0, 0, 0.8);
 }
 
 /* A short bar of sunlight before each card title, so a stack of cards has a
@@ -1457,7 +1444,7 @@ a.chip.solid:hover,
   border-color: color-mix(in srgb, var(--tile) 34%, var(--border-strong));
   box-shadow:
     inset 0 1px 0 var(--glass-edge),
-    0 26px 60px -28px rgba(8, 10, 26, 0.8);
+    0 26px 60px -28px rgba(0, 0, 0, 0.8);
 }
 
 .tile:hover::after { opacity: 1; }
@@ -1491,8 +1478,8 @@ a.chip.solid:hover,
 }
 
 :root[data-theme="light"] .tile-icon {
-  background: rgba(38, 43, 74, 0.05);
-  box-shadow: inset 0 0 0 1px rgba(38, 43, 74, 0.1);
+  background: rgba(var(--ink-rgb), 0.05);
+  box-shadow: inset 0 0 0 1px rgba(var(--ink-rgb), 0.1);
 }
 
 .tile-icon svg { width: 15px; height: 15px; }
@@ -1628,8 +1615,8 @@ a.chip.solid:hover,
 .badge-dot { width: 5px; height: 5px; border-radius: 50%; flex: none; }
 .badge.good {
   color: var(--status-good);
-  background: rgba(236, 192, 110, 0.13);
-  border-color: rgba(236, 192, 110, 0.3);
+  background: rgba(var(--ink-rgb), 0.13);
+  border-color: rgba(var(--ink-rgb), 0.3);
 }
 .badge.warning {
   color: var(--status-warning);
@@ -1651,10 +1638,10 @@ a.chip.solid:hover,
   background: var(--surface-3);
   border-color: var(--border);
 }
-:root[data-theme="light"] .badge.good { background: rgba(138, 100, 16, 0.08); border-color: rgba(138, 100, 16, 0.24); }
-:root[data-theme="light"] .badge.warning { background: rgba(163, 92, 23, 0.08); border-color: rgba(163, 92, 23, 0.24); }
-:root[data-theme="light"] .badge.serious { background: rgba(176, 73, 29, 0.08); border-color: rgba(176, 73, 29, 0.24); }
-:root[data-theme="light"] .badge.critical { background: rgba(192, 53, 64, 0.08); border-color: rgba(192, 53, 64, 0.22); }
+:root[data-theme="light"] .badge.good { background: rgba(var(--ink-rgb), 0.08); border-color: rgba(var(--ink-rgb), 0.24); }
+:root[data-theme="light"] .badge.warning { background: rgba(var(--ink-rgb), 0.08); border-color: rgba(var(--ink-rgb), 0.24); }
+:root[data-theme="light"] .badge.serious { background: rgba(var(--ink-rgb), 0.08); border-color: rgba(var(--ink-rgb), 0.24); }
+:root[data-theme="light"] .badge.critical { background: rgba(var(--ink-rgb), 0.08); border-color: rgba(var(--ink-rgb), 0.22); }
 
 /* ------------------------------------------------------------------ buttons
  *
@@ -1685,7 +1672,7 @@ a.chip.solid:hover,
   padding: 8px 16px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(244, 239, 230, 0.09);
+  background: rgba(var(--ink-rgb), 0.09);
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
   color: var(--ink-primary);
@@ -1741,17 +1728,17 @@ a.chip.solid:hover,
 }
 
 :root[data-theme="light"] .btn {
-  border-color: rgba(38, 43, 74, 0.16);
-  background: rgba(255, 253, 248, 0.55);
+  border-color: rgba(var(--ink-rgb), 0.16);
+  background: rgba(255, 255, 255, 0.55);
 }
 
 .btn:hover {
-  background: rgba(244, 239, 230, 0.16);
+  background: rgba(var(--ink-rgb), 0.16);
   border-color: rgba(255, 255, 255, 0.28);
   transform: translateY(-1px);
 }
 .btn:hover::before { transform: translateX(100%); opacity: 1; }
-:root[data-theme="light"] .btn:hover { background: rgba(255, 253, 248, 0.9); }
+:root[data-theme="light"] .btn:hover { background: rgba(255, 255, 255, 0.9); }
 
 /* The press. Faster than the release on purpose — a control should meet the
    finger immediately and take its time coming back. */
@@ -1779,7 +1766,7 @@ a.chip.solid:hover,
   /* The trailing zero-spread glow is the resting state of the bloom below, so
      the two shadows interpolate rather than pop in. */
   box-shadow:
-    0 12px 32px -12px rgba(8, 10, 26, 0.65),
+    0 12px 32px -12px rgba(0, 0, 0, 0.65),
     0 0 0 0 var(--accent-glow);
 }
 
@@ -1796,10 +1783,10 @@ a.chip.solid:hover,
   color: var(--pill-ink);
   transform: translateY(-1px);
   box-shadow:
-    0 18px 42px -14px rgba(8, 10, 26, 0.72),
+    0 18px 42px -14px rgba(0, 0, 0, 0.72),
     0 0 26px 3px var(--accent-glow);
 }
-:root[data-theme="light"] .btn.primary:hover { background: #2e365e; color: var(--pill-ink); }
+:root[data-theme="light"] .btn.primary:hover { background: var(--accent-2); color: var(--pill-ink); }
 
 /* Buttons inside stacked forms size to their label — a flex column would
    otherwise stretch them into full-width slabs. */
@@ -1811,7 +1798,7 @@ a.chip.solid:hover,
 
 /* fields */
 .field-input {
-  background: rgba(244, 239, 230, 0.07);
+  background: rgba(var(--ink-rgb), 0.07);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   padding: 8px 12px;
@@ -1822,13 +1809,13 @@ a.chip.solid:hover,
 }
 
 :root[data-theme="light"] .field-input {
-  background: rgba(255, 253, 248, 0.7);
+  background: rgba(255, 255, 255, 0.7);
 }
 
 .field-input:focus {
   outline: none;
   border-color: var(--accent);
-  background: rgba(244, 239, 230, 0.1);
+  background: rgba(var(--ink-rgb), 0.1);
   box-shadow: 0 0 0 3px var(--accent-dim);
 }
 
@@ -1881,7 +1868,7 @@ a.chip.solid:hover,
   display: inline-flex;
   padding: 4px;
   gap: 3px;
-  background: rgba(244, 239, 230, 0.09);
+  background: rgba(var(--ink-rgb), 0.09);
   backdrop-filter: blur(20px) saturate(140%);
   -webkit-backdrop-filter: blur(20px) saturate(140%);
   border: 1px solid rgba(255, 255, 255, 0.13);
@@ -1889,8 +1876,8 @@ a.chip.solid:hover,
 }
 
 :root[data-theme="light"] .segmented {
-  background: rgba(255, 253, 248, 0.55);
-  border-color: rgba(38, 43, 74, 0.13);
+  background: rgba(255, 255, 255, 0.55);
+  border-color: rgba(var(--ink-rgb), 0.13);
 }
 
 .segmented::before {
@@ -1903,7 +1890,7 @@ a.chip.solid:hover,
   width: var(--pill-w, 0);
   border-radius: 999px;
   background: var(--pill);
-  box-shadow: 0 6px 18px -8px rgba(8, 10, 26, 0.7);
+  box-shadow: 0 6px 18px -8px rgba(0, 0, 0, 0.7);
   opacity: 0;
   transform: translateX(var(--pill-x, 0));
   /* `transform` carries the travel; `width` only changes because the labels
@@ -1938,7 +1925,7 @@ a.chip.solid:hover,
   background: var(--pill);
   color: var(--pill-ink);
   font-weight: 580;
-  box-shadow: 0 6px 18px -8px rgba(8, 10, 26, 0.7);
+  box-shadow: 0 6px 18px -8px rgba(0, 0, 0, 0.7);
 }
 
 /* Once the travelling pill is live it owns the background, and the label keeps
@@ -1976,8 +1963,8 @@ table.data td {
   transition: background 0.12s ease;
 }
 table.data tbody tr:last-child td { border-bottom: none; }
-table.data tbody tr:hover td { background: rgba(244, 239, 230, 0.045); }
-:root[data-theme="light"] table.data tbody tr:hover td { background: rgba(38, 43, 74, 0.035); }
+table.data tbody tr:hover td { background: rgba(var(--ink-rgb), 0.045); }
+:root[data-theme="light"] table.data tbody tr:hover td { background: rgba(var(--ink-rgb), 0.035); }
 table.data .right { text-align: right; font-variant-numeric: tabular-nums; }
 table.data .primary-cell { font-weight: 510; color: var(--ink-primary); letter-spacing: 0.002em; }
 .cell-sub { font-size: 11.5px; color: var(--ink-muted); margin-top: 1px; font-weight: 420; }
@@ -2294,15 +2281,15 @@ table.data .primary-cell { font-weight: 510; color: var(--ink-primary); letter-s
  * ====================================================================== */
 
 :root {
-  --rule: rgba(244, 239, 230, 0.16);
-  --rule-strong: rgba(244, 239, 230, 0.32);
+  --rule: rgba(var(--ink-rgb), 0.16);
+  --rule-strong: rgba(var(--ink-rgb), 0.32);
   --radius: 3px;
   --radius-sm: 2px;
 }
 
 :root[data-theme="light"] {
-  --rule: rgba(38, 43, 74, 0.18);
-  --rule-strong: rgba(38, 43, 74, 0.38);
+  --rule: rgba(var(--ink-rgb), 0.18);
+  --rule-strong: rgba(var(--ink-rgb), 0.38);
 }
 
 /* The field quietens down: the sky is a backdrop for type, not a light show. */
@@ -2575,6 +2562,23 @@ table.data td {
 table.data tbody tr:hover td { background: none; color: var(--ink-primary); }
 table.data .right { padding-right: 0; }
 
+/*
+ * The ledger gutter.
+ *
+ * These tables sit in a `flush` card body — no padding — so the ruled rows can
+ * run the full width of the panel, which is correct for a ledger. What was
+ * missing is an inset on the outer cells: with `.right { padding-right: 0 }`
+ * the last figure sat exactly on the card's border and, because the card
+ * clips, the widest values were shaved. Now the rules still run edge to edge
+ * and only the type is inset.
+ */
+.card-body.flush table.data th:first-child,
+.card-body.flush table.data td:first-child { padding-left: var(--ledger-gutter); }
+
+.card-body.flush table.data th:last-child,
+.card-body.flush table.data td:last-child,
+.card-body.flush table.data .right:last-child { padding-right: var(--ledger-gutter); }
+
 /* Banners and alerts: a marginal rule, the way a report flags a note. */
 .banner,
 .alert {
@@ -2751,23 +2755,11 @@ a.chip:hover, button.chip:hover { background: none; border-color: var(--rule-str
  * where the type is large and the scrims are doing the work.
  */
 body::before {
-  background:
-    radial-gradient(90rem 30rem at 78% 104%, rgba(240, 194, 115, 0.1), transparent 62%),
-    linear-gradient(
-      180deg,
-      #12172e 0%,
-      #171e3a 26%,
-      #222a4a 52%,
-      #313455 74%,
-      #413a5c 90%,
-      #4d4260 100%
-    );
+  background: var(--plane);
 }
 
 :root[data-theme="light"] body::before {
-  background:
-    radial-gradient(90rem 32rem at 50% -14%, rgba(222, 229, 242, 0.85), transparent 60%),
-    linear-gradient(180deg, #f7f4ed 0%, #f2efe6 46%, #ece7db 78%, #e6ded0 100%);
+  background: var(--plane);
 }
 
 /* =========================================================================
@@ -2980,15 +2972,15 @@ table.data .right { font-variant-numeric: tabular-nums lining-nums; }
 .field-input {
   border-radius: 2px;
   border-color: var(--rule-strong);
-  background: rgba(244, 239, 230, 0.04);
+  background: rgba(var(--ink-rgb), 0.04);
 }
 
-:root[data-theme="light"] .field-input { background: rgba(38, 43, 74, 0.03); }
+:root[data-theme="light"] .field-input { background: rgba(var(--ink-rgb), 0.03); }
 
 .field-input:focus {
   border-color: var(--accent);
   box-shadow: inset 0 -2px 0 var(--accent);
-  background: rgba(244, 239, 230, 0.07);
+  background: rgba(var(--ink-rgb), 0.07);
 }
 
 :focus-visible {
@@ -3169,40 +3161,40 @@ table.data .right { font-variant-numeric: tabular-nums lining-nums; }
 .chart-tooltip { border-radius: 2px; }
 
 /* =========================================================================
- * CHART PALETTE — validated, not chosen by eye
+ * CHART PALETTE — a value ramp, validated the same way
  *
- * The old marks failed the six checks badly, and it is why the charts read as
- * generic: revenue #9db1e8 and cost #9aa0c6 measured ΔE 5.8 apart in NORMAL
- * vision — under the hard floor of 15 — so a waterfall's two primary
- * categories were, to any reader, the same colour. Both also sat under the
- * chroma floor, i.e. they read as grey. The 8-channel series had the same
- * problem between #f2a582 and #eec983 (ΔE 9.1).
+ * The previous palette was chosen by running a ΔE validator: revenue and cost
+ * had collided at ΔE 5.8 in normal vision, so the two primary categories of a
+ * waterfall were, to any reader, the same colour. That fix was correct and the
+ * reasoning still holds — but the system is monochrome now, so hue separation
+ * is not available and is also no longer the thing to measure.
  *
- * These were produced by running the palette validator, not by taste:
- *   revenue↔cost  ΔE 16.3 normal / 14.8 deutan   (was 5.8 / 5.6)
- *   channels      ΔE 17.7 normal, worst CVD pair 7.3
+ * What replaces it is LUMINANCE separation, which has one large advantage: a
+ * ramp that is legible by value is legible to every form of colour vision
+ * deficiency without a special case, because it never depended on hue in the
+ * first place. The steps below are spaced by relative luminance, not by eye.
  *
- * The channel pair in the 6–8 CVD band is legal because every swatch in that
- * table sits beside its channel name — direct labelling is the secondary
- * encoding the rule requires. Green is deliberately absent: green↔orange
- * collided at ΔE 4.5 for deuteranopia, the single most common form.
+ * Adjacent series differ by at least ~14 points of L*; marks that must never
+ * be confused (structure vs cost vs result) sit at the far ends of the ramp.
+ * Direct labelling stays mandatory: it was the secondary encoding that made
+ * the old channel pairs legal, and with hue gone it matters more, not less.
  * ====================================================================== */
 
 :root {
-  /* Waterfall / semantic marks. Rose for cost, because money leaving should
-     share a family with the loss language everywhere else in the app. */
-  --mark-structure: #6f92e3;
-  --mark-cost: #a8737f;
-  --mark-result: #f0c273;
+  /* Night. Result is the brightest thing on the plot — profit is the number
+     the merchant came for, and it should be the first mark the eye lands on. */
+  --mark-structure: #9a9a9a;
+  --mark-cost: #6d6d6d;
+  --mark-result: #ffffff;
 
-  --series-1: #6f92e3;
-  --series-2: #f0c273;
-  --series-3: #4fa8b8;
-  --series-4: #d4708a;
-  --series-5: #e6d7b2;
-  --series-6: #a97fdd;
-  --series-7: #e08a5a;
-  --series-8: #8792b8;
+  --series-1: #ffffff;
+  --series-2: #c9c9c9;
+  --series-3: #9a9a9a;
+  --series-4: #e2e2e2;
+  --series-5: #b0b0b0;
+  --series-6: #808080;
+  --series-7: #f0f0f0;
+  --series-8: #666666;
 
   --viz-blue: var(--series-1);
   --viz-amber: var(--series-2);
@@ -3215,18 +3207,19 @@ table.data .right { font-variant-numeric: tabular-nums lining-nums; }
 }
 
 :root[data-theme="light"] {
-  --mark-structure: #3a5fb8;
-  --mark-cost: #8f4a58;
-  --mark-result: #a8761a;
+  /* Paper. The ramp inverts: result is now the darkest mark, same idea. */
+  --mark-structure: #8e8e8e;
+  --mark-cost: #b4b4b4;
+  --mark-result: #0a0a0a;
 
-  --series-1: #3a5fb8;
-  --series-2: #a8761a;
-  --series-3: #1f7385;
-  --series-4: #a83f5e;
-  --series-5: #7a6a3e;
-  --series-6: #6f45a8;
-  --series-7: #a85520;
-  --series-8: #4f5a7d;
+  --series-1: #0a0a0a;
+  --series-2: #4a4a4a;
+  --series-3: #7d7d7d;
+  --series-4: #262626;
+  --series-5: #616161;
+  --series-6: #949494;
+  --series-7: #363636;
+  --series-8: #a8a8a8;
 }
 
 /* Direct labels at the end of a line. Set in the series' own colour because
@@ -3325,19 +3318,19 @@ table.data .right { font-variant-numeric: tabular-nums lining-nums; }
   --s-16: 64px;
 
   /* One panel, one border, one hover, one shadow. */
-  --panel: #1a2140;
-  --panel-2: #1e2649;
-  --panel-line: rgba(244, 239, 230, 0.11);
-  --panel-line-strong: rgba(244, 239, 230, 0.2);
-  --panel-shadow: 0 1px 2px rgba(8, 10, 26, 0.4), 0 12px 32px -18px rgba(8, 10, 26, 0.8);
+  --panel: var(--glass);
+  --panel-2: var(--surface-2);
+  --panel-line: var(--border);
+  --panel-line-strong: var(--border-strong);
+  --panel-shadow: var(--shadow);
 }
 
 [data-theme="light"] {
-  --panel: #fbf8f1;
+  --panel: var(--surface-1);
   --panel-2: #ffffff;
-  --panel-line: rgba(36, 28, 51, 0.14);
-  --panel-line-strong: rgba(36, 28, 51, 0.26);
-  --panel-shadow: 0 1px 2px rgba(36, 28, 51, 0.08), 0 12px 32px -20px rgba(36, 28, 51, 0.28);
+  --panel-line: rgba(0, 0, 0, 0.14);
+  --panel-line-strong: rgba(0, 0, 0, 0.26);
+  --panel-shadow: 0 1px 2px rgba(0, 0, 0, 0.08), 0 12px 32px -20px rgba(0, 0, 0, 0.28);
 }
 
 /* --------------------------------------------------------------- panels */
@@ -3477,10 +3470,24 @@ textarea:focus-visible {
  * gently, body sits at zero, and only the tracked-out small caps keep their
  * positive tracking.
  */
-h1, .display, .greet-figure, .stat-hero .stat-value {
-  letter-spacing: -0.022em;
+/*
+ * Headings, figures and small caps are set in the display face; running prose
+ * stays in the body face. Identical to the marketing site, so the wordmark in
+ * the app's sidebar and the wordmark on the landing page are the same object.
+ */
+h1, h2, h3,
+.display, .greet-figure, .greeting,
+.stat-value, .kpi-value,
+.eyebrow, .label, .caps, .tiny,
+th, .brand, .nav-item {
+  font-family: var(--font-display);
 }
-h2, h3, .card-head h2, .card-head h3 { letter-spacing: -0.014em; }
+
+h1, .display, .greet-figure, .stat-hero .stat-value {
+  letter-spacing: -0.03em;
+  font-weight: 400;
+}
+h2, h3, .card-head h2, .card-head h3 { letter-spacing: -0.024em; font-weight: 550; }
 body, p, td, li, input, select, textarea { letter-spacing: 0; }
 
 /* Numerals in tables and figures line up column to column. */
@@ -3599,4 +3606,291 @@ table td,
   font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
+}
+
+
+/* ---------------------------------------------------------- theme switch */
+
+/*
+ * Identical construction to the marketing site's: the trail is the page's
+ * ink, the thumb is the page's ground, so the control inverts with the theme
+ * without a single theme-specific rule. One icon at a time — the mode you are
+ * in — and the thumb travels right as the surface gets darker.
+ */
+.theme-switch {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.theme-switch-track {
+  position: relative;
+  display: block;
+  width: 54px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--ink-primary);
+  transition: background var(--micro) ease;
+}
+
+.theme-switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--plane);
+  color: var(--ink-primary);
+  transition: transform 320ms cubic-bezier(0.16, 1, 0.3, 1), background var(--micro) ease;
+}
+
+:root[data-theme="light"] .theme-switch-thumb { transform: translateX(26px); }
+
+.theme-icon {
+  grid-area: 1 / 1;
+  width: 14px;
+  height: 14px;
+  transition: opacity 180ms ease;
+}
+
+/* The app defaults to dark, so the moon is the one showing at rest. */
+.theme-icon-sun { opacity: 0; }
+.theme-icon-moon { opacity: 1; }
+:root[data-theme="light"] .theme-icon-sun { opacity: 1; }
+:root[data-theme="light"] .theme-icon-moon { opacity: 0; }
+
+.theme-switch:focus-visible .theme-switch-track {
+  outline: 2px solid var(--ink-primary);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-switch-thumb { transition: none; }
+}
+
+
+/* ----------------------------------------------------------- order field */
+
+/* One dense visual field; an order opens its full audit trail in the drawer. */
+.order-field-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, 0.28fr);
+  gap: clamp(18px, 2.4vw, 30px);
+  align-items: start;
+  padding: 0 var(--ledger-gutter) var(--ledger-gutter);
+}
+
+.order-field { display: flex; flex-direction: column; gap: 14px; }
+.order-field-plot { position: relative; }
+
+.order-field-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  cursor: crosshair;
+}
+
+/* Follows the pointer; states what the mark is and nothing more. */
+.order-field-readout {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--plane);
+  color: var(--ink-secondary);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 560;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.order-field-key {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+  margin: 0;
+  color: var(--ink-muted);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 560;
+  letter-spacing: 0.02em;
+}
+
+.order-field-key span { display: inline-flex; align-items: center; gap: 8px; }
+.order-field-key i { width: 8px; height: 8px; border-radius: 50%; }
+.key-kept { background: rgba(var(--ink-rgb), 0.22); }
+.key-loss { background: var(--ink-primary); }
+.order-field-hint { margin-left: auto; opacity: 0.7; }
+
+.order-receipt-empty {
+  margin: 10px 0 0;
+  color: var(--ink-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* -------------------------------------------------- transparent math drawer */
+
+.profit-drawer-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(0, 0, 0, 0.44);
+  backdrop-filter: blur(4px);
+  animation: drawer-scrim-in var(--micro) var(--ease-out) both;
+}
+
+.profit-drawer {
+  width: min(100%, 570px);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--plane);
+  border-left: 1px solid var(--border-strong);
+  box-shadow: -22px 0 70px rgba(0, 0, 0, 0.22);
+  animation: drawer-in 280ms var(--ease-out) both;
+}
+
+.profit-drawer-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: flex-start;
+  padding: 26px clamp(20px, 4vw, 34px) 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.profit-drawer-eyebrow {
+  margin: 0 0 6px;
+  color: var(--ink-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.profit-drawer h2,
+.profit-drawer h3 { font-family: var(--font-display); }
+.profit-drawer h2 { margin: 0; font-size: 22px; letter-spacing: -0.03em; }
+.profit-drawer h3 { margin: 0 0 12px; font-size: 12px; font-weight: 650; }
+
+.profit-drawer-meta,
+.profit-drawer-intro {
+  margin: 7px 0 0;
+  color: var(--ink-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.profit-drawer-close {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--ink-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.profit-drawer-close:hover { color: var(--ink-primary); border-color: var(--border-strong); }
+.profit-drawer-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+.profit-drawer-scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 22px clamp(20px, 4vw, 34px) 34px;
+}
+
+.profit-drawer-intro { margin-top: 0; }
+.profit-drawer-section { margin-top: 28px; }
+.profit-drawer-lines { margin: 0; }
+
+.profit-drawer-line,
+.profit-drawer-total,
+.profit-drawer-result {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 10px 0;
+  font-size: 13px;
+}
+
+.profit-drawer-line { border-bottom: 1px solid var(--border); }
+.profit-drawer-line dt,
+.profit-drawer-total dt,
+.profit-drawer-result dt { display: flex; gap: 9px; color: var(--ink-secondary); }
+.profit-drawer-symbol { color: var(--ink-muted); font-family: var(--font-display); font-weight: 700; }
+.profit-drawer-symbol.subtract { color: var(--ink-primary); }
+
+.profit-drawer-line dd,
+.profit-drawer-total dd,
+.profit-drawer-result dd {
+  margin: 0;
+  color: var(--ink-primary);
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.profit-drawer-line dd small { display: block; margin-top: 3px; color: var(--ink-muted); font-family: inherit; font-size: 10px; }
+
+.profit-drawer-total { padding-top: 14px; font-weight: 650; }
+.profit-drawer-total dt { color: var(--ink-primary); }
+.profit-drawer-result {
+  margin-top: 10px;
+  padding: 16px;
+  align-items: flex-start;
+  border-radius: var(--radius-sm);
+  background: var(--ink-primary);
+}
+.profit-drawer-result dt,
+.profit-drawer-result dd { color: var(--plane); }
+.profit-drawer-result dt { flex-direction: column; gap: 4px; font-weight: 650; }
+.profit-drawer-result small { color: color-mix(in srgb, var(--plane) 70%, transparent); font-size: 10px; font-weight: 500; }
+.profit-drawer-result dd { font-size: 21px; font-weight: 650; letter-spacing: -0.03em; }
+
+.profit-drawer-caveat {
+  display: grid;
+  gap: 5px;
+  margin-top: 24px;
+  padding: 13px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--ink-secondary);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.profit-drawer-caveat strong { color: var(--ink-primary); font-size: 12px; }
+
+@keyframes drawer-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@keyframes drawer-scrim-in { from { opacity: 0; } to { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .profit-drawer-scrim,
+  .profit-drawer { animation: none; }
+}
+
+@media (max-width: 1080px) {
+  .order-field-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 640px) {
+  .profit-drawer { width: 100%; border-left: 0; }
+  .profit-drawer-head { padding-top: max(20px, env(safe-area-inset-top)); }
+  .profit-drawer-result { padding: 14px; }
 }

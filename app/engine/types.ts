@@ -71,6 +71,23 @@ export interface CostRuleSet {
   pickPackPerOrderCents: Cents;
   pickPackPerItemCents: Cents;
   monthlyOverheadCents: Cents;
+  provenance: CostRuleProvenanceSet;
+}
+
+export type EngineCostRuleOrigin =
+  "INSTALL_DEFAULT" | "MERCHANT_CONFIGURED" | "DEMO_SEED" | "LEGACY_UNKNOWN";
+
+export interface EngineCostRuleProvenance {
+  origin: EngineCostRuleOrigin;
+  confirmed: boolean;
+}
+
+/** Provenance follows each numerical rule into the pure profit engine. */
+export interface CostRuleProvenanceSet {
+  paymentFee: EngineCostRuleProvenance | null;
+  shippingDefault: EngineCostRuleProvenance | null;
+  pickPack: EngineCostRuleProvenance | null;
+  monthlyOverhead: EngineCostRuleProvenance | null;
 }
 
 export const ZERO_COST_RULES: CostRuleSet = {
@@ -80,6 +97,12 @@ export const ZERO_COST_RULES: CostRuleSet = {
   pickPackPerOrderCents: 0,
   pickPackPerItemCents: 0,
   monthlyOverheadCents: 0,
+  provenance: {
+    paymentFee: null,
+    shippingDefault: null,
+    pickPack: null,
+    monthlyOverhead: null,
+  },
 };
 
 export interface OrderProfit {
@@ -112,7 +135,11 @@ export interface OrderProfit {
   netMarginPct: number | null;
 
   units: number;
-  /** True when any cost in this order came from a default rather than real data. */
+  /** A sold unit had no Shopify inventory-item cost to snapshot. */
+  hasMissingCogs: boolean;
+  /** A configured fee, fulfilment fallback or overhead allocation was used. */
+  usesModeledCosts: boolean;
+  /** Compatibility summary: either missing COGS or a modeled cost was used. */
   usesEstimatedCosts: boolean;
 }
 

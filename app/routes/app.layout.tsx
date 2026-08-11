@@ -23,14 +23,24 @@ import {
   IconOverview,
   IconPlan,
   IconPricing,
+  IconPrivacy,
   IconProducts,
   IconSettings,
+  Banner,
   Splash,
 } from "~/design/components";
 import { loadCapacityAnalysis, resolveRange } from "~/data/analytics.server";
+import {
+  loadAdSpendCoverage,
+  type AdSpendCoverage,
+} from "~/lib/ad-spend-coverage.server";
 import { requireShopContext } from "~/lib/auth.server";
 import { planAllows, resolvePlan } from "~/lib/plan.server";
-import { parseRangePreset, RANGE_PRESETS, type RangePreset } from "~/lib/ranges";
+import {
+  parseRangePreset,
+  RANGE_PRESETS,
+  type RangePreset,
+} from "~/lib/ranges";
 import { PLANS } from "~/lib/plans";
 
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -42,12 +52,16 @@ export async function loader({ request }: LoaderFunctionArgs) {
   // by typing its URL.
   const plan = await resolvePlan(ctx);
   const url = new URL(request.url);
+  const operationalRoute =
+    Boolean(plan.planId) && !isEntitlementExemptPath(url.pathname);
 
-  if (!plan.planId && url.pathname !== "/app/plan") {
+  if (!plan.planId && !isEntitlementExemptPath(url.pathname)) {
     throw redirect(`/app/plan${url.search}`);
   }
 
-  const preset = parseRangePreset(new URL(request.url).searchParams.get("range"));
+  const preset = parseRangePreset(
+    new URL(request.url).searchParams.get("range"),
+  );
 
   // A store still importing has nothing to analyse yet; asking for analytics
   // would just be an expensive way to compute zeroes. The demo store is never
@@ -59,16 +73,24 @@ export async function loader({ request }: LoaderFunctionArgs) {
   // navigation, and the badge needs an integer that `CapacityDay` rows alone
   // can produce; building the whole profit engine for it made the shell as
   // expensive as the heaviest screen. See loadCapacityAnalysis.
-  const alertCount = importing || !planAllows(plan, "capacity")
-    ? 0
-    : (
-        await loadCapacityAnalysis(
+  const [capacity, adSpendCoverage] = await Promise.all([
+    !operationalRoute || importing || !planAllows(plan, "capacity")
+      ? Promise.resolve(null)
+      : loadCapacityAnalysis(
           shop,
           resolveRange(shop, preset, { anchorToData: isDemo }),
-        )
-      ).alerts.filter(
-        (a) => a.severity === "CRITICAL" || a.severity === "WARNING",
-      ).length;
+        ),
+    operationalRoute
+      ? loadAdSpendCoverage(shop.id, isDemo)
+      : Promise.resolve({
+          mode: "unavailable" as const,
+          syncedSourceCount: 0,
+        }),
+  ]);
+  const alertCount =
+    capacity?.alerts.filter(
+      (alert) => alert.severity === "CRITICAL" || alert.severity === "WARNING",
+    ).length ?? 0;
 
   return {
     shopName: shop.name,
@@ -76,6 +98,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     isDemo,
     preset,
     alertCount,
+    adSpendCoverage,
     plan: {
       id: plan.planId,
       name: plan.planId ? PLANS[plan.planId].name : null,
@@ -91,6 +114,50 @@ export async function loader({ request }: LoaderFunctionArgs) {
       earliestOrderAt: shop.earliestOrderAt,
     },
   };
+}
+
+export function isEntitlementExemptPath(pathname: string): boolean {
+  const normalized = pathname.replace(/\/+$/, "");
+  return (
+    normalized === "/app/plan" ||
+    normalized === "/app/privacy-requests" ||
+    /^\/app\/privacy-requests\/[^/]+\/download$/.test(normalized)
+  );
+}
+
+/**
+ * Every profit-bearing route needs the same missing-input boundary. Keeping it
+ * in the shell prevents a merchant who lands directly on Orders, Products or
+ * Pricing from missing the qualification shown on Overview.
+ */
+export function AdSpendCoverageBanner({
+  coverage,
+}: {
+  coverage: AdSpendCoverage;
+}) {
+  return (
+    <Banner tone="warn">
+      <strong style={{ color: "var(--ink-primary)" }}>
+        {coverage.mode === "unavailable"
+          ? "Profit is before paid marketing."
+          : "Profit includes recorded paid marketing only."}
+      </strong>{" "}
+      {coverage.mode === "unavailable" ? (
+        <>
+          No ad-spend source has completed a sync. If this store runs ads, every
+          profit, contribution and margin figure excludes that cost and may be
+          overstated; unavailable spend is shown as a dash, never as zero.
+        </>
+      ) : (
+        <>
+          {coverage.syncedSourceCount.toLocaleString()} paid source
+          {coverage.syncedSourceCount === 1 ? " has" : "s have"} completed a
+          sync. Spend from any other account or platform remains outside the
+          calculation.
+        </>
+      )}
+    </Banner>
+  );
 }
 
 /**
@@ -115,7 +182,12 @@ const NAV = [
   { to: "/app/products", label: "Products", Icon: IconProducts },
   { to: "/app/acquisition", label: "Acquisition", Icon: IconChannels },
   { to: "/app/pricing", label: "Pricing", Icon: IconPricing },
-  { to: "/app/fulfilment", label: "Fulfilment", Icon: IconFulfilment, badge: true },
+  {
+    to: "/app/fulfilment",
+    label: "Fulfilment",
+    Icon: IconFulfilment,
+    badge: true,
+  },
 ];
 
 type SyncState = Awaited<ReturnType<typeof loader>>["sync"];
@@ -150,9 +222,9 @@ function SyncBanner({ sync, isDemo }: { sync: SyncState; isDemo: boolean }) {
           <strong style={{ color: "var(--ink-primary)" }}>
             Importing your store…
           </strong>{" "}
-          {sync.stage ?? "Starting up"}. {sync.products.toLocaleString()} products
-          and {sync.orders.toLocaleString()} orders so far. You can keep using the
-          app — figures fill in as the import runs.
+          {sync.stage ?? "Starting up"}. {sync.products.toLocaleString()}{" "}
+          products and {sync.orders.toLocaleString()} orders so far. You can
+          keep using the app — figures fill in as the import runs.
         </div>
       </div>
     );
@@ -185,8 +257,9 @@ function SyncBanner({ sync, isDemo }: { sync: SyncState; isDemo: boolean }) {
         <div>
           Shopify limits order history to the last 60 days unless an app is
           granted the <code>read_all_orders</code> scope, so anything earlier is
-          not included here. Request it from your Partner Dashboard under{" "}
-          <em>App → API access</em> to analyse a longer history.
+          not included in this release. The app publisher must obtain separate
+          Shopify approval before a future update can request longer history;
+          there is no merchant setting that can enable it today.
         </div>
       </div>
     );
@@ -196,8 +269,16 @@ function SyncBanner({ sync, isDemo }: { sync: SyncState; isDemo: boolean }) {
 }
 
 export default function AppLayout() {
-  const { shopName, shopDomain, isDemo, preset, alertCount, plan, sync } =
-    useLoaderData<typeof loader>();
+  const {
+    shopName,
+    shopDomain,
+    isDemo,
+    preset,
+    alertCount,
+    adSpendCoverage,
+    plan,
+    sync,
+  } = useLoaderData<typeof loader>();
   const location = useLocation();
   // Re-measured whenever the selected range changes, which is the only thing
   // that moves the pill between navigations.
@@ -213,6 +294,8 @@ export default function AppLayout() {
     params.set("range", next);
     return `${location.pathname}?${params.toString()}`;
   };
+  const showOperationalBanners =
+    Boolean(plan.id) && !isEntitlementExemptPath(location.pathname);
 
   const shell = (
     <div className="app-shell">
@@ -233,25 +316,32 @@ export default function AppLayout() {
         </div>
 
         <nav className="nav" aria-label="Main">
-          {NAV.map(({ to, label, Icon, end, badge }) => (
-            <NavLink
-              key={to}
-              to={`${to}?range=${preset}`}
-              end={end}
-              className="nav-link"
-            >
-              <Icon />
-              {label}
-              {badge && alertCount > 0 && (
-                <span className="nav-badge">{alertCount}</span>
-              )}
-            </NavLink>
-          ))}
+          {plan.id &&
+            NAV.map(({ to, label, Icon, end, badge }) => (
+              <NavLink
+                key={to}
+                to={`${to}?range=${preset}`}
+                end={end}
+                className="nav-link"
+              >
+                <Icon />
+                {label}
+                {badge && alertCount > 0 && (
+                  <span className="nav-badge">{alertCount}</span>
+                )}
+              </NavLink>
+            ))}
 
           <div className="nav-section">Configuration</div>
-          <NavLink to={`/app/settings?range=${preset}`} className="nav-link">
-            <IconSettings />
-            Costs &amp; connections
+          {plan.id && (
+            <NavLink to={`/app/settings?range=${preset}`} className="nav-link">
+              <IconSettings />
+              Costs &amp; connections
+            </NavLink>
+          )}
+          <NavLink to="/app/privacy-requests" className="nav-link">
+            <IconPrivacy />
+            Privacy requests
           </NavLink>
           {/* An in-app route rather than a link out to the Shopify admin.
               Requirement 1.2.3 is that a merchant can change plans in both
@@ -265,7 +355,9 @@ export default function AppLayout() {
         {isDemo && (
           <div className="sidebar-footer">
             <div className="tiny muted" style={{ lineHeight: 1.5 }}>
-              <strong style={{ color: "var(--ink-secondary)" }}>Demo data.</strong>{" "}
+              <strong style={{ color: "var(--ink-secondary)" }}>
+                Demo data.
+              </strong>{" "}
               A seeded store, computed by the same engine that runs on live
               Shopify data.
             </div>
@@ -301,7 +393,12 @@ export default function AppLayout() {
 
         <main className="content" id="content">
           <RouteTitle />
-          <SyncBanner sync={sync} isDemo={isDemo} />
+          {showOperationalBanners && <SyncBanner sync={sync} isDemo={isDemo} />}
+          {/* Overview carries the fuller, metric-specific version. Every other
+              route gets this shell-level qualification. */}
+          {showOperationalBanners && location.pathname !== "/app" && (
+            <AdSpendCoverageBanner coverage={adSpendCoverage} />
+          )}
           {/* keyed on the path so the entrance cascade replays per page */}
           <div key={location.pathname} className="page-enter">
             <Outlet />
@@ -467,7 +564,8 @@ function AppBridgeNavigation() {
     };
 
     document.addEventListener("shopify:navigate", handleNavigate);
-    return () => document.removeEventListener("shopify:navigate", handleNavigate);
+    return () =>
+      document.removeEventListener("shopify:navigate", handleNavigate);
   }, [navigate]);
 
   return null;
@@ -476,23 +574,23 @@ function AppBridgeNavigation() {
 const TITLES: Record<string, { title: string; subtitle: string }> = {
   "/app": {
     title: "Overview",
-    subtitle: "Where the money actually went",
+    subtitle: "Profit from the inputs available",
   },
   "/app/orders": {
     title: "Profit per order",
-    subtitle: "Every order, fully costed",
+    subtitle: "Available and missing costs, order by order",
   },
   "/app/products": {
     title: "Products",
-    subtitle: "What to scale, what to kill",
+    subtitle: "Qualified contribution by product",
   },
   "/app/acquisition": {
     title: "Acquisition",
-    subtitle: "Which channels buy profitable customers",
+    subtitle: "Revenue and qualified contribution by channel",
   },
   "/app/pricing": {
     title: "Pricing",
-    subtitle: "Modelled from your own price history",
+    subtitle: "Modelled from price history observed after install",
   },
   "/app/fulfilment": {
     title: "Fulfilment capacity",
@@ -500,7 +598,11 @@ const TITLES: Record<string, { title: string; subtitle: string }> = {
   },
   "/app/settings": {
     title: "Costs & connections",
-    subtitle: "The inputs every number here depends on",
+    subtitle: "Cost assumptions and data availability",
+  },
+  "/app/privacy-requests": {
+    title: "Privacy requests",
+    subtitle: "Shopper exports, available regardless of subscription",
   },
   "/app/plan": {
     title: "Plan",

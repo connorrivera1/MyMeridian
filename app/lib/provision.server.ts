@@ -1,5 +1,6 @@
 import {
   CostRuleKind,
+  CostRuleOrigin,
   ConnectorProvider,
   ConnectorStatus,
   SyncStatus,
@@ -73,11 +74,26 @@ function initialConnectors(domain: string) {
       displayName: domain,
       lastSyncedAt: new Date(),
     },
-    { provider: ConnectorProvider.FACEBOOK_ADS, status: ConnectorStatus.NOT_CONFIGURED },
-    { provider: ConnectorProvider.GOOGLE_ADS, status: ConnectorStatus.NOT_CONFIGURED },
-    { provider: ConnectorProvider.TIKTOK_ADS, status: ConnectorStatus.NOT_CONFIGURED },
-    { provider: ConnectorProvider.STRIPE, status: ConnectorStatus.NOT_CONFIGURED },
-    { provider: ConnectorProvider.WAREHOUSE_3PL, status: ConnectorStatus.NOT_CONFIGURED },
+    {
+      provider: ConnectorProvider.FACEBOOK_ADS,
+      status: ConnectorStatus.NOT_CONFIGURED,
+    },
+    {
+      provider: ConnectorProvider.GOOGLE_ADS,
+      status: ConnectorStatus.NOT_CONFIGURED,
+    },
+    {
+      provider: ConnectorProvider.TIKTOK_ADS,
+      status: ConnectorStatus.NOT_CONFIGURED,
+    },
+    {
+      provider: ConnectorProvider.STRIPE,
+      status: ConnectorStatus.NOT_CONFIGURED,
+    },
+    {
+      provider: ConnectorProvider.WAREHOUSE_3PL,
+      status: ConnectorStatus.NOT_CONFIGURED,
+    },
   ];
 }
 
@@ -126,6 +142,8 @@ export async function ensureShopProvisioned(domain: string, name?: string) {
           fixedPerOrder: rule.fixedPerOrder,
           fixedPerItem: rule.fixedPerItem,
           monthlyAmount: rule.monthlyAmount,
+          origin: CostRuleOrigin.INSTALL_DEFAULT,
+          confirmedAt: null,
         })),
       },
       connectors: { create: initialConnectors(domain) },

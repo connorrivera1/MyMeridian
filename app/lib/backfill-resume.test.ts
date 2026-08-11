@@ -34,8 +34,14 @@ const prismaMock = {
   },
   customer: { upsert: vi.fn(async () => ({ id: "customer_row" })) },
   variant: { findMany: vi.fn(async () => []) },
-  orderLineItem: { deleteMany: vi.fn(async () => ({})), createMany: vi.fn(async () => ({})) },
-  fulfillment: { deleteMany: vi.fn(async () => ({})), createMany: vi.fn(async () => ({})) },
+  orderLineItem: {
+    deleteMany: vi.fn(async () => ({})),
+    createMany: vi.fn(async () => ({})),
+  },
+  fulfillment: {
+    deleteMany: vi.fn(async () => ({})),
+    createMany: vi.fn(async () => ({})),
+  },
 };
 
 /*
@@ -61,16 +67,21 @@ vi.mock("~/data/analytics.server", () => ({
   invalidateAnalyticsCache: vi.fn(),
   loadStrategicProductIds: vi.fn(),
 }));
-vi.mock("~/lib/pricing.server", () => ({ generatePricingRecommendations: vi.fn() }));
-vi.mock("~/lib/recompute.server", () => ({ recomputeShopProfitability: vi.fn() }));
+vi.mock("~/lib/pricing.server", () => ({
+  generatePricingRecommendations: vi.fn(),
+}));
+vi.mock("~/lib/recompute.server", () => ({
+  recomputeShopProfitability: vi.fn(),
+}));
 vi.mock("~/lib/sync.server", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/lib/sync.server")>()),
   reconcileFirstOrdersForShop: vi.fn(async () => 0),
+  syncOrderFromShopify: vi.fn(async () => ({ id: "order_row" })),
+  syncFulfillmentFromShopify: vi.fn(async () => null),
 }));
 
-const { importOrders, isInvalidCursorError, resumePointFor } = await import(
-  "./backfill.server"
-);
+const { importOrders, isInvalidCursorError, resumePointFor } =
+  await import("./backfill.server");
 
 const capabilities = {
   orders: true,
@@ -80,7 +91,8 @@ const capabilities = {
   inventoryCost: true,
 };
 
-const ok = (data: unknown) => ({ json: async () => ({ data }) }) as unknown as Response;
+const ok = (data: unknown) =>
+  ({ json: async () => ({ data }) }) as unknown as Response;
 
 function orderNode(id: string, processedAt: string) {
   return {
@@ -101,9 +113,15 @@ function orderNode(id: string, processedAt: string) {
  * carrying that cursor, so asking for the wrong one is a test failure rather
  * than a silently identical answer.
  */
-const pages: Record<string, { nodes: ReturnType<typeof orderNode>[]; next: string | null }> = {
+const pages: Record<
+  string,
+  { nodes: ReturnType<typeof orderNode>[]; next: string | null }
+> = {
   START: { nodes: [orderNode("1", "2023-01-05T00:00:00Z")], next: "cursor_p1" },
-  cursor_p1: { nodes: [orderNode("2", "2026-07-01T00:00:00Z")], next: "cursor_p2" },
+  cursor_p1: {
+    nodes: [orderNode("2", "2026-07-01T00:00:00Z")],
+    next: "cursor_p2",
+  },
   cursor_p2: { nodes: [orderNode("3", "2026-07-02T00:00:00Z")], next: null },
 };
 
@@ -113,7 +131,10 @@ function scriptedAdmin(options: { rejectCursor?: string } = {}) {
   return {
     requested,
     graphql: vi.fn(
-      async (_query: string, call?: { variables?: Record<string, unknown> }) => {
+      async (
+        _query: string,
+        call?: { variables?: Record<string, unknown> },
+      ) => {
         const cursor = (call?.variables?.cursor ?? null) as string | null;
         requested.push(cursor);
 
@@ -122,7 +143,8 @@ function scriptedAdmin(options: { rejectCursor?: string } = {}) {
         }
 
         const page = pages[cursor ?? "START"];
-        if (!page) throw new Error(`test: no page scripted for cursor ${cursor}`);
+        if (!page)
+          throw new Error(`test: no page scripted for cursor ${cursor}`);
 
         return ok({
           orders: {
@@ -146,10 +168,12 @@ describe("resumePointFor", () => {
   const base = { syncCursor: "cursor_p1", syncedOrders: 40 };
 
   it("resumes an import that was left running", () => {
-    expect(resumePointFor({ ...base, syncStatus: SyncStatus.RUNNING })).toEqual({
-      cursor: "cursor_p1",
-      importedOrders: 40,
-    });
+    expect(resumePointFor({ ...base, syncStatus: SyncStatus.RUNNING })).toEqual(
+      {
+        cursor: "cursor_p1",
+        importedOrders: 40,
+      },
+    );
   });
 
   it("resumes an import that failed partway", () => {
@@ -160,16 +184,24 @@ describe("resumePointFor", () => {
   });
 
   it("does not resume a finished import — a re-sync must re-read the store", () => {
-    expect(resumePointFor({ ...base, syncStatus: SyncStatus.COMPLETE })).toBeNull();
+    expect(
+      resumePointFor({ ...base, syncStatus: SyncStatus.COMPLETE }),
+    ).toBeNull();
   });
 
   it("does not resume when the scopes changed, because the query has changed", () => {
-    expect(resumePointFor({ ...base, syncStatus: SyncStatus.PENDING })).toBeNull();
+    expect(
+      resumePointFor({ ...base, syncStatus: SyncStatus.PENDING }),
+    ).toBeNull();
   });
 
   it("has nothing to resume from without a stored cursor", () => {
     expect(
-      resumePointFor({ syncCursor: null, syncedOrders: 40, syncStatus: SyncStatus.FAILED }),
+      resumePointFor({
+        syncCursor: null,
+        syncedOrders: 40,
+        syncStatus: SyncStatus.FAILED,
+      }),
     ).toBeNull();
   });
 });
@@ -232,14 +264,23 @@ describe("order import resume", () => {
 
     // Rejected, then restarted from the beginning — otherwise every retry for
     // ever resumes from the same dead cursor and fails in the same place.
-    expect(admin.requested).toEqual(["cursor_stale", null, "cursor_p1", "cursor_p2"]);
+    expect(admin.requested).toEqual([
+      "cursor_stale",
+      null,
+      "cursor_p1",
+      "cursor_p2",
+    ]);
     // Counted from scratch, because the walk was from scratch.
     expect(result.count).toBe(3);
     expect(result.earliestOrderAt).toEqual(new Date("2023-01-05T00:00:00Z"));
   });
 
   it("does not mistake a genuine failure for a bad cursor", () => {
-    expect(isInvalidCursorError(new Error("Shopify GraphQL: Invalid cursor."))).toBe(true);
-    expect(isInvalidCursorError(new Error("Shopify GraphQL: Internal error."))).toBe(false);
+    expect(
+      isInvalidCursorError(new Error("Shopify GraphQL: Invalid cursor.")),
+    ).toBe(true);
+    expect(
+      isInvalidCursorError(new Error("Shopify GraphQL: Internal error.")),
+    ).toBe(false);
   });
 });

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { CostRuleKind, CostRuleOrigin, type CostRule } from "@prisma/client";
 
 /**
  * Cover for the Prisma → engine boundary, specifically the fulfilment cost
@@ -16,6 +17,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const orderFindMany = vi.fn();
 const orderCount = vi.fn(async (..._args: unknown[]) => 0);
 const fulfillmentGroupBy = vi.fn();
+const costRuleFindMany = vi.fn();
 
 vi.mock("~/db.server", () => ({
   default: {
@@ -26,12 +28,22 @@ vi.mock("~/db.server", () => ({
       // its own cases below.
       count: (...args: unknown[]) => orderCount(...args),
     },
-    fulfillment: { groupBy: (...args: unknown[]) => fulfillmentGroupBy(...args) },
+    fulfillment: {
+      groupBy: (...args: unknown[]) => fulfillmentGroupBy(...args),
+    },
+    costRule: {
+      findMany: (...args: unknown[]) => costRuleFindMany(...args),
+    },
   },
 }));
 
-const { loadCohortRows, loadEngineOrders, WindowTooLargeError } =
-  await import("./queries.server");
+const {
+  loadCohortRows,
+  loadCostRules,
+  loadEngineOrders,
+  toCostRuleSet,
+  WindowTooLargeError,
+} = await import("./queries.server");
 
 const RANGE = {
   from: new Date("2026-07-01T00:00:00.000Z"),
@@ -60,7 +72,83 @@ function orderRow(id: string, overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   orderFindMany.mockReset();
+  orderCount.mockClear();
   fulfillmentGroupBy.mockReset();
+  costRuleFindMany.mockReset();
+});
+
+function costRule(
+  kind: CostRuleKind,
+  values: Partial<CostRule> = {},
+): CostRule {
+  return {
+    id: `rule_${kind}`,
+    shopId: "shop_1",
+    kind,
+    label: kind,
+    percentRate: null,
+    fixedPerOrder: null,
+    fixedPerItem: null,
+    monthlyAmount: null,
+    appliesToChannel: null,
+    active: true,
+    origin: CostRuleOrigin.INSTALL_DEFAULT,
+    confirmedAt: null,
+    createdAt: new Date("2026-08-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-08-01T00:00:00.000Z"),
+    ...values,
+  } as CostRule;
+}
+
+describe("loadCostRules provenance", () => {
+  it("carries install-default confirmation state into the engine", async () => {
+    costRuleFindMany.mockResolvedValue([
+      costRule(CostRuleKind.PAYMENT_FEE, {
+        percentRate: "0.029" as never,
+        fixedPerOrder: "0.30" as never,
+      }),
+      costRule(CostRuleKind.SHIPPING_DEFAULT, {
+        fixedPerOrder: "8.50" as never,
+        confirmedAt: new Date("2026-08-02T00:00:00.000Z"),
+      }),
+    ]);
+
+    const result = await loadCostRules("shop_1");
+
+    expect(costRuleFindMany).toHaveBeenCalledWith({
+      where: { shopId: "shop_1" },
+    });
+    expect(result.paymentPercentRate).toBe(0.029);
+    expect(result.provenance.paymentFee).toEqual({
+      origin: "INSTALL_DEFAULT",
+      confirmed: false,
+    });
+    expect(result.provenance.shippingDefault).toEqual({
+      origin: "INSTALL_DEFAULT",
+      confirmed: true,
+    });
+  });
+
+  it("does not let an inactive unconfirmed rule taint the active rule", () => {
+    const result = toCostRuleSet([
+      costRule(CostRuleKind.PICK_PACK, {
+        fixedPerOrder: "99.00" as never,
+        active: false,
+      }),
+      costRule(CostRuleKind.PICK_PACK, {
+        id: "active_pick_pack",
+        fixedPerOrder: "1.75" as never,
+        origin: CostRuleOrigin.MERCHANT_CONFIGURED,
+        confirmedAt: new Date("2026-08-02T00:00:00.000Z"),
+      }),
+    ]);
+
+    expect(result.pickPackPerOrderCents).toBe(175);
+    expect(result.provenance.pickPack).toEqual({
+      origin: "MERCHANT_CONFIGURED",
+      confirmed: true,
+    });
+  });
 });
 
 describe("loadEngineOrders fulfilment costs", () => {
@@ -68,7 +156,10 @@ describe("loadEngineOrders fulfilment costs", () => {
     orderFindMany.mockResolvedValue([orderRow("order_1")]);
     // Three parcels, already summed by Postgres.
     fulfillmentGroupBy.mockResolvedValue([
-      { orderId: "order_1", _sum: { shippingCost: "18.75", pickPackCost: "4.20" } },
+      {
+        orderId: "order_1",
+        _sum: { shippingCost: "18.75", pickPackCost: "4.20" },
+      },
     ]);
 
     const [order] = await loadEngineOrders("shop_1", RANGE);
@@ -96,7 +187,10 @@ describe("loadEngineOrders fulfilment costs", () => {
     // A fulfilment exists but carries no carrier cost: Shopify's own webhooks
     // never populate one, it arrives from the 3PL connector.
     fulfillmentGroupBy.mockResolvedValue([
-      { orderId: "order_1", _sum: { shippingCost: "0.00", pickPackCost: "0.00" } },
+      {
+        orderId: "order_1",
+        _sum: { shippingCost: "0.00", pickPackCost: "0.00" },
+      },
     ]);
 
     const [order] = await loadEngineOrders("shop_1", RANGE);
@@ -115,14 +209,28 @@ describe("loadEngineOrders fulfilment costs", () => {
     fulfillmentGroupBy.mockResolvedValue([
       // Deliberately not in the same order as the orders themselves — the join
       // is by id, and a positional match would pass on sorted input only.
-      { orderId: "order_3", _sum: { shippingCost: "9.00", pickPackCost: "1.00" } },
-      { orderId: "order_1", _sum: { shippingCost: "7.50", pickPackCost: "2.00" } },
+      {
+        orderId: "order_3",
+        _sum: { shippingCost: "9.00", pickPackCost: "1.00" },
+      },
+      {
+        orderId: "order_1",
+        _sum: { shippingCost: "7.50", pickPackCost: "2.00" },
+      },
     ]);
 
     const orders = await loadEngineOrders("shop_1", RANGE);
 
-    expect(orders.map((o) => o.actualShippingCostCents)).toEqual([750, null, 900]);
-    expect(orders.map((o) => o.actualPickPackCostCents)).toEqual([200, null, 100]);
+    expect(orders.map((o) => o.actualShippingCostCents)).toEqual([
+      750,
+      null,
+      900,
+    ]);
+    expect(orders.map((o) => o.actualPickPackCostCents)).toEqual([
+      200,
+      null,
+      100,
+    ]);
   });
 
   it("handles a null sum, which is what Postgres returns for no rows", async () => {
@@ -187,7 +295,7 @@ describe("loadEngineOrders column projection", () => {
     fulfillmentGroupBy.mockResolvedValue([]);
     await loadEngineOrders("shop_1", RANGE);
     const [args] = orderFindMany.mock.calls[0] as [
-      { select: Record<string, unknown> }
+      { select: Record<string, unknown> },
     ];
     return args.select;
   }
@@ -254,7 +362,7 @@ describe("loadEngineOrders column projection", () => {
     }
   });
 
-  it("still filters and orders exactly as the whole-row read did", async () => {
+  it("still filters the same rows and gives penny allocation a total order", async () => {
     orderFindMany.mockResolvedValue([]);
     fulfillmentGroupBy.mockResolvedValue([]);
 
@@ -265,7 +373,7 @@ describe("loadEngineOrders column projection", () => {
       shopId: "shop_1",
       processedAt: { gte: RANGE.from, lte: RANGE.to },
     });
-    expect(args.orderBy).toEqual({ processedAt: "asc" });
+    expect(args.orderBy).toEqual([{ processedAt: "asc" }, { id: "asc" }]);
   });
 
   it("maps a projected row to the same EngineOrder the whole row produced", async () => {
@@ -355,7 +463,7 @@ describe("loadCohortRows column projection", () => {
     orderFindMany.mockResolvedValue([]);
     await loadCohortRows("shop_1", RANGE);
     const [args] = orderFindMany.mock.calls[0] as [
-      { select: Record<string, unknown> }
+      { select: Record<string, unknown> },
     ];
     return args.select;
   }
@@ -415,6 +523,22 @@ describe("loadCohortRows column projection", () => {
       },
     ]);
   });
+
+  it("refuses an oversized year before hydrating customer rows", async () => {
+    orderCount.mockResolvedValueOnce(60_001);
+
+    await expect(loadCohortRows("shop_1", RANGE)).rejects.toBeInstanceOf(
+      WindowTooLargeError,
+    );
+    expect(orderFindMany).not.toHaveBeenCalled();
+    expect(orderCount).toHaveBeenCalledWith({
+      where: {
+        shopId: "shop_1",
+        processedAt: { gte: RANGE.from, lte: RANGE.to },
+        customerId: { not: null },
+      },
+    });
+  });
 });
 
 /*
@@ -462,7 +586,10 @@ describe("loadEngineOrders window guard", () => {
     // A count scoped more loosely than the row query would refuse windows that
     // are actually fine, and one scoped more tightly would let a big one past.
     expect(orderCount).toHaveBeenCalledWith({
-      where: { shopId: "shop_1", processedAt: { gte: RANGE.from, lte: RANGE.to } },
+      where: {
+        shopId: "shop_1",
+        processedAt: { gte: RANGE.from, lte: RANGE.to },
+      },
     });
   });
 

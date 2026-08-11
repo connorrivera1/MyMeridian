@@ -11,10 +11,7 @@ import type { AdSpendRow, Channel, EngineOrder, OrderProfit } from "./types";
  */
 
 export type ChannelVerdict =
-  | "PROFITABLE"
-  | "MARGINAL"
-  | "UNPROFITABLE"
-  | "NO_SPEND";
+  "PROFITABLE" | "MARGINAL" | "UNPROFITABLE" | "NO_SPEND";
 
 /** Days after acquisition at which cumulative value is sampled. */
 export const LTV_CHECKPOINTS = [0, 7, 14, 30, 60, 90] as const;
@@ -45,6 +42,8 @@ export interface ChannelPerformance {
 
   netRevenueCents: Cents;
   contributionProfitCents: Cents;
+  hasMissingCogs: boolean;
+  usesModeledCosts: boolean;
 
   /** Blended acquisition cost: all channel spend ÷ customers it acquired. */
   cacCents: Cents | null;
@@ -84,6 +83,8 @@ export interface CampaignPerformance {
   newCustomers: number;
   netRevenueCents: Cents;
   contributionProfitCents: Cents;
+  hasMissingCogs: boolean;
+  usesModeledCosts: boolean;
   cacCents: Cents | null;
   measuredRoas: number | null;
   profitPerCustomerCents: Cents;
@@ -190,7 +191,8 @@ export function buildJourneysFromRows(
 ): CustomerJourney[] {
   const byCustomer = new Map<string, typeof rows>();
   for (const row of rows) {
-    const bucket = byCustomer.get(row.customerId) as typeof rows[number][] | undefined;
+    const bucket = byCustomer.get(row.customerId) as
+      (typeof rows)[number][] | undefined;
     if (bucket) bucket.push(row);
     else byCustomer.set(row.customerId, [row] as never);
   }
@@ -254,7 +256,8 @@ export function buildCustomerJourneys(
         const profit = profitByOrderId.get(order.id);
         return {
           dayOffset: Math.floor(
-            (order.processedAt.getTime() - first.processedAt.getTime()) / DAY_MS,
+            (order.processedAt.getTime() - first.processedAt.getTime()) /
+              DAY_MS,
           ),
           profitCents: profit?.contributionProfitCents ?? 0,
           grossContributionCents:
@@ -313,7 +316,10 @@ function ltvCurveFor(
  * First day on which average cumulative profit per acquired customer covers CAC.
  * Interpolates between checkpoints so the answer isn't always a round number.
  */
-function paybackDaysFor(curve: readonly LtvPoint[], cacCents: Cents): number | null {
+function paybackDaysFor(
+  curve: readonly LtvPoint[],
+  cacCents: Cents,
+): number | null {
   if (cacCents <= 0) return 0;
 
   // Unmeasurable checkpoints are gaps in the evidence, not zeroes.
@@ -412,7 +418,8 @@ export function computeChannelPerformance(
     );
 
     const newCustomers = cohort.length;
-    const cacCents = newCustomers > 0 ? Math.round(spendCents / newCustomers) : null;
+    const cacCents =
+      newCustomers > 0 ? Math.round(spendCents / newCustomers) : null;
 
     const firstOrderProfitTotal = cohort.reduce(
       (sum, j) => sum + (j.timeline[0]?.profitCents ?? 0),
@@ -444,6 +451,10 @@ export function computeChannelPerformance(
       returningOrders: channelOrders.filter((o) => !o.isFirstOrder).length,
       netRevenueCents,
       contributionProfitCents,
+      hasMissingCogs: channelProfits.some((profit) => profit.hasMissingCogs),
+      usesModeledCosts: channelProfits.some(
+        (profit) => profit.usesModeledCosts,
+      ),
       cacCents,
       firstOrderProfitPerCustomerCents: newCustomers
         ? Math.round(firstOrderProfitTotal / newCustomers)
@@ -485,7 +496,12 @@ export function computeCampaignPerformance(
 
   const campaigns = new Map<
     string,
-    { channel: Channel; campaignId: string; campaignName: string; spendCents: Cents }
+    {
+      channel: Channel;
+      campaignId: string;
+      campaignName: string;
+      spendCents: Cents;
+    }
   >();
 
   for (const row of spend) {
@@ -506,7 +522,9 @@ export function computeCampaignPerformance(
   const results: CampaignPerformance[] = [];
 
   for (const campaign of campaigns.values()) {
-    const campaignOrders = orders.filter((o) => o.campaignId === campaign.campaignId);
+    const campaignOrders = orders.filter(
+      (o) => o.campaignId === campaign.campaignId,
+    );
     const campaignProfits = campaignOrders
       .map((o) => profitByOrderId.get(o.id))
       .filter((p): p is OrderProfit => !!p);
@@ -536,6 +554,10 @@ export function computeCampaignPerformance(
       newCustomers,
       netRevenueCents,
       contributionProfitCents,
+      hasMissingCogs: campaignProfits.some((profit) => profit.hasMissingCogs),
+      usesModeledCosts: campaignProfits.some(
+        (profit) => profit.usesModeledCosts,
+      ),
       cacCents: newCustomers
         ? Math.round(campaign.spendCents / newCustomers)
         : null,

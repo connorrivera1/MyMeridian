@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 import prisma from "~/db.server";
 
 /**
- * Serialised, atomic writes to the rows hanging off one order.
+ * Serialised, atomic writes to one Shopify order snapshot.
  *
  * Line items and fulfilments are written by deleting every row for the order
  * and recreating them. That is the right shape — Shopify sends the full
@@ -32,19 +32,21 @@ import prisma from "~/db.server";
  * collide, and it is transaction-scoped (`_xact_`), so it releases on commit or
  * rollback with no unlock path to forget.
  *
- * The lock is namespaced by a class id so an order lock can never collide with
- * an advisory lock taken elsewhere for something unrelated. `hashtext` maps the
- * cuid to an int4; a hash collision between two different orders costs some
- * needless serialisation and never costs correctness.
+ * The key is the stable shop-id + Shopify Order GID, not Meridian's database
+ * cuid: two concurrent deliveries can race before that row exists. The lock is
+ * namespaced by a class id so it cannot collide with unrelated locks.
+ * `hashtext` maps the composite to int4; a hash collision costs needless
+ * serialisation, never correctness.
  *
- * Reads that do not need to be inside the critical section — resolving variants,
- * for instance — belong outside it. Keep this block small: every statement here
- * is time another writer for the same order spends waiting.
+ * Header, customer-erasure association and the full line-item replacement all
+ * belong inside this transaction. Fulfillment writers use the same key so
+ * their row and the derived Order.fulfillmentStatus cannot interleave with an
+ * order snapshot.
  */
 const ORDER_LOCK_CLASS = 4_242_001;
 
 export async function withOrderLock<T>(
-  orderId: string,
+  orderLockKey: string,
   run: (tx: Prisma.TransactionClient) => Promise<T>,
 ): Promise<T> {
   return prisma.$transaction(
@@ -52,7 +54,7 @@ export async function withOrderLock<T>(
       await tx.$executeRaw`
         select pg_advisory_xact_lock(
           ${ORDER_LOCK_CLASS}::int,
-          hashtext(${orderId})::int
+          hashtext(${orderLockKey})::int
         )
       `;
       return run(tx);

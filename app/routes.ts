@@ -22,22 +22,42 @@ export default [
     route("pricing", "routes/app.pricing.tsx"),
     route("fulfilment", "routes/app.fulfilment.tsx"),
     route("settings", "routes/app.settings.tsx"),
-    // Plan selection, upgrade and downgrade. Reachable without an active
-    // subscription — every other child route redirects here until there is one.
+    // A merchant's privacy obligations survive subscription cancellation, so
+    // authenticated export handoff remains reachable without an active plan.
+    route("privacy-requests", "routes/app.privacy-requests.tsx"),
+    route(
+      "privacy-requests/:id/download",
+      "routes/app.privacy-request-download.ts",
+    ),
+    // Plan selection, upgrade and downgrade is also entitlement-exempt.
     route("plan", "routes/app.plan.tsx"),
   ]),
 
   // Shop webhooks.
   route("webhooks/app/uninstalled", "routes/webhooks.app-uninstalled.tsx"),
+  route("webhooks/shop/update", "routes/webhooks.shop-update.tsx"),
   route("webhooks/orders/create", "routes/webhooks.orders.tsx"),
   route("webhooks/products/update", "routes/webhooks.products.tsx"),
+  route(
+    "webhooks/inventory-items/update",
+    "routes/webhooks.inventory-items.tsx",
+  ),
   route("webhooks/fulfillments/create", "routes/webhooks.fulfillments.tsx"),
-  route("webhooks/app-subscriptions/update", "routes/webhooks.app-subscriptions.tsx"),
+  route(
+    "webhooks/app-subscriptions/update",
+    "routes/webhooks.app-subscriptions.tsx",
+  ),
   route("webhooks/app/scopes-update", "routes/webhooks.app-scopes-update.tsx"),
 
   // Mandatory GDPR compliance webhooks. Every public app must implement all
   // three or it fails Shopify's automated review.
-  route("webhooks/gdpr/customers-data-request", "routes/webhooks.gdpr.data-request.tsx"),
-  route("webhooks/gdpr/customers-redact", "routes/webhooks.gdpr.customers-redact.tsx"),
+  route(
+    "webhooks/gdpr/customers-data-request",
+    "routes/webhooks.gdpr.data-request.tsx",
+  ),
+  route(
+    "webhooks/gdpr/customers-redact",
+    "routes/webhooks.gdpr.customers-redact.tsx",
+  ),
   route("webhooks/gdpr/shop-redact", "routes/webhooks.gdpr.shop-redact.tsx"),
 ] satisfies RouteConfig;

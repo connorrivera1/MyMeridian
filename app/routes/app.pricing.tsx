@@ -53,7 +53,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }),
   ]);
 
-  const actionable = recommendations.filter(
+  // The engine can protect a customer-acquisition product once customer
+  // lifecycle access is approved, but the current app does not request that
+  // scope. Keep those dormant records out of the merchant-facing route until
+  // the permission and product promise ship together.
+  const visibleRecommendations = recommendations.filter(
+    (rec) => rec.method !== "STRATEGIC_HOLD",
+  );
+
+  const actionable = visibleRecommendations.filter(
     (rec) =>
       rec.method === "ELASTICITY_REGRESSION" || rec.method === "MARGIN_TARGET",
   );
@@ -62,15 +70,16 @@ export async function loader({ request }: LoaderFunctionArgs) {
     locked: null,
     rangeLabel,
     currency: shop.currency,
+    timezone: shop.timezone,
     upsideCents: actionable.reduce(
       (sum, rec) => sum + toCents(rec.expectedProfitDelta),
       0,
     ),
     actionableCount: actionable.length,
-    testableCount: recommendations.filter(
+    testableCount: visibleRecommendations.filter(
       (rec) => rec.method === "INSUFFICIENT_DATA",
     ).length,
-    recommendations: recommendations.map((rec) => ({
+    recommendations: visibleRecommendations.map((rec) => ({
       id: rec.id,
       productTitle: rec.variant.product.title,
       variantTitle: rec.variant.title,
@@ -194,7 +203,6 @@ const CONFIDENCE_TONE = {
 const METHOD_LABEL: Record<string, string> = {
   ELASTICITY_REGRESSION: "Fitted demand curve",
   MARGIN_TARGET: "Margin target",
-  STRATEGIC_HOLD: "Hold — strategic loss leader",
   BELOW_COST: "Priced below cost",
   INSUFFICIENT_DATA: "Needs a price test",
 };
@@ -212,8 +220,8 @@ export default function Pricing() {
         planName={data.locked.name}
         price={data.locked.price}
       >
-        Meridian fits a demand curve to each variant&rsquo;s own price history and
-        solves for the price that maximises contribution profit — not a rule of
+        Meridian fits a demand curve only to price history observed after this
+        app was installed, then solves for the price that maximises contribution profit — not a rule of
         thumb, and never a number invented for a variant that has never changed
         price.
       </UpgradeNotice>
@@ -244,7 +252,7 @@ export default function Pricing() {
           icon={<IconCheck />}
           label="Ready to act on"
           value={<AnimatedInt value={data.actionableCount} />}
-          meta={<span>backed by your own price history</span>}
+          meta={<span>backed by post-install observed history</span>}
         />
         <Tile
           tone="var(--viz-violet)"
@@ -256,8 +264,8 @@ export default function Pricing() {
       </div>
 
       <Banner>
-        Meridian fits a demand curve to each variant&rsquo;s own price history and
-        solves for the price that maximises contribution profit. Where a variant
+        Meridian fits a demand curve only to price history observed after this
+        app was installed, then solves for the price that maximises contribution profit. Where a variant
         has never changed price there is nothing to fit, and it says so rather
         than inventing an elasticity. Every move is capped at 25% and floored at
         a 15% margin.
@@ -444,6 +452,7 @@ export default function Pricing() {
                       {rec.actionedAt && (
                         <div className="cell-sub">
                           {new Date(rec.actionedAt).toLocaleDateString("en-US", {
+                            timeZone: data.timezone,
                             month: "short",
                             day: "numeric",
                           })}

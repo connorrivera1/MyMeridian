@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ConnectorProvider, ConnectorStatus, SyncStatus } from "@prisma/client";
+import {
+  ConnectorProvider,
+  ConnectorStatus,
+  CostRuleOrigin,
+  SyncStatus,
+} from "@prisma/client";
 
 const shopFindUnique = vi.fn();
 const shopCreate = vi.fn();
@@ -38,8 +43,29 @@ const DOMAIN = "meridian-test.myshopify.com";
 /** The connector rows a `shop.create` call would write. */
 function createdConnectors() {
   const [call] = shopCreate.mock.calls;
-  return (call![0] as { data: { connectors: { create: { provider: string; status: string }[] } } })
-    .data.connectors.create;
+  return (
+    call![0] as {
+      data: { connectors: { create: { provider: string; status: string }[] } };
+    }
+  ).data.connectors.create;
+}
+
+/** The cost assumptions a `shop.create` call would write. */
+function createdCostRules() {
+  const [call] = shopCreate.mock.calls;
+  return (
+    call![0] as {
+      data: {
+        costRules: {
+          create: {
+            kind: string;
+            origin: CostRuleOrigin;
+            confirmedAt: Date | null;
+          }[];
+        };
+      };
+    }
+  ).data.costRules.create;
 }
 
 beforeEach(() => {
@@ -58,7 +84,9 @@ describe("connectors given to a new store", () => {
     shopFindUnique.mockResolvedValue(null);
     await ensureShopProvisioned(DOMAIN);
 
-    const provisioned = createdConnectors().map((c) => c.provider).sort();
+    const provisioned = createdConnectors()
+      .map((c) => c.provider)
+      .sort();
 
     // Adding a provider to the enum and forgetting this list is the whole bug.
     // Reading the enum rather than restating it is what makes that impossible.
@@ -87,7 +115,27 @@ describe("connectors given to a new store", () => {
 
     // A row claiming CONNECTED for a platform with no token is the same false
     // promise the listing copy was carrying, one layer down.
-    expect(connected.map((c) => c.provider)).toEqual([ConnectorProvider.SHOPIFY]);
+    expect(connected.map((c) => c.provider)).toEqual([
+      ConnectorProvider.SHOPIFY,
+    ]);
+  });
+});
+
+describe("cost assumptions given to a new store", () => {
+  it("persists every install default as unconfirmed", async () => {
+    shopFindUnique.mockResolvedValue(null);
+
+    await ensureShopProvisioned(DOMAIN);
+
+    const rules = createdCostRules();
+    expect(rules).toHaveLength(4);
+    expect(
+      rules.every(
+        (rule) =>
+          rule.origin === CostRuleOrigin.INSTALL_DEFAULT &&
+          rule.confirmedAt === null,
+      ),
+    ).toBe(true);
   });
 });
 

@@ -57,8 +57,8 @@ export default function Login() {
 
         <h1 className="auth-word">Meridian</h1>
         <p className="auth-tag">
-          Revenue, ad spend, fulfilment and overhead —<br />
-          resolved into the one number that matters.
+          Revenue, COGS, fulfilment, fees and overhead —<br />
+          qualified profit from the inputs available.
         </p>
 
         {data.configured ? (

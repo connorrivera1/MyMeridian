@@ -9,10 +9,7 @@ import type { EngineOrder, OrderProfit } from "./types";
  */
 
 export type ProductClass =
-  | "PROFITABLE"
-  | "STRATEGIC_LOSS_LEADER"
-  | "BLEEDING"
-  | "THIN_MARGIN";
+  "PROFITABLE" | "STRATEGIC_LOSS_LEADER" | "BLEEDING" | "THIN_MARGIN";
 
 /** Below this many acquired customers the downstream signal is noise. */
 export const MIN_COHORT_FOR_STRATEGIC = 5;
@@ -57,6 +54,11 @@ export interface ProductProfit extends ProductMeta {
   /** Profit per unit sold — the number that decides whether to scale. */
   profitPerUnitCents: Cents;
 
+  /** At least one sold unit had no Shopify COGS snapshot. */
+  hasMissingCogs: boolean;
+  /** At least one contributing order used configured rather than measured cost. */
+  usesModeledCosts: boolean;
+
   classification: ProductClass;
 
   /** Customers whose very first order contained this product. */
@@ -80,6 +82,8 @@ interface LineAllocation {
   paymentFeeCents: Cents;
   pickPackCents: Cents;
   adCostCents: Cents;
+  hasMissingCogs: boolean;
+  usesModeledCosts: boolean;
 }
 
 /**
@@ -133,6 +137,8 @@ function allocateOrderToProducts(
       paymentFeeCents: payment[i] ?? 0,
       pickPackCents: pickPack[i] ?? 0,
       adCostCents: adCost[i] ?? 0,
+      hasMissingCogs: item.unitCostMicros <= 0 && soldQty > 0,
+      usesModeledCosts: profit.usesModeledCosts,
     };
   });
 }
@@ -144,7 +150,10 @@ export function computeProductProfitability(
 ): ProductProfit[] {
   const profitByOrderId = new Map(orderProfits.map((p) => [p.orderId, p]));
 
-  const totals = new Map<string, LineAllocation & { ordersContaining: number }>();
+  const totals = new Map<
+    string,
+    LineAllocation & { ordersContaining: number }
+  >();
 
   for (const order of orders) {
     const profit = profitByOrderId.get(order.id);
@@ -164,6 +173,8 @@ export function computeProductProfitability(
         paymentFeeCents: 0,
         pickPackCents: 0,
         adCostCents: 0,
+        hasMissingCogs: false,
+        usesModeledCosts: false,
         ordersContaining: 0,
       };
 
@@ -176,6 +187,8 @@ export function computeProductProfitability(
       current.paymentFeeCents += line.paymentFeeCents;
       current.pickPackCents += line.pickPackCents;
       current.adCostCents += line.adCostCents;
+      current.hasMissingCogs ||= line.hasMissingCogs;
+      current.usesModeledCosts ||= line.usesModeledCosts;
 
       if (!seenInOrder.has(line.productId)) {
         current.ordersContaining += 1;
@@ -198,7 +211,10 @@ export function computeProductProfitability(
   const results: ProductProfit[] = [];
 
   for (const [productId, t] of totals) {
-    const meta = products.get(productId) ?? { productId, title: "Unknown product" };
+    const meta = products.get(productId) ?? {
+      productId,
+      title: "Unknown product",
+    };
 
     const contributionProfitCents =
       t.netRevenueCents -
@@ -259,6 +275,8 @@ export function computeProductProfitability(
       profitPerUnitCents: t.units
         ? Math.round(contributionProfitCents / t.units)
         : 0,
+      hasMissingCogs: t.hasMissingCogs,
+      usesModeledCosts: t.usesModeledCosts,
       classification,
       acquiredCustomers,
       downstreamProfitCents,
@@ -322,7 +340,8 @@ function computeDownstreamValue(
     const laterProfit = sorted
       .slice(1)
       .reduce(
-        (sum, o) => sum + (profitByOrderId.get(o.id)?.contributionProfitCents ?? 0),
+        (sum, o) =>
+          sum + (profitByOrderId.get(o.id)?.contributionProfitCents ?? 0),
         0,
       );
 
@@ -331,7 +350,9 @@ function computeDownstreamValue(
 
     // Credit the acquisition to every distinct product in that first order.
     const acquiringProducts = new Set(
-      first.lineItems.map((l) => l.productId).filter((id): id is string => !!id),
+      first.lineItems
+        .map((l) => l.productId)
+        .filter((id): id is string => !!id),
     );
 
     for (const productId of acquiringProducts) {

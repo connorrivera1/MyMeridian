@@ -6,7 +6,7 @@ process.env.SHOPIFY_APP_URL = "https://meridian-test.example.com";
 process.env.SCOPES = "read_orders,read_products";
 
 const { FEATURE_MIN_PLAN, planAllows, planFor } = await import("./plan.server");
-const { PLANS } = await import("~/shopify.server");
+const { PLANS } = await import("~/lib/plans");
 type PlanState = Parameters<typeof planAllows>[0];
 
 const on = (plan: PlanState["planId"]): PlanState => ({
@@ -25,13 +25,11 @@ describe("feature gating", () => {
   it("grants a feature at the plan that advertises it, and above", () => {
     expect(planAllows(on("growth"), "pricing")).toBe(true);
     expect(planAllows(on("scale"), "pricing")).toBe(true);
-    expect(planAllows(on("scale"), "cohorts")).toBe(true);
   });
 
   it("withholds a feature from plans below it", () => {
     expect(planAllows(on("starter"), "pricing")).toBe(false);
     expect(planAllows(on("starter"), "capacity")).toBe(false);
-    expect(planAllows(on("growth"), "cohorts")).toBe(false);
   });
 
   it("grants nothing without an active plan", () => {
@@ -46,7 +44,6 @@ describe("feature gating", () => {
 
   it("names the cheapest plan that includes a feature", () => {
     expect(planFor("pricing").id).toBe("growth");
-    expect(planFor("cohorts").id).toBe("scale");
   });
 
   it("gates only on plans that exist", () => {
@@ -63,7 +60,7 @@ describe("feature gating", () => {
  */
 describe("gates match what the plans advertise", () => {
   const advertised = (planId: keyof typeof PLANS) =>
-    PLANS[planId].features.join(" ").toLowerCase();
+    [PLANS[planId].blurb, ...PLANS[planId].features].join(" ").toLowerCase();
 
   it("Growth advertises pricing recommendations and capacity alerts", () => {
     expect(advertised("growth")).toContain("pricing recommendations");
@@ -80,7 +77,7 @@ describe("gates match what the plans advertise", () => {
     expect(advertised("starter")).toContain("channel");
   });
 
-  it("no plan sells ad spend, CAC or ROAS", () => {
+  it("no plan sells ad-platform or protected-customer analysis it cannot obtain", () => {
     // Growth sold "Unlimited ad channels + blended CAC" and Starter "One ad
     // channel connected", and the app cannot do either: there is no ad-platform
     // OAuth flow and no platform API client in the tree, connectors are created
@@ -99,6 +96,13 @@ describe("gates match what the plans advertise", () => {
       "roas",
       "blended",
       "return on ad spend",
+      "cohort",
+      "ltv",
+      "payback",
+      "loss leader",
+      "loss-leader",
+      "multi-location",
+      "multi location",
     ];
     for (const planId of Object.keys(PLANS) as Array<keyof typeof PLANS>) {
       for (const claim of forbidden) {
@@ -111,15 +115,28 @@ describe("gates match what the plans advertise", () => {
   });
 
   it("gates nothing it cannot deliver", () => {
-    // `multiChannelAds` lived in FEATURE_MIN_PLAN with no `planAllows` call site
-    // anywhere, gating a capability that has no implementation. Every gate that
-    // remains has to be one a plan genuinely buys.
+    // `multiChannelAds` had no implementation. `cohorts` had an engine and a
+    // call site, but no real install can satisfy its unrequested
+    // `read_customers` prerequisite. Every gate that remains has to be one a
+    // subscriber can genuinely use with the requested scopes.
     expect(FEATURE_MIN_PLAN).not.toHaveProperty("multiChannelAds");
+    expect(FEATURE_MIN_PLAN).not.toHaveProperty("cohorts");
   });
 
-  it("Scale advertises cohort LTV and payback", () => {
-    expect(advertised("scale")).toContain("cohort ltv");
-    expect(advertised("scale")).toContain("payback");
-    expect(FEATURE_MIN_PLAN.cohorts).toBe("scale");
+  it("does not sell per-location capacity while the rebuild is store-wide", () => {
+    // `rebuildCapacityDays` currently aggregates every fulfilment into a single
+    // `primary` row. Keep location-specific language out of the merchant-facing
+    // catalogue until the rebuild and query path preserve locations end to end.
+    for (const planId of Object.keys(PLANS) as Array<keyof typeof PLANS>) {
+      expect(advertised(planId)).not.toMatch(/multi[- ]location|per[- ]location/);
+    }
+  });
+
+  it("does not advertise order limits the billing gate never enforces", () => {
+    for (const planId of Object.keys(PLANS) as Array<keyof typeof PLANS>) {
+      expect(advertised(planId)).not.toMatch(
+        /orders?\s*\/\s*month|unlimited orders?|order volume/,
+      );
+    }
   });
 });

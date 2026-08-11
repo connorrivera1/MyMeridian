@@ -36,8 +36,9 @@ export default function Home() {
         </div>
         <h1 className="auth-word">Meridian</h1>
         <p className="auth-tag">
-          True profit for Shopify stores — revenue, ad spend, fulfilment and
-          overhead in one number you can act on.
+          Qualified profit for Shopify stores — revenue against recorded and
+          modeled costs, with missing inputs and unavailable ad spend called
+          out.
         </p>
         <div className="banner" style={{ textAlign: "left" }}>
           <div>

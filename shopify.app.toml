@@ -1,5 +1,10 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
+# Working development identity only. A published Shopify app already uses
+# Meridian, so the public name/handle must be chosen as one coordinated brand
+# decision before deployment. Do not rename only this linked config while the
+# logo, landing page, listing copy, screenshots, and Fly slug still use the old
+# identity.
 name = "Meridian"
 handle = "meridian-profit"
 # NOT SUBMITTABLE AS IT STANDS. This is still the Shopify CLI's placeholder.
@@ -13,15 +18,12 @@ handle = "meridian-profit"
 # the tunnel while `shopify app dev` runs, which is why it can sit wrong for a
 # long time without anything locally appearing to break.
 #
-# TODO(deploy): no production deployment target is configured anywhere in this
-# repo yet, so this cannot be filled in automatically. Checked: .env /
-# .env.example (SHOPIFY_APP_URL is "http://localhost:3000", dev-only), .shopify/
-# (CLI project link only, no host), package.json (no deploy script/target), and
-# no wrangler.toml / fly.toml / vercel.json anywhere in the tree. There is also
-# no git remote configured. SUBMISSION.md independently flags this exact gap as
-# Blocker #1. Once a real host exists, set application_url to that origin and
-# update redirect_urls below to match — webhook `uri` values are relative and
-# resolve against this automatically.
+# TODO(deploy): Dockerfile, .dockerignore, and fly.toml now exist and have been
+# validated locally, but no Fly app/database has been provisioned and no
+# production origin exists. flyctl is installed but still needs `fly auth
+# login`. Once the final app name is chosen and a real host is live, set
+# application_url to that origin and update redirect_urls below to match —
+# webhook `uri` values are relative and resolve against it automatically.
 #
 # DEPLOY_PLAN.md now carries the rest of it: Fly.io as the host and why a
 # serverless one would silently truncate every store's first import, the
@@ -31,9 +33,10 @@ handle = "meridian-profit"
 #   - `shopify app config push` no longer exists on @shopify/cli 4.x. Config
 #     reaches the Partner Dashboard through `shopify app deploy`, which carries
 #     it because [build] include_config_on_deploy is true below.
-#   - set automatically_update_urls_on_dev = false at the same time as filling
-#     this in. While it is true, one later `shopify app dev` rewrites this line
-#     and redirect_urls to a tunnel that stops existing when the session ends.
+#   - set automatically_update_urls_on_dev = false in the production config at
+#     the same time as filling this in. It deliberately remains true while this
+#     file still uses the placeholder, because local `shopify app dev` needs to
+#     rewrite both URLs to its temporary tunnel.
 application_url = "https://shopify.dev/apps/default-app-home"
 embedded = true
 client_id = "9dfbe484752628b0a96c4755caf4f502"
@@ -44,19 +47,23 @@ client_id = "9dfbe484752628b0a96c4755caf4f502"
 # read_inventory is what exposes InventoryItem.unitCost — the cost of goods
 # behind every margin in the app. Without it COGS is zero and every profit
 # figure is overstated. It is NOT protected customer data, so it does not need
-# a Partner Dashboard request; if it turns out to cause trouble, dropping it is
-# safe and the app will say so rather than report inflated margins.
+# a Partner Dashboard request. If it is dropped, Meridian leaves COGS at zero
+# and visibly warns that every affected profit figure is overstated; that
+# degraded result must not be marketed as complete.
 #
 # read_customers is deliberately NOT here. It is protected customer data and
 # needs an approved request (Partner Dashboard -> App -> API access). Without
-# it there is no CAC, lifetime value, payback, or loss-leader detection — the
-# Acquisition screen explains this rather than showing zeroes.
+# it there is no CAC, lifetime value, payback, or customer-lifecycle product
+# classification. The Acquisition screen explains this rather than showing
+# zeroes. Scale no longer
+# advertises cohort LTV/payback; keep that promise out until approval is obtained
+# and this scope is intentionally added. Do not add it speculatively.
 #
 # read_refunds is deliberately absent: it is not a Shopify access scope, and
 # refunds are read as Order.refunds inside the orders query, which read_orders
 # already covers. Requesting a scope the platform does not recognise risks
 # failing OAuth outright, and nothing in the app ever checked for it.
-scopes = "read_orders read_products read_fulfillments read_inventory"
+scopes = "read_orders,read_products,read_fulfillments,read_inventory"
 
 [auth]
 # The path has to match `authPathPrefix` in app/shopify.server.ts, which is
@@ -95,6 +102,13 @@ api_version = "2026-07"
   uri = "/webhooks/app/uninstalled"
   topics = [ "app/uninstalled" ]
 
+  # A development store can be converted into a paid merchant store. This
+  # invalidates the persisted ShopPlan.partnerDevelopment signal so the next
+  # subscription request cannot accidentally create a non-paying test charge.
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/shop/update"
+  topics = [ "shop/update" ]
+
   # Under managed installation a merchant can grant or revoke an optional scope
   # without reinstalling, and this is the only notification of it. Without it
   # Shop.grantedScopes stays at whatever install recorded, and the import gates
@@ -110,6 +124,13 @@ api_version = "2026-07"
   [[webhooks.subscriptions]]
   uri = "/webhooks/products/update"
   topics = [ "products/update", "products/create" ]
+
+  # Product payloads omit full details above 100 variants, while unit cost has
+  # its own InventoryItem lifecycle. This signal refreshes the exact variant
+  # cost basis before subsequent orders snapshot COGS.
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/inventory-items/update"
+  topics = [ "inventory_items/update" ]
 
   [[webhooks.subscriptions]]
   uri = "/webhooks/fulfillments/create"

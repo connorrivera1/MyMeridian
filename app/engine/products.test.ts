@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { computeOrderProfit } from "./profit";
 import { computeProductProfitability, type ProductMeta } from "./products";
-import { ZERO_COST_RULES, type EngineLineItem, type EngineOrder } from "./types";
+import {
+  ZERO_COST_RULES,
+  type EngineLineItem,
+  type EngineOrder,
+} from "./types";
 
 /** Zero cost rules keep the arithmetic legible: contribution = revenue − COGS. */
 const RULES = ZERO_COST_RULES;
@@ -77,9 +81,40 @@ function analyse(orders: EngineOrder[]) {
 }
 
 describe("computeProductProfitability", () => {
+  it("propagates missing COGS and modeled order costs to the product", () => {
+    const missingOrder = order(
+      "quality-1",
+      "c-quality",
+      new Date("2026-01-01"),
+      [line("hero", 10_000, 0)],
+      true,
+    );
+    const modeledRules = {
+      ...ZERO_COST_RULES,
+      paymentFixedPerOrderCents: 30,
+    };
+    const [result] = computeProductProfitability(
+      [missingOrder],
+      [computeOrderProfit(missingOrder, modeledRules)],
+      PRODUCTS,
+    );
+
+    expect(result).toMatchObject({
+      productId: "hero",
+      hasMissingCogs: true,
+      usesModeledCosts: true,
+    });
+  });
+
   it("marks a healthy product profitable", () => {
     const results = analyse([
-      order("o1", "c1", new Date("2026-01-01"), [line("hero", 10_000, 3000)], true),
+      order(
+        "o1",
+        "c1",
+        new Date("2026-01-01"),
+        [line("hero", 10_000, 3000)],
+        true,
+      ),
     ]);
 
     const hero = results.find((r) => r.productId === "hero")!;
@@ -92,7 +127,13 @@ describe("computeProductProfitability", () => {
 
   it("flags a positive but thin margin separately from a healthy one", () => {
     const results = analyse([
-      order("o1", "c1", new Date("2026-01-01"), [line("thin", 10_000, 9200)], true),
+      order(
+        "o1",
+        "c1",
+        new Date("2026-01-01"),
+        [line("thin", 10_000, 9200)],
+        true,
+      ),
     ]);
 
     const thin = results.find((r) => r.productId === "thin")!;
@@ -252,10 +293,34 @@ describe("computeProductProfitability", () => {
 
   it("tracks attach rate and revenue share", () => {
     const results = analyse([
-      order("o1", "c1", new Date("2026-01-01"), [line("hero", 10_000, 3000)], true),
-      order("o2", "c2", new Date("2026-01-02"), [line("hero", 10_000, 3000)], true),
-      order("o3", "c3", new Date("2026-01-03"), [line("dud", 10_000, 3000)], true),
-      order("o4", "c4", new Date("2026-01-04"), [line("dud", 10_000, 3000)], true),
+      order(
+        "o1",
+        "c1",
+        new Date("2026-01-01"),
+        [line("hero", 10_000, 3000)],
+        true,
+      ),
+      order(
+        "o2",
+        "c2",
+        new Date("2026-01-02"),
+        [line("hero", 10_000, 3000)],
+        true,
+      ),
+      order(
+        "o3",
+        "c3",
+        new Date("2026-01-03"),
+        [line("dud", 10_000, 3000)],
+        true,
+      ),
+      order(
+        "o4",
+        "c4",
+        new Date("2026-01-04"),
+        [line("dud", 10_000, 3000)],
+        true,
+      ),
     ]);
 
     const hero = results.find((r) => r.productId === "hero")!;

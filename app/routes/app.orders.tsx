@@ -1,11 +1,19 @@
-import { Link, useLoaderData, useSearchParams } from "react-router";
+import {
+  Link,
+  useLoaderData,
+  useNavigate,
+  useSearchParams,
+} from "react-router";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { LoaderFunctionArgs } from "react-router";
 
-import { BarChart } from "~/design/charts";
+import { BarChart, OrderField } from "~/design/charts";
 import {
   AnimatedInt,
   AnimatedMoney,
   Badge,
+  Banner,
   Card,
   Delta,
   Empty,
@@ -17,7 +25,7 @@ import {
   Tile,
   seriesColor,
 } from "~/design/components";
-import { formatPercent } from "~/engine/money";
+import { formatMoney, formatPercent, type Cents } from "~/engine/money";
 import { CHANNEL_LABELS, type Channel } from "~/engine/types";
 import { change, loadDashboard } from "~/lib/route-data.server";
 import { dailySeries } from "~/lib/series";
@@ -74,7 +82,7 @@ export function paginateOrders<
 }
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { shop, analytics, previous, rangeLabel, preset } =
+  const { shop, analytics, previous, rangeLabel, preset, adSpendCoverage } =
     await loadDashboard(request);
 
   const url = new URL(request.url);
@@ -84,16 +92,51 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   const p = analytics.period;
 
-  const { rows: pageRows, total, page, pageCount } = paginateOrders(p.orders, {
+  const {
+    rows: pageRows,
+    total,
+    page,
+    pageCount,
+  } = paginateOrders(p.orders, {
     sort,
     channelFilter,
     page: requestedPage,
   });
 
   const losers = p.orders.filter((order) => order.netProfitCents < 0);
-  const lossTotal = losers.reduce((sum, order) => sum + order.netProfitCents, 0);
+  const lossTotal = losers.reduce(
+    (sum, order) => sum + order.netProfitCents,
+    0,
+  );
 
   const daily = dailySeries(p.orders, analytics.range, shop.timezone);
+
+  /*
+   * The order field.
+   *
+   * One entry per order in the range so the whole month can be drawn at once —
+   * the marketing page shows this and the product did not, which is backwards:
+   * the field is the argument, and the argument belongs where the merchant can
+   * act on it.
+   *
+   * Deliberately two flat arrays rather than an array of objects. At three
+   * thousand orders the object form is ~60KB of repeated keys in the HTML
+   * payload; this is a third of that and costs nothing to read.
+   */
+  const field = {
+    numbers: p.orders.map((order) => order.orderNumber),
+    profits: p.orders.map((order) => order.netProfitCents),
+  };
+
+  /*
+   * Clicking a dot asks the server for that order rather than shipping every
+   * order's full cost breakdown up front. One round trip, and the receipt is
+   * the same computed object the table uses.
+   */
+  const requestedOrder = Number(url.searchParams.get("order"));
+  const focused = Number.isFinite(requestedOrder) && requestedOrder > 0
+    ? (p.orders.find((order) => order.orderNumber === requestedOrder) ?? null)
+    : null;
 
   return {
     rangeLabel,
@@ -101,6 +144,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
     sort,
     channelFilter,
     currency: shop.currency,
+    timezone: shop.timezone,
+    adSpendCoverage,
     channels: [...new Set(p.orders.map((order) => order.channel))].sort(),
     summary: {
       orderCount: p.orderCount,
@@ -118,6 +163,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
       lossMakingCount: losers.length,
       lossMakingShare: p.orderCount ? losers.length / p.orderCount : 0,
       lossTotalCents: lossTotal,
+      missingCogsOrders: p.orders.filter((order) => order.hasMissingCogs)
+        .length,
+      modeledCostOrders: p.orders.filter((order) => order.usesModeledCosts)
+        .length,
     },
     // Rendered here, on the server, so the zone has to be stated. Without it
     // the label came out in whatever zone the server runs in while the bucket
@@ -137,6 +186,31 @@ export async function loader({ request }: LoaderFunctionArgs) {
     total,
     page,
     pageCount,
+    field,
+    focusedOrder: focused
+      ? {
+          orderNumber: focused.orderNumber,
+          processedAt: focused.processedAt,
+          channel: focused.channel,
+          units: focused.units,
+          grossRevenueCents: focused.grossRevenueCents,
+          discountCents: focused.discountCents,
+          refundCents: focused.refundCents,
+          shippingRevenueCents: focused.shippingRevenueCents,
+          netRevenueCents: focused.netRevenueCents,
+          cogsCents: focused.cogsCents,
+          shippingCostCents: focused.shippingCostCents,
+          paymentFeeCents: focused.paymentFeeCents,
+          pickPackCents: focused.pickPackCents,
+          adCostCents: focused.adCostCents,
+          overheadCents: focused.overheadCents,
+          contributionProfitCents: focused.contributionProfitCents,
+          netProfitCents: focused.netProfitCents,
+          marginPct: focused.netMarginPct,
+          hasMissingCogs: focused.hasMissingCogs,
+          usesModeledCosts: focused.usesModeledCosts,
+        }
+      : null,
     orders: pageRows.map((order) => ({
       orderId: order.orderId,
       orderNumber: order.orderNumber,
@@ -152,6 +226,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
       netProfitCents: order.netProfitCents,
       marginPct: order.netMarginPct,
       units: order.units,
+      hasMissingCogs: order.hasMissingCogs,
+      usesModeledCosts: order.usesModeledCosts,
       usesEstimatedCosts: order.usesEstimatedCosts,
     })),
   };
@@ -170,7 +246,192 @@ const CHANNEL_ORDER: Channel[] = [
 
 export default function Orders() {
   const data = useLoaderData<typeof loader>();
+
+  return <OrdersView data={data} />;
+}
+
+type OrdersData = Awaited<ReturnType<typeof loader>>;
+
+/*
+ * One order, opened up.
+ *
+ * Every number survives as a separate row. The previous inline receipt merged
+ * refunds into revenue and payment processing into fulfilment fees, which made
+ * a merchant trust a total without being able to audit how it was reached.
+ */
+export function ProfitBreakdownDrawer({
+  order,
+  currency,
+  adSpendMeasured,
+  profitBasis,
+  timeZone,
+  closeTo,
+}: {
+  order: NonNullable<OrdersData["focusedOrder"]>;
+  currency: string;
+  adSpendMeasured: boolean;
+  profitBasis: string;
+  timeZone: string;
+  closeTo: string;
+}) {
+  // The route content enters with a transform animation. A transformed
+  // ancestor creates a containing block for `position: fixed`, turning a
+  // viewport drawer into a document-height panel. Keep the server markup
+  // deterministic, then lift the hydrated drawer directly under body.
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => setIsMounted(true), []);
+
+  const money = (cents: number) => formatMoney(cents as Cents, currency);
+  const deduction = (cents: number) => money(-cents);
+  const formulaRow = (
+    label: string,
+    cents: number,
+    options: { tone?: "add" | "subtract"; note?: string } = {},
+  ) => (
+    <div className="profit-drawer-line">
+      <dt>
+        <span className={`profit-drawer-symbol ${options.tone ?? "add"}`}>
+          {options.tone === "subtract" ? "−" : "+"}
+        </span>
+        <span>{label}</span>
+      </dt>
+      <dd>
+        {options.tone === "subtract" ? deduction(cents) : money(cents)}
+        {options.note && <small>{options.note}</small>}
+      </dd>
+    </div>
+  );
+
+  const drawer = (
+    <div className="profit-drawer-scrim">
+      <section
+        className="profit-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="profit-drawer-title"
+        aria-describedby="profit-drawer-description"
+      >
+        <header className="profit-drawer-head">
+          <div>
+            <p className="profit-drawer-eyebrow">Transparent math</p>
+            <h2 id="profit-drawer-title">Order #{order.orderNumber}</h2>
+            <p id="profit-drawer-description" className="profit-drawer-meta">
+              {new Date(order.processedAt).toLocaleDateString(undefined, {
+                timeZone,
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })}{" "}
+              · {order.units} {order.units === 1 ? "item" : "items"} ·{" "}
+              {CHANNEL_LABELS[order.channel as Channel] ?? order.channel}
+            </p>
+          </div>
+          <Link className="profit-drawer-close" to={closeTo} aria-label="Close profit breakdown">
+            Close
+          </Link>
+        </header>
+
+        <div className="profit-drawer-scroll">
+          <p className="profit-drawer-intro">
+            This is the exact order-level math used in Meridian&apos;s profit
+            totals. Taxes are excluded because they are collected on behalf of
+            the tax authority.
+          </p>
+
+          <section className="profit-drawer-section" aria-labelledby="profit-revenue-title">
+            <h3 id="profit-revenue-title">1. Revenue kept</h3>
+            <dl className="profit-drawer-lines">
+              {formulaRow("Merchandise subtotal", order.grossRevenueCents)}
+              {formulaRow("Discounts", order.discountCents, { tone: "subtract" })}
+              {formulaRow("Shipping charged", order.shippingRevenueCents)}
+              {formulaRow("Refunds (excluding tax)", order.refundCents, {
+                tone: "subtract",
+              })}
+              <div className="profit-drawer-total">
+                <dt>Net revenue</dt>
+                <dd>{money(order.netRevenueCents)}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section className="profit-drawer-section" aria-labelledby="profit-costs-title">
+            <h3 id="profit-costs-title">2. Costs applied</h3>
+            <dl className="profit-drawer-lines">
+              {formulaRow("Cost of goods", order.cogsCents, { tone: "subtract" })}
+              {formulaRow("Shipping cost", order.shippingCostCents, {
+                tone: "subtract",
+              })}
+              {formulaRow("Payment processing", order.paymentFeeCents, {
+                tone: "subtract",
+              })}
+              {formulaRow("Pick & pack", order.pickPackCents, {
+                tone: "subtract",
+              })}
+              {adSpendMeasured
+                ? formulaRow("Attributed ad spend", order.adCostCents, {
+                    tone: "subtract",
+                    note: "recorded source",
+                  })
+                : formulaRow("Paid marketing", 0, {
+                    note: "not included — no synced source",
+                  })}
+              <div className="profit-drawer-total">
+                <dt>Contribution profit</dt>
+                <dd>{money(order.contributionProfitCents)}</dd>
+              </div>
+              {formulaRow("Allocated overhead", order.overheadCents, {
+                tone: "subtract",
+              })}
+              <div className="profit-drawer-result">
+                <dt>
+                  <span>3. Profit {profitBasis}</span>
+                  <small>
+                    {order.marginPct === null
+                      ? "No margin where revenue is zero"
+                      : `${formatPercent(order.marginPct)} margin`}
+                  </small>
+                </dt>
+                <dd>{money(order.netProfitCents)}</dd>
+              </div>
+            </dl>
+          </section>
+
+          {(order.hasMissingCogs || order.usesModeledCosts) && (
+            <aside className="profit-drawer-caveat" aria-label="Cost confidence">
+              <strong>Cost confidence</strong>
+              {order.hasMissingCogs && (
+                <span>
+                  Shopify COGS is missing, so this profit can be overstated.
+                </span>
+              )}
+              {order.usesModeledCosts && (
+                <span>
+                  At least one fee, fulfilment cost, or overhead value is a
+                  configured model rather than a measured order cost.
+                </span>
+              )}
+            </aside>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+
+  return isMounted ? createPortal(drawer, document.body) : drawer;
+}
+
+export function OrdersView({ data }: { data: OrdersData }) {
   const [params] = useSearchParams();
+  const adSpendMeasured = data.adSpendCoverage.mode !== "unavailable";
+  const profitBasis =
+    data.adSpendCoverage.mode === "unavailable"
+      ? "before paid marketing"
+      : "after available costs";
+  const dailyProfitLabel = `Profit ${profitBasis}`;
+  const tableProfitLabel = `Profit ${profitBasis}`;
+  const tableMarginLabel = `Margin ${profitBasis}`;
+
+  const navigate = useNavigate();
 
   const linkWith = (patch: Record<string, string | null>) => {
     const next = new URLSearchParams(params);
@@ -183,60 +444,143 @@ export default function Orders() {
 
   return (
     <>
+      {(data.summary.missingCogsOrders > 0 ||
+        data.summary.modeledCostOrders > 0) && (
+        <Banner tone="warn">
+          {data.summary.missingCogsOrders > 0 && (
+            <>
+              {data.summary.missingCogsOrders.toLocaleString()} order
+              {data.summary.missingCogsOrders === 1 ? " has" : "s have"} missing
+              Shopify COGS, so those profit figures and rollups may be
+              overstated.{" "}
+            </>
+          )}
+          {data.summary.modeledCostOrders > 0 && (
+            <>
+              {data.summary.modeledCostOrders.toLocaleString()} order
+              {data.summary.modeledCostOrders === 1 ? " uses" : "s use"}{" "}
+              configured fee, fulfilment or overhead models; review records
+              acknowledgement but does not make them measured.
+            </>
+          )}
+        </Banner>
+      )}
       <div className="grid cols-4">
         <Tile
           tone="var(--viz-mint)"
           icon={<IconPricing />}
-          label="Profit per order"
-          value={<AnimatedMoney cents={data.summary.profitPerOrderCents} currency={data.currency} />}
+          label={`Profit per order ${profitBasis}`}
+          value={
+            <AnimatedMoney
+              cents={data.summary.profitPerOrderCents}
+              currency={data.currency}
+            />
+          }
           spark={data.spark}
-          meta={<Delta value={data.summary.profitPerOrderChange} />}
+          meta={
+            <>
+              <Delta value={data.summary.profitPerOrderChange} />
+              <span>{profitBasis}</span>
+            </>
+          }
         />
         <Tile
           tone="var(--viz-blue)"
           icon={<IconOrders />}
           label="Average order value"
-          value={<AnimatedMoney cents={data.summary.aovCents} currency={data.currency} />}
+          value={
+            <AnimatedMoney
+              cents={data.summary.aovCents}
+              currency={data.currency}
+            />
+          }
           meta={<Delta value={data.summary.aovChange} />}
         />
         <Tile
           tone="var(--viz-teal)"
           icon={<IconOverview />}
-          label="Net margin"
+          label={`Margin ${profitBasis}`}
           value={
-            data.summary.marginPct === null ? "—" : formatPercent(data.summary.marginPct)
+            data.summary.marginPct === null
+              ? "—"
+              : formatPercent(data.summary.marginPct)
           }
-          meta={<span>after every allocated cost</span>}
+          meta={
+            <span>
+              {data.adSpendCoverage.mode === "unavailable"
+                ? "paid marketing is not measured"
+                : "includes recorded spend only"}
+            </span>
+          }
         />
         <Tile
           tone="var(--viz-rose)"
           icon={<IconAlert />}
-          label="Orders losing money"
+          label={`Orders losing money ${profitBasis}`}
           value={<AnimatedInt value={data.summary.lossMakingCount} />}
           meta={
             <>
-              <span>{formatPercent(data.summary.lossMakingShare, 1)} of orders</span>
+              <span>
+                {formatPercent(data.summary.lossMakingShare, 1)} of orders
+              </span>
               <span className="muted">·</span>
-              <Money cents={data.summary.lossTotalCents} currency={data.currency} decimals={false} />
+              <Money
+                cents={data.summary.lossTotalCents}
+                currency={data.currency}
+                decimals={false}
+              />
+              <span>{profitBasis}</span>
             </>
           }
         />
       </div>
 
       <Card
-        title="Daily net profit"
-        hint="Includes each day's share of allocated ad spend and fixed overhead, so a quiet day can be genuinely negative."
+        title={`Daily profit ${profitBasis}`}
+        hint={
+          data.adSpendCoverage.mode === "unavailable"
+            ? "Includes fixed overhead but excludes paid marketing because no spend source has completed a sync."
+            : "Includes recorded ad spend and fixed overhead. Spend from unconnected sources remains excluded."
+        }
       >
-        <BarChart data={data.daily} label="Net profit" />
+        <BarChart data={data.daily} label={dailyProfitLabel} />
       </Card>
+
+      {data.field.numbers.length > 0 && (
+        <Card
+          title="Every order in the range"
+          hint="One mark per order; the solid marks lost money. Point at any mark to read it, click to open its receipt. The same engine and the same window as the table below."
+        >
+          <div className="order-field-layout">
+            <OrderField
+              numbers={data.field.numbers}
+              profits={data.field.profits}
+              focused={data.focusedOrder?.orderNumber ?? null}
+              onPick={(orderNumber) => {
+                navigate(linkWith({ order: String(orderNumber) }), {
+                  preventScrollReset: true,
+                });
+              }}
+            />
+            <p className="order-receipt-empty">
+              Pick an order from the field to open its step-by-step profit
+              math — revenue, each cost, and what the order kept.
+            </p>
+          </div>
+        </Card>
+      )}
 
       <Card
         title="Orders"
-        hint={`${data.total.toLocaleString()} orders in the last ${data.rangeLabel}. Showing ${
+        hint={`${data.total.toLocaleString()} ${data.total === 1 ? "order" : "orders"} in the last ${data.rangeLabel}. Showing ${
           data.orders.length === 0 ? 0 : (data.page - 1) * PAGE_SIZE + 1
         }–${((data.page - 1) * PAGE_SIZE + data.orders.length).toLocaleString()}${
           data.pageCount > 1 ? ` (page ${data.page} of ${data.pageCount})` : ""
-        }.`}
+        }.${
+          data.adSpendCoverage.mode === "unavailable"
+            ? " Profit and margin are before paid marketing; unavailable Ads cells show a dash."
+            : " Profit and margin are after available recorded and modeled costs; missing inputs and unconnected paid-marketing spend are excluded."
+        }`}
         actions={
           <>
             <div className="segmented">
@@ -274,7 +618,9 @@ export default function Orders() {
               style={{
                 fontWeight: data.channelFilter === channel ? 700 : 400,
                 color:
-                  data.channelFilter === channel ? "var(--ink-primary)" : undefined,
+                  data.channelFilter === channel
+                    ? "var(--ink-primary)"
+                    : undefined,
               }}
             >
               <span
@@ -299,10 +645,14 @@ export default function Orders() {
                   <th className="right">COGS</th>
                   <th className="right">Shipping</th>
                   <th className="right">Fees</th>
-                  <th className="right">Ads</th>
+                  <th className="right">
+                    {data.adSpendCoverage.mode === "connected"
+                      ? "Recorded ads"
+                      : "Ads"}
+                  </th>
                   <th className="right">Overhead</th>
-                  <th className="right">Profit</th>
-                  <th className="right">Margin</th>
+                  <th className="right">{tableProfitLabel}</th>
+                  <th className="right">{tableMarginLabel}</th>
                 </tr>
               </thead>
               <tbody>
@@ -314,7 +664,16 @@ export default function Orders() {
                         <>
                           <span
                             className="estimate-flag"
-                            title="Some costs on this order are estimates from your cost rules, not measured figures."
+                            title={[
+                              order.hasMissingCogs
+                                ? "Shopify COGS is missing"
+                                : null,
+                              order.usesModeledCosts
+                                ? "configured cost models are used"
+                                : null,
+                            ]
+                              .filter(Boolean)
+                              .join("; ")}
                           />
                           <span className="sr-only">
                             {" "}
@@ -323,10 +682,14 @@ export default function Orders() {
                         </>
                       )}
                       <div className="cell-sub">
-                        {new Date(order.processedAt).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                        })}
+                        {new Date(order.processedAt).toLocaleDateString(
+                          "en-US",
+                          {
+                            timeZone: data.timezone,
+                            month: "short",
+                            day: "numeric",
+                          },
+                        )}
                         {" · "}
                         {order.units} {order.units === 1 ? "item" : "items"}
                         {order.isFirstOrder && " · new customer"}
@@ -337,7 +700,10 @@ export default function Orders() {
                         <span
                           className="legend-swatch"
                           style={{
-                            background: seriesColor(order.channel, CHANNEL_ORDER),
+                            background: seriesColor(
+                              order.channel,
+                              CHANNEL_ORDER,
+                            ),
                           }}
                         />
                         <span className="tiny">
@@ -346,25 +712,50 @@ export default function Orders() {
                       </span>
                     </td>
                     <td className="right">
-                      <Money cents={order.netRevenueCents} currency={data.currency} />
+                      <Money
+                        cents={order.netRevenueCents}
+                        currency={data.currency}
+                      />
                     </td>
                     <td className="right muted">
-                      <Money cents={-order.cogsCents} currency={data.currency} />
+                      <Money
+                        cents={-order.cogsCents}
+                        currency={data.currency}
+                      />
                     </td>
                     <td className="right muted">
-                      <Money cents={-order.shippingCostCents} currency={data.currency} />
+                      <Money
+                        cents={-order.shippingCostCents}
+                        currency={data.currency}
+                      />
                     </td>
                     <td className="right muted">
-                      <Money cents={-order.feesCents} currency={data.currency} />
+                      <Money
+                        cents={-order.feesCents}
+                        currency={data.currency}
+                      />
                     </td>
                     <td className="right muted">
-                      <Money cents={-order.adCostCents} currency={data.currency} />
+                      {adSpendMeasured ? (
+                        <Money
+                          cents={-order.adCostCents}
+                          currency={data.currency}
+                        />
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td className="right muted">
-                      <Money cents={-order.overheadCents} currency={data.currency} />
+                      <Money
+                        cents={-order.overheadCents}
+                        currency={data.currency}
+                      />
                     </td>
                     <td className="right" style={{ fontWeight: 600 }}>
-                      <Money cents={order.netProfitCents} currency={data.currency} />
+                      <Money
+                        cents={order.netProfitCents}
+                        currency={data.currency}
+                      />
                     </td>
                     <td className="right">
                       {order.marginPct === null ? (
@@ -374,7 +765,9 @@ export default function Orders() {
                           {formatPercent(order.marginPct, 0)}
                         </Badge>
                       ) : (
-                        <span className="num">{formatPercent(order.marginPct, 0)}</span>
+                        <span className="num">
+                          {formatPercent(order.marginPct, 0)}
+                        </span>
                       )}
                     </td>
                   </tr>
@@ -401,7 +794,11 @@ export default function Orders() {
                 Previous
               </Link>
             ) : (
-              <span className="btn sm" aria-disabled="true" style={{ opacity: 0.45 }}>
+              <span
+                className="btn sm"
+                aria-disabled="true"
+                style={{ opacity: 0.45 }}
+              >
                 Previous
               </span>
             )}
@@ -417,13 +814,28 @@ export default function Orders() {
                 Next
               </Link>
             ) : (
-              <span className="btn sm" aria-disabled="true" style={{ opacity: 0.45 }}>
+              <span
+                className="btn sm"
+                aria-disabled="true"
+                style={{ opacity: 0.45 }}
+              >
                 Next
               </span>
             )}
           </div>
         )}
       </Card>
+
+      {data.focusedOrder && (
+        <ProfitBreakdownDrawer
+          order={data.focusedOrder}
+          currency={data.currency}
+          adSpendMeasured={adSpendMeasured}
+          profitBasis={profitBasis}
+          timeZone={data.timezone}
+          closeTo={linkWith({ order: null })}
+        />
+      )}
     </>
   );
 }

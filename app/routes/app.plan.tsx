@@ -4,7 +4,11 @@ import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 
 import { Badge, Banner, Money, Stat } from "~/design/components";
 import { requireShopContext } from "~/lib/auth.server";
-import { billingIsTest, resolvePlan } from "~/lib/plan.server";
+import {
+  billingIsTestForShop,
+  resolveBillingChargeMode,
+  resolvePlan,
+} from "~/lib/plan.server";
 import {
   annualKey,
   basePlanId,
@@ -25,6 +29,7 @@ import {
 export async function loader({ request }: LoaderFunctionArgs) {
   const ctx = await requireShopContext(request);
   const plan = await resolvePlan(ctx);
+  const isTest = billingIsTestForShop(ctx.shop);
 
   return {
     isDemo: plan.isDemo,
@@ -32,7 +37,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     status: plan.status,
     plans: Object.values(PLANS),
     /** Surfaced so a reviewer can see the charge is a test one, not a real bill. */
-    isTest: billingIsTest,
+    isTest,
   };
 }
 
@@ -57,13 +62,28 @@ export async function action({ request }: ActionFunctionArgs) {
     return { error: "That plan does not exist." };
   }
 
+  let isTest: boolean;
+  try {
+    isTest = await resolveBillingChargeMode(ctx);
+  } catch (error) {
+    console.error(
+      `[billing] could not verify store type for ${ctx.shop.domain}:`,
+      error,
+    );
+    return {
+      error:
+        "Could not verify whether this store can accept a real charge. " +
+        "No charge was created; retry in a moment.",
+    };
+  }
+
   const url = new URL(request.url);
 
   // Shopify sends the merchant back here after they approve or decline, so the
   // page they land on reflects the charge they just made.
   return ctx.billing.request({
     plan: requested as BillingKey,
-    isTest: billingIsTest,
+    isTest,
     returnUrl: `${url.origin}/app/plan?shop=${encodeURIComponent(ctx.shop.domain)}`,
   });
 }
@@ -103,8 +123,8 @@ export default function Plan() {
 
       {data.isTest && (
         <Banner>
-          Test mode: charges created from this build are Shopify test charges
-          and take no money.
+          Test mode: charges created for this development store are Shopify
+          test charges and take no money.
         </Banner>
       )}
 

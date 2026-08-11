@@ -81,7 +81,12 @@ export function BrandMark({
       {/* The wireframe globe. Rendered at its resting geometry, so if the
           animation never runs — no JS, reduced motion, a throttled tab — it is
           still exactly the logo rather than a half-finished frame. */}
-      <g stroke="currentColor" strokeWidth="2" opacity="0.8" strokeLinecap="round">
+      <g
+        stroke="currentColor"
+        strokeWidth="2"
+        opacity="0.8"
+        strokeLinecap="round"
+      >
         <circle cx="48" cy="48" r={GLOBE_R} />
         {MERIDIANS.map((m) => (
           <ellipse
@@ -205,7 +210,9 @@ export function Splash() {
     if (splashPlayed) return;
 
     // Reduced motion still sees the mark, just briefly and without movement.
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reduced = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
     const hold = reduced ? 420 : SPLASH_MS;
 
     const toFade = window.setTimeout(() => setLeaving(true), hold);
@@ -437,6 +444,13 @@ export const IconSettings = svg(
   </>,
 );
 
+export const IconPrivacy = svg(
+  <>
+    <path d="M12 2.5 20 6v5.5c0 4.7-3.2 8.3-8 10-4.8-1.7-8-5.3-8-10V6l8-3.5Z" />
+    <path d="M9 11.5 11 13.5 15.5 9" />
+  </>,
+);
+
 export const IconAlert = svg(
   <>
     <path d="M12 9v4.5M12 17h.01" />
@@ -561,7 +575,11 @@ export function Delta({
 
   return (
     <span className={`delta ${good ? "up" : "down"}`}>
-      {rising ? <IconArrowUp className="delta-icon" /> : <IconArrowDown className="delta-icon" />}
+      {rising ? (
+        <IconArrowUp className="delta-icon" />
+      ) : (
+        <IconArrowDown className="delta-icon" />
+      )}
       {/* The arrow glyph and the wash colour are the two visual channels, but
           both are invisible to a screen reader — the icons are aria-hidden and
           the figure is absolute-valued, so this announced a bare "12%" with no
@@ -621,7 +639,9 @@ export function Badge({
 }) {
   return (
     <span className={`badge ${tone}`}>
-      {dot && <span className="badge-dot" style={{ background: "currentColor" }} />}
+      {dot && (
+        <span className="badge-dot" style={{ background: "currentColor" }} />
+      )}
       {children}
     </span>
   );
@@ -638,7 +658,12 @@ export function Alert({
   children: ReactNode;
   daysUntil?: number | null;
 }) {
-  const tone = severity === "CRITICAL" ? "critical" : severity === "WARNING" ? "warning" : "info";
+  const tone =
+    severity === "CRITICAL"
+      ? "critical"
+      : severity === "WARNING"
+        ? "warning"
+        : "info";
   const Icon =
     severity === "INFO"
       ? IconInfo
@@ -758,7 +783,10 @@ export function UpgradeNotice({
         >
           {feature} is part of {planName}
         </h2>
-        <p className="secondary" style={{ margin: "0 0 18px", lineHeight: 1.65 }}>
+        <p
+          className="secondary"
+          style={{ margin: "0 0 18px", lineHeight: 1.65 }}
+        >
           {children}
         </p>
         <a className="btn primary" href="/app/plan">
@@ -823,8 +851,8 @@ export function LegalContact({
       <p className="legal-gap">
         Support contact is not configured on this deployment. Set{" "}
         <code>MERIDIAN_SUPPORT_EMAIL</code>, <code>MERIDIAN_LEGAL_ENTITY</code>{" "}
-        and optionally <code>MERIDIAN_SUPPORT_URL</code> before submitting to the
-        Shopify App Store — a reachable contact is a listing requirement.
+        and optionally <code>MERIDIAN_SUPPORT_URL</code> before submitting to
+        the Shopify App Store — a reachable contact is a listing requirement.
       </p>
     );
   }

@@ -1,12 +1,11 @@
 # Shopify App Store submission checklist
 
-Status of every requirement Shopify checks, as verified against the code and a
-running instance on 2026-08-05, and re-verified from a clean checkout on
-2026-08-06. Each verdict cites what was actually run or read, not what the code
-comments claim.
+Status of every requirement Shopify checks. The long audit trail below records
+what was run on 2026-08-05/06; this current snapshot was reconciled and verified
+again on 2026-08-10.
 
-Branch: `eevee/meridian-triage`. Nothing has been deployed, pushed or submitted,
-and the repo has no git remote configured.
+Canonical branch: `main`. Nothing has been deployed, pushed or submitted, and
+the repo has no git remote configured.
 
 **Read this first:** everything below was verified against a locally running
 server with **no Shopify API credentials**. The app has never been installed on
@@ -14,40 +13,60 @@ a real store, and no part of the OAuth, webhook-delivery or billing flow has
 been exercised against Shopify itself. Where a claim below says "verified", it
 means verified at the level stated — over HTTP, against the live database, or
 with credentials injected into the real route modules — and the level is named
-each time. See *What has not been tested* at the end.
+each time. See _What has not been tested_ at the end.
+
+**Current local gate:** `npm run ci` passes — typecheck, coverage thresholds,
+and production build — with 648 tests collected (619 passed, 29 opt-in
+PostgreSQL integration tests skipped). The explicit seven-file real-PostgreSQL
+run passes 29/29 after all 16 migrations apply from empty with zero schema drift.
+Billing is no longer merely declared:
+`resolvePlan`, the layout subscription redirect, the `planAllows`
+capability gates, the pricing-action re-check, and `billing.request` implement
+enforcement. None of that changes the central release fact above: the real
+Shopify billing flow has never run.
+
+**Current product-truth boundary:** plan prices are unchanged, but unenforced
+order-volume blurbs and the false location-specific capacity claim are removed.
+The current scopes do not include `read_customers`, so customer-lifecycle product
+classification remains dormant and is absent from public copy and routes. The
+release also has no ad-spend connector; public copy qualifies profit as the
+result of available recorded and modeled inputs rather than calling it complete,
+and the redesigned Acquisition route leads with order-derived revenue and
+contribution profit. Every listing screenshot still needs a fresh
+capture after the August 9–10 UI redraw, including the now-useful no-spend
+Acquisition view.
 
 ---
 
 ## Blockers — the app cannot be submitted until these are done
 
-### 1. `application_url` is still the CLI placeholder
+### 1. Production origin is still missing
 
 `shopify.app.toml` points at `https://shopify.dev/apps/default-app-home`. Every
-webhook `uri` in the file is relative and resolves against it, so **all four
-mandatory compliance and app-lifecycle webhooks currently resolve to a host
-Shopify cannot deliver to.** Shopify additionally rejects an `application_url`
+webhook `uri` in the file is relative and resolves against it, so **the three
+mandatory compliance webhooks and every other relative subscription currently
+resolve to a host Shopify cannot deliver to.** Shopify additionally rejects an `application_url`
 containing the word "Shopify".
 
 Needs a real, stable, public HTTPS origin, then `application_url` deployed with
-`shopify app deploy`. This is the one item everything else waits on.
+`shopify app deploy`. It blocks real OAuth and webhooks, while the name and
+access-request work can proceed in parallel.
 
-**`DEPLOY_PLAN.md` now carries the whole path**: Fly.io as the host and why a
-serverless one would silently truncate every store's first import, a `Dockerfile`
-and `fly.toml` written against this app's build output and route table, and the
-exact command sequence. Neither of those two files has been built — there is no
-Docker and no flyctl on this machine — so the first `fly deploy` is a debugging
-pass. The plan also corrects an instruction that would have failed at the last
-step: **`shopify app config push` does not exist** on `@shopify/cli` 4.x, and
-config reaches the Partner Dashboard through `shopify app deploy` instead, which
-works here because `include_config_on_deploy = true`. Nothing has been deployed
-and no credential has been read or written.
+**`DEPLOY_PLAN.md` carries the whole path**: Fly.io as the host and why a
+serverless one would silently truncate every store's first import, plus the
+locally validated `Dockerfile`, `.dockerignore`, and `fly.toml`. Docker CLI
+29.7.1 and flyctl 0.4.79 are installed; the image was built and booted locally,
+but flyctl is not authenticated, no Managed Postgres cluster or Fly app exists,
+and no production deploy has run. **`shopify app config push` does not exist**
+on CLI 4.x: after editing and validating the config, publish it with `shopify app
+deploy` (`include_config_on_deploy = true`).
 
 `redirect_urls` **is fixed** — it pointed at `/api/auth`, which is the Remix
 template's default and a route this app does not have, while `authPathPrefix`
 is `/auth`, so the real callback is `/auth/callback`. OAuth would have failed on
 the redirect. The host still tracks `application_url`.
 
-### 2. No Partner Dashboard configuration exists yet
+### 2. External decisions and Partner Dashboard work remain
 
 Independent of the code, submission needs the following, none of which can be
 done from this repo — each is written up with where it lives and what it needs in
@@ -58,7 +77,14 @@ done from this repo — each is written up with where it lives and what it needs
   app must be opted into **manual pricing**, not Shopify App Pricing. That is
   the non-default choice in the submission form as of 2026 and has to be made
   deliberately; requirement 1.2.1 permits it. See "Billing" below for the
-  reasoning, re-verified against live docs on 6 August 2026.
+  reasoning, re-verified against live docs on 6 August 2026. Each plan now has
+  monthly and annual Billing API intervals ($49/$490, $149/$1,490,
+  $399/$3,990), which the current blocked listing draft reflects. The draft is
+  still not paste-ready because the public name is unresolved.
+- The **public app name**. `Meridian` is only the working development identity;
+  a published Shopify app already uses it. Choose a distinctive,
+  non-confusable name before finalizing the Fly slug, logo, landing page,
+  listing copy, or screenshots.
 - A **Protected Customer Data** request approved. **This line used to say the
   request only mattered "if CAC/LTV/payback are to work (`read_customers`)" and
   that the app "degrades honestly without it". Both halves are wrong**, and the
@@ -88,38 +114,39 @@ done from this repo — each is written up with where it lives and what it needs
   policy). Requesting Level 1 and discovering the gap later costs another round
   of Shopify's clock.
 
-  The code side of this is now handled: an order import that is refused a field
-  drops that field and keeps going rather than aborting, so a reviewer
-  installing while the request is still pending gets a working dashboard with
-  the refused data missing instead of an empty one. See *The import's only
-  recovery path was switched off on every real store* below. That makes the
-  wait survivable; it does not remove the gate.
+  No query fallback makes a pending request usable: until Shopify approves
+  Protected Customer Data access, `read_orders` itself is unavailable and there
+  is no working orders dashboard to review. Field-level degradation only helps
+  after the essential order scope is approved and an optional field or scope is
+  absent; it does not soften this release gate.
+
 - A **`read_all_orders`** access request, or order history is capped at 60 days.
 - An **emergency developer contact** (email + phone) — a separate field from the
   support contact.
 
 ### 3. Listing assets are partially there
 
-| Item | State |
-|---|---|
-| App icon, 1200×1200 PNG | **Done** — `listing/app-icon-1200.png`, rendered from the in-app brand mark. No text, no Shopify marks, square. |
-| Screenshots, 1600×900, 3–6 desktop | **Done, five of six.** `fulfilment`, `pricing`, `products`, and `overview` + `orders` re-captured 2026-08-06 against a store with the invented ad spend cleared — Ad spend now reads `$0` with a dash, and the ADS column is `-$0.00` on every order. `acquisition` stays in `listing/screenshots-held/`: re-captured it is accurate and unshippable, four blank headline tiles over a channel table of dashes. Two above Shopify's floor of three, so the listing no longer depends on it. See *The listing was still selling the ad channels* below. |
-| Privacy policy URL | **Done** — `/privacy`, public and unauthenticated. |
-| Support page | **Done** — `/support`, public. |
-| Support email + legal entity | **Missing.** Environment-driven (`MERIDIAN_SUPPORT_EMAIL`, `MERIDIAN_LEGAL_ENTITY`, optional `MERIDIAN_SUPPORT_URL`). Both pages render a visible "not configured" notice until they are set — deliberately, because a reviewer emails whatever is on the page and a placeholder that bounces reads as an unsupported app. |
-| Listing copy — name ≤30 chars, intro ≤100, details ≤500, features ≤80 each | **Drafted** — `listing/copy.md`, paste-ready. Every field measured against its limit rather than estimated (the first details draft read as "about 500" and was 575). Every claim traced to the code that makes it true, and it claims nothing about ad performance — see the flag below. |
-| Feature media, 1600×900 or a 2–3 min video | **Missing.** |
-| Demo store URL for reviewers | **Missing.** |
-| Reviewer testing instructions (4.5.4 / 4.5.5) | **Drafted** — `listing/copy.md`, *Testing instructions for the reviewer*, paste-ready. This field was previously tracked nowhere: it carries no asset, so unlike the screencast and the feature media it never showed up as a missing file. Meridian has no login of its own, so 4.5.4 is answered by saying so explicitly rather than leaving it blank. Every claim in the block is cited to code. Three placeholders — demo store URL, storefront password, support email — resolve from items already in *Needs the owner* and are not new work. |
-| Screencast of the full setup process, English or English-subtitled | **Missing, and blocked on the owner.** An automatic bounce if absent. It has to show a real OAuth install through to a first dashboard view; the app has never been installed on any store, and it cannot be filmed against the demo bypass because that bypass is exactly what the recording exists to prove is not being used. Record it during the first real install rather than staging the flow twice. |
-| `extensions/` | Empty, and correctly so — Meridian ships no theme or checkout extension. |
+| Item                                                                       | State                                                                                                                                                                                                                                                                                                                                                                                                        |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| App icon, 1200×1200 PNG                                                    | File exists at `listing/app-icon-1200.png`; re-check it after the public name/brand decision.                                                                                                                                                                                                                                                                                                                |
+| Screenshots, 1600×900, 3–6 desktop                                         | **Stale.** Five files exist, but all predate the 2026-08-09/10 broadsheet and chart redraw. Re-shoot every listing screenshot from the final UI and the real review store.                                                                                                                                                                                                                                   |
+| Privacy policy URL                                                         | **Done** — `/privacy`, public and unauthenticated.                                                                                                                                                                                                                                                                                                                                                           |
+| Support page                                                               | **Done** — `/support`, public.                                                                                                                                                                                                                                                                                                                                                                               |
+| Meridian domain, publisher + support email                                 | **Missing.** They must belong to Meridian. The app pages show an explicit pre-launch configuration gap and the standalone legal drafts state that they are not effective until these facts are selected.                                                                                                                                     |
+| Listing copy — name ≤30 chars, intro ≤100, details ≤500, features ≤80 each | **Needs revision.** Annual pricing is current, but the public name is unresolved; replace it and re-measure every field. It correctly avoids ad-performance claims.                                                                                                                                                                                                                                          |
+| Feature media, 1600×900 or a 2–3 min video                                 | **Missing.**                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Demo store URL for reviewers                                               | **Missing.**                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Reviewer testing instructions (4.5.4 / 4.5.5)                              | **Drafted, not paste-ready.** Update the name, then fill the demo store URL, storefront password and Meridian support email. The block directs the reviewer to Growth monthly so Pricing and Fulfilment are reachable and explicitly identifies the customer/ad analyses unavailable in this release.                                                                                                         |
+| Screencast of the full setup process, English or English-subtitled         | **Missing, and blocked on the owner.** An automatic bounce if absent. It has to show a real OAuth install through to a first dashboard view; the app has never been installed on any store, and it cannot be filmed against the demo bypass because that bypass is exactly what the recording exists to prove is not being used. Record it during the first real install rather than staging the flow twice. |
+| `extensions/`                                                              | Empty, and correctly so — Meridian ships no theme or checkout extension.                                                                                                                                                                                                                                                                                                                                     |
 
-The one accuracy flag out of drafting the copy was recorded as **closed** on
-2026-08-06 and was not — the fix reached `plans.ts` and the Acquisition banner,
-and the listing media it was really about was never looked at. Reopened and now
-closed for real; see *The listing was still selling the ad channels* below. The
-sentence that used to sit here claimed nothing merchant-visible sold ad
-performance, which was the claim that stopped anyone checking.
+The prior ad-spend claim is closed: no merchant-visible listing or plan copy
+sells a live ad connector. The Scale cohort claim is removed without expanding
+access, and `read_customers` remains absent until separately approved and
+requested. Scale itself is not commercially closed: at $399/month its only
+incremental promise is priority support, but no support address, plan-aware
+routing or SLA is configured. Remove/reprice it or define and staff that promise
+before submission.
 
 ### 4. Performance work before a large merchant installs
 
@@ -127,26 +154,27 @@ Not a hard gate at submission, but Shopify samples Core Web Vitals through App
 Bridge at the 75th percentile over 28 days, and the thresholds are LCP ≤ 2.5s,
 CLS ≤ 0.1, INP ≤ 200ms.
 
-**Three of the four costs here are now fixed** — see *The dashboard did its most
-expensive work twice* and *The order query read eighteen columns nothing used*
-below. `loadDashboard` no longer builds a second complete analysis for the
-comparison window, `loadEngineOrders` no longer hydrates fulfilment rows to add
-them up in JavaScript, and it no longer reads whole `Order` and `OrderLineItem`
-rows when the engine uses thirteen columns of thirty-one and nine of thirteen.
+**The memory path is now bounded** — see _The dashboard did its most expensive
+work twice_ and _The order query read eighteen columns nothing used_ below.
+`loadDashboard` no longer builds current and comparison windows concurrently,
+the comparison uses a scalar-only path, `loadEngineOrders` no longer hydrates
+fulfilment rows or unused columns, and every heavy build shares one process-wide
+admission gate. An index-backed count refuses a window above 60,000 orders
+before hydration; whole-history recompute preflights and processes exact
+merchant-local months under that same bound.
 Measured on the seeded store (12,379 orders, 19,532 line items): the 30-day
 window went 108ms → 72ms and the 365-day window 400ms → 247ms, on both the
 reporting window and the comparison window built beside it.
 
-What remains: `loadEngineOrders` still returns every order in the window with no
-`take`, and the orders table's `PAGE_SIZE = 60` slices an already-materialised
-array, so the database work is identical on page 1 and page 40. It cannot simply
-take a `take` — the P&L, the ad attribution and the overhead proration are all
-period-wide, so a truncated set of orders yields a confidently wrong profit
-figure rather than a slow one.
+What remains: within an accepted window, `loadEngineOrders` still returns every
+order and the orders table's `PAGE_SIZE = 60` slices an already-materialised
+array, so the database work is identical on page 1 and page 40. A simple `take`
+would make P&L, ad attribution and overhead confidently wrong; supporting more
+than 60,000 orders in one selected window or local month requires a SQL roll-up.
 
-Closing it properly means computing the roll-up in SQL. Two things were
-established this session about what that costs, and both argue for doing it
-deliberately rather than before submission:
+Removing that supported-volume boundary means computing the roll-up in SQL.
+Two things were established about what that costs, and both argue for doing it
+with the existing real-database differential rather than as an unchecked patch:
 
 - **The prize is smaller than it looks.** Now that the projection has landed, a
   measured prototype of the comparison window — orders without line items, plus
@@ -157,16 +185,16 @@ deliberately rather than before submission:
   now demonstrated rather than argued.** The first prototype of that aggregate
   silently dropped 21 orders, because a `Date` bound into `$queryRaw` and
   compared against a `timestamp without time zone` column is rendered in the
-  *session* time zone — a four-hour shift on this machine, and one that follows
+  _session_ time zone — a four-hour shift on this machine, and one that follows
   DST. Chasing that down is what surfaced the real `firstOrderAt` defect fixed
   below. A roll-up would also have to reproduce `dayKey`'s `Intl` bucketing in
-  the *merchant's* zone for ad attribution and overhead, while the column is
+  the _merchant's_ zone for ad attribution and overhead, while the column is
   naive UTC and the session is a third zone. Three time zones in one statement
   is where the next silent divergence lives.
 
 One encouraging finding for whoever picks it up: `allocate` distributes overhead
 and ad spend by largest-remainder and sums to exactly its input, so the period
-*totals* are reproducible in SQL even though the per-order split is not. The
+_totals_ are reproducible in SQL even though the per-order split is not. The
 obstacle is the time bucketing, not the profit formula. It wants a
 live-database differential test asserting the SQL roll-up equals the engine's
 on real data, which is a session of its own.
@@ -178,14 +206,14 @@ on real data, which is a session of its own.
 ### The one submission field with no asset behind it: reviewer testing instructions
 
 `AUDIT-LIVE-REQUIREMENTS-2026-08-06.md` row #51 is the only line in its table
-marked *"UNKNOWN — not tracked anywhere in the baseline"*, and it was still
+marked _"UNKNOWN — not tracked anywhere in the baseline"_, and it was still
 untracked: a grep for `testing instruction`, `reviewer instruction`, `4.5.4` and
 `4.5.5` across `SUBMISSION.md`, `DEPLOY_PLAN.md`, `listing/copy.md` and
 `README.md` returned nothing at all.
 
 It stayed invisible because it is the one submission requirement with **no
 artefact attached**. The screencast, the feature media and the demo store are
-all missing *files* or *URLs*, so they appear in the listing table as gaps. The
+all missing _files_ or _URLs_, so they appear in the listing table as gaps. The
 testing instructions are a free-text box on the form, and a box nobody drafted
 looks the same as a box that does not exist.
 
@@ -195,15 +223,18 @@ route exists, and the only unauthenticated documents are `/privacy` and
 `/support` — so the correct answer is to state that the Shopify session is the
 only credential, not to leave the field empty, which reads as an omission.
 
-Drafted paste-ready in `listing/copy.md` under *Testing instructions for the
-reviewer*, in the same form as the rest of that file: a block to paste, then a
-table tracing every claim in it to the code that makes it true. Each citation
+Drafted in `listing/copy.md` under _Testing instructions for the reviewer_, in
+the same form as the rest of that file: a block to paste, then a table tracing
+every claim in it to the code that makes it true. It was paste-ready when this
+dated audit entry was written; the 2026-08-10 snapshot above supersedes that
+status because the final name and annual pricing still need to be reflected. Each citation
 was opened and checked rather than carried over — install-time scopes
 (`shopify.app.toml:59`), the three plan prices and `TRIAL_DAYS`
-(`app/lib/plans.ts`), `billingIsTest` (`plan.server.ts:101`) and where it is
-passed to `billing.request` (`app.plan.tsx:55-59`), the automatic import from
-`afterAuth` (`shopify.server.ts:156-163`), the six sidebar labels
-(`app.layout.tsx:109-114`), the four Settings cost rules
+(`app/lib/plans.ts`), the live `ShopPlan.partnerDevelopment` check
+(`plan.server.ts`), and where its result is passed to `billing.request`
+(`app.plan.tsx`), the automatic import from
+`afterAuth` (`shopify.server.ts`), the nine app-screen labels
+(`NAV` and `TITLES` in `app.layout.tsx`), the four Settings cost rules
 (`app.settings.tsx:234,260,278,302`), the "spend is never inferred" banner
 (`app.acquisition.tsx:217-219`) and the 60-day banner
 (`app.layout.tsx:178-188`).
@@ -220,14 +251,14 @@ Two things fell out of writing it:
   precisely to prove the real OAuth path works. Recorded in the draft so nobody
   adds it later as a convenience.
 
-The three placeholders in the block — demo store URL, storefront password,
-support email — all resolve from items already in *Needs the owner*; drafting
-this added no new owner work, and it means the field is written before the
-Partner Dashboard form is opened rather than typed into the box from memory.
+The three placeholders in the block — demo store URL, storefront password and
+Meridian support email — all resolve from items already in _Needs the owner_;
+drafting this added no new owner work, and it means the field is written before
+the Partner Dashboard form is opened rather than typed into the box from memory.
 
 ### Git state re-verified clean; `AUDIT-LIVE-REQUIREMENTS-2026-08-06.md`'s findings are already resolved
 
-A prior deputy's handoff flagged that a *later* run had hit
+A prior deputy's handoff flagged that a _later_ run had hit
 `isolated_worktree_reconciliation_required` — i.e. work stranded on an
 unmerged worktree/branch again, the recurring failure mode for this project.
 Re-checked from scratch this session: `git worktree list` shows exactly two
@@ -244,6 +275,7 @@ is exactly where the last verified handoff (`825a1dd`, then `29ad5ec`) left it.
 Separately, `AUDIT-LIVE-REQUIREMENTS-2026-08-06.md` (untracked, owner-visible
 audit notes, left in place) turns out to already be resolved on this branch for
 every finding checked against current code:
+
 - **N1's code-side mitigation** ("the import's only recovery path…", directly
   below) — done, commit `cdf940b`.
 - **N2** (privacy policy falsely claiming no shopper contact details are
@@ -255,10 +287,10 @@ every finding checked against current code:
 - **N6** (App Bridge absent on the root error document) — done, no dedicated
   commit found by message but present in code:
   `app/root.tsx`'s `errorDocumentApiKey()` handles exactly this case.
-Only genuinely new/unresolved findings from that audit are N3 (app name
-collision — a business decision, not a code fix) and N4 (Billing API vs App
-Pricing — a deliberate choice to make at submission, not a defect). Recorded
-here so the next deputy doesn't re-derive this.
+  Only genuinely new/unresolved findings from that audit are N3 (app name
+  collision — a business decision, not a code fix) and N4 (Billing API vs App
+  Pricing — a deliberate choice to make at submission, not a defect). Recorded
+  here so the next deputy doesn't re-derive this.
 
 ### `loadDashboard` — the loader every dashboard screen goes through — now has its own test
 
@@ -283,7 +315,7 @@ range.from.getTime()` instead of `range.from.getTime() - 1`), confirming the
 test failed, then reverting — `git diff` on that file is empty.
 
 Also re-confirmed while scoping this: known gap #7's other half,
-"none of [the six non-GDPR webhooks] has an HMAC-rejection test of its own,"
+"none of the non-GDPR webhooks has an HMAC-rejection test of its own,"
 is already stale — `app/routes/webhooks.hmac.test.ts` (commit `d075cc4`)
 covers exactly that. Text below corrected to match.
 
@@ -292,11 +324,10 @@ What's still genuinely untested: 20 of 21 route loaders remain uncovered
 `app.acquisition.tsx`, `app.pricing.tsx`, `app.settings.tsx`, `app.plan.tsx`,
 `app.layout.tsx`, `auth.*`, `home.tsx`, `legal.*`) — most are thin wrappers
 over `loadDashboard` or already-tested pieces, but none has a test asserting
-that wiring specifically. `loadEngineOrders` is also still unbounded (Blocker
-4) — deliberately not touched this pass; SUBMISSION.md already documents why a
-SQL roll-up is a session of its own (three time zones in one statement) rather
-than a quick fix, and this pass wasn't going to rush that with no live
-database to differential-test against.
+that wiring specifically. `loadEngineOrders` now refuses more than 60,000
+orders before hydration and whole-history recompute is merchant-month chunked;
+the remaining SQL roll-up is the path to lifting that supported-volume boundary,
+with a real-database differential already guarding the engine semantics.
 
 Baseline before this change: typecheck clean, vitest 348/348 in 29 files,
 `verify-data.ts` exit 0 twice, byte-identical
@@ -342,14 +373,15 @@ against the old code. `cdf940b`.
 No defect behind either of these — both paths were already right. What was
 missing was anything that would fail if they stopped being.
 
-**HMAC on the six webhooks that are not compliance topics.**
+**HMAC on the seven webhooks that are not compliance topics.**
 `webhooks.gdpr.test.ts` proves `customers/data_request`, `customers/redact` and
 `shop/redact` answer 401 to an unverified request, because that is the check
 Shopify's automated review runs. Nothing proved it for `orders`, `products`,
-`fulfillments`, `app/uninstalled`, `app_subscriptions/update` or
-`app/scopes_update` — and those are the ones that write the merchant's numbers.
+`fulfillments`, `app/uninstalled`, `app_subscriptions/update`,
+`app/scopes_update` or `shop/update` — and those are the ones that write the
+merchant's numbers or invalidate security-sensitive store state.
 An unverified `orders/create` reaching `syncOrderFromShopify` books revenue from
-a payload anyone on the internet can POST. All six go through `handleWebhook`,
+a payload anyone on the internet can POST. All seven go through `handleWebhook`,
 so they were covered by construction, which is exactly what a route that quietly
 stopped calling it would still satisfy.
 
@@ -388,7 +420,7 @@ this work, which it must be — nothing here touched a line of application code.
 
 `dailySeries` builds the daily buckets behind the Overview and Orders charts. It
 created them by adding a fixed 86,400,000ms to `range.from` and reading the
-*local calendar day* off each stamp. Those two things disagree the moment the
+_local calendar day_ off each stamp. Those two things disagree the moment the
 shop's zone changes offset inside the window: the stamps drift an hour against
 the local clock, and once the drift carries one across midnight a real calendar
 day gets no bucket. Every order placed that day then hit the `!bucket` branch
@@ -402,7 +434,7 @@ Measured, not reasoned about: a probe over all 24 hourly anchors across both
 2026 transitions reported `MISSING 2026-03-08` for exactly the anchor that put
 the stride within an hour of midnight, which is why it survived being read.
 
-The walk now steps one *calendar* day at a time, anchored on local midday —
+The walk now steps one _calendar_ day at a time, anchored on local midday —
 twelve hours of slack against a transition that moves an hour. `DailyPoint`
 carries the day it belongs to as a `key`, so buckets are no longer identified by
 an instant that has to be re-derived. A new `series.test.ts` asserts the emitted
@@ -411,7 +443,7 @@ both northern transitions and both southern ones.
 
 Separately, `app.orders.tsx` formatted those buckets with
 `toLocaleDateString` and no `timeZone`. That runs in the loader, so a bucket
-keyed in the shop's zone was captioned in the *server's* — off by a day for any
+keyed in the shop's zone was captioned in the _server's_ — off by a day for any
 store west of it. It now states the shop's zone.
 
 `verify-data.ts` is byte-identical: it does not build a series.
@@ -480,7 +512,7 @@ Known gap 7 from the previous session, closed. `writeCustomerAggregates` builds
 `ordersCount`, `lifetimeRevenue`, `lifetimeProfit` and `firstOrderAt` from only
 the orders the recompute loaded, then writes them under lifetime names. Bounded
 to a window those become window totals wearing a lifetime label, and
-`firstOrderAt` is dragged forward to the earliest order *in the window* —
+`firstOrderAt` is dragged forward to the earliest order _in the window_ —
 undoing what `reconcileFirstOrder` settles, on the same column whose time-zone
 handling was fixed the session before.
 
@@ -495,7 +527,7 @@ from the epoch.
 
 The fix below stopped `/app/plan` and the Acquisition screen selling ad-platform
 capability the app does not have, and this document then recorded the problem as
-closed: *"nothing merchant-visible sells ad spend, CAC or ROAS any more."*
+closed: _"nothing merchant-visible sells ad spend, CAC or ROAS any more."_
 
 The listing screenshots are checked into this repo and are more merchant-visible
 than any screen in the app — they are what someone reads while deciding whether
@@ -527,12 +559,12 @@ re-capture steps. `CAMPAIGNS` and per-order UTM attribution are untouched, so th
 demo still shows channel revenue and contribution profit — the capability Starter
 genuinely sells.
 
-`app/lib/listing.test.ts` carries the guard: the seed may not write `AdSpend`, no
-shipped screenshot may be byte-identical to a held original, `acquisition.png`
-stays held while there is no connector, the set stays within Shopify's three-to-six
-band, and this document may not carry the sentence that declared the flag closed.
-Verified to fail by reverting each in turn. Lift it with the guard in
-`plan.test.ts`, in the same change that ships a real connector.
+`app/lib/listing.test.ts` carries the current guard: the seed may not write
+`AdSpend`, no shipped screenshot may be byte-identical to a held original, the
+set stays within Shopify's three-to-six band, and public copy may not restore the
+unavailable analysis claims. The redesigned no-spend Acquisition route is now
+useful and may be freshly captured; only its old fabricated-spend bytes remain
+held as provenance.
 
 **Re-captured 2026-08-06.** `overview.png` and `orders.png` are shipped again and
 the set is at five. The blocker was two things and neither was the app: the
@@ -548,8 +580,9 @@ persisted per-order `adCostAttributed` and customer aggregates are rewritten fro
 the empty spend set. Result: 0 spend rows, 0 orders with non-zero ad cost, 12,379
 orders and 9,192 customers recomputed, unattributed ad spend $0.00.
 
-**Still open on the media:** `acquisition.png`, and it is now a product gap rather
-than an accuracy one. Feature media and the demo store URL are also still missing.
+**Current media state:** all screenshots predate the August 9–10 UI redraw and
+must be re-shot. Acquisition no longer depends on a connector to make a useful
+image. Feature media and the demo store URL are also still missing.
 
 ### The app sold ad channels it cannot connect
 
@@ -559,8 +592,8 @@ review while comparing the listing against a real install. Neither is true and
 neither can be made true at runtime: there is no ad-platform OAuth flow and no
 platform API client anywhere in the tree, `provision.server.ts:97` creates every
 connector `NOT_CONFIGURED` and nothing ever configures one, and the only writer of
-`AdSpend` in the repo is `prisma/seed.ts:949`. The seeded demo shows spend; every
-real store shows `$0.00` for the life of the install.
+`AdSpend` at the time was `prisma/seed.ts:949`. The old seeded demo showed spend;
+every real store showed `$0.00` for the life of the install.
 
 Underneath it, `FEATURE_MIN_PLAN.multiChannelAds` was a **gate with no call
 site** — `planAllows(plan, "multiChannelAds")` appears nowhere in the app, while
@@ -573,8 +606,9 @@ Fixed: both claims removed, the dead gate deleted. Starter now reads "Revenue an
 profit by channel", which needs no platform token — orders are attributed to a
 channel from their UTM parameters and referring site (`sync.server.ts:76-100`)
 and each channel carries real `netRevenueCents` and `contributionProfitCents`.
-Growth keeps its two genuine gates. **Prices, plan names and order caps are
-unchanged.**
+Growth keeps its two genuine gates. **Prices and plan names are unchanged. The
+copy-only order caps were subsequently removed because no runtime gate enforced
+them.**
 
 `plan.test.ts` now carries the guard instead of the intention: `no plan sells ad
 spend, CAC or ROAS` fails on any plan whose copy contains `ad channel`, `ad
@@ -582,12 +616,11 @@ spend`, `cac`, `roas` or `blended`, with a message naming the reason. It was
 verified to fail by putting the old Growth bullet back, then reverted. Lift it in
 the same change that ships a real connector, not before.
 
-The Acquisition screen already degraded honestly on zero spend — CAC and
-marketing efficiency render `—` rather than a misleading `0` — but gave no
-reason, while the missing-`read_customers` case on the same screen explains
-itself in full. It now carries a banner stating that no ad platform is connected,
-that spend is never inferred from orders, and that the channel revenue and profit
-below are measured from the merchant's own orders and are unaffected.
+The Acquisition screen was subsequently redesigned: when spend is absent it
+omits the spend-dependent tiles and leads with an order-derived table of channel,
+order count, net revenue and contribution profit. Separate banners explain the
+missing ad source and customer access, so absent inputs never become zeros and
+the screen remains useful on the scopes actually requested.
 
 Verified: 223 tests pass (was 221), typecheck clean, `npm run build` clean, and
 against a running dev server `/app/plan` renders the new bullets with no trace of
@@ -639,20 +672,20 @@ Every quote here was fetched from shopify.dev on 6 August 2026, not recalled.
 
 **The decision is unchanged: ship on the Billing API.** It remains expressly
 permitted for a new public app. Requirement 1.2.1 is titled "Use Shopify App
-Pricing or the Shopify Billing API", and reads: *"Apps that use off-platform
+Pricing or the Shopify Billing API", and reads: _"Apps that use off-platform
 billing cannot be distributed through the Shopify App store. Your app must use
-Shopify App Pricing or the Shopify Billing API for any app charges."* There is
+Shopify App Pricing or the Shopify Billing API for any app charges."_ There is
 no new-app carve-out in 1.2.x, and no published sunset date for the Billing
 API. As of today Shopify's own migration tooling is at phase one — plan
-preparation only; *"preparing plans in the tool doesn't migrate your existing
-shops or subscriptions"* — so the path that would move subscriptions has not
+preparation only; _"preparing plans in the tool doesn't migrate your existing
+shops or subscriptions"_ — so the path that would move subscriptions has not
 shipped.
 <https://shopify.dev/docs/apps/launch/shopify-app-store/app-store-requirements>,
 <https://shopify.dev/changelog/prepare-your-app-for-migration-to-shopify-app-pricing>
 
-**What was right.** *"After April 28, 2026, Shopify App Pricing no longer sends
+**What was right.** _"After April 28, 2026, Shopify App Pricing no longer sends
 webhooks for subscription changes. Use the Partner API and URL redirect
-parameters instead."* The `app_subscriptions/update` reasoning in
+parameters instead."_ The `app_subscriptions/update` reasoning in
 `plan.server.ts`, `shopify.app.toml` and `webhooks.app-subscriptions.tsx` is
 accurate. Note the removal applies only to the App Pricing path — the topic is
 still live for the Billing API, which is what this app is on.
@@ -660,14 +693,14 @@ still live for the Billing API, which is what this app is on.
 
 **What was wrong, and is corrected here.** The claim that the Partner API is
 "an organisation-level credential the app does not hold and cannot obtain from
-a merchant session" is a category error. It is *our own* Partner org's
+a merchant session" is a category error. It is _our own_ Partner org's
 credential, generated in our own dashboard and held as a backend secret:
-*"Access the Active Subscription and Historical Events APIs through the Partner
-API with Partner API credentials"*, where *"{org_id} is the organization ID
-shown in your Partner Dashboard URL"*. Nothing about it is merchant-granted.
+_"Access the Active Subscription and Historical Events APIs through the Partner
+API with Partner API credentials"_, where _"{org_id} is the organization ID
+shown in your Partner Dashboard URL"_. Nothing about it is merchant-granted.
 There is also a second mechanism the original reasoning missed entirely — the
-`plan_handle` URL redirect parameter, *"The plan that the merchant is subscribed
-to"*, delivered when a merchant selects or confirms a plan, which is readable
+`plan_handle` URL redirect parameter, _"The plan that the merchant is subscribed
+to"_, delivered when a merchant selects or confirms a plan, which is readable
 from an ordinary session. So App Pricing is not unreadable from a merchant
 session, and this repo should not claim it is: a reviewer can falsify that
 sentence in one page load.
@@ -675,42 +708,48 @@ sentence in one page load.
 
 **The honest reasoning, which is a cost argument and not an impossibility
 one.** App Pricing would require a second credential and a non-Admin-API
-dependency — *"Update code that uses the GraphQL Admin API to check
+dependency — _"Update code that uses the GraphQL Admin API to check
 subscription status, such as billing.check() or currentAppInstallation queries,
-to use the Partner API equivalents"* — plus redirect-parameter handling to
+to use the Partner API equivalents"_ — plus redirect-parameter handling to
 cover changes between polls, replacing a `billing.check` that reads from the
 same Admin session as everything else in the app. That is real work against a
 billing implementation that is finished, tested and gated, for no requirement
 gain. Not migrating.
 
 **The cost of the choice, stated plainly.** App Pricing is now Shopify's
-default: *"Shopify App Pricing is the default option when you submit a new
-public app for approval"*, and *"the default and recommended approach for all
-apps published on the Shopify App Store"*, with the Billing API described as
-*"still supported for existing apps and outlier pricing models Shopify App
-Pricing doesn't cover"*. Choosing manual pricing is therefore an explicit
+default: _"Shopify App Pricing is the default option when you submit a new
+public app for approval"_, and _"the default and recommended approach for all
+apps published on the Shopify App Store"_, with the Billing API described as
+_"still supported for existing apps and outlier pricing models Shopify App
+Pricing doesn't cover"_. Choosing manual pricing is therefore an explicit
 opt-out at submission and may draw a reviewer question. The answer to that
 question is 1.2.1, quoted above. Requirement **1.2.3** is the one that has to
 hold under manual pricing, because App Pricing would handle it for us — in-app
-upgrade *and* downgrade without contacting support or reinstalling. It is
+upgrade _and_ downgrade without contacting support or reinstalling. It is
 implemented and listed below.
 <https://shopify.dev/docs/apps/launch/billing>,
 <https://shopify.dev/docs/apps/launch/billing/manual-pricing>
 
-- `lib/plan.server.ts` resolves the plan from `billing.check`, caches it in the
-  `Subscription` row for ten minutes, and falls back to the stored row when
-  Shopify is unreachable rather than locking out a merchant who has paid.
-- Pricing and Fulfilment need Growth; cohort value and payback curves need
-  Scale. Capacity alerts no longer leak onto a Starter overview or the nav badge.
+- `lib/plan.server.ts` resolves the plan from `billing.check` and caches it in
+  `Subscription` for ten minutes. A routine transient check failure may use the
+  stored row; after `shop/update` invalidates the store-type signal, a failed
+  forced check returns no entitlement until Shopify re-verifies the matching
+  real/test subscription, so a converted store cannot retain a stale test plan.
+- Pricing and Fulfilment need Growth. Cohort value and payback are not a paid
+  entitlement: the requested scopes do not include their protected
+  `read_customers` prerequisite. Capacity alerts no longer leak onto a Starter
+  overview or the nav badge.
 - The pricing action re-checks the plan — a form post never goes through the
   loader, so a loader-only gate is decoration.
-- A store with no active charge is redirected to `/app/plan` from every route.
-- `/app/plan` does upgrade *and* downgrade in-app via `billing.request`, which
+- A store with no active charge is redirected to `/app/plan` from every analytic
+  and configuration route. `/app/plan` and the authenticated, shop-scoped
+  Privacy requests surface remain available without an active subscription.
+- `/app/plan` does upgrade _and_ downgrade in-app via `billing.request`, which
   requirement 1.2.3 asks for. The old copy said "change plans from the Shopify
   admin billing screen" and gave no link.
 
 Verified against the running app: forcing the demo to Starter shows upgrade
-notices on Pricing, Fulfilment and the Acquisition cohort section; forcing it to
+notices on Pricing and Fulfilment; forcing it to
 no plan redirects `/app`, `/app/orders` and `/app/settings` to `/app/plan` while
 `/app/plan` itself still renders 200.
 
@@ -737,16 +776,21 @@ remove cost, and removed cost reads as margin:
 - An 80-line wholesale order lost roughly 40% of its COGS.
 - Refund line items were truncated the same way, understating refunds.
 
-Now paginated. Only records that actually overflow cost a follow-up request.
+Order-side nested collections are paginated. Product webhooks are also treated
+as incomplete after Shopify's first 100 embedded variants: Meridian preserves
+`variant_gids` and hydrates the complete GraphQL variant connection, bounded at
+Shopify's 2,048-variant limit, before publishing catalog state.
 
 ### New SKUs showed 100% margin
 
-`products/create` and `products/update` never wrote `unitCost` — the payload does
-not carry it, cost lives on the InventoryItem, and only the install-time backfill
-ever read it. A SKU added after install topped the most-profitable list until
-someone happened to re-import. The webhook now makes a targeted follow-up query
-for variants lacking a measured cost, gated on `read_inventory` because asking
-for that field without the scope fails the whole query rather than nulling it.
+`products/create` and `products/update` do not carry InventoryItem unit cost.
+The complete-product hydration now reads inventory identity and unit cost when
+`read_inventory` is granted, and `inventory_items/update` keeps the cached cost
+current with a Shopify source timestamp so delayed older deliveries cannot
+regress it. More importantly, the order path hydrates every referenced variant
+and its current unit cost before the advisory-locked line-item snapshot. Old
+orders keep their historical COGS; a new order receives the newest available
+cost even if product or inventory webhooks arrive out of order.
 
 ### Pricing decisions were one-way and silent
 
@@ -769,14 +813,11 @@ nothing. Cancellations and carrier corrections never reached the row, and two
 shipments created in the same second collapsed into one, undercounting the
 shipped series `rebuildCapacityDays` is built from.
 
-Fulfilments now carry Shopify's own id (`shopifyId`, unique per shop, written by
-the backfill as well) and the sync upserts on it. The column is nullable so rows
-imported before it existed still load; the first update to one of those adopts
-it by timestamp rather than writing a second row beside it. Two consequences of
-the same fix: a cancelled fulfilment no longer keeps a `shippedAt`, and the
-order's `fulfillmentStatus` is derived from whether any fulfilment is still
-active instead of being stamped "fulfilled" unconditionally — an order whose
-only shipment was cancelled read as shipped forever.
+Fulfilments now carry Shopify's own id (`shopifyId`, unique per shop) and
+`shopifyUpdatedAt`. Sync rejects stale source events and commits the fulfilment
+plus derived order status under the order lock. A cancelled fulfilment no longer
+keeps a `shippedAt`, and the order is fulfilled only while at least one shipment
+remains active; a delayed pre-cancellation event cannot resurrect capacity.
 
 Verified against the live database on a scratch shop, then deleted: two
 same-second shipments produce two rows, the update lands as cancelled/FedEx with
@@ -786,7 +827,7 @@ new tests were run against the old code first — five fail there.
 
 ### A split shipment counted as several orders shipped
 
-The Fulfilment screen exists to warn a merchant *before* the warehouse falls
+The Fulfilment screen exists to warn a merchant _before_ the warehouse falls
 behind, and for any store that splits a shipment it could not. Backlog is
 cumulative orders received minus cumulative orders shipped, but received
 counted orders while shipped counted **fulfilment rows** — so an order sent in
@@ -804,7 +845,7 @@ Three defects on one path:
   cleared it for a cancelled shipment — one column, two writers, two meanings,
   so a shipment cancelled and re-made counted twice. Both now use
   `fulfillmentDidShip`, and `rebuildCapacityDays` filters on `shippedAt IS NOT
-  NULL` rather than writing a second definition of "shipped" in SQL.
+NULL` rather than writing a second definition of "shipped" in SQL.
 - **`fulfillments(first: 10)` truncated silently.** It is a plain list in the
   Admin API, not a connection, so there is no `hasNextPage` to follow — the
   documentation calls `first` a truncation. `fulfillmentsCount` now says how
@@ -864,27 +905,33 @@ nothing to answer it with. It also put a shopper's email and order history in th
 application log, which is not a place to keep personal data.
 
 Exports now land in a `DataRequest` row (migration `20260805210901`, applied) and
-appear in Settings → **Customer data requests**, one line per request with the
-customer, when it arrived, what it contains, and a Download JSON button; taking
-it stamps `collectedAt` so the audit trail records that the merchant actually
-had it. The upsert is keyed on Shopify's delivery id, so a retried webhook
+appear in **Privacy requests** as metadata only: every live uncollected
+obligation is shown without a cap, while collected audit history is paginated.
+The full report never enters the page loader. An explicit Download JSON click
+uses a dedicated authenticated, shop-scoped, expiry-checked, no-store resource;
+returning the attachment and stamping the immutable first `collectedAt` happen
+in one transaction. The upsert is keyed on Shopify's delivery id, so a retried webhook
 updates the single export rather than stacking copies of one shopper's data. An
 export is a second copy of that data, so two things bound it: it is deleted 31
-days after the request whether or not it was collected — purged on every read of
-the list, so nothing expired is ever offered — and `customers/redact` now deletes
-any export still held, including when the customer row has already gone.
-Erasure that leaves the export behind erases nothing. The log line is counts
-only. `/privacy` now describes what the code does.
+days after the request whether or not it was collected — swept at process start,
+hourly after that, and defensively before the Privacy requests list is read — and
+`customers/redact` deletes any export still held, including when the customer
+row has already gone.
+Erasure that leaves the export behind erases nothing. Customer redaction also
+clears landing URLs, UTM values and campaign strings from linked normalized
+orders and matching queued order payloads, using Shopify's stable customer id so
+a different customer sharing the email remains untouched. The log line is
+counts only. `/privacy` now describes what the code does.
 
-Twelve new tests plus five on the webhooks, the latter run against the old code
-first — all five fail there. Then driven end to end against real Postgres on a
-scratch shop: signed webhook → row stored with both orders and their line items,
-31-day window, a retried delivery still one row, collection stamped once and
-refused the second time, another shop unable to mark or see it, redaction
-deleting the export while the two orders survive anonymised, expiry sweeping an
-uncollected export at 32 days, and `shop/redact` cascading it away. Scratch shop
-deleted. The Settings surface itself was checked in the running app, not only in
-tests: the card renders the request and the collect POST flips it to Collected.
+The handoff is driven against real Postgres on a scratch shop: 31 outstanding
+rows all remain visible beside paginated collected history, route metadata
+contains no report, collection stamps once and does not move on a second
+download, and expired or foreign-shop ids return nothing. Redaction clears
+identity-adjacent attribution from one stable customer while preserving a
+different customer with the same email. Malformed mandatory customer requests
+now throw from their processor, remain unprocessed with their minimized payload,
+and retry instead of being irreversibly acknowledged. Scratch data is deleted
+after the run.
 
 ### The dashboard did its most expensive work twice
 
@@ -952,16 +999,16 @@ output before the change.
 
 `writeCustomerAggregates` wrote `Customer.firstOrderAt` through a raw statement
 casting a bound `Date` straight to `::timestamp`. Postgres renders a bound
-instant in the *session* time zone before that cast, and the cast then discards
+instant in the _session_ time zone before that cast, and the cast then discards
 the offset — so the stored value was shifted by whatever `TimeZone` the
 connection had. Proved against the live database inside a rolled-back
 transaction, writing one known instant three ways:
 
-| Instant | Prisma ORM | `::timestamp` | `::timestamptz AT TIME ZONE 'UTC'` |
-|---|---|---|---|
-| 2026-03-01T02:30Z | 0h | **−5h** | 0h |
-| 2026-03-15T02:30Z | 0h | **−4h** | 0h |
-| 2026-08-03T23:53Z | 0h | **−4h** | 0h |
+| Instant           | Prisma ORM | `::timestamp` | `::timestamptz AT TIME ZONE 'UTC'` |
+| ----------------- | ---------- | ------------- | ---------------------------------- |
+| 2026-03-01T02:30Z | 0h         | **−5h**       | 0h                                 |
+| 2026-03-15T02:30Z | 0h         | **−4h**       | 0h                                 |
+| 2026-08-03T23:53Z | 0h         | **−4h**       | 0h                                 |
 
 Not a constant error: the offset follows DST, so two orders either side of a
 transition move by different amounts and no single correction undoes it.
@@ -982,14 +1029,14 @@ against the old cast.
 
 ### Every returning customer counted as an acquisition
 
-CAC, LTV:CAC, payback, each channel's verdict and every product's loss-leader
-label all rest on one fact — which order was the customer's first. Three places
+CAC, LTV:CAC, payback, each channel's verdict and every customer-lifecycle
+product label all rest on one fact — which order was the customer's first. Three places
 needed it and all three inferred it from position inside the loaded window
 rather than reading `Order.isFirstOrder`, the column `reconcileFirstOrder` and
 `reconcileFirstOrdersForShop` exist to keep honest, and which `loadEngineOrders`
 was already selecting onto every `EngineOrder`.
 
-Journeys are built from the orders loaded *for* the reporting window, so a
+Journeys are built from the orders loaded _for_ the reporting window, so a
 customer acquired two years ago who reorders this month has their earliest
 visible order read as an acquisition. `computeChannelPerformance` carried a
 filter meant to prevent precisely that:
@@ -997,7 +1044,7 @@ filter meant to prevent precisely that:
 ```ts
 // Only customers actually acquired inside the window — mixing in customers
 // acquired earlier would deflate CAC.
-j.acquiredAt >= options.periodStart && j.acquiredAt <= options.periodEnd
+j.acquiredAt >= options.periodStart && j.acquiredAt <= options.periodEnd;
 ```
 
 It cannot work. Every journey's `acquiredAt` is inside the window by
@@ -1007,11 +1054,11 @@ guard that was a no-op.
 Measured against the demo database, on the range the dashboard actually
 defaults to:
 
-| Window | Customers seen | Counted as new | Actually new | Facebook CAC shown | True |
-|---|---|---|---|---|---|
-| 30 days (default) | 2,951 | 2,951 | 2,068 | $53.87 | **$62.24** |
-| 7 days | 724 | 724 | 450 | $53.55 | **$67.78** |
-| 6 months (`verify-data`) | 9,192 | 9,192 | 9,192 | $67.13 | $67.13 |
+| Window                   | Customers seen | Counted as new | Actually new | Facebook CAC shown | True       |
+| ------------------------ | -------------- | -------------- | ------------ | ------------------ | ---------- |
+| 30 days (default)        | 2,951          | 2,951          | 2,068        | $53.87             | **$62.24** |
+| 7 days                   | 724            | 724            | 450          | $53.55             | **$67.78** |
+| 6 months (`verify-data`) | 9,192          | 9,192          | 9,192        | $67.13             | $67.13     |
 
 CAC is the denominator of LTV:CAC and the bar payback is measured against, so
 one deflated number flatters three at once and can carry a channel's verdict
@@ -1045,42 +1092,43 @@ the bug, and why the third row of that table matches.
   `afterAuth`, so a later grant or revocation left it stale forever — and the
   import gates its GraphQL fields on that record, where stale-permissive fails
   the whole query.
-- `@@unique([orderId, shopifyId])` on `OrderLineItem`. Line items are deleted
-  and recreated outside a transaction, so two concurrent deliveries of one order
-  could interleave into duplicates and double that order's COGS and units.
-  Checked for existing duplicates first: none.
+- `@@unique([orderId, shopifyId])` on `OrderLineItem` remains a database
+  invariant. The order header, customer association, line items, refund
+  economics and Shopify source watermark now commit under one advisory-locked
+  transaction; a delayed older delivery or backfill snapshot cannot overwrite a
+  newer event or interleave mixed header/child state.
 - `/privacy` and `/support` added, public and unauthenticated.
 
 ---
 
 ## Verified working
 
-| Requirement | Verdict | Evidence |
-|---|---|---|
-| OAuth via token exchange + managed install | Done | `AppDistribution.AppStore` selects `createTokenExchangeStrategy`; no legacy install flag in the toml |
-| Expiring offline access tokens | **Fixed** | `future.expiringOfflineAccessTokens` on; `Session` carries the refresh columns |
-| Session persistence | **Fixed** | Was failing outright; see above |
-| Embedded app, session-token auth | Done | `isEmbeddedApp: true`, bearer-token detection in `app/lib/auth.server.ts` |
-| App Bridge first script in `<head>` | **Fixed** | Script index 0, preceded by the api-key meta tag — checked in a rendered document |
-| Auth callback route | Done | `authPathPrefix: "/auth"` + splat route; `redirect_urls` path corrected |
-| `customers/data_request` | **Fixed** | HMAC-verified; 200 signed, 401 unsigned, 401 tampered, 405 on GET. The export is now stored and collectable from Settings, expires after 31 days, and is verified end to end against Postgres |
-| `customers/redact` | Done | Same; anonymises orders in place rather than deleting them, and deletes any held data export |
-| `shop/redact` | Done | Same; purges sessions and cascades the shop delete |
-| Unverified webhook returns 401 | Done | 401 on every one of the nine endpoints, and now guarded by tests on all nine rather than by a check someone ran once — forged signature, signature from the wrong secret, absent header, empty header, each asserting no write happened, plus a positive control. The single most-failed automated check |
-| Webhook idempotency | Done | `X-Shopify-Webhook-Id` claimed before handling; a replayed delivery returns 200 and writes nothing |
-| `app/uninstalled` cleanup | Done | Deletes sessions, stamps `uninstalledAt` |
-| `app/scopes_update` | **Added** | Keeps `grantedScopes` honest under managed installation |
-| Reinstall re-imports | Done | Reinstall used to leave `syncStatus = COMPLETE`, skipping the backfill |
-| Billing: one model, enforced | **Fixed** | Billing API; `billing.check` gating; in-app upgrade *and* downgrade |
-| Read-only scopes | Done | `read_orders read_products read_fulfillments read_inventory`; no write scope; accepted price changes are recorded, never pushed |
-| GraphQL Admin API only | Done | No REST calls anywhere; new public apps may not use REST |
-| Webhook API version | Done | `2026-07`, matching `@shopify/shopify-api` 13.1.0 |
-| Production build | Done | `npm run build` clean |
-| Test suite | Done | **348 tests, 29 files, all passing** (verified 2026-08-06 17:29 on the merged branch, `npx vitest run`) |
-| Engine output unchanged by the query work | Done | `npx tsx scripts/verify-data.ts` against live Postgres, diffed byte-for-byte against its output before the change |
-| Typecheck | Done | Clean |
-| Config validity | Done | `shopify app config validate` passes |
-| Every route renders | Done | 12 routes served 200 from a running server, with real computed figures. Re-checked on the merged branch 2026-08-06 17:32: `/app`, `/app/orders`, `/app/products`, `/app/acquisition`, `/app/fulfilment`, `/app/settings`, `/app/plan`, `/privacy` and `/support` all 200 with content, `/` 302 as designed — the orders screen and the fulfilment figures specifically, since the DST and day-boundary fixes land under both |
+| Requirement                                | Verdict   | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------ | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OAuth via token exchange + managed install | Done      | `AppDistribution.AppStore` selects `createTokenExchangeStrategy`; no legacy install flag in the toml                                                                                                                                                                                                                                                                                                                         |
+| Expiring offline access tokens             | **Fixed** | `future.expiringOfflineAccessTokens` on; `Session` carries the refresh columns                                                                                                                                                                                                                                                                                                                                               |
+| Session persistence                        | **Fixed** | Was failing outright; see above                                                                                                                                                                                                                                                                                                                                                                                              |
+| Embedded app, session-token auth           | Done      | `isEmbeddedApp: true`, bearer-token detection in `app/lib/auth.server.ts`                                                                                                                                                                                                                                                                                                                                                    |
+| App Bridge first script in `<head>`        | **Fixed** | Script index 0, preceded by the api-key meta tag — checked in a rendered document                                                                                                                                                                                                                                                                                                                                            |
+| Auth callback route                        | Done      | `authPathPrefix: "/auth"` + splat route; `redirect_urls` path corrected                                                                                                                                                                                                                                                                                                                                                      |
+| `customers/data_request`                   | **Fixed** | HMAC-verified; 200 signed, 401 unsigned, 401 tampered, 405 on GET. The export is stored for 31 days, the page receives metadata only, every outstanding request is visible, and the authenticated shop-scoped download stamps collection atomically; verified against Postgres                                                                                                                                               |
+| `customers/redact`                         | Done      | Same; anonymises orders in place rather than deleting them, deletes held exports, and clears linked attribution strings and matching queued URLs without crossing stable customer ids                                                                                                                                                                                                                                        |
+| `shop/redact`                              | Done      | Same; purges sessions and cascades the shop delete                                                                                                                                                                                                                                                                                                                                                                           |
+| Unverified webhook returns 401             | Done      | 401 on all 11 webhook routes: eight ordinary routes plus three mandatory compliance routes. Tests cover forged signatures, the wrong secret, absent/empty headers, no-write behavior and signed positive controls.                                                                                                                                                                                                       |
+| Webhook idempotency                        | Done      | `X-Shopify-Webhook-Id` claimed before handling; a replayed delivery returns 200 and writes nothing                                                                                                                                                                                                                                                                                                                           |
+| `app/uninstalled` cleanup                  | Done      | Deletes sessions, stamps `uninstalledAt`                                                                                                                                                                                                                                                                                                                                                                                     |
+| `app/scopes_update`                        | **Added** | Keeps `grantedScopes` honest under managed installation                                                                                                                                                                                                                                                                                                                                                                      |
+| Reinstall re-imports                       | Done      | Reinstall used to leave `syncStatus = COMPLETE`, skipping the backfill                                                                                                                                                                                                                                                                                                                                                       |
+| Billing: one model, enforced               | **Fixed** | Billing API; `billing.check` gating; in-app upgrade _and_ downgrade                                                                                                                                                                                                                                                                                                                                                          |
+| Read-only scopes                           | Done      | `read_orders,read_products,read_fulfillments,read_inventory`; no write scope; accepted price changes are recorded, never pushed                                                                                                                                                                                                                                                                                              |
+| GraphQL Admin API only                     | Done      | No REST calls anywhere; new public apps may not use REST                                                                                                                                                                                                                                                                                                                                                                     |
+| Webhook API version                        | Done      | `2026-07`, matching `@shopify/shopify-api` 13.1.0                                                                                                                                                                                                                                                                                                                                                                            |
+| Production build                           | Done      | `npm run ci` production build clean on 2026-08-10                                                                                                                                                                                                                                                                                                                                                                            |
+| Test suite                                 | Done      | **648 collected: 619 passed, 29 opt-in PostgreSQL integration tests skipped; explicit real-PostgreSQL suite 29/29 across seven files** (verified 2026-08-10)                                                                                                                                                                                                                                                                |
+| Engine output unchanged by the query work  | Done      | `npx tsx scripts/verify-data.ts` against live Postgres, diffed byte-for-byte against its output before the change                                                                                                                                                                                                                                                                                                            |
+| Typecheck                                  | Done      | Clean in `npm run ci` on 2026-08-10                                                                                                                                                                                                                                                                                                                                                                                          |
+| Config validity                            | Done      | `shopify app config validate` passes on 2026-08-10; CLI 4.x publishes config through `shopify app deploy`, not the removed `config push` command                                                                                                                                                                                                                                                                             |
+| Every current content route renders        | Done      | Browser-checked on 2026-08-10 in a running demo-mode server: all 11 content routes rendered without an error overlay — `/app`, `/app/orders`, `/app/products`, `/app/acquisition`, `/app/pricing`, `/app/fulfilment`, `/app/settings`, `/app/privacy-requests`, `/app/plan`, `/privacy`, `/support`. The public landing bundle also revealed all 18 below-fold regions under real scroll and exposed all content with reduced motion. `/` remains an auth redirect by design; this does not prove real Shopify OAuth. |
 
 The webhook rows are verified at handler level: the running dev server has no
 Shopify credentials, so over plain HTTP every webhook endpoint answers 503
@@ -1094,81 +1142,54 @@ thrown from the same function that throws the 401.
 
 ## Known gaps that are not blockers, in rough priority order
 
-1. **`loadEngineOrders` is still unbounded**, and the orders table still pages a
-   materialised array. The duplicated comparison-window build, the fulfilment
-   row hydration and the whole-row read are all fixed; see Blocker 4 for the
-   measured cost of the remaining piece (~36ms a page load) and for why it needs
-   a deliberate SQL roll-up with a live-database differential test rather than a
-   `take`.
+1. **One selected analytics window or merchant-local recompute month is limited
+   to 60,000 orders**, and the orders table still pages a materialised accepted
+   window. The count guard, process-wide admission, sequential comparison path
+   and month-sliced recompute prevent partial answers and OOMs; a SQL roll-up is
+   required to lift the supported-volume boundary rather than hiding it behind
+   a `take`.
 2. **Order-level stored profit is a write-only cache.** `recompute` writes
    `Order.netProfit`, but every dashboard figure is recomputed on the fly and
    nothing reads it back except `contributionProfit` for cohort LTV.
-3. **Ad platform connectors are not wired to live OAuth.** Modelled and
-   encrypted end to end, but Facebook/Google/TikTok have no OAuth flow, so on a
-   real store the acquisition screen shows organic and direct traffic with zero
-   spend. **No longer a listing risk** — nothing merchant-visible sells ad spend,
-   CAC or ROAS any more, the screen says plainly why those figures are blank, and
+3. **Ad platform connectors are not wired to live OAuth.** The connector and
+   encrypted-token storage models exist, but Facebook/Google/TikTok have no
+   OAuth flow or platform client, so a real store has no paid-spend data.
+   **No longer a false listing claim** — nothing
+   merchant-visible sells ad spend, CAC or ROAS any more, the screen says plainly
+   why those figures are unavailable, and
    a test fails if the claim returns. It is now a missing feature rather than a
-   false promise, which is a gap Shopify does not bounce a submission for. The
-   wiring that *did* exist is now consistent: every provider in the enum gets a
+   false promise. The screen still reports order-derived channel revenue and
+   contribution profit, and discloses that historical imports without customer
+   access fall back to Direct. The
+   wiring that _did_ exist is now consistent: every provider in the enum gets a
    connector row at install, so the Settings screen shows all three ad platforms
    sitting at "Not configured" rather than omitting TikTok entirely.
-4. **Backfill and recompute run in-process.** Correct on a long-lived server,
-   wrong on serverless where the process may not outlive the response. Both
-   belong in a job queue before deploying there.
+4. **Backfill and recompute run in-process.** Backfill now uses a database lease,
+   heartbeat, owner-fenced writes and cursor-preserving takeover, so a Fly
+   restart is recoverable; recompute preflights and processes one merchant-local
+   month at a time. A serverless host would still need a durable job queue.
 5. **The demo auth bypass ships in the production bundle.** Guarded by a
    boot-time throw when `NODE_ENV=production` and by Shopify-signal detection,
    which is solid, but the whole guard depends on `NODE_ENV` being set correctly
    at deploy. A reviewer reading the source will pause here.
-6. **The local `.env` still lists withdrawn scopes.** It reads
-   `read_customers,read_reports,read_analytics` alongside the real four.
-    `.env.example` and the toml were corrected, but the file the dev server
-    actually reads was not — and `capabilitiesForShop` falls back to
-    `process.env.SCOPES`, so this instance claims CAC/LTV capability it does not
-    have. Untouched here because it is a gitignored local credentials file.
-7. **Route loaders are still mostly untested — narrower than it was.** The six
-   non-GDPR webhook *actions* now have their own HMAC-rejection tests
-   (`app/routes/webhooks.hmac.test.ts` — real HMAC verification against every
-   route module, per-route write assertions, plus the answer-before-work and
-   replay-suppression behaviour). `loadDashboard` — the loader every dashboard
-   screen goes through, which builds the comparison window — now has its own
-   test too (`app/lib/route-data.test.ts`, 12 cases): the previous-period
-   window tiles the current one with no gap and no overlap and is the same
-   length, `isDemo` is threaded through to `anchorToData` rather than fixed,
-   `resolvePlan`/`loadShopAnalytics`/`loadPeriodProfit` are called with the
-   right arguments, and the demo shop gets every capability regardless of
-   `grantedScopes`. Checked each assertion actually bites by breaking the
-   previous-period arithmetic and confirming the test failed, then reverted.
-   What's still untested: the other 20 route loaders (`app.orders.tsx`,
-   `app.products.tsx`, `app.fulfilment.tsx`, `app.acquisition.tsx`,
-   `app.pricing.tsx`, `app.settings.tsx`, `app.plan.tsx`, `app.layout.tsx`,
-   `auth.*`, `home.tsx`, `legal.*`) have no dedicated test, though most are thin
-   wrappers over already-tested loaders. The layer below them is now covered:
-   `series.ts`, `provision.server.ts` and `rebuildCapacityDays` all gained
-   their first tests this session, and each one had a real defect in it.
-8. **The chart components format dates in the browser's zone.**
-   `app/design/charts.tsx` renders `point.date` with `toLocaleDateString` and no
-   `timeZone`, client-side, so a merchant travelling — or simply a laptop set to
-   a different zone from the store — reads axis labels that can sit a day off
-   the buckets behind them. The loader-side instance of this is fixed and
-   `DailyPoint` now carries an unambiguous `key`; threading the shop's zone
-   through to the components is the remaining half.
-9. **`CapacityDay.staffedHours` and `maxDailyCapacity` are written by the seed
-   and zeroed by the rebuild.** `rebuildCapacityDays` has no source for staffed
-   hours and writes `"0"`, and it recomputes the ceiling from observed
-   throughput. On the demo store the seeded values (16/40 hours, ceiling 95)
-   differ from what a rebuild produces (0, ceiling 102), so a re-import would
-   quietly change the Fulfilment screen. Harmless on a real store, which never
-   had staffed hours to lose, but the demo and the product disagree.
+6. **Browser-level platform E2E is still missing.** Server-rendered route tests
+   now cover Overview, Orders, Products, Acquisition, Pricing, Settings, Plan,
+   Layout and both Privacy-request routes; chart labels have explicit timezone
+   and one-point regressions. Fulfilment, auth/home and legal wrappers still lack
+   dedicated route tests, and no automated test can substitute for the first
+   Shopify OAuth, webhook, billing and historical-import run described below.
 
 ---
 
 ## What has not been tested
 
-No part of this has run against Shopify. There are no API credentials on this
-machine — `.env` has no `SHOPIFY_API_KEY` or `SHOPIFY_API_SECRET`, and the
-server was started with `npm run dev` rather than `shopify app dev`. So none of
-the following has been exercised even once:
+No app flow has run against Shopify. The CLI is linked to the development app,
+but a 2026-08-10 `shopify app dev` attempt stopped during preview preparation:
+Shopify rejected every protected-customer-data webhook subscription because the
+app is not approved for that data. The failed preview was cleaned and the active
+app version restored. Every application-server check therefore still uses local
+or scripted state rather than a completed install. None of the following has
+been exercised even once:
 
 - A real OAuth install, or the token exchange that the session fix repairs.
 - Real webhook delivery from Shopify, with Shopify's own HMAC.

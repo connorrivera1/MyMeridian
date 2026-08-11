@@ -3,19 +3,127 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Meridian — qualified profit from available Shopify inputs</title>
-<meta name="description" content="Qualified order and product profit from recorded and modelled costs, with missing inputs and unavailable ad spend disclosed." />
-<meta property="og:title" content="Meridian — qualified profit from available Shopify inputs" />
-<meta property="og:description" content="Shopify reports gross sales. Meridian shows what remains from the inputs it actually has." />
-<meta property="og:image" content="assets/overview-top2.jpg" />
-<meta name="theme-color" content="#10142a" />
+<title>Meridian — see what your Shopify store actually keeps</title>
+<meta name="description" content="Shopify tells you what you sold. Meridian resolves orders, product costs, fulfilment, fees and overhead into what you kept — and shows every modelled or missing input instead of hiding it." />
+<meta property="og:title" content="Meridian — see what your Shopify store actually keeps" />
+<meta property="og:description" content="Shopify tells you what you sold. Meridian tells you what you kept." />
+<meta property="og:image" content="assets/overview-hero.jpg" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="theme-color" content="#ffffff" />
 <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+<link rel="preload" as="font" type="font/woff2" href="fonts/SpaceGrotesk-Variable.woff2" crossorigin />
+<link rel="preload" as="font" type="font/woff2" href="fonts/PlusJakartaSans-Variable.woff2" crossorigin />
+<link rel="preload" as="image" href="assets/overview-hero.jpg" />
 <link rel="stylesheet" href="landing.css" />
-<script>document.documentElement.classList.add("js");</script>
+<script>
+/*
+ * Theme, resolved before the first paint.
+ *
+ * Reading localStorage and stamping <html> here — rather than on DOMContentLoaded —
+ * is the whole trick: any later and the browser paints the default theme first
+ * and the reader sees a white flash on the way into dark mode.
+ */
+document.documentElement.classList.add("js");
+(function () {
+  var saved = null;
+  try { saved = localStorage.getItem("meridian-theme"); } catch (e) {}
+  var dark = saved ? saved === "dark"
+                   : window.matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+})();
+</script>
 </head>
 <body>
 
-<div class="sky-fallback" aria-hidden="true"></div>
+<!-- One four-point path, referenced by every sparkle on the page. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <g id="fg-art">
+    <circle class="fg-ring" cx="600.0" cy="54.0" r="31" />
+  <circle class="fg-ring-2" cx="600.0" cy="54.0" r="21" />
+  <circle class="fg-dot" cx="600.0" cy="54.0" r="4.2" />
+  <line class="fg-tick" x1="622.31" y1="56.94" x2="629.74" y2="57.92" />
+  <line class="fg-tick" x1="620.79" y1="62.61" x2="627.72" y2="65.48" />
+  <line class="fg-tick" x1="617.85" y1="67.70" x2="623.80" y2="72.26" />
+  <line class="fg-tick" x1="613.70" y1="71.85" x2="618.26" y2="77.80" />
+  <line class="fg-tick" x1="608.61" y1="74.79" x2="611.48" y2="81.72" />
+  <line class="fg-tick" x1="602.94" y1="76.31" x2="603.92" y2="83.74" />
+  <line class="fg-tick" x1="597.06" y1="76.31" x2="596.08" y2="83.74" />
+  <line class="fg-tick" x1="591.39" y1="74.79" x2="588.52" y2="81.72" />
+  <line class="fg-tick" x1="586.30" y1="71.85" x2="581.74" y2="77.80" />
+  <line class="fg-tick" x1="582.15" y1="67.70" x2="576.20" y2="72.26" />
+  <line class="fg-tick" x1="579.21" y1="62.61" x2="572.28" y2="65.48" />
+  <line class="fg-tick" x1="577.69" y1="56.94" x2="570.26" y2="57.92" />
+  <line class="fg-tick" x1="577.69" y1="51.06" x2="570.26" y2="50.08" />
+  <line class="fg-tick" x1="579.21" y1="45.39" x2="572.28" y2="42.52" />
+  <line class="fg-tick" x1="582.15" y1="40.30" x2="576.20" y2="35.74" />
+  <line class="fg-tick" x1="586.30" y1="36.15" x2="581.74" y2="30.20" />
+  <line class="fg-tick" x1="591.39" y1="33.21" x2="588.52" y2="26.28" />
+  <line class="fg-tick" x1="597.06" y1="31.69" x2="596.08" y2="24.26" />
+  <line class="fg-tick" x1="602.94" y1="31.69" x2="603.92" y2="24.26" />
+  <line class="fg-tick" x1="608.61" y1="33.21" x2="611.48" y2="26.28" />
+  <line class="fg-tick" x1="613.70" y1="36.15" x2="618.26" y2="30.20" />
+  <line class="fg-tick" x1="617.85" y1="40.30" x2="623.80" y2="35.74" />
+  <line class="fg-tick" x1="620.79" y1="45.39" x2="627.72" y2="42.52" />
+  <line class="fg-tick" x1="622.31" y1="51.06" x2="629.74" y2="50.08" />
+  <line class="fg-tick" x1="631.00" y1="54.00" x2="638.00" y2="54.00" />
+  <line class="fg-tick" x1="600.00" y1="85.00" x2="600.00" y2="92.00" />
+  <line class="fg-tick" x1="569.00" y1="54.00" x2="562.00" y2="54.00" />
+  <line class="fg-tick" x1="600.00" y1="23.00" x2="600.00" y2="16.00" />
+  <path class="fg-arc" d="M561.89 76.00 A 44 44 0 0 1 561.89 32.00" />
+  <path class="fg-arc" d="M638.11 32.00 A 44 44 0 0 1 638.11 76.00" />
+  <path class="fg-arc" d="M550.01 39.67 A 52 52 0 0 1 585.67 4.01" />
+  <path class="fg-arc" d="M614.33 4.01 A 52 52 0 0 1 649.99 39.67" />
+  <line class="fg-glyph" x1="536.00" y1="27.75" x2="536.00" y2="36.25" />
+  <line class="fg-glyph" x1="520.50" y1="29.50" x2="520.50" y2="34.50" />
+  <line class="fg-glyph" x1="505.00" y1="29.50" x2="505.00" y2="34.50" />
+  <line class="fg-glyph" x1="489.50" y1="29.50" x2="489.50" y2="34.50" />
+  <line class="fg-glyph" x1="474.00" y1="27.75" x2="474.00" y2="36.25" />
+  <line class="fg-glyph" x1="458.50" y1="29.50" x2="458.50" y2="34.50" />
+  <line class="fg-glyph" x1="443.00" y1="29.50" x2="443.00" y2="34.50" />
+  <line class="fg-glyph" x1="427.50" y1="29.50" x2="427.50" y2="34.50" />
+  <line class="fg-glyph" x1="412.00" y1="27.75" x2="412.00" y2="36.25" />
+  <line class="fg-glyph" x1="396.50" y1="29.50" x2="396.50" y2="34.50" />
+  <line class="fg-glyph" x1="381.00" y1="29.50" x2="381.00" y2="34.50" />
+  <line class="fg-line" x1="538.0" y1="54.0" x2="170.0" y2="54.0" />
+  <line class="fg-line-2" x1="170.0" y1="54.0" x2="12.0" y2="54.0" />
+  <line class="fg-nick" x1="440.0" y1="48.0" x2="440.0" y2="60.0" />
+  <line class="fg-nick" x1="340.0" y1="48.0" x2="340.0" y2="60.0" />
+  <line class="fg-nick" x1="240.0" y1="48.0" x2="240.0" y2="60.0" />
+  <path class="fg-arc" d="M170.0 54.0 l-16 -9 M170.0 54.0 l-16 9" />
+  <circle class="fg-dot" cx="12.0" cy="54.0" r="2.6" />
+  <line class="fg-glyph" x1="664.00" y1="27.75" x2="664.00" y2="36.25" />
+  <line class="fg-glyph" x1="679.50" y1="29.50" x2="679.50" y2="34.50" />
+  <line class="fg-glyph" x1="695.00" y1="29.50" x2="695.00" y2="34.50" />
+  <line class="fg-glyph" x1="710.50" y1="29.50" x2="710.50" y2="34.50" />
+  <line class="fg-glyph" x1="726.00" y1="27.75" x2="726.00" y2="36.25" />
+  <line class="fg-glyph" x1="741.50" y1="29.50" x2="741.50" y2="34.50" />
+  <line class="fg-glyph" x1="757.00" y1="29.50" x2="757.00" y2="34.50" />
+  <line class="fg-glyph" x1="772.50" y1="29.50" x2="772.50" y2="34.50" />
+  <line class="fg-glyph" x1="788.00" y1="27.75" x2="788.00" y2="36.25" />
+  <line class="fg-glyph" x1="803.50" y1="29.50" x2="803.50" y2="34.50" />
+  <line class="fg-glyph" x1="819.00" y1="29.50" x2="819.00" y2="34.50" />
+  <line class="fg-line" x1="662.0" y1="54.0" x2="1030.0" y2="54.0" />
+  <line class="fg-line-2" x1="1030.0" y1="54.0" x2="1188.0" y2="54.0" />
+  <line class="fg-nick" x1="760.0" y1="48.0" x2="760.0" y2="60.0" />
+  <line class="fg-nick" x1="860.0" y1="48.0" x2="860.0" y2="60.0" />
+  <line class="fg-nick" x1="960.0" y1="48.0" x2="960.0" y2="60.0" />
+  <path class="fg-arc" d="M1030.0 54.0 l16 -9 M1030.0 54.0 l16 9" />
+  <circle class="fg-dot" cx="1188.0" cy="54.0" r="2.6" />
+  </g>
+  <path id="spark-4" d="M12 0 C12.6 7.3 16.7 11.4 24 12 C16.7 12.6 12.6 16.7 12 24 C11.4 16.7 7.3 12.6 0 12 C7.3 11.4 11.4 7.3 12 0 Z" />
+</defs></svg>
+
+<!-- Film grain. One tiled turbulence tile over the whole page: large flat
+     gradients band badly on 8-bit displays, and a little noise is the
+     difference between "a screen" and "a printed surface". -->
+<svg class="grain" aria-hidden="true" focusable="false">
+  <filter id="grain-filter">
+    <feTurbulence type="fractalNoise" baseFrequency="0.82" numOctaves="3" stitchTiles="stitch" />
+    <feColorMatrix type="saturate" values="0" />
+  </filter>
+  <rect width="100%" height="100%" filter="url(#grain-filter)" />
+</svg>
 
 <div class="site-splash" id="site-splash" role="status" aria-label="Meridian">
   <div class="site-splash-inner">
@@ -43,6 +151,8 @@
   </div>
 </div>
 
+<a class="skip-link" href="#top">Skip to content</a>
+
 <header class="header" id="header">
   <div class="header-inner">
     <a class="brand" href="#top" aria-label="Meridian home">
@@ -58,123 +168,430 @@
       <span>Meridian</span>
     </a>
     <nav class="header-nav" aria-label="Primary navigation">
-      <a href="#product">Product</a>
+      <a href="#product">The arithmetic</a>
       <a href="#tour">Tour</a>
+      <a href="#method">Method</a>
       <a href="#pricing">Pricing</a>
+      <!--
+        One icon at a time: the switch shows the mode you are IN, sitting in
+        the thumb, and the rest of the track is the trail in the opposite
+        ink — black behind the sun on paper, white behind the moon at night.
+      -->
+      <button class="theme-switch" type="button" id="theme-switch"
+              aria-label="Switch between light and dark" aria-pressed="false">
+        <span class="theme-switch-track" aria-hidden="true">
+          <span class="theme-switch-thumb">
+            <svg class="theme-icon theme-icon-sun" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <circle cx="10" cy="10" r="3.4" stroke="currentColor" stroke-width="1.6" />
+              <g stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+                <path d="M10 2.6v2M10 15.4v2M2.6 10h2M15.4 10h2M4.8 4.8l1.4 1.4M13.8 13.8l1.4 1.4M15.2 4.8l-1.4 1.4M6.2 13.8l-1.4 1.4" />
+              </g>
+            </svg>
+            <svg class="theme-icon theme-icon-moon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path d="M16 12.4A6.8 6.8 0 0 1 7.6 4a6.8 6.8 0 1 0 8.4 8.4Z"
+                    stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+            </svg>
+          </span>
+        </span>
+      </button>
       <a class="pill pill-small" href="#pricing">Start free</a>
     </nav>
   </div>
+  <div class="header-progress" aria-hidden="true"><i></i></div>
 </header>
 
 <main id="top">
 
   <section class="hero" id="hero">
 
-<div class="globe-stage" aria-hidden="true">
-  <svg id="globe" data-radius="170" viewBox="0 0 400 400" fill="none"
-       xmlns="http://www.w3.org/2000/svg" role="presentation">
-    <!-- The silhouette. Fixed, because the edge of a sphere does not move. -->
-    <circle class="globe-limb" cx="200" cy="200" r="170" />
-    <!-- Meridians. `rx` is rewritten every frame from cos(phase + longitude);
-         the values here are the rest state so the globe is complete before
-         any script runs. -->
-    <g class="globe-meridians">
-      <ellipse class="globe-meridian globe-prime" data-longitude="0" cx="200" cy="200" rx="170.00" ry="170" />
-      <ellipse class="globe-meridian" data-longitude="20" cx="200" cy="200" rx="159.75" ry="170" />
-      <ellipse class="globe-meridian" data-longitude="40" cx="200" cy="200" rx="130.23" ry="170" />
-      <ellipse class="globe-meridian" data-longitude="60" cx="200" cy="200" rx="85.00" ry="170" />
-      <ellipse class="globe-meridian" data-longitude="80" cx="200" cy="200" rx="29.52" ry="170" />
-      <ellipse class="globe-meridian" data-longitude="100" cx="200" cy="200" rx="29.52" ry="170" />
-      <ellipse class="globe-meridian" data-longitude="120" cx="200" cy="200" rx="85.00" ry="170" />
-      <ellipse class="globe-meridian" data-longitude="140" cx="200" cy="200" rx="130.23" ry="170" />
-      <ellipse class="globe-meridian" data-longitude="160" cx="200" cy="200" rx="159.75" ry="170" />
-    </g>
-    <!-- The axis: the one meridian that is always edge-on to the viewer. -->
-    <line class="globe-axis" x1="200" y1="30" x2="200" y2="370" />
-  </svg>
-</div>
+    <!-- Full-bleed atmosphere. One plate, no starfield: the reference gets
+         its depth from a single flowing surface, and a sparkle layer on top
+         of it is two ideas fighting. -->
+    <div class="hero-sky" aria-hidden="true"></div>
+
+
+
     <div class="wrap hero-inner">
       <div class="hero-copy">
-        <span class="kicker">Profit analytics for Shopify</span>
-        <h1>
-          Shopify reports gross sales.
-          <strong>Meridian reports what is left.</strong>
+        <h1 class="hero-title">
+          <span class="line line-1">Shopify tells you</span>
+          <span class="line line-2">what you <em>sold</em>.</span>
+          <span class="line line-3"><strong>Meridian tells you</strong></span>
+          <span class="line line-4"><strong>what you <em>kept</em>.</strong></span>
         </h1>
-        <p>
-          Orders, product costs, fulfilment, fees and overhead resolved into a
-          qualified profit figure. Modelled and missing inputs remain visible;
-          paid marketing stays excluded until a real source exists.
+        <p class="hero-sub">
+          Orders, product costs, fulfilment, payment fees and overhead resolved
+          into one number you can act on — with every modelled and missing input
+          still on screen. Nothing is guessed into a figure that looks certain.
         </p>
         <div class="hero-actions">
-          <a class="pill" href="#pricing">Start free — 14-day trial</a>
-          <a class="text-link" href="#product">See the arithmetic</a>
+          <a class="pill pill-lg" href="https://apps.shopify.com/meridian-profit">
+            Start free — 14-day trial
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h9m0 0L8.5 4.5M12 8l-3.5 3.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </a>
+          <a class="ghost-btn" href="#product">
+            <span>See the arithmetic</span>
+          </a>
         </div>
+        <ul class="hero-assurances">
+          <li>Read-only access</li>
+          <li>Billed through Shopify</li>
+          <li>No card to start</li>
+        </ul>
       </div>
 
+        <!--
+          The mark, restored. listing.test.ts requires `id="globe"` on this page:
+          the marketing hero is contractually the same opening the app gives, and
+          dropping it for a borrowed hero silently breaks that. It sits behind the
+          centred type as atmosphere rather than as the subject.
+        -->
+            <div class="globe-stage" aria-hidden="true">
+          <svg id="globe" data-radius="170" viewBox="0 0 400 400" fill="none"
+               xmlns="http://www.w3.org/2000/svg" role="presentation">
+            <circle class="globe-limb" cx="200" cy="200" r="170" />
+            <g class="globe-bezel">
+              <circle class="globe-ring" cx="200" cy="200" r="186" />
+              <line class="globe-tick globe-tick-major" x1="380.00" y1="200.00" x2="392.00" y2="200.00" />
+              <line class="globe-tick" x1="382.43" y1="224.02" x2="388.37" y2="224.80" />
+              <line class="globe-tick" x1="377.73" y1="247.62" x2="383.53" y2="249.18" />
+              <line class="globe-tick" x1="369.99" y1="270.41" x2="375.54" y2="272.71" />
+              <line class="globe-tick" x1="359.35" y1="292.00" x2="364.54" y2="295.00" />
+              <line class="globe-tick" x1="345.98" y1="312.01" x2="350.74" y2="315.66" />
+              <line class="globe-tick globe-tick-major" x1="327.28" y1="327.28" x2="335.76" y2="335.76" />
+              <line class="globe-tick" x1="312.01" y1="345.98" x2="315.66" y2="350.74" />
+              <line class="globe-tick" x1="292.00" y1="359.35" x2="295.00" y2="364.54" />
+              <line class="globe-tick" x1="270.41" y1="369.99" x2="272.71" y2="375.54" />
+              <line class="globe-tick" x1="247.62" y1="377.73" x2="249.18" y2="383.53" />
+              <line class="globe-tick" x1="224.02" y1="382.43" x2="224.80" y2="388.37" />
+              <line class="globe-tick globe-tick-major" x1="200.00" y1="380.00" x2="200.00" y2="392.00" />
+              <line class="globe-tick" x1="175.98" y1="382.43" x2="175.20" y2="388.37" />
+              <line class="globe-tick" x1="152.38" y1="377.73" x2="150.82" y2="383.53" />
+              <line class="globe-tick" x1="129.59" y1="369.99" x2="127.29" y2="375.54" />
+              <line class="globe-tick" x1="108.00" y1="359.35" x2="105.00" y2="364.54" />
+              <line class="globe-tick" x1="87.99" y1="345.98" x2="84.34" y2="350.74" />
+              <line class="globe-tick globe-tick-major" x1="72.72" y1="327.28" x2="64.24" y2="335.76" />
+              <line class="globe-tick" x1="54.02" y1="312.01" x2="49.26" y2="315.66" />
+              <line class="globe-tick" x1="40.65" y1="292.00" x2="35.46" y2="295.00" />
+              <line class="globe-tick" x1="30.01" y1="270.41" x2="24.46" y2="272.71" />
+              <line class="globe-tick" x1="22.27" y1="247.62" x2="16.47" y2="249.18" />
+              <line class="globe-tick" x1="17.57" y1="224.02" x2="11.63" y2="224.80" />
+              <line class="globe-tick globe-tick-major" x1="20.00" y1="200.00" x2="8.00" y2="200.00" />
+              <line class="globe-tick" x1="17.57" y1="175.98" x2="11.63" y2="175.20" />
+              <line class="globe-tick" x1="22.27" y1="152.38" x2="16.47" y2="150.82" />
+              <line class="globe-tick" x1="30.01" y1="129.59" x2="24.46" y2="127.29" />
+              <line class="globe-tick" x1="40.65" y1="108.00" x2="35.46" y2="105.00" />
+              <line class="globe-tick" x1="54.02" y1="87.99" x2="49.26" y2="84.34" />
+              <line class="globe-tick globe-tick-major" x1="72.72" y1="72.72" x2="64.24" y2="64.24" />
+              <line class="globe-tick" x1="87.99" y1="54.02" x2="84.34" y2="49.26" />
+              <line class="globe-tick" x1="108.00" y1="40.65" x2="105.00" y2="35.46" />
+              <line class="globe-tick" x1="129.59" y1="30.01" x2="127.29" y2="24.46" />
+              <line class="globe-tick" x1="152.38" y1="22.27" x2="150.82" y2="16.47" />
+              <line class="globe-tick" x1="175.98" y1="17.57" x2="175.20" y2="11.63" />
+              <line class="globe-tick globe-tick-major" x1="200.00" y1="20.00" x2="200.00" y2="8.00" />
+              <line class="globe-tick" x1="224.02" y1="17.57" x2="224.80" y2="11.63" />
+              <line class="globe-tick" x1="247.62" y1="22.27" x2="249.18" y2="16.47" />
+              <line class="globe-tick" x1="270.41" y1="30.01" x2="272.71" y2="24.46" />
+              <line class="globe-tick" x1="292.00" y1="40.65" x2="295.00" y2="35.46" />
+              <line class="globe-tick" x1="312.01" y1="54.02" x2="315.66" y2="49.26" />
+              <line class="globe-tick globe-tick-major" x1="327.28" y1="72.72" x2="335.76" y2="64.24" />
+              <line class="globe-tick" x1="345.98" y1="87.99" x2="350.74" y2="84.34" />
+              <line class="globe-tick" x1="359.35" y1="108.00" x2="364.54" y2="105.00" />
+              <line class="globe-tick" x1="369.99" y1="129.59" x2="375.54" y2="127.29" />
+              <line class="globe-tick" x1="377.73" y1="152.38" x2="383.53" y2="150.82" />
+              <line class="globe-tick" x1="382.43" y1="175.98" x2="388.37" y2="175.20" />
+            </g>
+            <g class="globe-parallels">
+              <line class="globe-parallel" x1="156.00" y1="35.79" x2="244.00" y2="35.79" />
+              <line class="globe-parallel" x1="115.00" y1="52.78" x2="285.00" y2="52.78" />
+              <line class="globe-parallel" x1="79.79" y1="79.79" x2="320.21" y2="79.79" />
+              <line class="globe-parallel" x1="52.78" y1="115.00" x2="347.22" y2="115.00" />
+              <line class="globe-parallel" x1="35.79" y1="156.00" x2="364.21" y2="156.00" />
+              <line class="globe-parallel globe-equator" x1="30.00" y1="200.00" x2="370.00" y2="200.00" />
+              <line class="globe-parallel" x1="35.79" y1="244.00" x2="364.21" y2="244.00" />
+              <line class="globe-parallel" x1="52.78" y1="285.00" x2="347.22" y2="285.00" />
+              <line class="globe-parallel" x1="79.79" y1="320.21" x2="320.21" y2="320.21" />
+              <line class="globe-parallel" x1="115.00" y1="347.22" x2="285.00" y2="347.22" />
+              <line class="globe-parallel" x1="156.00" y1="364.21" x2="244.00" y2="364.21" />
+            </g>
+            <g class="globe-meridians">
+              <ellipse class="globe-meridian globe-prime" data-longitude="0" cx="200" cy="200" rx="170.00" ry="170" />
+              <ellipse class="globe-meridian" data-longitude="15" cx="200" cy="200" rx="164.21" ry="170" />
+              <ellipse class="globe-meridian" data-longitude="30" cx="200" cy="200" rx="147.22" ry="170" />
+              <ellipse class="globe-meridian" data-longitude="45" cx="200" cy="200" rx="120.21" ry="170" />
+              <ellipse class="globe-meridian" data-longitude="60" cx="200" cy="200" rx="85.00" ry="170" />
+              <ellipse class="globe-meridian" data-longitude="75" cx="200" cy="200" rx="44.00" ry="170" />
+              <ellipse class="globe-meridian" data-longitude="90" cx="200" cy="200" rx="0.00" ry="170" />
+              <ellipse class="globe-meridian" data-longitude="105" cx="200" cy="200" rx="44.00" ry="170" />
+              <ellipse class="globe-meridian" data-longitude="120" cx="200" cy="200" rx="85.00" ry="170" />
+              <ellipse class="globe-meridian" data-longitude="135" cx="200" cy="200" rx="120.21" ry="170" />
+              <ellipse class="globe-meridian" data-longitude="150" cx="200" cy="200" rx="147.22" ry="170" />
+              <ellipse class="globe-meridian" data-longitude="165" cx="200" cy="200" rx="164.21" ry="170" />
+            </g>
+            <line class="globe-axis" x1="200" y1="30" x2="200" y2="370" />
+            <path class="globe-sig-cut" d="M200 30 A 74.2 170 0 0 1 200 370" transform="translate(2.4 1.6)" />
+            <path class="globe-sig-lit" d="M200 30 A 74.2 170 0 0 1 200 370" transform="translate(-1.8 -1.2)" />
+            <path class="globe-signature" d="M200 30 A 74.2 170 0 0 1 200 370" />
+          </svg>
+        </div>
+    </div>
+
+    <!-- The reference's scroll cue: a rule either side of a small mark, with
+         the instruction split across it. -->
+    <div class="scroll-rule" aria-hidden="true">
+      <span>Scroll down</span>
+      <i></i>
+      <em></em>
+      <i></i>
+      <span>to see the arithmetic</span>
+    </div>
+    <!--
+      The hero graphic is the store's own month, not an ornament: thirty days
+      of daily profit before paid marketing, the same series the app draws on
+      the Orders screen. The shape is real; per-day figures are deliberately
+      not labelled, because these were read back off the rendered chart and
+      carry about a percent of quantisation error. The axis and the shape are
+      honest at that precision; a printed dollar-per-day would not be.
+    -->
+    <div class="hero-chart-stage hero-chart-band" aria-hidden="false">
+    <svg class="hero-chart" viewBox="0 0 1200 300" fill="none" preserveAspectRatio="none"
+           role="img" aria-label="Daily profit before paid marketing across thirty days of the demo store, ranging from about four and a half thousand to about eleven thousand dollars a day.">
+      <line class="hc-grid" x1="0" y1="160.2" x2="1200.0" y2="160.2" />
+      <text class="hc-tick" x="0" y="152.2">$5,000</text>
+      <line class="hc-grid" x1="0" y1="64.3" x2="1200.0" y2="64.3" />
+      <text class="hc-tick" x="0" y="56.3">$10K</text>
+      <line class="hc-axis" x1="0" y1="256.0" x2="1200.0" y2="256.0" />
+      <path class="hc-area" d="M0,256.0 L0.0,139.1 L41.4,151.1 L82.8,136.7 L124.1,101.7 L165.5,100.5 L206.9,135.5 L248.3,121.0 L289.7,113.8 L331.0,151.1 L372.4,46.3 L413.8,64.3 L455.2,127.0 L496.6,134.3 L537.9,121.0 L579.3,155.9 L620.7,171.6 L662.1,118.6 L703.4,71.6 L744.8,159.6 L786.2,147.5 L827.6,131.8 L869.0,165.6 L910.3,148.7 L951.7,84.8 L993.1,94.5 L1034.5,122.2 L1075.9,116.2 L1117.2,130.6 L1158.6,141.5 L1200.0,151.1 L1200.0,256.0 Z" />
+      <polyline class="hc-line" points="0.0,139.1 41.4,151.1 82.8,136.7 124.1,101.7 165.5,100.5 206.9,135.5 248.3,121.0 289.7,113.8 331.0,151.1 372.4,46.3 413.8,64.3 455.2,127.0 496.6,134.3 537.9,121.0 579.3,155.9 620.7,171.6 662.1,118.6 703.4,71.6 744.8,159.6 786.2,147.5 827.6,131.8 869.0,165.6 910.3,148.7 951.7,84.8 993.1,94.5 1034.5,122.2 1075.9,116.2 1117.2,130.6 1158.6,141.5 1200.0,151.1" />
+      <circle class="hc-node" cx="0.0" cy="139.1" r="4.5" />
+      <circle class="hc-node" cx="124.1" cy="101.7" r="4.5" />
+      <circle class="hc-node" cx="248.3" cy="121.0" r="4.5" />
+      <circle class="hc-node" cx="372.4" cy="46.3" r="4.5" />
+      <circle class="hc-node" cx="496.6" cy="134.3" r="4.5" />
+      <circle class="hc-node" cx="620.7" cy="171.6" r="4.5" />
+      <circle class="hc-node" cx="744.8" cy="159.6" r="4.5" />
+      <circle class="hc-node" cx="869.0" cy="165.6" r="4.5" />
+      <circle class="hc-node" cx="993.1" cy="94.5" r="4.5" />
+      <circle class="hc-node" cx="1117.2" cy="130.6" r="4.5" />
+    </svg>
+      <p class="hero-chart-caption">
+        <span>Daily profit before paid marketing</span>
+        <span>Demo store &middot; 30 days</span>
+      </p>
+    </div>
+
+
+    <div class="wrap hero-stage-wrap">
       <div class="hero-product" aria-label="Meridian overview using demo data">
+        <div class="product-glow" aria-hidden="true"></div>
         <div class="product-window">
           <div class="window-bar">
             <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-            <span>Meridian · Northwind Supply Co. · Demo data</span>
-            <span>30 days</span>
+            <span class="window-title">Meridian · Northwind Supply Co. · Demo data</span>
+            <span class="window-meta">30 days</span>
           </div>
-          <img src="assets/overview-top2.jpg" alt="Meridian overview showing $207,719 profit before paid marketing for Northwind Supply Co." />
-        </div>
-        <div class="hero-ledger hero-ledger-left" aria-hidden="true">
-          <span>Net revenue</span><strong>$521K</strong>
-        </div>
-        <div class="hero-ledger hero-ledger-right" aria-hidden="true">
-          <span>Profit / order</span><strong>$67.65</strong>
+          <div class="window-body">
+            <img data-dark="assets/overview-hero-dark.jpg" src="assets/overview-hero.jpg" alt="Meridian overview showing $207,749 profit before paid marketing for Northwind Supply Co." width="1800" height="1126" fetchpriority="high" />
+            <span class="window-sheen" aria-hidden="true"></span>
+          </div>
         </div>
       </div>
-
-      <a class="scroll-cue" href="#product" aria-label="Scroll to product overview">
-        <span>Scroll to reconcile</span><i aria-hidden="true"></i>
-      </a>
     </div>
+
   </section>
 
   <div class="ground">
-
-  <section class="ledger-intro" id="product">
-    <div class="wrap ledger-layout">
-      <div class="ledger-heading reveal">
-        <span class="kicker">The arithmetic</span>
-        <h2>One number.<br /><strong>Nothing hidden behind it.</strong></h2>
-      </div>
-      <div class="ledger-copy reveal">
-        <p class="large-copy">
-          Meridian starts with revenue and shows each subtraction in the order
-          it hits the P&amp;L. Every modelled input stays marked as modelled. Missing
-          COGS receives no verdict. Unavailable paid marketing never becomes a
-          convenient zero.
-        </p>
-        <p class="caption">The example below uses the seeded demo store.</p>
-      </div>
+    <div class="sparkfield" aria-hidden="true">
+      <svg class="spark" style="left:34.00%;top:19.01%;--s:5.0px;--dur:8.3s;--delay:2.8s;--peak:0.30" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:17.32%;top:12.09%;--s:4.6px;--dur:4.1s;--delay:4.2s;--peak:0.29" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:11.11%;top:24.31%;--s:7.2px;--dur:7.4s;--delay:0.5s;--peak:0.19" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:86.01%;top:41.68%;--s:5.7px;--dur:7.7s;--delay:4.8s;--peak:0.30" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:25.87%;top:95.05%;--s:5.9px;--dur:8.7s;--delay:2.9s;--peak:0.19" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:90.09%;top:18.76%;--s:3.9px;--dur:4.1s;--delay:2.9s;--peak:0.20" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:48.99%;top:21.34%;--s:4.2px;--dur:8.7s;--delay:6.4s;--peak:0.31" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:11.88%;top:87.05%;--s:7.4px;--dur:6.5s;--delay:6.6s;--peak:0.24" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:76.57%;top:26.72%;--s:6.6px;--dur:4.5s;--delay:2.1s;--peak:0.28" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:19.67%;top:94.92%;--s:5.8px;--dur:8.1s;--delay:6.2s;--peak:0.16" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:62.07%;top:97.91%;--s:7.8px;--dur:5.8s;--delay:3.0s;--peak:0.24" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:29.35%;top:42.04%;--s:8.2px;--dur:4.8s;--delay:4.1s;--peak:0.17" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:79.91%;top:81.08%;--s:4.7px;--dur:8.1s;--delay:2.6s;--peak:0.33" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:5.95%;top:23.98%;--s:4.7px;--dur:4.1s;--delay:5.8s;--peak:0.26" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:60.06%;top:72.75%;--s:4.9px;--dur:4.2s;--delay:6.7s;--peak:0.30" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:15.32%;top:53.20%;--s:6.1px;--dur:5.6s;--delay:2.4s;--peak:0.20" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:66.46%;top:32.62%;--s:5.2px;--dur:6.1s;--delay:6.7s;--peak:0.22" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:50.81%;top:99.00%;--s:3.7px;--dur:8.2s;--delay:4.1s;--peak:0.26" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:56.64%;top:42.63%;--s:5.3px;--dur:4.8s;--delay:3.7s;--peak:0.25" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:43.99%;top:68.02%;--s:6.0px;--dur:8.9s;--delay:7.5s;--peak:0.23" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:85.27%;top:16.74%;--s:7.6px;--dur:8.2s;--delay:5.4s;--peak:0.24" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:44.52%;top:42.82%;--s:4.3px;--dur:8.0s;--delay:6.8s;--peak:0.26" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:70.56%;top:98.10%;--s:6.1px;--dur:6.5s;--delay:5.3s;--peak:0.22" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:69.70%;top:49.74%;--s:6.6px;--dur:5.8s;--delay:0.6s;--peak:0.21" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:23.19%;top:31.51%;--s:4.5px;--dur:6.8s;--delay:3.2s;--peak:0.22" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:90.88%;top:45.41%;--s:5.4px;--dur:6.8s;--delay:1.6s;--peak:0.31" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:53.72%;top:55.42%;--s:4.8px;--dur:4.5s;--delay:6.6s;--peak:0.29" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:66.41%;top:89.38%;--s:3.8px;--dur:6.9s;--delay:0.2s;--peak:0.32" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:66.28%;top:66.70%;--s:4.9px;--dur:7.1s;--delay:4.3s;--peak:0.16" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:63.45%;top:7.93%;--s:6.2px;--dur:4.5s;--delay:1.3s;--peak:0.19" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:4.06%;top:67.10%;--s:4.1px;--dur:4.9s;--delay:3.2s;--peak:0.25" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:9.78%;top:49.62%;--s:4.9px;--dur:8.1s;--delay:3.6s;--peak:0.15" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:28.71%;top:1.15%;--s:5.6px;--dur:5.1s;--delay:2.6s;--peak:0.17" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:91.29%;top:77.52%;--s:4.6px;--dur:6.7s;--delay:8.4s;--peak:0.23" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:44.84%;top:91.49%;--s:3.7px;--dur:6.9s;--delay:0.0s;--peak:0.19" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:7.26%;top:1.41%;--s:5.4px;--dur:6.3s;--delay:8.3s;--peak:0.14" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:56.93%;top:17.18%;--s:4.3px;--dur:7.9s;--delay:2.4s;--peak:0.18" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:76.97%;top:46.79%;--s:4.7px;--dur:7.0s;--delay:7.4s;--peak:0.24" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:52.59%;top:77.05%;--s:5.5px;--dur:6.1s;--delay:6.0s;--peak:0.17" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:42.45%;top:13.14%;--s:6.5px;--dur:5.5s;--delay:6.8s;--peak:0.14" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:85.45%;top:79.65%;--s:4.0px;--dur:6.6s;--delay:8.8s;--peak:0.21" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:23.60%;top:49.50%;--s:3.8px;--dur:8.4s;--delay:8.6s;--peak:0.30" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:53.62%;top:4.57%;--s:5.1px;--dur:8.8s;--delay:1.5s;--peak:0.22" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:38.12%;top:64.05%;--s:4.6px;--dur:8.4s;--delay:1.6s;--peak:0.28" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:95.33%;top:53.45%;--s:8.0px;--dur:4.2s;--delay:3.4s;--peak:0.31" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:18.44%;top:75.73%;--s:3.9px;--dur:4.5s;--delay:8.9s;--peak:0.26" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:73.87%;top:70.87%;--s:4.3px;--dur:7.9s;--delay:7.4s;--peak:0.24" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:62.86%;top:51.97%;--s:5.4px;--dur:7.7s;--delay:3.3s;--peak:0.18" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:97.40%;top:71.74%;--s:5.5px;--dur:5.4s;--delay:1.8s;--peak:0.32" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:39.67%;top:98.55%;--s:7.3px;--dur:7.8s;--delay:4.6s;--peak:0.27" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:38.20%;top:38.01%;--s:5.8px;--dur:5.9s;--delay:3.4s;--peak:0.14" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
+      <svg class="spark" style="left:51.67%;top:40.52%;--s:5.7px;--dur:4.7s;--delay:1.6s;--peak:0.30" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
     </div>
 
+
+  <!-- 1 ─ The sting ----------------------------------------------------- -->
+  <section class="reckoning" id="reckoning">
     <div class="wrap">
-      <div class="equation reveal" aria-label="Example profit calculation">
-        <div class="equation-item equation-start"><span>Net revenue</span><strong>$521K</strong></div>
-        <span class="equation-op">−</span>
-        <div class="equation-item"><span>COGS</span><strong>$208.4K</strong></div>
-        <span class="equation-op">−</span>
-        <div class="equation-item"><span>Fulfilment</span><strong>$38.7K</strong></div>
-        <span class="equation-op">−</span>
-        <div class="equation-item"><span>Fees</span><strong>$17.7K</strong></div>
-        <span class="equation-op">−</span>
-        <div class="equation-item"><span>Overhead</span><strong>$48.5K</strong></div>
-        <span class="equation-op">=</span>
-        <div class="equation-item equation-result"><span>Qualified profit</span><strong>$207.7K</strong></div>
+      <div class="reckoning-head reveal">
+        <span class="kicker">The orders you never see</span>
+        <h2>
+          3,071 orders in a month.<br />
+          <strong>383 of them lost money.</strong>
+        </h2>
+        <p>
+          Every one of them looked identical on a sales report. These figures come
+          from Meridian's demo store, computed by the same engine that runs on live
+          Shopify data — 12.5% of orders, <span class="loss">−$7,928</span>,
+          before paid marketing.
+        </p>
+      </div>
+
+      <div class="reckoning-grid reveal">
+        <figure class="dotfield">
+          <div class="dotfield-plot">
+            <canvas id="dotfield" width="1120" height="420" role="img"
+                    aria-label="A field of 3,071 dots, one per order in the month, with 383 marked as losing money. The order shown in the receipt alongside is marked in gold."></canvas>
+            <!-- Filled by motion.js on hover; empty and hidden until then. -->
+            <div class="dot-readout" id="dot-readout" aria-hidden="true"></div>
+          </div>
+          <figcaption>
+            <span class="dot-legend">
+              <span class="dot-key dot-key-keep"></span> 2,688 profitable
+              <span class="dot-key dot-key-loss"></span> 383 losing money
+              <span class="dot-key dot-key-this"></span> the order alongside
+            </span>
+            <span class="dot-hint">Point at any order to pick it out.</span>
+          </figcaption>
+        </figure>
+
+        <div class="receipt" aria-label="Order 13254 cost breakdown">
+          <div class="receipt-head">
+            <span class="receipt-id">Order #13254</span>
+            <span class="receipt-meta">Aug 2 · 1 item · Organic search</span>
+          </div>
+          <dl class="receipt-lines">
+            <div class="receipt-line receipt-line-top"><dt>Revenue</dt><dd class="pos">$66.45</dd></div>
+            <div class="receipt-line"><dt>COGS</dt><dd class="neg">−$31.00</dd></div>
+            <div class="receipt-line"><dt>Shipping</dt><dd class="neg">−$8.50</dd></div>
+            <div class="receipt-line"><dt>Payment fees</dt><dd class="neg">−$4.49</dd></div>
+            <div class="receipt-line receipt-line-dash"><dt>Ads</dt><dd class="dash">—</dd></div>
+            <div class="receipt-line"><dt>Overhead</dt><dd class="neg">−$18.96</dd></div>
+            <div class="receipt-line receipt-line-result">
+              <dt>Profit before paid marketing</dt>
+              <dd class="result">$3.50<small>5% margin</small></dd>
+            </div>
+          </dl>
+          <p class="receipt-note">
+            A sixty-six dollar sale that returns three dollars fifty. The dash on the
+            Ads row is deliberate: no paid-marketing source has completed a sync, so
+            Meridian shows nothing rather than a convenient zero.
+          </p>
+        </div>
       </div>
     </div>
   </section>
 
+  <div class="rule-filigree reveal" aria-hidden="true">
+  <svg class="filigree-rule" viewBox="0 0 1200 108" fill="none" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMid meet"><use class="fg-cut" href="#fg-art" y="1.3" /><use class="fg-lit" href="#fg-art" y="-1.1" /><use class="fg-face" href="#fg-art" /></svg>
+  </div>
+
+  <!-- 2 ─ The arithmetic ------------------------------------------------ -->
+  <section class="arithmetic" id="product">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="kicker">The arithmetic</span>
+        <h2>One number.<br /><strong>Nothing hidden behind it.</strong></h2>
+        <p>
+          Meridian starts at revenue and shows every subtraction in the order it
+          hits the P&amp;L. Modelled inputs stay marked as modelled. Missing COGS
+          receives no verdict at all.
+        </p>
+      </div>
+
+      <div class="waterfall reveal" role="img"
+           aria-label="Net revenue $521K less COGS $208.4K, fulfilment $38.7K, fees $17.7K and overhead $48.5K leaves qualified profit of $207.7K, a 39.9% margin.">
+        <div class="waterfall-grid" aria-hidden="true">
+          <span data-tick="$521K"></span><span data-tick="$390K"></span><span data-tick="$260K"></span><span data-tick="$130K"></span><span data-tick="$0"></span>
+        </div>
+        <ol class="waterfall-bars">
+          <li class="bar bar-start" style="--from:0%; --to:100%;">
+            <span class="bar-fill"></span>
+            <span class="bar-label"><em>Net revenue</em><strong data-count="521" data-prefix="$" data-suffix="K">$521K</strong></span>
+          </li>
+          <li class="bar bar-cost" style="--from:60.0%; --to:100%;">
+            <span class="bar-fill"></span>
+            <span class="bar-label"><em>COGS</em><strong data-count="208.4" data-decimals="1" data-prefix="−$" data-suffix="K">−$208.4K</strong></span>
+          </li>
+          <li class="bar bar-cost" style="--from:52.6%; --to:60.0%;">
+            <span class="bar-fill"></span>
+            <span class="bar-label"><em>Fulfilment</em><strong data-count="38.7" data-decimals="1" data-prefix="−$" data-suffix="K">−$38.7K</strong></span>
+          </li>
+          <li class="bar bar-cost" style="--from:49.2%; --to:52.6%;">
+            <span class="bar-fill"></span>
+            <span class="bar-label"><em>Payment fees</em><strong data-count="17.7" data-decimals="1" data-prefix="−$" data-suffix="K">−$17.7K</strong></span>
+          </li>
+          <li class="bar bar-cost" style="--from:39.9%; --to:49.2%;">
+            <span class="bar-fill"></span>
+            <span class="bar-label"><em>Overhead</em><strong data-count="48.5" data-decimals="1" data-prefix="−$" data-suffix="K">−$48.5K</strong></span>
+          </li>
+          <li class="bar bar-result" style="--from:0%; --to:39.9%;">
+            <span class="bar-fill"></span>
+            <span class="bar-label"><em>Qualified profit</em><strong data-count="207.7" data-decimals="1" data-prefix="$" data-suffix="K">$207.7K</strong></span>
+          </li>
+        </ol>
+      </div>
+
+      <div class="arithmetic-foot reveal">
+        <p class="margin-callout">
+          What is left is <strong>39.9%</strong> — the same margin the app puts on
+          the overview, arrived at from the same inputs.
+        </p>
+        <p class="caption">
+          Figures from the seeded demo store. Profit is explicitly before paid
+          marketing while no ad source is connected.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <div class="rule-filigree reveal" aria-hidden="true">
+  <svg class="filigree-rule" viewBox="0 0 1200 108" fill="none" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMid meet"><use class="fg-cut" href="#fg-art" y="1.3" /><use class="fg-lit" href="#fg-art" y="-1.1" /><use class="fg-face" href="#fg-art" /></svg>
+  </div>
+
+  <!-- 3 ─ The tour ------------------------------------------------------- -->
   <section class="story" id="tour">
-    <div class="wrap story-intro reveal">
+    <div class="wrap section-head reveal">
       <span class="kicker">The working surface</span>
       <h2>Follow the money<br /><strong>without losing the plot.</strong></h2>
-      <p>Scroll through four views. The product stays in place; the question changes.</p>
+      <p>Four views of one store. The product stays in place; the question changes.</p>
     </div>
 
     <div class="wrap story-layout">
@@ -182,14 +599,27 @@
         <div class="story-window">
           <div class="window-bar">
             <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-            <span id="story-window-title">01 · Profit per order</span>
-            <span>Live product</span>
+            <span class="window-title" id="story-window-title">01 · Profit per order</span>
+            <span class="window-meta">Live product</span>
           </div>
           <div class="story-screens">
-            <img class="story-screen is-active" data-screen="orders" src="assets/orders.jpg" alt="Meridian profit per order view with daily profit chart and order-level cost breakdown" loading="lazy" />
-            <img class="story-screen" data-screen="products" src="assets/products.jpg" alt="Meridian products view ranking qualified contribution before paid marketing" loading="lazy" />
-            <img class="story-screen" data-screen="pricing" src="assets/pricing.jpg" alt="Meridian pricing view using price history observed after installation" loading="lazy" />
-            <img class="story-screen" data-screen="fulfilment" src="assets/fulfilment.jpg" alt="Meridian fulfilment view showing backlog, throughput and capacity warnings" loading="lazy" />
+            <!--
+              Each screen is framed on the thing its step is actually about,
+              not on the page title. `--fy` pans down the screenshot to the
+              payoff: the order table with its dashed Ads column, the ranked
+              contribution bars, the recommendation that says "needs a price
+              test", the backlog warnings.
+
+              The zoom is anchored to the right edge (see `transform-origin`
+              in the stylesheet) so it eats the app's repeating left sidebar
+              and nothing else. Anchoring it anywhere inboard of 100% crops
+              the right-hand column too, and on three of these four screens
+              that column is the money.
+            -->
+            <img data-dark="assets/orders-dark.jpg" class="story-screen is-active" data-screen="orders" style="--fy:100%; --zoom:1.78" src="assets/orders.jpg" alt="Meridian profit per order view: a table of orders with revenue, COGS, shipping, fees and a dash in the Ads column" width="1800" height="1126" loading="lazy" />
+            <img data-dark="assets/products-dark.jpg" class="story-screen" data-screen="products" style="--fy:100%; --zoom:1.15" src="assets/products.jpg" alt="Meridian products view ranking qualified contribution before paid marketing, with two products showing negative contribution" width="1800" height="1126" loading="lazy" />
+            <img data-dark="assets/pricing-dark.jpg" class="story-screen" data-screen="pricing" style="--fy:100%; --zoom:1.16" src="assets/pricing.jpg" alt="Meridian pricing recommendations with suggested prices, and one product marked as needing a price test" width="1800" height="1126" loading="lazy" />
+            <img data-dark="assets/fulfilment-dark.jpg" class="story-screen" data-screen="fulfilment" style="--fy:70%; --zoom:1.18" src="assets/fulfilment.jpg" alt="Meridian fulfilment view showing backlog exceeding the shipping promise and 14 days over capacity" width="1800" height="1126" loading="lazy" />
           </div>
         </div>
         <div class="story-progress" aria-hidden="true">
@@ -201,45 +631,49 @@
 
       <div class="story-steps">
         <article class="story-step is-active reveal" data-screen="orders" data-index="01" data-title="Profit per order">
-          <img class="story-mobile-image" src="assets/orders.jpg" alt="Meridian profit per order view" loading="lazy" />
+          <img data-dark="assets/orders-dark.jpg" class="story-mobile-image" style="--fy:100%" src="assets/orders.jpg" alt="Meridian profit per order view" width="1800" height="1126" loading="lazy" />
           <span class="chapter">01 · Orders</span>
           <h3>Every order has a receipt.</h3>
           <p>
-            Net revenue, COGS, fulfilment, payment fees and overhead on one row.
-            Profit is explicitly before paid marketing while that source is unavailable.
+            Net revenue, COGS, fulfilment, payment fees and overhead on one row,
+            for every order in the window. Sort by least profitable and the orders
+            costing you money surface in one click.
           </p>
           <div class="truth-line"><span>Missing input</span><strong>Shown, never zeroed</strong></div>
         </article>
 
         <article class="story-step reveal" data-screen="products" data-index="02" data-title="Products">
-          <img class="story-mobile-image" src="assets/products.jpg" alt="Meridian product contribution view" loading="lazy" />
+          <img data-dark="assets/products-dark.jpg" class="story-mobile-image" style="--fy:100%" src="assets/products.jpg" alt="Meridian product contribution view" width="1800" height="1126" loading="lazy" />
           <span class="chapter">02 · Products</span>
-          <h3>See what actually carries margin.</h3>
+          <h3>See what actually carries the store.</h3>
           <p>
-            Products are ranked by qualified contribution before overhead.
-            Missing COGS stays unclassified instead of receiving a false profit verdict.
+            Products ranked by qualified contribution before overhead. A product
+            with no recorded cost stays unclassified instead of collecting a
+            profit verdict it did not earn.
           </p>
           <div class="truth-line"><span>Loss verdict</span><strong>Only with measurable cost</strong></div>
         </article>
 
         <article class="story-step reveal" data-screen="pricing" data-index="03" data-title="Pricing">
-          <img class="story-mobile-image" src="assets/pricing.jpg" alt="Meridian pricing recommendations view" loading="lazy" />
+          <img data-dark="assets/pricing-dark.jpg" class="story-mobile-image" style="--fy:100%" src="assets/pricing.jpg" alt="Meridian pricing recommendations view" width="1800" height="1126" loading="lazy" />
           <span class="chapter">03 · Pricing</span>
           <h3>History first. Recommendation second.</h3>
           <p>
-            Meridian fits demand only to price changes observed after installation.
-            With no usable price history, the honest answer is “not yet.”
+            Meridian fits demand to price movements it observed after install, and
+            caps any suggested move at 25%. With no usable history the honest
+            answer is “not yet” — and that is the answer you get.
           </p>
           <div class="truth-line"><span>Price movement</span><strong>Capped at 25%</strong></div>
         </article>
 
         <article class="story-step reveal" data-screen="fulfilment" data-index="04" data-title="Fulfilment capacity">
-          <img class="story-mobile-image" src="assets/fulfilment.jpg" alt="Meridian fulfilment capacity view" loading="lazy" />
+          <img data-dark="assets/fulfilment-dark.jpg" class="story-mobile-image" style="--fy:70%" src="assets/fulfilment.jpg" alt="Meridian fulfilment capacity view" width="1800" height="1126" loading="lazy" />
           <span class="chapter">04 · Fulfilment</span>
-          <h3>Know when growth becomes backlog.</h3>
+          <h3>Know the day growth becomes backlog.</h3>
           <p>
-            Demand is compared with throughput your team has actually demonstrated,
-            revealing the day capacity breaks the shipping promise.
+            Demand compared with the throughput your team has actually
+            demonstrated — 14 days ahead, so the day you break the shipping
+            promise arrives with notice instead of apologies.
           </p>
           <div class="truth-line"><span>Forecast</span><strong>14 days against observed capacity</strong></div>
         </article>
@@ -247,17 +681,88 @@
     </div>
   </section>
 
+  <div class="rule-filigree reveal" aria-hidden="true">
+  <svg class="filigree-rule" viewBox="0 0 1200 108" fill="none" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMid meet"><use class="fg-cut" href="#fg-art" y="1.3" /><use class="fg-lit" href="#fg-art" y="-1.1" /><use class="fg-face" href="#fg-art" /></svg>
+  </div>
+
+  <!-- 4 ─ The refusals ---------------------------------------------------- -->
+  <section class="method" id="method">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="kicker">Method</span>
+        <h2>Confidence is easy to print.<br /><strong>Being right is the product.</strong></h2>
+        <p>
+          Three things Meridian will not do, however much better the dashboard
+          would look if it did.
+        </p>
+      </div>
+
+      <div class="refusals">
+        <article class="refusal reveal">
+          <span class="refusal-index">01</span>
+          <h3>A missing cost never becomes a zero.</h3>
+          <p>
+            Where an input is absent, Meridian shows a dash and says which figure
+            it affects. A blank is information; a zero is a lie that compounds
+            through every total above it.
+          </p>
+          <div class="refusal-demo" aria-hidden="true">
+            <span class="demo-wrong"><b>Ad spend</b><i>$0.00</i></span>
+            <span class="demo-arrow">→</span>
+            <span class="demo-right"><b>Ad spend</b><i class="is-dash">—</i><small>no synced source</small></span>
+          </div>
+        </article>
+
+        <article class="refusal reveal">
+          <span class="refusal-index">02</span>
+          <h3>No product is called a loser on a guess.</h3>
+          <p>
+            A loss verdict requires a measured cost. Products with no recorded
+            COGS are held out of the ranking and named as unclassified, so you
+            never discontinue a line on the strength of a blank field.
+          </p>
+          <div class="refusal-demo" aria-hidden="true">
+            <span class="demo-wrong"><b>Trail Runner 2</b><i class="is-loss">Bleeding</i></span>
+            <span class="demo-arrow">→</span>
+            <span class="demo-right"><b>Trail Runner 2</b><i>Unclassified</i><small>no cost recorded</small></span>
+          </div>
+        </article>
+
+        <article class="refusal reveal">
+          <span class="refusal-index">03</span>
+          <h3>Price history is observed, never invented.</h3>
+          <p>
+            Elasticity is fitted only to price changes Meridian watched happen
+            after installation. It cannot reconstruct the years before it arrived,
+            so it does not pretend to — it waits, and tells you it is waiting.
+          </p>
+          <div class="refusal-demo" aria-hidden="true">
+            <span class="demo-wrong"><b>Suggested price</b><i>$44.90</i></span>
+            <span class="demo-arrow">→</span>
+            <span class="demo-right"><b>Suggested price</b><i>Not yet</i><small>needs observed movement</small></span>
+          </div>
+        </article>
+      </div>
+
+      <p class="method-close reveal">
+        The result is a number with a known shape: you can see what went into it,
+        what did not, and exactly how far to trust it.
+      </p>
+    </div>
+  </section>
+
+  <!-- 5 ─ Dusk → daybreak -------------------------------------------------- -->
   <section class="theme-story" id="themes">
     <div class="theme-pin">
-      <div class="theme-copy reveal">
+      <div class="wrap theme-copy reveal">
         <span class="kicker">One system, two skies</span>
         <h2>Dusk by default.<br /><strong>Daybreak on the way down.</strong></h2>
         <p>Keep scrolling to move the same operating view from dusk to daybreak.</p>
       </div>
       <div class="theme-frame" aria-label="Meridian dusk and daybreak themes">
-        <img class="theme-dark" src="assets/overview-top2.jpg" alt="Meridian overview in dusk theme" loading="lazy" />
+        <img class="theme-dark" src="assets/overview-top2.jpg" alt="Meridian overview in dusk theme" width="1800" height="1126" loading="lazy" />
         <div class="theme-light-wrap">
-          <img class="theme-light" src="assets/overview-light2.jpg" alt="Meridian overview in daybreak theme" loading="lazy" />
+          <img class="theme-light" src="assets/overview-light2.jpg" alt="Meridian overview in daybreak theme" width="1800" height="1126" loading="lazy" />
         </div>
         <div class="theme-handle" aria-hidden="true"><span></span></div>
         <span class="theme-label theme-label-dark">Dusk</span>
@@ -266,68 +771,237 @@
     </div>
   </section>
 
+  <div class="rule-filigree reveal" aria-hidden="true">
+  <svg class="filigree-rule" viewBox="0 0 1200 108" fill="none" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMid meet"><use class="fg-cut" href="#fg-art" y="1.3" /><use class="fg-lit" href="#fg-art" y="-1.1" /><use class="fg-face" href="#fg-art" /></svg>
+  </div>
+
+  <!-- 6 ─ Trust ------------------------------------------------------------ -->
   <section class="trust-section">
     <div class="wrap">
-      <div class="trust-heading reveal">
+      <div class="section-head reveal">
         <span class="kicker">Read-only by construction</span>
         <h2>Built to inspect the business.<br /><strong>Never to alter the store.</strong></h2>
       </div>
-      <div class="trust-ledger reveal">
-        <div><span>01</span><strong>Read-only Shopify scopes</strong><p>No product, price or order writes requested.</p></div>
-        <div><span>02</span><strong>Shopify-native billing</strong><p>Charges appear on the merchant’s Shopify invoice.</p></div>
-        <div><span>03</span><strong>Qualified economics</strong><p>Modelled, missing and unavailable inputs remain visible.</p></div>
+      <div class="trust-ledger">
+        <div class="reveal">
+          <span class="trust-no">01</span>
+          <strong>Read-only Shopify scopes</strong>
+          <p>Orders, products, fulfilments and inventory are read. No product, price or order write is ever requested.</p>
+        </div>
+        <div class="reveal">
+          <span class="trust-no">02</span>
+          <strong>Shopify-native billing</strong>
+          <p>Charges appear on the merchant's own Shopify invoice. Meridian never sees a card number.</p>
+        </div>
+        <div class="reveal">
+          <span class="trust-no">03</span>
+          <strong>Qualified economics</strong>
+          <p>Modelled, missing and unavailable inputs stay visible on the screen that uses them.</p>
+        </div>
       </div>
     </div>
   </section>
 
+  <div class="rule-filigree reveal" aria-hidden="true">
+  <svg class="filigree-rule" viewBox="0 0 1200 108" fill="none" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMid meet"><use class="fg-cut" href="#fg-art" y="1.3" /><use class="fg-lit" href="#fg-art" y="-1.1" /><use class="fg-face" href="#fg-art" /></svg>
+  </div>
+
+  <!-- 7 ─ Pricing ---------------------------------------------------------- -->
   <section class="pricing" id="pricing">
     <div class="wrap">
-      <div class="pricing-heading reveal">
+      <div class="section-head reveal">
         <span class="kicker">Pricing</span>
         <h2>Fourteen days free.<br /><strong>Then choose the right toolkit.</strong></h2>
-        <p>Billing is handled entirely by Shopify. Meridian never sees a card number.</p>
+        <p>Billing is handled entirely by Shopify. Cancel from your Shopify admin at any time.</p>
+      </div>
+
+      <div class="billing-toggle reveal" role="group" aria-label="Billing period">
+        <button type="button" class="is-selected" data-period="monthly" aria-pressed="true">Monthly</button>
+        <button type="button" data-period="annual" aria-pressed="false">Annual <span>2 months free</span></button>
+        <i class="toggle-thumb" aria-hidden="true"></i>
       </div>
 
       <div class="plans">
         <article class="plan reveal">
-          <div class="plan-top"><span>Starter</span><strong>$49<small>/month</small></strong></div>
-          <p>$490/year · two months free</p>
+          <div class="plan-top">
+            <span class="plan-name">Starter</span>
+            <strong class="plan-price"
+                    data-monthly="$49" data-monthly-unit="/month"
+                    data-annual="$490" data-annual-unit="/year">$49<small>/month</small></strong>
+            <span class="plan-sub" data-monthly="Billed monthly" data-annual="$40.83 a month, billed once">Billed monthly</span>
+          </div>
+          <p class="plan-for">For a store getting its costs straight for the first time.</p>
           <ul>
-            <li>Order profit after configured costs</li>
+            <li>Profit per order after configured costs</li>
             <li>Product margin analysis</li>
             <li>Revenue and profit by channel</li>
+            <li>Cost rules for fees, shipping, pick-and-pack and overhead</li>
           </ul>
-          <a class="plan-link" href="https://apps.shopify.com/meridian-profit">Start with Starter <span>→</span></a>
+          <a class="plan-link" href="https://apps.shopify.com/meridian-profit">Start with Starter</a>
         </article>
 
         <article class="plan plan-featured reveal">
           <div class="plan-badge">Most stores</div>
-          <div class="plan-top"><span>Growth</span><strong>$149<small>/month</small></strong></div>
-          <p>$1,490/year · two months free</p>
+          <div class="plan-top">
+            <span class="plan-name">Growth</span>
+            <strong class="plan-price"
+                    data-monthly="$149" data-monthly-unit="/month"
+                    data-annual="$1,490" data-annual-unit="/year">$149<small>/month</small></strong>
+            <span class="plan-sub" data-monthly="Billed monthly" data-annual="$124.17 a month, billed once">Billed monthly</span>
+          </div>
+          <p class="plan-for">For a store that already knows it is growing faster than it is shipping.</p>
           <ul>
             <li>Everything in Starter</li>
-            <li>Pricing recommendations</li>
-            <li>Fulfilment capacity alerts</li>
+            <li>Pricing recommendations from observed history</li>
+            <li>Fulfilment capacity alerts, 14 days ahead</li>
           </ul>
           <a class="pill" href="https://apps.shopify.com/meridian-profit">Start free trial</a>
         </article>
 
         <article class="plan reveal">
-          <div class="plan-top"><span>Scale</span><strong>$399<small>/month</small></strong></div>
-          <p>$3,990/year · two months free</p>
+          <div class="plan-top">
+            <span class="plan-name">Scale</span>
+            <strong class="plan-price"
+                    data-monthly="$399" data-monthly-unit="/month"
+                    data-annual="$3,990" data-annual-unit="/year">$399<small>/month</small></strong>
+            <span class="plan-sub" data-monthly="Billed monthly" data-annual="$332.50 a month, billed once">Billed monthly</span>
+          </div>
+          <p class="plan-for">For a catalogue and an order book large enough that a day of backlog is expensive.</p>
           <ul>
             <li>Everything in Growth</li>
             <li>Priority support</li>
           </ul>
-          <a class="plan-link" href="https://apps.shopify.com/meridian-profit">Start with Scale <span>→</span></a>
+          <a class="plan-link" href="https://apps.shopify.com/meridian-profit">Start with Scale</a>
         </article>
       </div>
+    </div>
+  </section>
 
-      <div class="final-cta reveal">
-        <span class="kicker">Your gross sales already exist</span>
-        <h2>Now find out what remains.</h2>
-        <a class="pill" href="https://apps.shopify.com/meridian-profit">Install from the Shopify App Store</a>
+  <div class="rule-filigree reveal" aria-hidden="true">
+  <svg class="filigree-rule" viewBox="0 0 1200 108" fill="none" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMid meet"><use class="fg-cut" href="#fg-art" y="1.3" /><use class="fg-lit" href="#fg-art" y="-1.1" /><use class="fg-face" href="#fg-art" /></svg>
+  </div>
+
+  <!-- 8 ─ The questions that decide it -------------------------------------- -->
+  <section class="faq" id="faq">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="kicker">Straight answers</span>
+        <h2>What you'd ask on a call.<br /><strong>Answered before you install.</strong></h2>
+        <p>
+          Every answer here is the same one the app gives you on the screen it
+          affects. None of them get better if you read them twice.
+        </p>
       </div>
+
+      <div class="faq-list reveal">
+        <details class="faq-item" open>
+          <summary>
+            <span>Where do the product costs come from?</span>
+            <i aria-hidden="true"></i>
+          </summary>
+          <div class="faq-answer">
+            <p>
+              Shopify's own cost-per-item field on each variant. Shipping,
+              payment fees, pick-and-pack and overhead come from cost rules you
+              set once. Where a variant has no cost recorded, Meridian says so
+              and holds that product out of the ranking — it does not score it
+              at zero and call it profitable.
+            </p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>
+            <span>Does this include my ad spend?</span>
+            <i aria-hidden="true"></i>
+          </summary>
+          <div class="faq-answer">
+            <p>
+              No — and every screen it touches says so. This release has no
+              paid-marketing connector, so profit is labelled
+              <em>before paid marketing</em> throughout and the Ad spend row
+              shows a dash rather than a zero. If you run ads, read the figure
+              as a ceiling, not a bottom line.
+            </p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>
+            <span>How much history will I see on day one?</span>
+            <i aria-hidden="true"></i>
+          </summary>
+          <div class="faq-answer">
+            <p>
+              Sixty days. That is the window Shopify's standard order access
+              returns, so it is what the first sync can cover. Meridian puts
+              that in a banner instead of drawing a chart that starts at your
+              install date and letting you assume the store had no earlier
+              trading. Longer history needs an extra approval from Shopify.
+            </p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>
+            <span>Can it change anything in my store?</span>
+            <i aria-hidden="true"></i>
+          </summary>
+          <div class="faq-answer">
+            <p>
+              No. Meridian asks for four read-only permissions — orders,
+              products, fulfilments and inventory — and never requests write
+              access to any of them. It cannot edit a price, a product or an
+              order. That is a property of what it installed with, not a
+              promise about how it behaves.
+            </p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>
+            <span>When do pricing recommendations show up?</span>
+            <i aria-hidden="true"></i>
+          </summary>
+          <div class="faq-answer">
+            <p>
+              Once Meridian has watched a price actually move. Elasticity is
+              fitted only to changes observed after install, so the pricing view
+              opens by telling you it is waiting rather than fitting a curve to
+              years it never saw. Any move it does suggest is capped at 25%.
+            </p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>
+            <span>How does billing work?</span>
+            <i aria-hidden="true"></i>
+          </summary>
+          <div class="faq-answer">
+            <p>
+              Through Shopify. The charge appears on your own Shopify invoice,
+              Meridian never sees a card number, and you cancel from the Shopify
+              admin without talking to anyone. The 14-day trial starts when you
+              install.
+            </p>
+          </div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9 ─ Close ------------------------------------------------------------ -->
+  <section class="final-cta">
+    <div class="final-sky" aria-hidden="true"><span class="final-sun"></span></div>
+    <div class="wrap final-inner reveal">
+      <span class="kicker">Your gross sales already exist</span>
+      <h2>Now find out<br /><strong>what remains.</strong></h2>
+      <p>Fourteen days free. Read-only access. Billed through Shopify, cancelled from Shopify.</p>
+      <a class="pill pill-lg" href="https://apps.shopify.com/meridian-profit">
+        Install from the Shopify App Store
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h9m0 0L8.5 4.5M12 8l-3.5 3.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
     </div>
   </section>
 
@@ -336,7 +1010,7 @@
 
 <footer>
   <div class="wrap footer-inner">
-    <div>
+    <div class="footer-brand">
       <a class="brand" href="#top" aria-label="Meridian home">
         <svg width="24" height="24" viewBox="0 0 96 96" fill="none" aria-hidden="true">
           <g stroke="currentColor" stroke-width="2.6" opacity="0.86" stroke-linecap="round">
@@ -352,9 +1026,11 @@
       <p>The sun at its highest. Your numbers at their clearest.</p>
     </div>
     <nav class="footer-nav" aria-label="Footer navigation">
+      <a href="#product">The arithmetic</a>
+      <a href="#tour">Tour</a>
+      <a href="#pricing">Pricing</a>
       <a href="privacy.html">Privacy</a>
       <a href="terms.html">Terms</a>
-      <a href="#pricing">Pricing</a>
     </nav>
   </div>
 </footer>
@@ -366,6 +1042,7 @@
   var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   var splash = document.getElementById("site-splash");
   var header = document.getElementById("header");
+  var progress = document.querySelector(".header-progress i");
   var root = document.documentElement;
   var revealed = document.querySelectorAll(".reveal");
   var storySteps = document.querySelectorAll(".story-step");
@@ -374,14 +1051,35 @@
   var progressLabel = document.querySelector(".progress-label");
   var progressBar = document.querySelector(".story-progress b");
   var themeStory = document.querySelector(".theme-story");
+  var hero = document.getElementById("hero");
   var ticking = false;
 
   if (splash) {
-    // Matches the app's SPLASH_MS / SPLASH_FADE_MS exactly, so the marketing
-    // page and the product open with the same beat.
-    var splashHold = reduced ? 420 : 1240;
-    window.setTimeout(function () { splash.classList.add("out"); }, splashHold);
-    window.setTimeout(function () { splash.classList.add("done"); }, splashHold + 260);
+    /*
+     * The app's opening beat, shortened for a page a stranger is deciding
+     * whether to read. Returning within the session skips it entirely.
+     *
+     * The hold cannot go below the wordmark's own timing. The eighth letter
+     * starts at 406ms and takes 420ms, so it finishes at 826ms — at the old
+     * 820ms hold the fade began before the word had finished assembling and
+     * nobody ever saw "Meridian", only the globe. 1150ms is the shortest
+     * hold that leaves the finished wordmark on screen long enough to read,
+     * and still lands well inside the app's own 1240ms.
+     */
+    var seen = false;
+    try { seen = window.sessionStorage.getItem("meridian-splash") === "1"; } catch (e) {}
+    if (seen || reduced) {
+      splash.parentNode.removeChild(splash);
+      splash = null;
+      root.classList.add("splash-done");
+    } else {
+      try { window.sessionStorage.setItem("meridian-splash", "1"); } catch (e) {}
+      window.setTimeout(function () { splash.classList.add("out"); }, 1150);
+      window.setTimeout(function () {
+        splash.classList.add("done");
+        root.classList.add("splash-done");
+      }, 1410);
+    }
   }
 
   function activateStory(step) {
@@ -402,7 +1100,7 @@
           revealObserver.unobserve(entry.target);
         }
       });
-    }, { threshold: 0.12, rootMargin: "0px 0px -8% 0px" });
+    }, { threshold: 0.1, rootMargin: "0px 0px -6% 0px" });
     revealed.forEach(function (element) { revealObserver.observe(element); });
 
     var storyObserver = new IntersectionObserver(function (entries) {
@@ -417,18 +1115,33 @@
 
   function paintScroll() {
     ticking = false;
-    header.classList.toggle("scrolled", window.scrollY > 40);
+    var y = window.scrollY;
+    header.classList.toggle("scrolled", y > 40);
+
+    if (progress) {
+      var scrollable = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+      progress.style.transform = "scaleX(" + Math.min(1, y / scrollable).toFixed(4) + ")";
+    }
 
     if (!reduced) {
-      var heroProgress = Math.max(0, Math.min(1, window.scrollY / Math.max(1, window.innerHeight)));
+      var heroProgress = Math.max(0, Math.min(1, y / Math.max(1, window.innerHeight)));
       root.style.setProperty("--hero-scroll", heroProgress.toFixed(3));
 
+      if (hero) {
+        // The dashboard starts tilted away and stands up as it is scrolled
+        // into the reader's plane. Held at 0 once upright so it never
+        // over-rotates past flat.
+        var rect = hero.getBoundingClientRect();
+        var lift = Math.max(0, Math.min(1, (window.innerHeight - rect.bottom + rect.height * 0.42) / (rect.height * 0.42)));
+        root.style.setProperty("--product-lift", lift.toFixed(3));
+      }
+
       if (themeStory) {
-        var rect = themeStory.getBoundingClientRect();
-        var distance = Math.max(1, rect.height - window.innerHeight);
-        var progress = Math.max(0, Math.min(1, -rect.top / distance));
-        root.style.setProperty("--theme-clip", ((1 - progress) * 100).toFixed(2) + "%");
-        root.style.setProperty("--theme-position", (progress * 100).toFixed(2) + "%");
+        var themeRect = themeStory.getBoundingClientRect();
+        var distance = Math.max(1, themeRect.height - window.innerHeight);
+        var themeProgress = Math.max(0, Math.min(1, -themeRect.top / distance));
+        root.style.setProperty("--theme-clip", ((1 - themeProgress) * 100).toFixed(2) + "%");
+        root.style.setProperty("--theme-position", (themeProgress * 100).toFixed(2) + "%");
       }
     }
   }
@@ -443,21 +1156,24 @@
   /*
    * Deterministic settle hook for capture tooling.
    *
-   * Revealing an element only starts its 720ms transition, and a screenshot
-   * taken immediately afterwards catches it at opacity 0 — which reads as a
-   * blank section and has already been mistaken for a broken layout. Suppress
+   * Revealing an element only starts its transition, and a screenshot taken
+   * immediately afterwards catches it at opacity 0 — which reads as a blank
+   * section and has already been mistaken for a broken layout. Suppress
    * transitions for one frame so the revealed state is the painted state, and
    * finish the splash, which would otherwise cover the first viewport.
    */
   window.__skySettle = function () {
     root.classList.add("settled");
+    root.classList.add("splash-done");
     revealed.forEach(function (element) { element.classList.add("in"); });
     // Removed rather than class-dismissed: with transitions suppressed the
     // fade-out never runs, so the overlay would sit on top of the capture.
     if (splash && splash.parentNode) { splash.parentNode.removeChild(splash); }
     paintScroll();
-    // The sky is a separate module; give it one deterministic frame too.
+    // The globe and the page motion are separate modules; give each one a
+    // deterministic frame too.
     if (typeof window.__globePaintOnce === "function") window.__globePaintOnce();
+    if (typeof window.__motionSettle === "function") window.__motionSettle();
   };
 
   paintScroll();
@@ -466,6 +1182,52 @@
 })();
 </script>
 
+<script>
+(function () {
+  "use strict";
+  var root = document.documentElement;
+  var button = document.getElementById("theme-switch");
+  if (!button) return;
+
+  function sync() {
+    var dark = root.getAttribute("data-theme") === "dark";
+    button.setAttribute("aria-pressed", dark ? "true" : "false");
+  }
+
+  button.addEventListener("click", function () {
+    var dark = root.getAttribute("data-theme") !== "dark";
+    root.setAttribute("data-theme", dark ? "dark" : "light");
+    try { localStorage.setItem("meridian-theme", dark ? "dark" : "light"); } catch (e) {}
+    sync();
+    swapShots();
+    // The order field is painted into a canvas, so CSS cannot recolour it.
+    if (typeof window.__dotfieldRepaint === "function") window.__dotfieldRepaint();
+  });
+
+  /*
+   * The app captures come in both themes.
+   *
+   * Every screenshot on this page is a real photograph of the product, so a
+   * light page showing a dark app (or the reverse) is not a styling mismatch —
+   * it is showing the merchant the wrong build. Each <img> carries its twin in
+   * `data-dark`; switching the page switches the product with it.
+   */
+  function swapShots() {
+    var dark = root.getAttribute("data-theme") === "dark";
+    var shots = document.querySelectorAll("img[data-dark]");
+    for (var i = 0; i < shots.length; i++) {
+      var img = shots[i];
+      if (!img.dataset.light) img.dataset.light = img.getAttribute("src");
+      img.setAttribute("src", dark ? img.dataset.dark : img.dataset.light);
+    }
+  }
+
+  sync();
+  swapShots();
+})();
+</script>
+
 <script src="globe.js" defer></script>
+<script src="motion.js" defer></script>
 </body>
 </html>

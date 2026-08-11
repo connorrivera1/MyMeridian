@@ -36,7 +36,9 @@ export function parseScopes(scope: string | null | undefined): Set<string> {
   );
 }
 
-export function capabilitiesFrom(scope: string | null | undefined): Capabilities {
+export function capabilitiesFrom(
+  scope: string | null | undefined,
+): Capabilities {
   const granted = parseScopes(scope);
   const has = (name: string) =>
     granted.has(name) || granted.has(name.replace("read_", "write_"));
@@ -90,7 +92,7 @@ export const SCOPE_IMPACTS: ScopeImpact[] = [
     scope: "read_orders",
     label: "Orders",
     unlocks: "Everything. Revenue, order profit, product and channel analysis.",
-    protectedData: false,
+    protectedData: true,
     essential: true,
   },
   {
@@ -112,7 +114,7 @@ export const SCOPE_IMPACTS: ScopeImpact[] = [
     scope: "read_customers",
     label: "Customers",
     unlocks:
-      "Customer identity on orders. Without it there is no CAC, no lifetime value, no payback period, and no way to tell a working loss leader from a bleeding one.",
+      "Customer identity on orders. Without it there is no CAC, lifetime value, payback period, or customer-lifecycle product classification.",
     protectedData: true,
     essential: false,
   },
@@ -126,13 +128,20 @@ export const SCOPE_IMPACTS: ScopeImpact[] = [
 ];
 
 /** Scopes granted, missing, and what the gaps cost. */
-export function scopeReport(scope: string | null | undefined) {
+export function scopeReport(
+  scope: string | null | undefined,
+  requestedScopes?: string | null,
+) {
   const granted = parseScopes(scope);
+  const requested =
+    requestedScopes === undefined ? null : parseScopes(requestedScopes);
   const has = (name: string) =>
     granted.has(name) || granted.has(name.replace("read_", "write_"));
 
-  return SCOPE_IMPACTS.map((impact) => ({
-    ...impact,
-    granted: has(impact.scope),
-  }));
+  return SCOPE_IMPACTS.filter(
+    (impact) =>
+      requested === null ||
+      requested.has(impact.scope) ||
+      requested.has(impact.scope.replace("read_", "write_")),
+  ).map((impact) => ({ ...impact, granted: has(impact.scope) }));
 }

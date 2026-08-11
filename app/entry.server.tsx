@@ -6,6 +6,19 @@ import { renderToPipeableStream } from "react-dom/server";
 import { ServerRouter, type EntryContext } from "react-router";
 
 import { addDocumentResponseHeaders } from "./shopify.server";
+import { validateCustomerErasureConfiguration } from "./lib/customer-erasure.server";
+import { startDataRetentionScheduler } from "./lib/data-retention.server";
+import { startWebhookDeliveryWorker } from "./lib/webhooks.server";
+
+// This module is loaded with the server process, not when a merchant opens
+// Settings. Retention therefore advances even when the app receives no page
+// traffic; Fly keeps at least one machine running for background work.
+// Validate first: accepting a redaction delivery while its stable guard key is
+// missing would defer a deterministic configuration failure into the retry
+// queue and let an otherwise-broken deploy pass its health checks.
+validateCustomerErasureConfiguration();
+startDataRetentionScheduler();
+startWebhookDeliveryWorker();
 
 const ABORT_DELAY = 5000;
 

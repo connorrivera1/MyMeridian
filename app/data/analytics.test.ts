@@ -48,7 +48,11 @@ const SHOP = {
   lastComputedAt: new Date("2026-07-31T01:00:00.000Z"),
 } as unknown as Shop;
 
-function engineOrder(id: string, day: number, subtotalCents: number): EngineOrder {
+function engineOrder(
+  id: string,
+  day: number,
+  subtotalCents: number,
+): EngineOrder {
   return {
     id,
     orderNumber: 1000 + day,
@@ -121,6 +125,12 @@ const RULES = {
   pickPackPerOrderCents: 175,
   pickPackPerItemCents: 35,
   monthlyOverheadCents: 300_000,
+  provenance: {
+    paymentFee: { origin: "DEMO_SEED" as const, confirmed: true },
+    shippingDefault: { origin: "DEMO_SEED" as const, confirmed: true },
+    pickPack: { origin: "DEMO_SEED" as const, confirmed: true },
+    monthlyOverhead: { origin: "DEMO_SEED" as const, confirmed: true },
+  },
 };
 
 beforeEach(() => {
@@ -149,11 +159,13 @@ describe("loadPeriodProfit", () => {
     const full = await loadShopAnalytics(SHOP, RANGE);
     invalidateAnalyticsCache();
     const lean = await loadPeriodProfit(SHOP, RANGE);
+    const { orders: _discardedOrders, ...fullSummary } = full.period;
 
     // Deep equality, not a spot check on net profit: overhead proration and ad
     // attribution both depend on the reporting window being passed through, and
     // a lean path that dropped `range` would still agree on revenue.
-    expect(lean).toEqual(full.period);
+    expect(lean).toEqual(fullSummary);
+    expect(lean).not.toHaveProperty("orders");
   });
 
   it("carries unattributed ad spend, which needs the window", async () => {
@@ -204,6 +216,7 @@ describe("loadPeriodProfit", () => {
 
     expect(loadEngineOrders.mock.calls.length).toBe(callsAfterFull);
     expect(lean.netProfitCents).toBeDefined();
+    expect(lean).not.toHaveProperty("orders");
   });
 
   it("caches its own result", async () => {
@@ -237,13 +250,112 @@ describe("loadPeriodProfit", () => {
   });
 });
 
+describe("analytics build admission", () => {
+  it("deduplicates simultaneous misses for the same shop and window", async () => {
+    let releaseOrders!: (orders: typeof ORDERS) => void;
+    loadEngineOrders.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseOrders = resolve;
+        }),
+    );
+
+    const first = loadShopAnalytics(SHOP, RANGE);
+    const second = loadShopAnalytics(SHOP, RANGE);
+
+    await vi.waitFor(() => expect(loadEngineOrders).toHaveBeenCalledTimes(1));
+    releaseOrders(ORDERS);
+
+    const [left, right] = await Promise.all([first, second]);
+    expect(left).toBe(right);
+    expect(loadEngineOrders).toHaveBeenCalledTimes(1);
+  });
+
+  it("serializes misses for different shops", async () => {
+    const releases: Array<(orders: typeof ORDERS) => void> = [];
+    loadEngineOrders.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releases.push(resolve);
+        }),
+    );
+
+    const first = loadShopAnalytics(SHOP, RANGE);
+    const second = loadShopAnalytics({ ...SHOP, id: "shop_2" } as Shop, RANGE);
+
+    await vi.waitFor(() => expect(releases).toHaveLength(1));
+    expect(loadEngineOrders).toHaveBeenCalledTimes(1);
+
+    releases[0]!(ORDERS);
+    await vi.waitFor(() => expect(releases).toHaveLength(2));
+    expect(loadEngineOrders).toHaveBeenCalledTimes(2);
+
+    releases[1]!(ORDERS);
+    await Promise.all([first, second]);
+  });
+
+  it("evicts a retained full window before a different admitted miss starts hydrating", async () => {
+    const earlier = {
+      from: new Date("2026-06-01T00:00:00.000Z"),
+      to: new Date("2026-06-30T00:00:00.000Z"),
+    };
+    await loadShopAnalytics(SHOP, RANGE);
+
+    let releaseEarlier!: (orders: typeof ORDERS) => void;
+    loadEngineOrders.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseEarlier = resolve;
+        }),
+    );
+
+    const earlierBuild = loadShopAnalytics(SHOP, earlier);
+    await vi.waitFor(() => expect(loadEngineOrders).toHaveBeenCalledTimes(2));
+
+    let oldWindowResolved = false;
+    const oldWindow = loadShopAnalytics(SHOP, RANGE).then((value) => {
+      oldWindowResolved = true;
+      return value;
+    });
+    await Promise.resolve();
+    expect(oldWindowResolved).toBe(false);
+    expect(loadEngineOrders).toHaveBeenCalledTimes(2);
+
+    releaseEarlier(ORDERS);
+    await earlierBuild;
+    await vi.waitFor(() => expect(loadEngineOrders).toHaveBeenCalledTimes(3));
+    await oldWindow;
+  });
+
+  it("skips the year-long customer query when customer access is unavailable", async () => {
+    await loadShopAnalytics(
+      {
+        ...SHOP,
+        isDemo: false,
+        grantedScopes: "read_orders read_products read_inventory",
+      } as Shop,
+      RANGE,
+    );
+
+    expect(loadCohortRows).not.toHaveBeenCalled();
+  });
+
+  it("retains cohort analysis for the bounded demo dataset", async () => {
+    await loadShopAnalytics(
+      { ...SHOP, id: "demo", isDemo: true, grantedScopes: null } as Shop,
+      RANGE,
+    );
+
+    expect(loadCohortRows).toHaveBeenCalledTimes(1);
+  });
+});
+
 /**
  * Cover for what the analytics cache is allowed to hold on to.
  *
  * `fly.toml` gives this app a 1024MB VM, and the cache used to bound itself by
  * counting entries: 64 windows, whatever each one weighed. A 180-day window on
- * the seeded store — twelve thousand orders, which is a small store for a plan
- * sold on "unlimited orders" — retains 14.5MB, so the old bound permitted
+ * the seeded store — twelve thousand orders — retains 14.5MB, so the old bound permitted
  * roughly 930MB of cache on a 1GB box. Nothing failed on the demo store, which
  * is exactly why it survived five passes.
  */
@@ -290,9 +402,10 @@ describe("analytics cache retention", () => {
     vi.unstubAllEnvs();
   });
 
-  it("counts full builds and comparison windows against one budget", async () => {
-    // The two caches are separate maps but one heap. Bounding them
-    // independently would permit twice the memory the number was chosen for.
+  it("releases a retained full build before a scalar comparison hydrates orders", async () => {
+    // The scalar result retains no order rows, but producing it still creates
+    // the same peak order graph. The old full window must leave the cache before
+    // that work starts, not merely after the new result exists.
     vi.stubEnv("MERIDIAN_ANALYTICS_CACHE_ORDERS", "2");
 
     const full = monthEnding(3, 30);

@@ -8,6 +8,16 @@
 <meta name="robots" content="index, follow" />
 <link rel="icon" href="favicon.svg" type="image/svg+xml" />
 <link rel="stylesheet" href="legal.css" />
+<script>
+document.documentElement.classList.add("js");
+(function () {
+  var saved = null;
+  try { saved = localStorage.getItem("meridian-theme"); } catch (e) {}
+  var dark = saved ? saved === "dark"
+                   : window.matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+})();
+</script>
 </head>
 <body>
 
@@ -15,13 +25,13 @@
   <div class="header-inner">
     <a class="brand" href="index.html" aria-label="Meridian">
       <svg width="24" height="24" viewBox="0 0 96 96" fill="none" aria-hidden="true">
-        <g stroke="#f4efe6" stroke-width="2.6" opacity="0.85" stroke-linecap="round">
+        <g stroke="currentColor" stroke-width="2.6" opacity="0.85" stroke-linecap="round">
           <circle cx="48" cy="48" r="34" />
           <ellipse cx="48" cy="48" rx="24.5" ry="34" />
           <ellipse cx="48" cy="48" rx="13.5" ry="34" />
           <path d="M48 14v68" />
         </g>
-        <path d="M48 14 A 15 34 0 0 1 48 82" stroke="#f0c273" stroke-width="3.2" stroke-linecap="round" />
+        <path d="M48 14 A 15 34 0 0 1 48 82" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" />
       </svg>
       Meridian
     </a>
@@ -29,6 +39,24 @@
       <a href="index.html">Home</a>
       <a href="privacy.html">Privacy</a>
       <a href="terms.html" aria-current="page">Terms</a>
+        <button class="theme-switch" type="button" id="theme-switch"
+                aria-label="Switch between light and dark" aria-pressed="false">
+          <span class="theme-switch-track" aria-hidden="true">
+            <span class="theme-switch-thumb">
+              <svg class="theme-icon theme-icon-sun" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <circle cx="10" cy="10" r="3.4" stroke="currentColor" stroke-width="1.6" />
+                <g stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+                  <path d="M10 2.6v2M10 15.4v2M2.6 10h2M15.4 10h2M4.8 4.8l1.4 1.4M13.8 13.8l1.4 1.4M15.2 4.8l-1.4 1.4M6.2 13.8l-1.4 1.4" />
+                </g>
+              </svg>
+              <svg class="theme-icon theme-icon-moon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path d="M16 12.4A6.8 6.8 0 0 1 7.6 4a6.8 6.8 0 1 0 8.4 8.4Z"
+                      stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+              </svg>
+            </span>
+          </span>
+        </button>
+
     </nav>
   </div>
 </header>
@@ -251,5 +279,23 @@
   </div>
 </footer>
 
+<script>
+(function () {
+  "use strict";
+  var root = document.documentElement;
+  var button = document.getElementById("theme-switch");
+  if (!button) return;
+  function sync() {
+    button.setAttribute("aria-pressed", root.getAttribute("data-theme") === "dark" ? "true" : "false");
+  }
+  button.addEventListener("click", function () {
+    var dark = root.getAttribute("data-theme") !== "dark";
+    root.setAttribute("data-theme", dark ? "dark" : "light");
+    try { localStorage.setItem("meridian-theme", dark ? "dark" : "light"); } catch (e) {}
+    sync();
+  });
+  sync();
+})();
+</script>
 </body>
 </html>

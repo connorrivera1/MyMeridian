@@ -4050,54 +4050,55 @@ table td,
 /* =========================================================================
  * BREATHING ROOM
  *
- * The measurements below were all fixed pixels, which means they were tuned at
- * one window size and cramped at every other. A 1728px window gave a section
- * the same 22px of gutter as a 1024px one, so the wide layout read as squeezed
- * and unfinished — lots of empty margin, and the content still packed tight.
+ * The cramping had one cause and many symptoms. Every panel in the app spends
+ * the same spacing scale, and that scale was fixed pixels — so it was tuned at
+ * one window width and wrong at every other. A 1728px window gave a card the
+ * same 24px gutter as a 1024px one, which is why the wide layout read as
+ * squeezed: acres of empty margin around content still packed tight.
  *
- * `clamp()` throughout: a floor that works on a phone, a ceiling that stops a
- * wide monitor turning into whitespace, and a viewport term between them.
+ * So the scale itself becomes fluid, rather than each component being patched.
+ * Every component stays in proportion with every other — which is the entire
+ * reason to have a scale — and the panels, gutters, gaps and ledger insets all
+ * loosen together. A floor that works on a phone, a ceiling that stops a wide
+ * monitor turning into whitespace.
  * ====================================================================== */
 
+:root {
+  --s-1: clamp(3px, 0.24vw, 5px);
+  --s-2: clamp(6px, 0.5vw, 10px);
+  --s-3: clamp(10px, 0.8vw, 15px);
+  --s-4: clamp(13px, 1.05vw, 20px);
+  --s-5: clamp(16px, 1.35vw, 25px);
+  --s-6: clamp(18px, 1.7vw, 31px);
+  --s-8: clamp(24px, 2.3vw, 42px);
+
+  /* The ledger inset is the panel gutter — one number, so a flush table's
+     first column lines up with the heading above it. */
+  --ledger-gutter: var(--s-6);
+}
+
 .content {
-  padding: clamp(14px, 1.6vw, 26px) clamp(16px, 2.6vw, 48px) 80px;
-  gap: clamp(16px, 1.6vw, 26px);
-  /* A dashboard is read in columns, not in lines of prose. Past this width the
-     eye is travelling further than it gains, so the shell centres instead. */
+  padding: var(--s-4) var(--s-6) 80px;
+  gap: var(--s-5);
+  /*
+   * A dashboard is read in columns, not in lines of prose, so it can run wider
+   * than body text — but not without limit. Past this the eye travels further
+   * between a label and its figure than it gains in density, and four tiles
+   * stretched across 2000px stop looking like instruments and start looking
+   * like empty boxes with a number in the corner.
+   */
   width: 100%;
-  max-width: 1680px;
+  max-width: 1720px;
   margin-inline: auto;
 }
 
-.page-enter { gap: clamp(16px, 1.6vw, 26px); }
+.page-enter { gap: var(--s-5); }
+.grid { gap: var(--s-4); }
 
-.card-body { padding: clamp(16px, 1.3vw, 24px) 0; }
-.card-body.flush { padding: 0; }
-.card-head { padding: clamp(20px, 2vw, 32px) 0 clamp(14px, 1.2vw, 20px); }
-
-.grid { gap: clamp(12px, 1.2vw, 20px); }
-
-/* The ledger strip keeps its shared rules, but its cells get real padding. */
-.grid.cols-3,
-.grid.cols-4 { gap: 0; }
-.tile { padding: clamp(16px, 1.4vw, 24px) clamp(16px, 1.5vw, 26px); }
-
-/* Table cells were the worst of it — three columns of figures at 10px apart. */
+/* Table rows were the tightest thing on the page: three columns of figures
+   with barely a line's worth of air between them. */
 .data th,
-.data td { padding-block: clamp(10px, 0.85vw, 15px); }
-.data th:first-child,
-.data td:first-child { padding-inline-start: 0; }
-.data th:last-child,
-.data td:last-child { padding-inline-end: 0; }
-
-/*
- * Wide monitors get more columns rather than wider ones. Stretching four tiles
- * across 1600px is what made them look like empty boxes with a number in the
- * corner.
- */
-@media (min-width: 1500px) {
-  .grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
+.data td { padding-block: var(--s-3); }
 
 /* =========================================================================
  * POLARITY, APPLIED

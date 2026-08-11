@@ -64,8 +64,12 @@ describe("public legal pages", () => {
 
     // read_customers is not requested; a policy claiming it would be asking
     // for a scope review the app does not need and cannot pass.
-    expect(privacy).toContain("<code>read_customers</code> and");
+    expect(privacy).toContain(
+      "<code>read_customers</code> is <strong>not</strong> requested",
+    );
     expect(privacy).toMatch(/not<\/strong> requested/);
+    expect(privacy).toContain("<code>read_all_orders</code>");
+    expect(privacy).toContain("<code>read_reports</code>");
 
     // Provider connections are merchant-controlled, and credentials must be
     // described without implying that Shopify customer records are shared.

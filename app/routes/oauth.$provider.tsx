@@ -7,8 +7,8 @@ import {
   startGoogle,
 } from "~/lib/web-oauth.server";
 import { requestIsSecure, requestOriginIsSelf } from "~/lib/web-session.server";
-
-export const HANDSHAKE_COOKIE = "mymeridian_oauth";
+import { publicAppOrigin } from "~/lib/public-origin.server";
+import { HANDSHAKE_COOKIE } from "~/lib/web-oauth-cookie";
 
 /**
  * The handshake cookie.
@@ -43,9 +43,8 @@ function serializeHandshake(value: string, secure: boolean, crossSite: boolean):
   return parts.join("; ");
 }
 
-export function callbackUrl(request: Request, provider: string): string {
-  const url = new URL(request.url);
-  return `${url.origin}/oauth/${provider}/callback`;
+function callbackUrl(request: Request, provider: string): string {
+  return `${publicAppOrigin(request)}/oauth/${provider}/callback`;
 }
 
 /** Started by a POST so a prefetch or an image tag cannot begin a sign-in. */

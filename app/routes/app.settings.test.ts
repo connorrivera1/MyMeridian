@@ -8,6 +8,7 @@ const requireActivePlan = vi.fn();
 const planAllows = vi.fn(() => true);
 const startBackfill = vi.fn();
 const recomputeShopProfitability = vi.fn();
+const retryShopifyShippingConnector = vi.fn();
 const prismaMock = {
   costRule: {
     findMany: vi.fn(async () => []),
@@ -36,6 +37,11 @@ vi.mock("~/lib/recompute.server", () => ({
 }));
 vi.mock("~/data/analytics.server", () => ({
   invalidateAnalyticsCache: vi.fn(),
+}));
+vi.mock("~/integrations/shipping.server", () => ({
+  ensureShipStationWebhook: vi.fn(),
+  retryShopifyShippingConnector: (...args: unknown[]) =>
+    retryShopifyShippingConnector(...args),
 }));
 vi.mock("~/db.server", () => ({ default: prismaMock }));
 
@@ -92,6 +98,25 @@ describe("Settings historical-import action", () => {
       message:
         "An import is already active. This request did not start another one.",
     });
+  });
+});
+
+describe("Settings Shopify Shipping recovery", () => {
+  it("runs an authenticated retry for this shop", async () => {
+    retryShopifyShippingConnector.mockResolvedValue({
+      ok: true,
+      message: "Shopify Shipping cost reconciliation is active.",
+    });
+    const request = new Request("https://meridian.example/app/settings", {
+      method: "POST",
+      body: new URLSearchParams({ intent: "retry-shopify-shipping" }),
+    });
+
+    await expect(action({ request } as never)).resolves.toEqual({
+      ok: true,
+      message: "Shopify Shipping cost reconciliation is active.",
+    });
+    expect(retryShopifyShippingConnector).toHaveBeenCalledWith("shop_1");
   });
 });
 

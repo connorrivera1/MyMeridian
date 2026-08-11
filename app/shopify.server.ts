@@ -206,13 +206,33 @@ function buildShopify() {
           await import("./lib/provision.server");
         const shop = await ensureShopProvisioned(session.shop);
 
+        const hadAllOrders = parseScopes(shop.grantedScopes).has(
+          "read_all_orders",
+        );
+        const hasAllOrders = parseScopes(session.scope).has("read_all_orders");
+        const orderHistoryAccessChanged = hadAllOrders !== hasAllOrders;
+
         // Record what the store actually granted. The import gates its
         // GraphQL fields on this: asking for a field the app is not
         // authorised for fails the entire query, not just that field.
         const prismaClient = (await import("./db.server")).default;
         await prismaClient.shop.update({
           where: { id: shop.id },
-          data: { grantedScopes: session.scope ?? null },
+          data: {
+            grantedScopes: session.scope ?? null,
+            // A completed 60-day import is not a completed lifetime import.
+            // Likewise, a revoked lifetime scope must stop claiming full
+            // history. Resetting the claim lets the backfill below rebuild
+            // the merchant-facing boundary from the newly granted access.
+            ...(orderHistoryAccessChanged
+              ? {
+                  syncStatus: "PENDING",
+                  syncCompletedAt: null,
+                  syncStage: "Order-history access changed",
+                  hasAllOrdersScope: false,
+                }
+              : {}),
+          },
         });
         await synchroniseShopifyShippingConnector(shop.id, session.scope);
 
@@ -225,7 +245,8 @@ function buildShopify() {
           await import("./lib/backfill.server");
 
         const alreadyImported =
-          shop.syncStatus === "COMPLETE" || shop.syncStatus === "RUNNING";
+          !orderHistoryAccessChanged &&
+          (shop.syncStatus === "COMPLETE" || shop.syncStatus === "RUNNING");
 
         if (!alreadyImported || backfillIsStale(shop)) {
           // Wait only for the atomic claim, not the import. This keeps OAuth

@@ -112,6 +112,18 @@ export async function synchroniseShopifyShippingConnector(
   grantedScopes: string | null | undefined,
 ) {
   const connected = parseScopes(grantedScopes).has("read_reports");
+  const current = await prisma.connector.findUnique({
+    where: {
+      shopId_provider: { shopId, provider: ConnectorProvider.SHOPIFY_SHIPPING },
+    },
+    select: { status: true, lastError: true },
+  });
+  const protectedDataBlocked =
+    connected &&
+    current?.status === ConnectorStatus.ERROR &&
+    current.lastError?.startsWith(
+      "Shopify has not approved protected customer data for Shipping reports yet.",
+    );
   return prisma.connector.upsert({
     where: {
       shopId_provider: { shopId, provider: ConnectorProvider.SHOPIFY_SHIPPING },
@@ -119,18 +131,26 @@ export async function synchroniseShopifyShippingConnector(
     create: {
       shopId,
       provider: ConnectorProvider.SHOPIFY_SHIPPING,
-      status: connected ? ConnectorStatus.CONNECTED : ConnectorStatus.NOT_CONFIGURED,
+      status: connected
+        ? ConnectorStatus.CONNECTED
+        : ConnectorStatus.NOT_CONFIGURED,
       displayName: "Shopify Shipping",
       lastError: connected
         ? null
         : "read_reports is not granted; shipping-label cost reconciliation is unavailable.",
     },
     update: {
-      status: connected ? ConnectorStatus.CONNECTED : ConnectorStatus.DISCONNECTED,
+      status: protectedDataBlocked
+        ? ConnectorStatus.ERROR
+        : connected
+          ? ConnectorStatus.CONNECTED
+          : ConnectorStatus.DISCONNECTED,
       displayName: "Shopify Shipping",
-      lastError: connected
-        ? null
-        : "read_reports was revoked; shipping-label cost reconciliation is paused.",
+      lastError: protectedDataBlocked
+        ? current.lastError
+        : connected
+          ? null
+          : "read_reports was revoked; shipping-label cost reconciliation is paused.",
     },
   });
 }

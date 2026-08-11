@@ -1,0 +1,7 @@
+roles = ["frontend", "backend"]
+auth_callback_path = ["/auth/callback"]
+webhooks_path = "/webhooks/app/uninstalled"
+
+[commands]
+dev = "npm run dev"
+build = "npm run build"

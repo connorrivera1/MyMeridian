@@ -26,7 +26,11 @@ import { toMicros } from "~/engine/money";
 import { generatePricingRecommendations } from "~/lib/pricing.server";
 import { withProductLock } from "~/lib/product-lock.server";
 import { recomputeShopProfitability } from "~/lib/recompute.server";
-import { capabilitiesForShop, type Capabilities } from "~/lib/scopes";
+import {
+  capabilitiesForShop,
+  parseScopes,
+  type Capabilities,
+} from "~/lib/scopes";
 import { unauthenticated } from "~/shopify.server";
 
 export { backfillIsStale, resumePointFor };
@@ -864,7 +868,10 @@ async function runClaimedBackfill(
       syncCursor: null,
       lastSyncedAt: new Date(),
       earliestOrderAt: orders.earliestOrderAt,
-      hasAllOrdersScope: orders.sawOrdersOlderThan60Days,
+      // This field describes authorization, not the shape of today's data.
+      // A new store with zero old orders still has lifetime-history access;
+      // seeing an old order is neither necessary nor a safe proxy for scope.
+      hasAllOrdersScope: parseScopes(shop.grantedScopes).has("read_all_orders"),
     });
 
     return {

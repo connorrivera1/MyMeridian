@@ -5,6 +5,7 @@ import {
   finishConnectorOAuth,
   type ConnectorProviderSlug,
 } from "~/lib/connector-oauth.server";
+import { publicAppOrigin } from "~/lib/public-origin.server";
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const slug = String(params.provider ?? "") as ConnectorProviderSlug;
@@ -20,12 +21,19 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     throw redirect("/app/settings?connection_error=The+provider+returned+an+incomplete+authorization.");
   }
   try {
-    await finishConnectorOAuth({ slug, code, state, origin: url.origin });
+    await finishConnectorOAuth({
+      slug,
+      code,
+      state,
+      origin: publicAppOrigin(request),
+    });
     throw redirect(`/app/settings?connected=${encodeURIComponent(slug)}`);
   } catch (error) {
     if (error instanceof Response) throw error;
     const message = error instanceof Error ? error.message : "Connector setup failed.";
-    console.error("[connector-oauth:%s] callback failed", slug, error);
+    // OAuth client errors can retain the provider response and its headers.
+    // Log only the bounded message, never the full error object.
+    console.error("[connector-oauth:%s] callback failed: %s", slug, message.slice(0, 300));
     throw redirect(`/app/settings?connection_error=${encodeURIComponent(message.slice(0, 300))}`);
   }
 }

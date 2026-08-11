@@ -44,11 +44,10 @@ export default function Support() {
           fulfilment inputs are marked separately from measured costs.
         </li>
         <li>
-          <strong>History only reaches back 60 days.</strong> Shopify caps order
-          reads at 60 days unless the app is granted{" "}
-          <code>read_all_orders</code>, which is an access request approved in
-          the Partner Dashboard rather than a scope the merchant can grant at
-          install.
+          <strong>History only reaches back 60 days.</strong> MyMeridian is
+          approved for <code>read_all_orders</code>, but an installation created
+          before that approval may still need to grant the updated scope. Open
+          <em> Costs &amp; connections</em> to see the scopes this store granted.
         </li>
         <li>
           <strong>Acquisition shows no customer acquisition cost.</strong> CAC,

@@ -40,6 +40,8 @@ function context() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubEnv("APP_URL", "");
+  vi.stubEnv("SHOPIFY_APP_URL", "");
 });
 
 describe("plan charge action", () => {

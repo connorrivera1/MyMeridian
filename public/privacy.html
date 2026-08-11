@@ -128,6 +128,11 @@ document.documentElement.classList.add("js");
             money totals.
           </li>
           <li>
+            <code>read_all_orders</code> — extends that read-only order history
+            beyond Shopify&rsquo;s default 60-day window so lifetime profit,
+            repeat-customer cohorts and seasonal trends are complete.
+          </li>
+          <li>
             <code>read_products</code> — the catalogue, variants and prices.
           </li>
           <li>
@@ -138,13 +143,17 @@ document.documentElement.classList.add("js");
             <code>read_fulfillments</code> — fulfilment records, for throughput
             and capacity.
           </li>
+          <li>
+            <code>read_reports</code> — Shopify Shipping label-cost reports by
+            order, carrier and service. Shopify separately gates those reports
+            behind Level 2 protected-customer-data approval; the connection
+            stays paused until that approval exists.
+          </li>
         </ul>
         <p>
-          <code>read_customers</code> and <code>read_all_orders</code> are
-          <strong>not</strong> requested. Because
-          <code>read_all_orders</code> is not held, Shopify returns only the
-          last 60 days of order history, and the app says so on screen rather
-          than presenting a short history as a complete one.
+          <code>read_customers</code> is <strong>not</strong> requested.
+          Customer identity used by MyMeridian is limited to the id and email
+          carried on orders, as described below.
         </p>
 
         <h2>Shopper personal data</h2>

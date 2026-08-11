@@ -62,6 +62,11 @@ export default function Privacy() {
           <em>Personal data specifically</em> below, reach {APP_NAME}.
         </li>
         <li>
+          <code>read_all_orders</code> — extends that read-only order history
+          beyond Shopify&rsquo;s default 60-day window so lifetime profitability,
+          repeat-customer cohorts and seasonal trends are complete.
+        </li>
+        <li>
           <code>read_products</code> — products and variants, so line items can
           be grouped by what was actually sold.
         </li>
@@ -74,6 +79,12 @@ export default function Privacy() {
           <code>read_fulfillments</code> — when each order shipped, used for
           fulfilment capacity and shipping cost.
         </li>
+        <li>
+          <code>read_reports</code> — Shopify Shipping label-cost reports by
+          order, carrier and service. Shopify separately gates those reports
+          behind Level 2 protected-customer-data approval; the connection stays
+          paused until that approval exists.
+        </li>
       </ul>
       <p>
         {APP_NAME} requests <strong>no write scope</strong>. It cannot change a
@@ -82,11 +93,9 @@ export default function Privacy() {
         remains a manual action the merchant takes in Shopify.
       </p>
       <p>
-        <code>read_customers</code> and <code>read_all_orders</code> are{" "}
-        <strong>not</strong> requested. Because <code>read_all_orders</code> is
-        not held, Shopify returns only the last 60 days of order history, and
-        the app says so on screen rather than presenting a short history as a
-        complete one.
+        <code>read_customers</code> is <strong>not</strong> requested. Customer
+        identity used by {APP_NAME} is limited to the id and email carried on
+        orders, as described below.
       </p>
 
       <h2>Personal data specifically</h2>

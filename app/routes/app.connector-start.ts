@@ -7,6 +7,7 @@ import {
   type ConnectorProviderSlug,
 } from "~/lib/connector-oauth.server";
 import { planAllows, requireActivePlan } from "~/lib/plan.server";
+import { publicAppOrigin } from "~/lib/public-origin.server";
 
 export async function action({ request, params }: ActionFunctionArgs) {
   const slug = String(params.provider ?? "") as ConnectorProviderSlug;
@@ -20,7 +21,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const authorizationUrl = await beginConnectorOAuth({
       shopId: ctx.shop.id,
       slug,
-      origin: new URL(request.url).origin,
+      origin: publicAppOrigin(request),
     });
     throw redirect(authorizationUrl);
   } catch (error) {

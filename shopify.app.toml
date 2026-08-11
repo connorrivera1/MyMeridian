@@ -59,11 +59,16 @@ client_id = "9dfbe484752628b0a96c4755caf4f502"
 # advertises cohort LTV/payback; keep that promise out until approval is obtained
 # and this scope is intentionally added. Do not add it speculatively.
 #
+# read_all_orders was approved in the Partner Dashboard on 2026-08-11. It
+# extends the read_orders window beyond 60 days so lifetime profitability,
+# repeat-customer cohorts and seasonal trends are based on the merchant's full
+# history rather than a recent fragment.
+#
 # read_refunds is deliberately absent: it is not a Shopify access scope, and
 # refunds are read as Order.refunds inside the orders query, which read_orders
 # already covers. Requesting a scope the platform does not recognise risks
 # failing OAuth outright, and nothing in the app ever checked for it.
-scopes = "read_orders,read_products,read_fulfillments,read_inventory,read_reports"
+scopes = "read_orders,read_all_orders,read_products,read_fulfillments,read_inventory,read_reports"
 
 [auth]
 # The path has to match `authPathPrefix` in app/shopify.server.ts, which is

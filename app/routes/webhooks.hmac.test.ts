@@ -83,6 +83,7 @@ vi.mock("~/db.server", () => ({
       updateMany: (...args: unknown[]) => webhookEventUpdateMany(...args),
     },
     connector: {
+      findUnique: vi.fn().mockResolvedValue(null),
       upsert: vi.fn().mockResolvedValue({}),
     },
   },

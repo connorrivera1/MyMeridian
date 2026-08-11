@@ -10,6 +10,8 @@ const shopFindUnique = vi.fn();
 const shopCreate = vi.fn();
 const shopUpdate = vi.fn();
 const connectorCreateMany = vi.fn();
+const connectorFindUnique = vi.fn();
+const connectorUpsert = vi.fn();
 
 vi.mock("~/db.server", () => ({
   default: {
@@ -20,11 +22,14 @@ vi.mock("~/db.server", () => ({
     },
     connector: {
       createMany: (...args: unknown[]) => connectorCreateMany(...args),
+      findUnique: (...args: unknown[]) => connectorFindUnique(...args),
+      upsert: (...args: unknown[]) => connectorUpsert(...args),
     },
   },
 }));
 
-const { ensureShopProvisioned } = await import("./provision.server");
+const { ensureShopProvisioned, synchroniseShopifyShippingConnector } =
+  await import("./provision.server");
 
 /**
  * What a store is given at install.
@@ -73,10 +78,55 @@ beforeEach(() => {
   shopCreate.mockReset();
   shopUpdate.mockReset();
   connectorCreateMany.mockReset();
+  connectorFindUnique.mockReset();
+  connectorUpsert.mockReset();
 
   shopCreate.mockResolvedValue({ id: "shop_1", domain: DOMAIN });
   shopUpdate.mockResolvedValue({ id: "shop_1", domain: DOMAIN });
   connectorCreateMany.mockResolvedValue({ count: 0 });
+  connectorFindUnique.mockResolvedValue(null);
+  connectorUpsert.mockResolvedValue({});
+});
+
+describe("Shopify Shipping protected-data approval", () => {
+  it("does not re-enable a permission-blocked connector on every authenticated page", async () => {
+    const approvalMessage =
+      "Shopify has not approved protected customer data for Shipping reports yet. Request approval in the Partner Dashboard, then retry this connection.";
+    connectorFindUnique.mockResolvedValue({
+      status: ConnectorStatus.ERROR,
+      lastError: approvalMessage,
+    });
+
+    await synchroniseShopifyShippingConnector(
+      "shop_1",
+      "read_orders,read_reports",
+    );
+
+    expect(connectorUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          status: ConnectorStatus.ERROR,
+          lastError: approvalMessage,
+        }),
+      }),
+    );
+  });
+
+  it("connects normally when read_reports is granted and no approval block exists", async () => {
+    await synchroniseShopifyShippingConnector(
+      "shop_1",
+      "read_orders,read_reports",
+    );
+
+    expect(connectorUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          status: ConnectorStatus.CONNECTED,
+          lastError: null,
+        }),
+      }),
+    );
+  });
 });
 
 describe("connectors given to a new store", () => {

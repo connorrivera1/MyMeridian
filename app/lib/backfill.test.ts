@@ -406,7 +406,7 @@ function scriptedAdmin(script: Script = {}) {
 }
 
 const ALL_SCOPES =
-  "read_orders,read_products,read_inventory,read_customers,read_fulfillments";
+  "read_orders,read_all_orders,read_products,read_inventory,read_customers,read_fulfillments";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -471,6 +471,30 @@ describe("backfill order limit configuration", () => {
 // ---------------------------------------------------------------------------
 
 describe("runBackfill: a completed import", () => {
+  it("records lifetime-history access even when a new store has no old orders", async () => {
+    await runBackfill("shop_1", scriptedAdmin({ orders: [orderPage([], null)] }));
+
+    expect(finalUpdate()).toMatchObject({
+      syncStatus: SyncStatus.COMPLETE,
+      earliestOrderAt: null,
+      hasAllOrdersScope: true,
+    });
+  });
+
+  it("does not infer lifetime-history access merely from an old order", async () => {
+    shopRow.grantedScopes = ALL_SCOPES.replace("read_all_orders,", "");
+    await runBackfill("shop_1", scriptedAdmin({
+      orders: [
+        orderPage(
+          [orderNode("1001", { processedAt: "2023-04-02T08:00:00Z" })],
+          null,
+        ),
+      ],
+    }));
+
+    expect(finalUpdate()).toMatchObject({ hasAllOrdersScope: false });
+  });
+
   it("records the store profile, the counts and the history it found", async () => {
     const admin = scriptedAdmin({
       orders: [

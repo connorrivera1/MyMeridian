@@ -9,7 +9,7 @@ import {
 } from "~/lib/data-request.server";
 import { redactCustomerEverywhere } from "~/lib/customer-erasure.server";
 import { ANNUAL_SUFFIX } from "~/lib/plans";
-import { capabilitiesForShop } from "~/lib/scopes";
+import { capabilitiesForShop, parseScopes } from "~/lib/scopes";
 import { synchroniseShopifyShippingConnector } from "~/lib/provision.server";
 import {
   adminClientForShop,
@@ -344,12 +344,33 @@ export async function processAppScopesUpdateWebhook({
   const current = (payload.current ?? []) as string[] | string;
   const granted = Array.isArray(current) ? current.join(",") : String(current);
   if (granted === (shop.grantedScopes ?? "")) return;
+  const orderHistoryAccessChanged =
+    parseScopes(granted).has("read_all_orders") !==
+    parseScopes(shop.grantedScopes).has("read_all_orders");
 
   await prisma.shop.update({
     where: { id: shop.id },
-    data: { grantedScopes: granted || null },
+    data: {
+      grantedScopes: granted || null,
+      ...(orderHistoryAccessChanged
+        ? {
+            syncStatus: "PENDING",
+            syncCompletedAt: null,
+            syncStage: "Order-history access changed",
+            hasAllOrdersScope: false,
+          }
+        : {}),
+    },
   });
   await synchroniseShopifyShippingConnector(shop.id, granted);
+  if (orderHistoryAccessChanged) {
+    // Managed installation grants this scope without reinstalling. Claim the
+    // new import from the webhook so a merchant does not need to discover and
+    // press Re-import before lifetime history becomes truthful.
+    const { startBackfill } = await import("~/lib/backfill.server");
+    const admin = await adminClientForShop(shopDomain);
+    await startBackfill(shop.id, admin);
+  }
   // Scope changes alter whether protected customer cohorts may be loaded, so
   // a warm analytics entry cannot survive the capability change.
   invalidateAnalyticsCache();

@@ -13,12 +13,24 @@ const mocks = vi.hoisted(() => ({
   recordOrderUsage: vi.fn(),
   billSoftOrderOverage: vi.fn(),
   reconcileConnectedCarriersForShop: vi.fn(),
+  shopUpdate: vi.fn(),
+  synchroniseShopifyShippingConnector: vi.fn(),
+  startBackfill: vi.fn(),
 }));
 
 vi.mock("~/db.server", () => ({
   default: {
-    shop: { findUnique: mocks.shopFindUnique },
+    shop: { findUnique: mocks.shopFindUnique, update: mocks.shopUpdate },
   },
+}));
+
+vi.mock("~/lib/provision.server", () => ({
+  synchroniseShopifyShippingConnector:
+    mocks.synchroniseShopifyShippingConnector,
+}));
+
+vi.mock("~/lib/backfill.server", () => ({
+  startBackfill: mocks.startBackfill,
 }));
 
 vi.mock("~/lib/shopify-catalog.server", () => ({
@@ -64,6 +76,7 @@ vi.mock("~/lib/usage-meter.server", () => ({
 
 const {
   processInventoryItemsWebhook,
+  processAppScopesUpdateWebhook,
   processFulfillmentsWebhook,
   processOrdersWebhook,
   processProductsWebhook,
@@ -101,9 +114,38 @@ beforeEach(() => {
     crossedSoftLimit: false,
   });
   mocks.billSoftOrderOverage.mockResolvedValue({ billedUnits: 0, skipped: true });
+  mocks.shopUpdate.mockResolvedValue({});
+  mocks.synchroniseShopifyShippingConnector.mockResolvedValue({});
+  mocks.startBackfill.mockResolvedValue({ started: true, resumed: false });
 });
 
 describe("economic webhook processors", () => {
+  it("starts a lifetime-history import when read_all_orders is newly granted", async () => {
+    mocks.shopFindUnique.mockResolvedValueOnce({
+      id: "shop_1",
+      domain: "economic-processors.myshopify.com",
+      grantedScopes: "read_orders,read_products",
+    });
+    const admin = { graphql: vi.fn() };
+    mocks.adminClientForShop.mockResolvedValueOnce(admin);
+
+    await processAppScopesUpdateWebhook(
+      context("APP_SCOPES_UPDATE", {
+        current: ["read_orders", "read_products", "read_all_orders"],
+      }),
+    );
+
+    expect(mocks.shopUpdate).toHaveBeenCalledWith({
+      where: { id: "shop_1" },
+      data: expect.objectContaining({
+        grantedScopes: "read_orders,read_products,read_all_orders",
+        syncStatus: "PENDING",
+        hasAllOrdersScope: false,
+      }),
+    });
+    expect(mocks.startBackfill).toHaveBeenCalledWith("shop_1", admin);
+  });
+
   it("uses a Shopify fulfillment signal to reconcile connected carriers immediately", async () => {
     const payload = { id: 9001, order_id: 1001, status: "success" };
     await processFulfillmentsWebhook(context("FULFILLMENTS_UPDATE", payload));

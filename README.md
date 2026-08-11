@@ -145,12 +145,12 @@ affected screens explain what is unavailable instead of rendering a zero.
 
 ### Two things that will surprise you
 
-- **Order history is capped at 60 days.** `read_orders` only returns the last 60
-  days; anything older needs the `read_all_orders` scope, which Shopify grants on
-  request (Partner Dashboard → your app → *API access* → *Access requests*). The
-  app detects this and says so in a banner rather than implying the store had no
-  earlier trading. Add the scope to `shopify.app.toml` only once it is approved —
-  requesting an ungranted scope fails OAuth.
+- **Full order history is approved.** Shopify approved `read_all_orders` on
+  2026-08-11 and the scope is requested with `read_orders`. MyMeridian can now
+  backfill beyond Shopify's default 60-day window for lifetime profitability,
+  repeat-customer cohorts and seasonal trends. The app still records the scopes
+  each shop actually granted and warns if an older installation has not yet
+  granted the extended window.
 - **Ad spend requires an explicit merchant connection.** Growth and Scale
   merchants can connect Meta, Google or TikTok from inside the embedded app.
   CAC, ROAS and marketing efficiency stay unavailable rather than zero until a

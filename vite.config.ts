@@ -4,13 +4,22 @@ import tsconfigPaths from "vite-tsconfig-paths";
 
 // Shopify serves embedded apps inside an admin iframe over HTTPS via a tunnel.
 // The HMR host has to match that tunnel or the dev client can't connect back.
-const host = (process.env.SHOPIFY_APP_URL ?? "http://localhost:3000").replace(
-  /https?:\/\//,
-  "",
-);
+const appUrl =
+  process.env.APP_URL ?? process.env.SHOPIFY_APP_URL ?? process.env.HOST;
 
-const hmrConfig = process.env.SHOPIFY_APP_URL
-  ? { protocol: "wss" as const, host, port: 443, clientPort: 443 }
+function hostname(value: string | undefined): string {
+  if (!value) return "localhost";
+  try {
+    return new URL(value.includes("://") ? value : `https://${value}`).hostname;
+  } catch {
+    return "localhost";
+  }
+}
+
+const host = hostname(appUrl);
+
+const hmrConfig = appUrl
+  ? { protocol: "wss" as const, host, clientPort: 443 }
   : { protocol: "ws" as const, host: "localhost", port: 64999, clientPort: 64999 };
 
 export default defineConfig({

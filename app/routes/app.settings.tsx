@@ -29,8 +29,12 @@ import { planAllows, requireActivePlan } from "~/lib/plan.server";
 import { recomputeShopProfitability } from "~/lib/recompute.server";
 import { scopeReport } from "~/lib/scopes";
 import { PLANS } from "~/lib/plans";
+import { publicAppOrigin } from "~/lib/public-origin.server";
 import { storeConnectorCredentials } from "~/integrations/ad-health.server";
-import { ensureShipStationWebhook } from "~/integrations/shipping.server";
+import {
+  ensureShipStationWebhook,
+  retryShopifyShippingConnector,
+} from "~/integrations/shipping.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const ctx = await requireShopContext(request);
@@ -100,14 +104,21 @@ export async function loader({ request }: LoaderFunctionArgs) {
       externalAccountId: connector.externalAccountId,
       availableAccounts: Array.isArray(connector.availableAccounts)
         ? connector.availableAccounts.flatMap((value) => {
-            if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+            if (!value || typeof value !== "object" || Array.isArray(value))
+              return [];
             const account = value as Record<string, unknown>;
             return typeof account.id === "string"
-              ? [{
-                  id: account.id,
-                  name: typeof account.name === "string" ? account.name : null,
-                  currency: typeof account.currency === "string" ? account.currency : null,
-                }]
+              ? [
+                  {
+                    id: account.id,
+                    name:
+                      typeof account.name === "string" ? account.name : null,
+                    currency:
+                      typeof account.currency === "string"
+                        ? account.currency
+                        : null,
+                  },
+                ]
               : [];
           })
         : [],
@@ -140,7 +151,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
     connectionFeedback: url.searchParams.get("connection_error")
       ? { ok: false, message: url.searchParams.get("connection_error")! }
       : url.searchParams.get("connected")
-        ? { ok: true, message: `${url.searchParams.get("connected")} connected. Initial spend sync is queued.` }
+        ? {
+            ok: true,
+            message: `${url.searchParams.get("connected")} connected. Initial spend sync is queued.`,
+          }
         : null,
   };
 }
@@ -205,13 +219,18 @@ export async function action({ request }: ActionFunctionArgs) {
   if (form.get("intent") === "reporting") {
     const anomalyAlertsEnabled = form.get("anomalyAlertsEnabled") === "on";
     const weeklySummaryEnabled = form.get("weeklySummaryEnabled") === "on";
-    const weeklySummaryEmail = String(form.get("weeklySummaryEmail") ?? "").trim();
+    const weeklySummaryEmail = String(
+      form.get("weeklySummaryEmail") ?? "",
+    ).trim();
     const weeklySummaryDay = Number(form.get("weeklySummaryDay") ?? 1);
     if (weeklySummaryEnabled && !planAllows(plan, "scheduledReports")) {
       return { ok: false, message: "Weekly summaries require the Scale plan." };
     }
     if (anomalyAlertsEnabled && !planAllows(plan, "anomalyAlerts")) {
-      return { ok: false, message: "Profit anomaly alerts require Growth or Scale." };
+      return {
+        ok: false,
+        message: "Profit anomaly alerts require Growth or Scale.",
+      };
     }
     if (
       weeklySummaryEnabled &&
@@ -219,7 +238,11 @@ export async function action({ request }: ActionFunctionArgs) {
     ) {
       return { ok: false, message: "Enter a valid report email address." };
     }
-    if (!Number.isInteger(weeklySummaryDay) || weeklySummaryDay < 0 || weeklySummaryDay > 6) {
+    if (
+      !Number.isInteger(weeklySummaryDay) ||
+      weeklySummaryDay < 0 ||
+      weeklySummaryDay > 6
+    ) {
       return { ok: false, message: "Choose a valid summary day." };
     }
     await prisma.shop.update({
@@ -256,16 +279,20 @@ export async function action({ request }: ActionFunctionArgs) {
         provider: ConnectorProvider.SHIPSTATION,
         accessToken: apiKey,
       });
-      await ensureShipStationWebhook(
-        connector,
-        process.env.SHOPIFY_APP_URL ?? new URL(request.url).origin,
-      );
-      return { ok: true, message: "ShipStation connected and its cost webhook is active." };
+      await ensureShipStationWebhook(connector, publicAppOrigin(request));
+      return {
+        ok: true,
+        message: "ShipStation connected and its cost webhook is active.",
+      };
     } catch (error) {
-      const message = error instanceof Error ? error.message : "ShipStation setup failed.";
+      const message =
+        error instanceof Error ? error.message : "ShipStation setup failed.";
       await prisma.connector.updateMany({
         where: { shopId: shop.id, provider: ConnectorProvider.SHIPSTATION },
-        data: { status: ConnectorStatus.ERROR, lastError: message.slice(0, 1_000) },
+        data: {
+          status: ConnectorStatus.ERROR,
+          lastError: message.slice(0, 1_000),
+        },
       });
       return { ok: false, message };
     }
@@ -281,38 +308,57 @@ export async function action({ request }: ActionFunctionArgs) {
       ? connector.availableAccounts
       : [];
     const selected = accounts.find((value) => {
-      return value && typeof value === "object" && !Array.isArray(value) &&
-        (value as Record<string, unknown>).id === externalAccountId;
+      return (
+        value &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        (value as Record<string, unknown>).id === externalAccountId
+      );
     }) as Record<string, unknown> | undefined;
     if (!connector || !selected) {
-      return { ok: false, message: "That ad account is not authorized for this connection." };
+      return {
+        ok: false,
+        message: "That ad account is not authorized for this connection.",
+      };
     }
     await prisma.connector.update({
       where: { id: connector.id },
       data: {
         externalAccountId,
         displayName: typeof selected.name === "string" ? selected.name : null,
-        accountCurrency: typeof selected.currency === "string" ? selected.currency : null,
+        accountCurrency:
+          typeof selected.currency === "string" ? selected.currency : null,
         lastSyncedAt: null,
         lastDeepSyncAt: null,
         lastError: null,
       },
     });
-    return { ok: true, message: "Ad account changed. A fresh spend sync is queued." };
+    return {
+      ok: true,
+      message: "Ad account changed. A fresh spend sync is queued.",
+    };
   }
 
   if (form.get("intent") === "disconnect") {
     const provider = String(form.get("provider") ?? "") as ConnectorProvider;
-    if (!new Set<ConnectorProvider>([
-      ConnectorProvider.FACEBOOK_ADS,
-      ConnectorProvider.GOOGLE_ADS,
-      ConnectorProvider.TIKTOK_ADS,
-      ConnectorProvider.SHIPSTATION,
-    ]).has(provider)) {
-      return { ok: false, message: "That data source cannot be disconnected here." };
+    if (
+      !new Set<ConnectorProvider>([
+        ConnectorProvider.FACEBOOK_ADS,
+        ConnectorProvider.GOOGLE_ADS,
+        ConnectorProvider.TIKTOK_ADS,
+        ConnectorProvider.SHIPSTATION,
+      ]).has(provider)
+    ) {
+      return {
+        ok: false,
+        message: "That data source cannot be disconnected here.",
+      };
     }
     try {
-      const disconnected = await disconnectConnector({ shopId: shop.id, provider });
+      const disconnected = await disconnectConnector({
+        shopId: shop.id,
+        provider,
+      });
       return {
         ok: true,
         message: disconnected.remoteRevoked
@@ -359,6 +405,10 @@ export async function action({ request }: ActionFunctionArgs) {
     const result = await recomputeShopProfitability(shop.id);
     invalidateAnalyticsCache();
     return { ok: true, message: `Recomputed ${result.ordersUpdated} orders.` };
+  }
+
+  if (form.get("intent") === "retry-shopify-shipping") {
+    return retryShopifyShippingConnector(shop.id);
   }
 
   const parsed = CostRuleUpdate.safeParse({
@@ -902,7 +952,8 @@ export default function Settings() {
                       : "—"}
                   </td>
                   <td>
-                    {connector.status === ConnectorStatus.CONNECTED && new Set<ConnectorProvider>([
+                    {connector.status === ConnectorStatus.CONNECTED &&
+                    new Set<ConnectorProvider>([
                       ConnectorProvider.FACEBOOK_ADS,
                       ConnectorProvider.GOOGLE_ADS,
                       ConnectorProvider.TIKTOK_ADS,
@@ -910,9 +961,21 @@ export default function Settings() {
                     ]).has(connector.provider as ConnectorProvider) ? (
                       <div className="stack" style={{ gap: 6 }}>
                         {connector.availableAccounts.length > 1 && (
-                          <Form method="post" className="row" style={{ gap: 6 }}>
-                            <input type="hidden" name="intent" value="select-connector-account" />
-                            <input type="hidden" name="provider" value={connector.provider} />
+                          <Form
+                            method="post"
+                            className="row"
+                            style={{ gap: 6 }}
+                          >
+                            <input
+                              type="hidden"
+                              name="intent"
+                              value="select-connector-account"
+                            />
+                            <input
+                              type="hidden"
+                              name="provider"
+                              value={connector.provider}
+                            />
                             <select
                               className="field-input"
                               name="externalAccountId"
@@ -924,13 +987,25 @@ export default function Settings() {
                                 </option>
                               ))}
                             </select>
-                            <button className="btn sm" disabled={busy}>Use</button>
+                            <button className="btn sm" disabled={busy}>
+                              Use
+                            </button>
                           </Form>
                         )}
                         <Form method="post">
-                          <input type="hidden" name="intent" value="disconnect" />
-                          <input type="hidden" name="provider" value={connector.provider} />
-                          <button className="btn sm" disabled={busy}>Disconnect</button>
+                          <input
+                            type="hidden"
+                            name="intent"
+                            value="disconnect"
+                          />
+                          <input
+                            type="hidden"
+                            name="provider"
+                            value={connector.provider}
+                          />
+                          <button className="btn sm" disabled={busy}>
+                            Disconnect
+                          </button>
                         </Form>
                       </div>
                     ) : connector.provider === ConnectorProvider.FACEBOOK_ADS ||
@@ -949,10 +1024,27 @@ export default function Settings() {
                           </button>
                         </Form>
                       ) : (
-                        <span className="tiny muted">Awaiting provider app approval</span>
+                        <span className="tiny muted">
+                          Awaiting provider app approval
+                        </span>
                       )
+                    ) : connector.provider ===
+                        ConnectorProvider.SHOPIFY_SHIPPING &&
+                      connector.status === ConnectorStatus.ERROR ? (
+                      <Form method="post">
+                        <input
+                          type="hidden"
+                          name="intent"
+                          value="retry-shopify-shipping"
+                        />
+                        <button className="btn sm" disabled={busy}>
+                          Retry
+                        </button>
+                      </Form>
                     ) : connector.provider === ConnectorProvider.SHIPSTATION ? (
-                      <span className="tiny muted">Use the secure key form below</span>
+                      <span className="tiny muted">
+                        Use the secure key form below
+                      </span>
                     ) : (
                       <span className="tiny muted">—</span>
                     )}
@@ -963,7 +1055,11 @@ export default function Settings() {
           </table>
         </div>
         <div style={{ padding: "14px 16px" }}>
-          <Form method="post" className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+          <Form
+            method="post"
+            className="row"
+            style={{ gap: 10, flexWrap: "wrap" }}
+          >
             <input type="hidden" name="intent" value="shipstation-connect" />
             <label className="stack" style={{ gap: 4, flex: "1 1 260px" }}>
               <span className="tiny muted">ShipStation API key</span>
@@ -1020,8 +1116,8 @@ export default function Settings() {
             <span>
               <strong>Profit anomaly alerts</strong>
               <span className="cell-sub">
-                Margin drops, refund spikes, carrier-cost drift, missing COGS and
-                unhealthy data sources. Growth or Scale.
+                Margin drops, refund spikes, carrier-cost drift, missing COGS
+                and unhealthy data sources. Growth or Scale.
               </span>
             </span>
           </label>
@@ -1034,7 +1130,10 @@ export default function Settings() {
             />
             <span>
               <strong>Weekly profit summary</strong>
-              <span className="cell-sub">Current week, prior-week change and missing-cost disclosure. Scale.</span>
+              <span className="cell-sub">
+                Current week, prior-week change and missing-cost disclosure.
+                Scale.
+              </span>
             </span>
           </label>
           <div className="row" style={{ gap: 16, flexWrap: "wrap" }}>
@@ -1065,18 +1164,23 @@ export default function Settings() {
                   [6, "Saturday"],
                   [0, "Sunday"],
                 ].map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
                 ))}
               </select>
             </label>
           </div>
           {data.reporting.lastWeeklySummaryAt && (
             <p className="tiny muted">
-              Last sent {new Date(data.reporting.lastWeeklySummaryAt).toLocaleString()}.
+              Last sent{" "}
+              {new Date(data.reporting.lastWeeklySummaryAt).toLocaleString()}.
             </p>
           )}
           {data.reporting.lastWeeklySummaryError && (
-            <p className="tiny negative">Last delivery failed: {data.reporting.lastWeeklySummaryError}</p>
+            <p className="tiny negative">
+              Last delivery failed: {data.reporting.lastWeeklySummaryError}
+            </p>
           )}
           <button className="btn primary" disabled={busy}>
             Save reporting preferences

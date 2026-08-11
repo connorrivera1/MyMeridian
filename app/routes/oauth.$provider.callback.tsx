@@ -16,7 +16,8 @@ import {
   createSession,
   upsertOAuthUser,
 } from "~/lib/webauth.server";
-import { HANDSHAKE_COOKIE } from "./oauth.$provider";
+import { publicAppOrigin } from "~/lib/public-origin.server";
+import { HANDSHAKE_COOKIE } from "~/lib/web-oauth-cookie";
 
 function clearHandshake(secure: boolean): string {
   return [
@@ -65,8 +66,7 @@ async function handle(
   if (!handshake || !input.code || !input.state) return rejected(secure);
   if (input.state !== handshake.state) return rejected(secure);
 
-  const url = new URL(request.url);
-  const redirectUri = `${url.origin}/oauth/${provider}/callback`;
+  const redirectUri = `${publicAppOrigin(request)}/oauth/${provider}/callback`;
 
   const identity =
     provider === "google"

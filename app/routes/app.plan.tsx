@@ -15,6 +15,7 @@ import {
   PLANS,
   type BillingKey,
 } from "~/lib/plans";
+import { publicAppOrigin } from "~/lib/public-origin.server";
 
 /**
  * Plan selection, upgrade and downgrade.
@@ -78,14 +79,12 @@ export async function action({ request }: ActionFunctionArgs) {
     };
   }
 
-  const url = new URL(request.url);
-
   // Shopify sends the merchant back here after they approve or decline, so the
   // page they land on reflects the charge they just made.
   return ctx.billing.request({
     plan: requested as BillingKey,
     isTest,
-    returnUrl: `${url.origin}/app/plan?shop=${encodeURIComponent(ctx.shop.domain)}`,
+    returnUrl: `${publicAppOrigin(request)}/app/plan?shop=${encodeURIComponent(ctx.shop.domain)}`,
   });
 }
 
@@ -204,10 +203,15 @@ export default function Plan() {
                   ))}
                 </ul>
 
+                {/* Billing exits the admin iframe for Shopify's confirmation
+                    screen. A document submission lets the Shopify adapter
+                    return its exit-iframe page; a client-side data request
+                    turns the adapter's 401 handoff into a stranded React
+                    Router error boundary instead. */}
                 {current ? (
                   <Badge tone="good">Current plan</Badge>
                 ) : (
-                  <Form method="post">
+                  <Form method="post" reloadDocument>
                     <input
                       type="hidden"
                       name="plan"

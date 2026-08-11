@@ -416,6 +416,15 @@ export const IconProducts = svg(
   </>,
 );
 
+/** Stacked boxes with a ledger rule: components rolling up to one cost. */
+export const IconCosts = svg(
+  <>
+    <rect x="3" y="13" width="7" height="8" rx="1.5" />
+    <rect x="14" y="13" width="7" height="8" rx="1.5" />
+    <path d="M12 3v6M12 9l-4.5 4M12 9l4.5 4" />
+  </>,
+);
+
 export const IconChannels = svg(
   <>
     <path d="M4 20V10M10 20V4M16 20v-7M22 20v-11" />

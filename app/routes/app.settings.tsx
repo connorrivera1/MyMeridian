@@ -239,6 +239,8 @@ const CONNECTOR_LABEL: Record<string, string> = {
   TIKTOK_ADS: "TikTok Ads",
   STRIPE: "Stripe",
   WAREHOUSE_3PL: "3PL / warehouse",
+  SHIPSTATION: "ShipStation",
+  SHOPIFY_SHIPPING: "Shopify Shipping",
 };
 
 const CONNECTOR_PURPOSE: Record<string, string> = {
@@ -250,6 +252,9 @@ const CONNECTOR_PURPOSE: Record<string, string> = {
     "Unavailable in this release; processing uses the configured fee model",
   WAREHOUSE_3PL:
     "Unavailable in this release; fulfilment uses recorded costs or configured fallbacks",
+  SHIPSTATION: "Carrier label costs reconciled to Shopify orders",
+  SHOPIFY_SHIPPING:
+    "Shopify Shipping label costs reconciled through the reports API",
 };
 
 export interface DisplayCostRule {
@@ -447,7 +452,7 @@ export default function Settings() {
 
         <Card
           title="Shipping"
-          hint="Used when a shipment has no measured carrier cost. This release has no 3PL connector, so review the fallback as an assumption; affected orders remain amber."
+          hint="Used when a shipment has no measured Shopify Shipping or ShipStation label cost. Review the fallback as an assumption; affected orders remain amber."
           actions={<CostRuleState rule={shipping} />}
         >
           <Form method="post" className="stack">
@@ -645,7 +650,7 @@ export default function Settings() {
 
       <Card
         title="Connections"
-        hint="Configured data sources appear here. This release has no setup flow for ad platforms, Stripe or 3PL sources; unavailable sources remain Not connected, and their costs are never inferred."
+        hint="Configured data sources appear here. Ad and ShipStation credentials are operator-provisioned in this release; Stripe and 3PL sources remain unavailable, and missing costs are never inferred."
         actions={
           <Form method="post">
             <button
@@ -685,6 +690,8 @@ export default function Settings() {
                   <td>
                     {connector.status === ConnectorStatus.CONNECTED ? (
                       <Badge tone="good">Connected</Badge>
+                    ) : connector.status === ConnectorStatus.DISCONNECTED ? (
+                      <Badge tone="critical">Disconnected</Badge>
                     ) : connector.status === ConnectorStatus.ERROR ? (
                       <Badge tone="critical">Needs attention</Badge>
                     ) : (

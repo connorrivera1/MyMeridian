@@ -1,5 +1,6 @@
 import prisma from "~/db.server";
 import { invalidateAnalyticsCache } from "~/data/analytics.server";
+import { reconcileConnectedCarriersForShop } from "~/integrations/shipping.server";
 import { planIdForSubscriptionName } from "~/lib/billing.server";
 import {
   buildCustomerExport,
@@ -9,6 +10,7 @@ import {
 import { redactCustomerEverywhere } from "~/lib/customer-erasure.server";
 import { ANNUAL_SUFFIX } from "~/lib/plans";
 import { capabilitiesForShop } from "~/lib/scopes";
+import { synchroniseShopifyShippingConnector } from "~/lib/provision.server";
 import {
   adminClientForShop,
   hydrateInventoryItemProducts,
@@ -20,6 +22,10 @@ import {
   syncOrderFromShopify,
   syncProductFromShopify,
 } from "~/lib/sync.server";
+import {
+  billSoftOrderOverage,
+  recordOrderUsage,
+} from "~/lib/usage-meter.server";
 import type { WebhookContext } from "~/lib/webhooks.server";
 
 /** Shared by orders/create, orders/updated and refunds/create. */
@@ -64,7 +70,95 @@ export async function processOrdersWebhook({
   }
 
   await syncOrderFromShopify(shop.id, payload);
+  const orderId = payload.id ?? payload.admin_graphql_api_id;
+  if (typeof orderId === "string" || typeof orderId === "number") {
+    const usage = await recordOrderUsage(
+      shop.id,
+      `order:${shop.id}:${String(orderId)}`,
+    );
+    if (usage.status === "soft_overage" || usage.status === "cap_reached") {
+      try {
+        await billSoftOrderOverage(shopDomain, usage.meterId);
+      } catch (error) {
+        // Soft overage must never turn a valid order delivery into a retry. The
+        // meter remains visible and Shopify billing can be retried on the next
+        // threshold batch.
+        console.error(`[billing] soft overage charge deferred for ${shopDomain}:`, error);
+      }
+    }
+  }
   invalidateAnalyticsCache();
+}
+
+function dateOrNow(value: unknown): Date {
+  if (typeof value === "string" || value instanceof Date) {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return new Date();
+}
+
+/** Store only a safe checkout projection; no Admin API round trip is needed. */
+export async function processCheckoutsWebhook({
+  shopDomain,
+  payload,
+}: WebhookContext): Promise<void> {
+  const shop = await prisma.shop.findUnique({ where: { domain: shopDomain } });
+  if (!shop) return;
+
+  const token = payload.token;
+  if (typeof token !== "string" || token.trim() === "") {
+    throw new Error("checkout webhook omitted its token");
+  }
+
+  const shopifyUpdatedAt = dateOrNow(payload.updated_at);
+  const existing = await prisma.checkout.findUnique({
+    where: { shopId_token: { shopId: shop.id, token } },
+    select: { shopifyUpdatedAt: true },
+  });
+  if (existing && existing.shopifyUpdatedAt >= shopifyUpdatedAt) return;
+
+  const lineItems = Array.isArray(payload.line_items)
+    ? payload.line_items.filter(
+        (item): item is Record<string, unknown> =>
+          item !== null && typeof item === "object" && !Array.isArray(item),
+      )
+    : [];
+  const totalQuantity = lineItems.reduce((sum, item) => {
+    const quantity = Number(item.quantity ?? 0);
+    return sum + (Number.isFinite(quantity) && quantity > 0 ? quantity : 0);
+  }, 0);
+
+  await prisma.checkout.upsert({
+    where: { shopId_token: { shopId: shop.id, token } },
+    create: {
+      shopId: shop.id,
+      token,
+      cartToken: typeof payload.cart_token === "string" ? payload.cart_token : null,
+      currency: typeof payload.currency === "string" ? payload.currency : shop.currency,
+      total: typeof payload.total_price === "string" || typeof payload.total_price === "number"
+        ? String(payload.total_price)
+        : "0",
+      lineCount: lineItems.length,
+      totalQuantity,
+      status: payload.completed_at ? "completed" : "open",
+      createdAt: dateOrNow(payload.created_at),
+      shopifyUpdatedAt,
+      completedAt: payload.completed_at ? dateOrNow(payload.completed_at) : null,
+    },
+    update: {
+      cartToken: typeof payload.cart_token === "string" ? payload.cart_token : null,
+      currency: typeof payload.currency === "string" ? payload.currency : shop.currency,
+      total: typeof payload.total_price === "string" || typeof payload.total_price === "number"
+        ? String(payload.total_price)
+        : "0",
+      lineCount: lineItems.length,
+      totalQuantity,
+      status: payload.completed_at ? "completed" : "open",
+      shopifyUpdatedAt,
+      completedAt: payload.completed_at ? dateOrNow(payload.completed_at) : null,
+    },
+  });
 }
 
 export async function processProductsWebhook({
@@ -122,6 +216,10 @@ export async function processFulfillmentsWebhook({
   if (!shop) return;
 
   await syncFulfillmentFromShopify(shop.id, payload);
+  // Shopify's fulfillment signal gives the reports API an immediate chance to
+  // surface a newly purchased label. Provider outages remain isolated here;
+  // the five-minute reconciliation sweep is the durable fallback.
+  await reconcileConnectedCarriersForShop(shop.id);
   invalidateAnalyticsCache();
 }
 
@@ -132,6 +230,14 @@ export async function processAppUninstalledWebhook({
   await prisma.shop.updateMany({
     where: { domain: shopDomain },
     data: { uninstalledAt: new Date() },
+  });
+  await prisma.subscription.updateMany({
+    where: { shop: { domain: shopDomain } },
+    data: { plan: "none", status: "cancelled" },
+  });
+  await prisma.usageMeter.updateMany({
+    where: { shop: { domain: shopDomain } },
+    data: { status: "suspended" },
   });
   console.info(`[app] uninstalled from ${shopDomain}; sessions cleared`);
 }
@@ -164,7 +270,16 @@ export async function processAppSubscriptionsWebhook({
   shopDomain,
   payload,
   webhookId,
+  topic,
 }: WebhookContext): Promise<void> {
+  if (topic === "APP_SUBSCRIPTIONS_APPROACHING_CAPPED_AMOUNT") {
+    await prisma.usageMeter.updateMany({
+      where: { shop: { domain: shopDomain }, metric: "orders" },
+      data: { status: "cap_reached", capWarningNotifiedAt: new Date() },
+    });
+    return;
+  }
+
   const shop = await prisma.shop.findUnique({ where: { domain: shopDomain } });
   if (!shop) return;
 
@@ -230,6 +345,7 @@ export async function processAppScopesUpdateWebhook({
     where: { id: shop.id },
     data: { grantedScopes: granted || null },
   });
+  await synchroniseShopifyShippingConnector(shop.id, granted);
   // Scope changes alter whether protected customer cohorts may be loaded, so
   // a warm analytics entry cannot survive the capability change.
   invalidateAnalyticsCache();
@@ -272,7 +388,12 @@ export async function processCustomerDataRequestWebhook({
     },
     include: {
       orders: {
-        include: { lineItems: true, fulfillments: true },
+        include: {
+          lineItems: true,
+          fulfillments: true,
+          taxComponents: true,
+          shippingCostObservations: true,
+        },
         orderBy: { processedAt: "asc" },
       },
     },

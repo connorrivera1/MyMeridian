@@ -258,6 +258,210 @@ function combineComponentTimelines(
   return derived;
 }
 
+// ---------------------------------------------------------------------------
+// Detection
+// ---------------------------------------------------------------------------
+
+export interface CatalogVariant {
+  variantId: string;
+  productId: string;
+  sku: string | null;
+  title: string;
+}
+
+export interface BundleCandidate {
+  bundleVariantId: string;
+  componentVariantId: string;
+  quantity: number;
+  source: "SKU_PATTERN" | "TITLE_PATTERN";
+  /** The fragment that matched, so a merchant can see why this was proposed. */
+  evidence: string;
+}
+
+/** Sane bounds for an inferred multiplier — beyond this it is a coincidence. */
+const MIN_DETECTED_QUANTITY = 2;
+const MAX_DETECTED_QUANTITY = 1_000;
+
+/**
+ * Multi-pack conventions, in the order they are tried.
+ *
+ * Anchored at the end of the SKU and required to sit behind a separator, so
+ * "SHIRT-3PK" matches and "SHIRT3" does not. A bare trailing number is the one
+ * pattern deliberately missing: it is far more often a size, a colourway or a
+ * revision than a pack count, and a wrong bundle mapping triples a product's
+ * COGS.
+ */
+const SKU_PACK_PATTERNS: { pattern: RegExp; group: number }[] = [
+  { pattern: /[-_ ]PACK[-_ ]?OF[-_ ]?(\d+)$/i, group: 1 },
+  { pattern: /[-_ ](\d+)[-_ ]?(?:PK|PACK|PCS|PC|CT|COUNT)$/i, group: 1 },
+  { pattern: /[-_ ]X[-_ ]?(\d+)$/i, group: 1 },
+  { pattern: /[-_ ](\d+)X$/i, group: 1 },
+];
+
+/** Title conventions, used only between variants of one product. */
+const TITLE_PACK_PATTERNS: { pattern: RegExp; quantity?: number }[] = [
+  { pattern: /\bpack\s+of\s+(\d+)\b/i },
+  { pattern: /\b(\d+)\s*[-–]?\s*(?:pack|pk|count|ct)\b/i },
+  { pattern: /\bbundle\s+of\s+(\d+)\b/i },
+  { pattern: /\btwin[-\s]?pack\b/i, quantity: 2 },
+  { pattern: /\btriple[-\s]?pack\b/i, quantity: 3 },
+];
+
+interface PackMatch {
+  quantity: number;
+  evidence: string;
+  /** What remains once the pack marker is removed. */
+  remainder: string;
+}
+
+function matchSkuPack(sku: string): PackMatch | null {
+  for (const { pattern, group } of SKU_PACK_PATTERNS) {
+    const found = pattern.exec(sku);
+    if (!found) continue;
+
+    const quantity = Number(found[group]);
+    if (
+      !Number.isInteger(quantity) ||
+      quantity < MIN_DETECTED_QUANTITY ||
+      quantity > MAX_DETECTED_QUANTITY
+    ) {
+      continue;
+    }
+
+    return {
+      quantity,
+      evidence: found[0]!,
+      remainder: sku.slice(0, found.index),
+    };
+  }
+  return null;
+}
+
+function matchTitlePack(title: string): { quantity: number; evidence: string } | null {
+  for (const { pattern, quantity } of TITLE_PACK_PATTERNS) {
+    const found = pattern.exec(title);
+    if (!found) continue;
+
+    const resolved = quantity ?? Number(found[1]);
+    if (
+      !Number.isInteger(resolved) ||
+      resolved < MIN_DETECTED_QUANTITY ||
+      resolved > MAX_DETECTED_QUANTITY
+    ) {
+      continue;
+    }
+    return { quantity: resolved, evidence: found[0]! };
+  }
+  return null;
+}
+
+function normaliseSku(sku: string): string {
+  return sku.trim().toUpperCase();
+}
+
+/**
+ * Propose bundle mappings from the catalog's own naming.
+ *
+ * Two independent signals, in priority order. A SKU convention
+ * ("WIDGET-BLU-3PK" beside "WIDGET-BLU") is strong: the merchant built the
+ * relationship into their own identifiers. A title convention is weaker and is
+ * therefore only trusted *within one product*, where "3-Pack" and "Single" are
+ * two variants of the same thing and the relationship is unambiguous.
+ *
+ * Everything returned is a proposal. Nothing here decides a cost — an inferred
+ * mapping that silently tripled a product's COGS would be worse than no
+ * detection at all.
+ */
+export function detectBundleCandidates(
+  variants: readonly CatalogVariant[],
+): BundleCandidate[] {
+  // Null marks a SKU carried by more than one variant. An ambiguous SKU cannot
+  // anchor a mapping, and picking whichever variant was read first would make
+  // the proposal depend on row order.
+  const bySku = new Map<string, CatalogVariant | null>();
+  for (const variant of variants) {
+    if (!variant.sku) continue;
+    const key = normaliseSku(variant.sku);
+    if (!key) continue;
+    bySku.set(key, bySku.has(key) ? null : variant);
+  }
+
+  const byProduct = new Map<string, CatalogVariant[]>();
+  for (const variant of variants) {
+    const list = byProduct.get(variant.productId);
+    if (list) list.push(variant);
+    else byProduct.set(variant.productId, [variant]);
+  }
+
+  const candidates: BundleCandidate[] = [];
+  const seen = new Set<string>();
+
+  const propose = (candidate: BundleCandidate) => {
+    if (candidate.bundleVariantId === candidate.componentVariantId) return;
+    const key = `${candidate.bundleVariantId}|${candidate.componentVariantId}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push(candidate);
+  };
+
+  for (const variant of variants) {
+    if (!variant.sku) continue;
+
+    const sku = normaliseSku(variant.sku);
+    const pack = matchSkuPack(sku);
+    if (!pack) continue;
+
+    // "WIDGET-BLU-3PK" -> "WIDGET-BLU". Trailing separators are stripped so a
+    // store writing "WIDGET-BLU--3PK" still resolves.
+    const baseSku = pack.remainder.replace(/[-_ ]+$/, "");
+    if (!baseSku) continue;
+
+    const base = bySku.get(baseSku);
+    if (!base) continue;
+
+    propose({
+      bundleVariantId: variant.variantId,
+      componentVariantId: base.variantId,
+      quantity: pack.quantity,
+      source: "SKU_PATTERN",
+      evidence: `SKU "${variant.sku}" matches "${baseSku}" ×${pack.quantity}`,
+    });
+  }
+
+  const proposedBundles = new Set(
+    candidates.map((candidate) => candidate.bundleVariantId),
+  );
+
+  for (const siblings of byProduct.values()) {
+    if (siblings.length < 2) continue;
+
+    const packs = siblings
+      .map((variant) => ({ variant, pack: matchTitlePack(variant.title) }))
+      .filter((entry) => entry.pack !== null);
+    if (packs.length === 0) continue;
+
+    // The base is the sibling with no pack marker. Exactly one keeps this
+    // unambiguous; a product listing "3-Pack", "6-Pack", "Single" and "Refill"
+    // gives no principled answer and is left for the merchant.
+    const singles = siblings.filter((variant) => !matchTitlePack(variant.title));
+    if (singles.length !== 1) continue;
+    const base = singles[0]!;
+
+    for (const { variant, pack } of packs) {
+      if (proposedBundles.has(variant.variantId)) continue;
+      propose({
+        bundleVariantId: variant.variantId,
+        componentVariantId: base.variantId,
+        quantity: pack!.quantity,
+        source: "TITLE_PATTERN",
+        evidence: `Variant "${variant.title}" reads as ×${pack!.quantity} of "${base.title}"`,
+      });
+    }
+  }
+
+  return candidates;
+}
+
 /**
  * Every bundle that has to be re-derived when these variants' costs change.
  *

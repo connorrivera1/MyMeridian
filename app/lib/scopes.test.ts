@@ -28,7 +28,7 @@ describe("parseScopes", () => {
     ]);
   });
 
-  it("declares four comma-delimited scopes in the Shopify CLI config", () => {
+  it("declares five comma-delimited scopes in the Shopify CLI config", () => {
     const toml = readFileSync(
       new URL("../../shopify.app.toml", import.meta.url),
       "utf8",
@@ -40,6 +40,7 @@ describe("parseScopes", () => {
       "read_products",
       "read_fulfillments",
       "read_inventory",
+      "read_reports",
     ]);
   });
 
@@ -112,7 +113,7 @@ describe("capabilitiesForShop", () => {
 });
 
 describe("scopeReport", () => {
-  it("flags the two gaps in the reduced dev scope set", () => {
+  it("flags every optional measurement gap in the reduced dev scope set", () => {
     const report = scopeReport(
       "read_orders read_products read_fulfillments read_refunds",
     );
@@ -120,7 +121,11 @@ describe("scopeReport", () => {
     const missing = report
       .filter((entry) => !entry.granted)
       .map((e) => e.scope);
-    expect(missing).toEqual(["read_inventory", "read_customers"]);
+    expect(missing).toEqual([
+      "read_inventory",
+      "read_customers",
+      "read_reports",
+    ]);
 
     // Neither is essential — the app still tracks profit without them.
     expect(report.filter((e) => !e.granted && e.essential)).toHaveLength(0);

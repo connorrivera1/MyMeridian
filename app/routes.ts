@@ -21,6 +21,7 @@ export default [
     route("acquisition", "routes/app.acquisition.tsx"),
     route("pricing", "routes/app.pricing.tsx"),
     route("fulfilment", "routes/app.fulfilment.tsx"),
+    route("costs", "routes/app.costs.tsx"),
     route("settings", "routes/app.settings.tsx"),
     // A merchant's privacy obligations survive subscription cancellation, so
     // authenticated export handoff remains reachable without an active plan.
@@ -37,12 +38,17 @@ export default [
   route("webhooks/app/uninstalled", "routes/webhooks.app-uninstalled.tsx"),
   route("webhooks/shop/update", "routes/webhooks.shop-update.tsx"),
   route("webhooks/orders/create", "routes/webhooks.orders.tsx"),
+  route("webhooks/checkouts/create", "routes/webhooks.checkouts.tsx"),
   route("webhooks/products/update", "routes/webhooks.products.tsx"),
   route(
     "webhooks/inventory-items/update",
     "routes/webhooks.inventory-items.tsx",
   ),
   route("webhooks/fulfillments/create", "routes/webhooks.fulfillments.tsx"),
+  route(
+    "webhooks/shipstation/:connectorId",
+    "routes/webhooks.shipstation.tsx",
+  ),
   route(
     "webhooks/app-subscriptions/update",
     "routes/webhooks.app-subscriptions.tsx",

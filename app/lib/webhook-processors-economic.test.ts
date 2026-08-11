@@ -10,6 +10,9 @@ const mocks = vi.hoisted(() => ({
   syncProductFromShopify: vi.fn(),
   syncFulfillmentFromShopify: vi.fn(),
   invalidateAnalyticsCache: vi.fn(),
+  recordOrderUsage: vi.fn(),
+  billSoftOrderOverage: vi.fn(),
+  reconcileConnectedCarriersForShop: vi.fn(),
 }));
 
 vi.mock("~/db.server", () => ({
@@ -36,8 +39,32 @@ vi.mock("~/data/analytics.server", () => ({
   invalidateAnalyticsCache: mocks.invalidateAnalyticsCache,
 }));
 
+vi.mock("~/integrations/shipping.server", () => ({
+  reconcileConnectedCarriersForShop: mocks.reconcileConnectedCarriersForShop,
+}));
+
+vi.mock("~/lib/usage-meter.server", () => ({
+  recordOrderUsage: vi.fn().mockResolvedValue({
+    counted: true,
+    meterId: "meter_1",
+    used: 1,
+    status: "under_limit",
+    crossedSoftLimit: false,
+  }),
+  billSoftOrderOverage: vi.fn().mockResolvedValue({
+    billedUnits: 0,
+    skipped: true,
+  }),
+}));
+
+vi.mock("~/lib/usage-meter.server", () => ({
+  recordOrderUsage: mocks.recordOrderUsage,
+  billSoftOrderOverage: mocks.billSoftOrderOverage,
+}));
+
 const {
   processInventoryItemsWebhook,
+  processFulfillmentsWebhook,
   processOrdersWebhook,
   processProductsWebhook,
 } = await import("./webhook-processors.server");
@@ -66,9 +93,28 @@ beforeEach(() => {
   mocks.hydrateInventoryItemProducts.mockResolvedValue([]);
   mocks.syncOrderFromShopify.mockResolvedValue(undefined);
   mocks.syncProductFromShopify.mockResolvedValue(undefined);
+  mocks.syncFulfillmentFromShopify.mockResolvedValue(undefined);
+  mocks.reconcileConnectedCarriersForShop.mockResolvedValue(2);
+  mocks.recordOrderUsage.mockResolvedValue({
+    meterId: "meter_1",
+    status: "under_limit",
+    crossedSoftLimit: false,
+  });
+  mocks.billSoftOrderOverage.mockResolvedValue({ billedUnits: 0, skipped: true });
 });
 
 describe("economic webhook processors", () => {
+  it("uses a Shopify fulfillment signal to reconcile connected carriers immediately", async () => {
+    const payload = { id: 9001, order_id: 1001, status: "success" };
+    await processFulfillmentsWebhook(context("FULFILLMENTS_UPDATE", payload));
+
+    expect(mocks.syncFulfillmentFromShopify).toHaveBeenCalledWith("shop_1", payload);
+    expect(mocks.reconcileConnectedCarriersForShop).toHaveBeenCalledWith("shop_1");
+    expect(mocks.syncFulfillmentFromShopify.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.reconcileConnectedCarriersForShop.mock.invocationCallOrder[0]!,
+    );
+  });
+
   it("commits every referenced variant hydration before the order snapshot", async () => {
     const hydratedProducts = [
       { id: "gid://shopify/Product/1", variants: [{ id: "v1" }] },
@@ -100,6 +146,23 @@ describe("economic webhook processors", () => {
     expect(
       mocks.syncProductFromShopify.mock.invocationCallOrder.at(-1),
     ).toBeLessThan(mocks.syncOrderFromShopify.mock.invocationCallOrder[0]!);
+  });
+
+  it("keeps flushing batched soft overage while orders continue arriving", async () => {
+    mocks.recordOrderUsage.mockResolvedValue({
+      meterId: "meter_1",
+      status: "soft_overage",
+      crossedSoftLimit: false,
+    });
+
+    await processOrdersWebhook(
+      context("ORDERS_CREATE", { id: 1100, line_items: [] }),
+    );
+
+    expect(mocks.billSoftOrderOverage).toHaveBeenCalledWith(
+      "economic-processors.myshopify.com",
+      "meter_1",
+    );
   });
 
   it("propagates hydration failure without freezing an unlinked zero-cost line", async () => {

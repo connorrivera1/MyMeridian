@@ -28,8 +28,23 @@ export interface AdHealthEnvironment {
   GOOGLE_ADS_CLIENT_ID?: string;
   GOOGLE_ADS_CLIENT_SECRET?: string;
   GOOGLE_ADS_DEVELOPER_TOKEN?: string;
+  MERIDIAN_GOOGLE_ADS_CLIENT_ID?: string;
+  MERIDIAN_GOOGLE_ADS_CLIENT_SECRET?: string;
+  MERIDIAN_GOOGLE_ADS_DEVELOPER_TOKEN?: string;
   CONNECTOR_ALERT_WEBHOOK_URL?: string;
   CONNECTOR_ALERT_WEBHOOK_SECRET?: string;
+}
+
+function googleClientId(env: AdHealthEnvironment) {
+  return env.MERIDIAN_GOOGLE_ADS_CLIENT_ID ?? env.GOOGLE_ADS_CLIENT_ID;
+}
+
+function googleClientSecret(env: AdHealthEnvironment) {
+  return env.MERIDIAN_GOOGLE_ADS_CLIENT_SECRET ?? env.GOOGLE_ADS_CLIENT_SECRET;
+}
+
+function googleDeveloperToken(env: AdHealthEnvironment) {
+  return env.MERIDIAN_GOOGLE_ADS_DEVELOPER_TOKEN ?? env.GOOGLE_ADS_DEVELOPER_TOKEN;
 }
 
 export interface ProbeResult {
@@ -120,7 +135,8 @@ export async function probeAdToken(
   }
 
   if (provider === ConnectorProvider.GOOGLE_ADS) {
-    if (!env.GOOGLE_ADS_DEVELOPER_TOKEN) {
+    const developerToken = googleDeveloperToken(env);
+    if (!developerToken) {
       return { healthy: false, authFailure: false, message: "Google Ads developer token is not configured." };
     }
     const response = await fetcher(
@@ -128,7 +144,7 @@ export async function probeAdToken(
       {
         headers: {
           Authorization: `Bearer ${token}`,
-          "developer-token": env.GOOGLE_ADS_DEVELOPER_TOKEN,
+          "developer-token": developerToken,
           Accept: "application/json",
         },
       },
@@ -182,13 +198,15 @@ export async function refreshGoogleAccessToken(
   env: AdHealthEnvironment = process.env as AdHealthEnvironment,
   fetcher: typeof fetch = fetch,
 ) {
-  if (!env.GOOGLE_ADS_CLIENT_ID || !env.GOOGLE_ADS_CLIENT_SECRET) {
+  const clientId = googleClientId(env);
+  const clientSecret = googleClientSecret(env);
+  if (!clientId || !clientSecret) {
     throw new Error("Google OAuth client credentials are not configured.");
   }
   const body = new URLSearchParams({
     grant_type: "refresh_token",
-    client_id: env.GOOGLE_ADS_CLIENT_ID,
-    client_secret: env.GOOGLE_ADS_CLIENT_SECRET,
+    client_id: clientId,
+    client_secret: clientSecret,
     refresh_token: refreshToken,
   });
   const response = await fetcher("https://www.googleapis.com/oauth2/v3/token", {

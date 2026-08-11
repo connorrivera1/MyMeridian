@@ -4,8 +4,8 @@ Status of every requirement Shopify checks. The long audit trail below records
 what was run on 2026-08-05/06; this current snapshot was reconciled and verified
 again on 2026-08-11.
 
-Canonical branch: `main`. Nothing has been deployed, pushed or submitted, and
-the repo has no git remote configured.
+Current implementation branch: `feature/mymeridian-web-accounts`. The GitHub
+remote is `connorrivera1/MyMeridian`; nothing has been deployed or submitted.
 
 **Read this first:** everything below was verified against a locally running
 server with **no Shopify API credentials**. The app has never been installed on
@@ -16,23 +16,24 @@ with credentials injected into the real route modules — and the level is named
 each time. See _What has not been tested_ at the end.
 
 **Current local gate:** `npm run ci` passes — typecheck, coverage thresholds,
-and production build — with 907 tests collected (850 passed, 57 opt-in
-PostgreSQL integration tests skipped). The explicit ten-file real-PostgreSQL
-run passes 57/57 after all 21 migrations apply from empty.
+1,074 unit tests and production build. The explicit ten-file real-PostgreSQL
+run passes all 1,131 tests, including the 57 integration cases, after all 27
+migrations apply from empty.
 Billing is no longer merely declared:
 `resolvePlan`, the layout subscription redirect, the `planAllows`
 capability gates, the pricing-action re-check, and `billing.request` implement
 enforcement. None of that changes the central release fact above: the real
 Shopify billing flow has never run.
 
-**Current product-truth boundary:** plan prices are unchanged, but unenforced
+**Current product-truth boundary:** plan prices and entitlements are enforced;
 order-volume blurbs and the false location-specific capacity claim are removed.
 The current scopes do not include `read_customers`, so customer-lifecycle product
 classification remains dormant and is absent from public copy and routes. The
-release also has no ad-spend connector; public copy qualifies profit as the
-result of available recorded and modeled inputs rather than calling it complete,
-and the redesigned Acquisition route leads with order-derived revenue and
-contribution profit. Every listing screenshot still needs a fresh
+Growth and Scale include self-service Meta, Google and TikTok connections;
+provider review, credentials and production worker infrastructure still have to
+be activated before those connections can sync live spend. Public copy qualifies
+profit whenever spend is unavailable rather than calling it complete. Every
+listing screenshot still needs a fresh
 capture after the August 9–10 UI redraw, including the now-useful no-spend
 Acquisition view.
 
@@ -78,8 +79,8 @@ done from this repo — each is written up with where it lives and what it needs
   the non-default choice in the submission form as of 2026 and has to be made
   deliberately; requirement 1.2.1 permits it. See "Billing" below for the
   reasoning, re-verified against live docs on 6 August 2026. Each plan now has
-  monthly and annual Billing API intervals ($49/$490, $149/$1,490,
-  $399/$3,990), which the current blocked listing draft reflects. The draft is
+  monthly and annual Billing API intervals ($49/$490, $129/$1,290,
+  $299/$2,990), which the current blocked listing draft reflects. The draft is
   still not paste-ready because the public name is unresolved.
 - The **public app name**. `Meridian` is only the working development identity;
   a published Shopify app already uses it. Choose a distinctive,
@@ -129,7 +130,7 @@ done from this repo — each is written up with where it lives and what it needs
 | Item                                                                       | State                                                                                                                                                                                                                                                                                                                                                                                                        |
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | App icon, 1200×1200 PNG                                                    | File exists at `listing/app-icon-1200.png`; re-check it after the public name/brand decision.                                                                                                                                                                                                                                                                                                                |
-| Screenshots, 1600×900, 3–6 desktop                                         | **Stale.** Five files exist, but all predate the 2026-08-09/10 broadsheet and chart redraw. Re-shoot every listing screenshot from the final UI and the real review store.                                                                                                                                                                                                                                   |
+| Screenshots, 1600×900, 3–6 desktop                                         | **Locally refreshed.** Six current files exist — Overview, Orders, Products, Acquisition, Pricing and Fulfilment — and were visually checked at 1600×900 on 2026-08-11. Re-capture them from the final real review store if its data or public identity differs from the seeded review dataset.                                                                                                                                                                          |
 | Privacy policy URL                                                         | **Done** — `/privacy`, public and unauthenticated.                                                                                                                                                                                                                                                                                                                                                           |
 | Support page                                                               | **Done** — `/support`, public.                                                                                                                                                                                                                                                                                                                                                                               |
 | Meridian domain, publisher + support email                                 | **Missing.** They must belong to Meridian. The app pages show an explicit pre-launch configuration gap and the standalone legal drafts state that they are not effective until these facts are selected.                                                                                                                                     |
@@ -140,13 +141,14 @@ done from this repo — each is written up with where it lives and what it needs
 | Screencast of the full setup process, English or English-subtitled         | **Missing, and blocked on the owner.** An automatic bounce if absent. It has to show a real OAuth install through to a first dashboard view; the app has never been installed on any store, and it cannot be filmed against the demo bypass because that bypass is exactly what the recording exists to prove is not being used. Record it during the first real install rather than staging the flow twice. |
 | `extensions/`                                                              | Empty, and correctly so — Meridian ships no theme or checkout extension.                                                                                                                                                                                                                                                                                                                                     |
 
-The prior ad-spend claim is closed: no merchant-visible listing or plan copy
-sells a live ad connector. The Scale cohort claim is removed without expanding
-access, and `read_customers` remains absent until separately approved and
-requested. Scale itself is not commercially closed: at $399/month its only
-incremental promise is priority support, but no support address, plan-aware
-routing or SLA is configured. Remove/reprice it or define and staff that promise
-before submission.
+The prior ad-spend gap is closed in the repository: Growth and Scale include
+self-service Meta, Google and TikTok OAuth, account selection, encrypted token
+storage, health checks and durable spend ingestion. Provider app approval and
+production credentials remain external activation gates. The Scale cohort claim
+is removed without expanding access, and `read_customers` remains absent until
+separately approved and requested. Scale is differentiated by scheduled weekly
+summaries, advanced exports and multi-store portfolio access rather than an
+unstaffed support SLA.
 
 ### 4. Performance work before a large merchant installs
 
@@ -159,18 +161,18 @@ work twice_ and _The order query read eighteen columns nothing used_ below.
 `loadDashboard` no longer builds current and comparison windows concurrently,
 the comparison uses a scalar-only path, `loadEngineOrders` no longer hydrates
 fulfilment rows or unused columns, and every heavy build shares one process-wide
-admission gate. An index-backed count refuses a window above 60,000 orders
-before hydration; whole-history recompute preflights and processes exact
-merchant-local months under that same bound.
+admission gate. Above the full-engine hydration threshold, analytics switch to
+the exact materialized order ledger and SQL product roll-ups after verifying
+that every order was computed; whole-history recompute still processes exact
+merchant-local months.
 Measured on the seeded store (12,379 orders, 19,532 line items): the 30-day
 window went 108ms → 72ms and the 365-day window 400ms → 247ms, on both the
 reporting window and the comparison window built beside it.
 
-What remains: within an accepted window, `loadEngineOrders` still returns every
-order and the orders table's `PAGE_SIZE = 60` slices an already-materialised
-array, so the database work is identical on page 1 and page 40. A simple `take`
-would make P&L, ad attribution and overhead confidently wrong; supporting more
-than 60,000 orders in one selected window or local month requires a SQL roll-up.
+What remains: the orders table's `PAGE_SIZE = 60` still slices a lean
+materialized period array, so page 40 is not yet database-keyset paged. The
+former 60,000-order correctness refusal is gone; this remaining item is an
+efficiency improvement rather than a supported-volume boundary.
 
 Removing that supported-volume boundary means computing the roll-up in SQL.
 Two things were established about what that costs, and both argue for doing it
@@ -324,10 +326,9 @@ What's still genuinely untested: 20 of 21 route loaders remain uncovered
 `app.acquisition.tsx`, `app.pricing.tsx`, `app.settings.tsx`, `app.plan.tsx`,
 `app.layout.tsx`, `auth.*`, `home.tsx`, `legal.*`) — most are thin wrappers
 over `loadDashboard` or already-tested pieces, but none has a test asserting
-that wiring specifically. `loadEngineOrders` now refuses more than 60,000
-orders before hydration and whole-history recompute is merchant-month chunked;
-the remaining SQL roll-up is the path to lifting that supported-volume boundary,
-with a real-database differential already guarding the engine semantics.
+that wiring specifically. `loadEngineOrders` still protects the full-hydration
+path, while larger windows switch to the verified materialized ledger and SQL
+product roll-up; whole-history recompute is merchant-month chunked.
 
 Baseline before this change: typecheck clean, vitest 348/348 in 29 files,
 `verify-data.ts` exit 0 twice, byte-identical
@@ -581,7 +582,7 @@ the empty spend set. Result: 0 spend rows, 0 orders with non-zero ad cost, 12,37
 orders and 9,192 customers recomputed, unattributed ad spend $0.00.
 
 **Current media state:** all screenshots predate the August 9–10 UI redraw and
-must be re-shot. Acquisition no longer depends on a connector to make a useful
+have been re-shot locally. Acquisition no longer depends on a connector to make a useful
 image. Feature media and the demo store URL are also still missing.
 
 ### The app sold ad channels it cannot connect
@@ -589,8 +590,8 @@ image. Feature media and the demo store URL are also still missing.
 Starter advertised "One ad channel connected" and Growth "Unlimited ad channels +
 blended CAC" on `/app/plan`, a screen the Shopify reviewer walks during billing
 review while comparing the listing against a real install. Neither is true and
-neither can be made true at runtime: there is no ad-platform OAuth flow and no
-platform API client anywhere in the tree, `provision.server.ts:97` creates every
+neither could be made true at runtime at the time: there was no ad-platform OAuth
+flow or platform API client in the tree, `provision.server.ts:97` created every
 connector `NOT_CONFIGURED` and nothing ever configures one, and the only writer of
 `AdSpend` at the time was `prisma/seed.ts:949`. The old seeded demo showed spend;
 every real store showed `$0.00` for the life of the install.
@@ -1142,37 +1143,29 @@ thrown from the same function that throws the 401.
 
 ## Known gaps that are not blockers, in rough priority order
 
-1. **One selected analytics window or merchant-local recompute month is limited
-   to 60,000 orders**, and the orders table still pages a materialised accepted
-   window. The count guard, process-wide admission, sequential comparison path
-   and month-sliced recompute prevent partial answers and OOMs; a SQL roll-up is
-   required to lift the supported-volume boundary rather than hiding it behind
-   a `take`.
-2. **Order-level stored profit is a write-only cache.** `recompute` writes
-   `Order.netProfit`, but every dashboard figure is recomputed on the fly and
-   nothing reads it back except `contributionProfit` for cohort LTV.
-3. **Ad platform connectors are not wired to live OAuth.** The connector and
-   encrypted-token storage models exist, but Facebook/Google/TikTok have no
-   OAuth flow or platform client, so a real store has no paid-spend data.
-   **No longer a false listing claim** — nothing
-   merchant-visible sells ad spend, CAC or ROAS any more, the screen says plainly
-   why those figures are unavailable, and
-   a test fails if the claim returns. It is now a missing feature rather than a
-   false promise. The screen still reports order-derived channel revenue and
-   contribution profit, and discloses that historical imports without customer
+1. **The orders table still pages a lean materialized period in memory.** Large
+   analytics windows no longer hydrate the full order graph or refuse above
+   60,000 orders, but database-side keyset paging would reduce repeat work on
+   very deep order-table pages.
+2. **Ad connections require production activation.** The repository includes
+   self-service Meta/Google/TikTok OAuth, account selection, encrypted tokens,
+   health checks and durable ingestion, but provider-reviewed apps, credentials
+   and Redis-backed workers must be configured before live spend can sync.
+   The screen still reports order-derived channel revenue and contribution
+   profit, and discloses that historical imports without customer
    access fall back to Direct. The
    wiring that _did_ exist is now consistent: every provider in the enum gets a
    connector row at install, so the Settings screen shows all three ad platforms
    sitting at "Not configured" rather than omitting TikTok entirely.
-4. **Backfill and recompute run in-process.** Backfill now uses a database lease,
+3. **Backfill and recompute run in-process.** Backfill now uses a database lease,
    heartbeat, owner-fenced writes and cursor-preserving takeover, so a Fly
    restart is recoverable; recompute preflights and processes one merchant-local
    month at a time. A serverless host would still need a durable job queue.
-5. **The demo auth bypass ships in the production bundle.** Guarded by a
+4. **The demo auth bypass ships in the production bundle.** Guarded by a
    boot-time throw when `NODE_ENV=production` and by Shopify-signal detection,
    which is solid, but the whole guard depends on `NODE_ENV` being set correctly
    at deploy. A reviewer reading the source will pause here.
-6. **Browser-level platform E2E is still missing.** Server-rendered route tests
+5. **Browser-level platform E2E is still missing.** Server-rendered route tests
    now cover Overview, Orders, Products, Acquisition, Pricing, Settings, Plan,
    Layout and both Privacy-request routes; chart labels have explicit timezone
    and one-point regressions. Fulfilment, auth/home and legal wrappers still lack

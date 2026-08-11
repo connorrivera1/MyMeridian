@@ -11,6 +11,8 @@ export default [
   // be moved behind authentication.
   route("privacy", "routes/legal.privacy.tsx"),
   route("support", "routes/legal.support.tsx"),
+  route("healthz", "routes/health.live.ts"),
+  route("readyz", "routes/health.ready.ts"),
 
   // Shop-domain entry form. Must precede the splat so it wins the match.
   route("auth/login", "routes/auth.login.tsx"),
@@ -37,8 +39,14 @@ export default [
   route("oauth/:provider", "routes/oauth.$provider.tsx"),
   route("oauth/:provider/callback", "routes/oauth.$provider.callback.tsx"),
 
+  // Third-party data-source OAuth callbacks authenticate with one-use state;
+  // they cannot require a Shopify iframe session because providers return in a
+  // top-level browser context.
+  route("connections/:provider/callback", "routes/connector-callback.ts"),
+
   route("app", "routes/app.layout.tsx", [
     index("routes/app.overview.tsx"),
+    route("onboarding", "routes/app.onboarding.tsx"),
     route("orders", "routes/app.orders.tsx"),
     route("products", "routes/app.products.tsx"),
     route("acquisition", "routes/app.acquisition.tsx"),
@@ -46,6 +54,8 @@ export default [
     route("fulfilment", "routes/app.fulfilment.tsx"),
     route("costs", "routes/app.costs.tsx"),
     route("settings", "routes/app.settings.tsx"),
+    route("connections/:provider/start", "routes/app.connector-start.ts"),
+    route("export/profit.csv", "routes/app.profit-export.ts"),
     // A merchant's privacy obligations survive subscription cancellation, so
     // authenticated export handoff remains reachable without an active plan.
     route("privacy-requests", "routes/app.privacy-requests.tsx"),

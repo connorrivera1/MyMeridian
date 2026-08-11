@@ -1,5 +1,8 @@
 import { purgeExpiredDataRequests } from "~/lib/data-request.server";
 import { purgeFinishedRecalcJobs } from "~/lib/recalc-queue.server";
+import { purgeExpiredSecurityAuditEvents } from "~/lib/security-audit.server";
+import { purgeExpiredConnectorOAuthStates } from "~/lib/connector-oauth.server";
+import { purgeOldMerchantNotifications } from "~/lib/merchant-notifications.server";
 
 /**
  * The retention boundary is measured in days, but an hourly sweep keeps the
@@ -51,6 +54,25 @@ function beginSweep(): void {
     })
     .catch((error: unknown) => {
       console.error("[recalc] finished job purge failed", error);
+    })
+    .then(() => purgeExpiredSecurityAuditEvents())
+    .then((count) => {
+      if (count > 0) console.info(`[security] purged ${count} expired access event(s)`);
+    })
+    .catch((error: unknown) => {
+      console.error("[security] access-event purge failed", error);
+    })
+    .then(async () => {
+      const [oauth, notifications] = await Promise.all([
+        purgeExpiredConnectorOAuthStates(),
+        purgeOldMerchantNotifications(),
+      ]);
+      if (oauth > 0 || notifications > 0) {
+        console.info(`[retention] purged ${oauth} OAuth state(s) and ${notifications} notification receipt(s)`);
+      }
+    })
+    .catch((error: unknown) => {
+      console.error("[retention] connector/notification purge failed", error);
     })
     .finally(() => {
       if (state.inFlight === work) state.inFlight = undefined;

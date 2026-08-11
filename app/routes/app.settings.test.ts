@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const requireShopContext = vi.fn();
 const requireActivePlan = vi.fn();
+const planAllows = vi.fn(() => true);
 const startBackfill = vi.fn();
 const recomputeShopProfitability = vi.fn();
 const prismaMock = {
@@ -24,6 +25,7 @@ vi.mock("~/lib/auth.server", () => ({
 }));
 vi.mock("~/lib/plan.server", () => ({
   requireActivePlan: (...args: unknown[]) => requireActivePlan(...args),
+  planAllows,
 }));
 vi.mock("~/lib/backfill.server", () => ({
   startBackfill: (...args: unknown[]) => startBackfill(...args),

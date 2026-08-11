@@ -14,7 +14,7 @@ vi.mock("~/db.server", () => ({
   },
 }));
 
-const { grantMembership, listMemberships, resolveAccessibleShop, revokeMembershipsForShop } =
+const { canConnectAnotherStore, grantMembership, listMemberships, resolveAccessibleShop, revokeMembershipsForShop } =
   await import("./shop-access.server");
 
 const user = { id: "user-1" } as never;
@@ -101,6 +101,25 @@ describe("membership writes", () => {
     expect(membershipDeleteMany.mock.calls[0]?.[0]).toEqual({
       where: { shopId: "shop-1" },
     });
+  });
+});
+
+describe("multi-store entitlement", () => {
+  it("always allows the first store", async () => {
+    membershipFindMany.mockResolvedValue([]);
+    await expect(canConnectAnotherStore("user-1")).resolves.toBe(true);
+  });
+
+  it("requires an active Scale subscription after the first", async () => {
+    membershipFindMany.mockResolvedValue([
+      { shop: { subscription: { plan: "growth", status: "active" } } },
+    ]);
+    await expect(canConnectAnotherStore("user-1")).resolves.toBe(false);
+
+    membershipFindMany.mockResolvedValue([
+      { shop: { subscription: { plan: "scale-annual", status: "active" } } },
+    ]);
+    await expect(canConnectAnotherStore("user-1")).resolves.toBe(true);
   });
 });
 

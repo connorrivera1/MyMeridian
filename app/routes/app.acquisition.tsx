@@ -229,7 +229,7 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
       {!hasSpend && (
         <Banner>
           <strong style={{ color: "var(--ink-primary)" }}>
-            No ad-spend source is connected in this release.
+            No ad-spend source has completed a sync.
           </strong>{" "}
           Spend, CAC, ROAS, payback and marketing efficiency are unavailable —
           not zero. Meridian never infers spend from orders, because a guessed

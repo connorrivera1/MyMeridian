@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const requireShopContext = vi.fn();
 const collectDataRequestForDownload = vi.fn();
+const recordSensitiveAction = vi.fn();
 
 vi.mock("~/lib/auth.server", () => ({
   requireShopContext: (...args: unknown[]) => requireShopContext(...args),
@@ -9,6 +10,9 @@ vi.mock("~/lib/auth.server", () => ({
 vi.mock("~/lib/data-request.server", () => ({
   collectDataRequestForDownload: (...args: unknown[]) =>
     collectDataRequestForDownload(...args),
+}));
+vi.mock("~/lib/security-audit.server", () => ({
+  recordSensitiveAction: (...args: unknown[]) => recordSensitiveAction(...args),
 }));
 
 const { action, headers, loader } =
@@ -40,6 +44,13 @@ describe("customer data export download resource", () => {
     expect(collectDataRequestForDownload).toHaveBeenCalledWith(
       "shop_1",
       "request_1",
+    );
+    expect(recordSensitiveAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shopId: "shop_1",
+        action: "CUSTOMER_EXPORT_DOWNLOADED",
+        resource: "data_request:request_1",
+      }),
     );
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe(

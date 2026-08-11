@@ -193,8 +193,8 @@ describe("listing media and the demo store it is captured from", () => {
   it("reviewer instructions unlock the shipped gates without claiming dormant features", () => {
     const copy = read("listing/copy.md");
 
-    expect(copy).toContain("Choose Growth monthly ($149/month)");
-    expect(copy).toContain("Pricing and Fulfilment");
+    expect(copy).toContain("Choose Scale monthly ($299/month)");
+    expect(copy).toContain("including Pricing, Fulfilment");
     expect(copy).toContain("Customer-lifecycle product classifications");
     expect(copy).toContain("does not request read_customers");
     expect(copy).toContain("ShopPlan.partnerDevelopment");

@@ -364,8 +364,8 @@ billing implementation that is already finished and gated. Re-verified against
 live shopify.dev docs on 6 August 2026; quotes and URLs are in `SUBMISSION.md`
 § "Billing". An earlier version of this paragraph said App Pricing plans could
 not be read from a merchant session at all, which is wrong. The three plans are
-Starter $49/mo or $490/yr, Growth $149/mo or $1,490/yr, and Scale $399/mo or
-$3,990/yr, all USD with a 14-day trial.
+Starter $49/mo or $490/yr, Growth $129/mo or $1,290/yr, and Scale $299/mo or
+$2,990/yr, all USD with a 14-day trial.
 
 **b. Protected Customer Data request, Level 2 — gates `read_orders`, not just
 `read_customers`. This is a hard gate, and it is the single longest-lead item
@@ -440,7 +440,7 @@ Assets state:
 | Item                                      | State                                                                                                                                            |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | App icon 1200×1200                        | File exists, but re-check after the name/brand decision                                                                                          |
-| Screenshots 1600×900                      | **Stale.** The five files predate the 2026-08-09/10 broadsheet and chart redraw; re-shoot all of them from the final UI and a real review store. |
+| Screenshots 1600×900                      | **Locally refreshed.** Six current files were captured and visually checked on 2026-08-11. Re-capture from the final real review store only if its data or identity differs. |
 | Privacy policy URL                        | Done — `/privacy`, public                                                                                                                        |
 | Support page                              | Done — `/support`, public                                                                                                                        |
 | Name / intro / details / features         | **Needs revision** — final name is not reflected; annual pricing is current                                                                      |
@@ -457,12 +457,11 @@ Record it during Phase 2's real install rather than staging the whole flow twice
 
 The Scale cohort claim has been removed without expanding access:
 `read_customers` remains absent and no paid plan promises LTV/payback. Scale is
-still **not commercially resolved**, however: at $399/month its only incremental
-promise is priority support, while no support address, plan-aware routing or SLA
-has been configured. The owner must remove/reprice Scale or define and staff that
-support promise before submission. No live ad-platform OAuth exists, so the
-listing must also continue avoiding ad-attribution claims until a real connector
-ships.
+now differentiated by scheduled weekly profit summaries, advanced CSV exports
+and multi-store portfolio access at $299/month or $2,990/year. Growth includes
+self-service Meta, Google and TikTok connections plus anomaly alerts. Provider
+application approval and production credentials remain deployment activation
+work, not missing product code.
 
 The remaining catalogue is also scoped to what the runtime enforces. Plan copy
 does not claim order-volume limits, because billing never counts or blocks
@@ -470,7 +469,7 @@ monthly orders; Scale does not claim location-specific capacity, because the
 capacity rebuild currently writes one store-wide `primary` series; and public
 copy does not expose the dormant customer-lifecycle product classifier. Prices
 are unchanged. The redesigned Acquisition page is now useful without spend, so
-a fresh screenshot may be included in the required full re-shoot; only the old
+a fresh screenshot is included in the refreshed six-image set; only the old
 fabricated-spend image remains held as provenance.
 
 ---
@@ -534,15 +533,12 @@ runtime is now memory-bounded and whole-history recompute is month-sliced; see
 
 ### Still open
 
-- **One accepted analytics window or merchant-local recompute month is capped
-  at 60,000 orders.** `loadEngineOrders` deliberately has no `take`: truncating
-  P&L, ad attribution or overhead would create a confidently wrong answer.
-  Instead, an index-backed count refuses a larger window before hydration, all
-  heavy builds share a process-wide admission gate, and whole-history recompute
-  preflights then processes exact merchant-local months. A real-Postgres
-  differential proves the chunked result against the one-shot engine. The SQL
-  roll-up is now the work required to support more than 60,000 orders in one
-  selected window or one local month, not an unbounded-memory optimization.
+- **Large accepted analytics windows use the materialized profit ledger.** The
+  engine still refuses to truncate an order window. Above its full-hydration
+  threshold, analytics switch to exact materialized order fields and SQL
+  product roll-ups, validate that every order was computed, and fail visibly if
+  the ledger is incomplete. This removes the former 60,000-order refusal without
+  inventing partial P&L.
 - **Orders table pages a materialised array.** `PAGE_SIZE = 60` slices in
   memory, so the database work is identical on page 1 and page 40. Same root
   cause as above. **Partially addressed 2026-08-07:** page 2+ was previously
@@ -564,8 +560,9 @@ runtime is now memory-bounded and whole-history recompute is month-sliced; see
   direct orchestration tests plus pagination, resume, field-access and real-
   PostgreSQL claim suites. What those cannot prove is the first historical walk
   against Shopify's live GraphQL responses; Phase 2 remains that acceptance run.
-- **Order-level stored profit is a write-only cache**, and **ad connectors have
-  no live OAuth** (§7). Neither affects OAuth, webhook or billing compliance.
+- **Order-table paging still sorts a lean materialized period in memory.** It no
+  longer hydrates the full line-item graph, but database-side keyset paging is a
+  later efficiency improvement for exceptionally large selected windows.
 
 ---
 

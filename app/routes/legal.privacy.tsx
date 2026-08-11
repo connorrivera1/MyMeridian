@@ -151,9 +151,12 @@ export default function Privacy() {
         processing rates, shipping and pick-and-pack estimates, and fixed
         monthly overhead. MyMeridian supplies visible install defaults until the
         merchant reviews or replaces them; reviewing a fallback does not turn it
-        into a measured cost. This release does not connect to an advertising
-        account, collect an advertising-platform access token, or import ad
-        spend.
+        into a measured cost. A merchant may also connect Meta Ads, Google Ads,
+        TikTok Ads or ShipStation. MyMeridian then stores the provider access and
+        refresh tokens encrypted at rest, the selected account identifier and
+        imported campaign-spend or carrier-cost records. Disconnecting removes
+        the local tokens and requests provider revocation where the provider
+        supports it.
       </p>
 
       <h2>How data is stored and secured</h2>
@@ -165,6 +168,11 @@ export default function Privacy() {
         <li>
           Shopify session tokens are stored server-side and are never exposed to
           the browser.
+        </li>
+        <li>
+          Third-party connector tokens are encrypted with AES-256-GCM using a
+          key held outside the database. OAuth state is one-use, short-lived and
+          stored only as a one-way hash.
         </li>
         <li>
           Every webhook Shopify sends is HMAC-verified before it is acted on; an
@@ -191,9 +199,13 @@ export default function Privacy() {
       <p>
         {APP_NAME} does not sell store data, does not share it with advertisers,
         and does not use it to train models. It is disclosed only to the
-        infrastructure providers needed to run the service — the database and
-        application host — and to Shopify itself. This release does not connect
-        to an advertising platform or disclose store data to one.
+        infrastructure providers needed to run the service — the database,
+        application host and transactional email provider — and to Shopify
+        itself. When a merchant chooses a connector, MyMeridian calls that
+        provider only to read the merchant-authorized account, advertising
+        report or carrier-label cost. Shopify customer emails, addresses and
+        customer records are not sent to Meta, Google, TikTok or ShipStation by
+        this connector flow.
       </p>
 
       <h2>How long it is kept</h2>

@@ -12,19 +12,11 @@
  * Nothing here touches `process.env` or any Node API, so it is safe on both
  * sides. `shopify.server.ts` imports it to build the Billing API config.
  *
- * **Nothing here may promise ad spend, CAC, ROAS or connected ad platforms.**
- * There is a `Connector` model, encrypted token storage and a settings row for
- * Meta, Google and TikTok, but no OAuth flow and no platform API client
- * anywhere in the tree — `provision.server.ts` creates every connector
- * `NOT_CONFIGURED` and nothing ever configures one. The seed no longer writes
- * `AdSpend` either, so both demo and real stores disclose spend as unavailable
- * unless a future connector or explicit import creates measured rows.
- *
- * Starter used to sell "One ad channel connected" and Growth "Unlimited ad
- * channels + blended CAC". A reviewer walks `/app/plan` during billing review
- * and compares the listing against a real install, so that was a bounce waiting
- * to happen rather than a wording preference. `plan.test.ts` now fails if the
- * claim is put back; lift that test when the connectors ship, not before.
+ * Growth may promise measured ad-spend connections because Meta, Google Ads
+ * and TikTok now have merchant-initiated OAuth, encrypted token persistence,
+ * account discovery, health checks and continuous ingestion. It still may not
+ * promise cohort/LTV analysis because the app does not request the protected
+ * customer scope that analysis requires.
  *
  * What survives is what the code actually does without a platform token:
    * orders are attributed to a channel from their UTM parameters and referring
@@ -56,24 +48,29 @@ export const PLANS = {
   growth: {
     id: "growth",
     name: "Growth",
-    price: 149,
-    annualPrice: 1490,
-    blurb: "Pricing and fulfilment tools",
+    price: 129,
+    annualPrice: 1290,
+    blurb: "Pricing, fulfilment and proactive alerts",
     features: [
       "Everything in Starter",
       "Pricing recommendations",
       "Fulfilment capacity alerts",
+      "Profit anomaly alerts",
+      "Meta, Google and TikTok ad spend connections",
+      "ShipStation carrier-cost connection",
     ],
   },
   scale: {
     id: "scale",
     name: "Scale",
-    price: 399,
-    annualPrice: 3990,
-    blurb: "Growth tools with priority support",
+    price: 299,
+    annualPrice: 2990,
+    blurb: "Automated reporting for larger operations",
     features: [
       "Everything in Growth",
-      "Priority support",
+      "Scheduled weekly profit summaries",
+      "Advanced CSV exports",
+      "Multi-store portfolio access",
     ],
   },
 } as const;

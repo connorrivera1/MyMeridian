@@ -6,6 +6,7 @@ import { authenticate, hasShopifyCredentials } from "~/shopify.server";
 import { resolveAccessibleShop } from "./shop-access.server";
 import { readSessionToken } from "./web-session.server";
 import { resolveSession } from "./webauth.server";
+import { recordMerchantAccess } from "./security-audit.server";
 
 export const DEMO_SHOP_DOMAIN = "meridian-demo.myshopify.com";
 
@@ -119,6 +120,12 @@ export async function requireShopContext(request: Request): Promise<ShopContext>
     const { ensureShopProvisioned } = await import("./provision.server");
     const shop = await ensureShopProvisioned(session.shop);
 
+    await recordMerchantAccess({
+      shopId: shop.id,
+      actorType: "shopify_session",
+      actorId: session.id,
+      request,
+    });
     return { shop, admin, billing, session, isDemo: false, user: null };
   }
 
@@ -135,6 +142,12 @@ export async function requireShopContext(request: Request): Promise<ShopContext>
     // state immediately after signup, not an error.
     if (!shop) throw redirect("/connect");
 
+    await recordMerchantAccess({
+      shopId: shop.id,
+      actorType: "web_account",
+      actorId: user.id,
+      request,
+    });
     return {
       shop,
       admin: null,
@@ -153,6 +166,12 @@ export async function requireShopContext(request: Request): Promise<ShopContext>
     const { ensureShopProvisioned } = await import("./provision.server");
     const shop = await ensureShopProvisioned(session.shop);
 
+    await recordMerchantAccess({
+      shopId: shop.id,
+      actorType: "shopify_session",
+      actorId: session.id,
+      request,
+    });
     return { shop, admin, billing, session, isDemo: false, user: null };
   }
 

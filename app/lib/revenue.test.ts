@@ -18,8 +18,8 @@ describe("summariseRevenue", () => {
       NOW,
     );
 
-    // 49.00 + 1490/12 = 49.00 + 124.1666… → 12417 cents, rounded once.
-    expect(summary.mrrCents).toBe(4900 + Math.round(149000 / 12));
+    // 49.00 + 1290/12 = 49.00 + 107.50.
+    expect(summary.mrrCents).toBe(4900 + Math.round(129000 / 12));
     expect(summary.arrCents).toBe(summary.mrrCents * 12);
     expect(summary.activeSubscribers).toBe(2);
   });
@@ -60,7 +60,7 @@ describe("summariseRevenue", () => {
     expect(summary.byPlan.growth).toEqual({
       monthly: 1,
       annual: 1,
-      mrrCents: 14900 + Math.round(149000 / 12),
+      mrrCents: 12900 + Math.round(129000 / 12),
     });
     expect(summary.byPlan.scale.monthly).toBe(1);
     expect(summary.byPlan.starter).toEqual({ monthly: 0, annual: 0, mrrCents: 0 });

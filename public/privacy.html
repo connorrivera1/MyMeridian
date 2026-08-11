@@ -207,11 +207,11 @@ document.documentElement.classList.add("js");
           processing rates, shipping and pick-and-pack estimates, and fixed
           monthly overhead. MyMeridian supplies visible install defaults until the
           merchant reviews or replaces them; reviewing a fallback does not make
-          it measured.
-          <strong
-            >This release does not connect to any advertising account</strong
-          >, does not collect an advertising-platform access token, and does not
-          import ad spend.
+          it measured. If the merchant connects Meta Ads, Google Ads, TikTok
+          Ads or ShipStation, MyMeridian also receives the selected account
+          identifier, account label and currency plus the minimum token or API
+          credential needed to sync spend or shipping costs. Provider tokens
+          are encrypted at rest and can be disconnected from inside the app.
         </p>
 
         <h2>How data is stored and secured</h2>
@@ -245,8 +245,11 @@ document.documentElement.classList.add("js");
           Fly.io for application hosting and Fly Managed Postgres for its
           database; data will also be disclosed to Shopify as needed to provide
           the app. This policy will be updated before launch if either provider
-          changes. This release does not connect to an advertising platform or
-          disclose store data to one.
+          changes. When a merchant chooses to connect Meta, Google, TikTok or
+          ShipStation, MyMeridian exchanges authorization details with that
+          provider and requests only the account and cost data needed for the
+          selected integration. MyMeridian does not send Shopify customer
+          records to advertising platforms.
         </p>
 
         <h2>How long it is kept</h2>

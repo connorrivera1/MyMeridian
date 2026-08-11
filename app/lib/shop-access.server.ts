@@ -42,6 +42,28 @@ export async function listMemberships(
   }));
 }
 
+/** Scale is the portfolio tier; the first store is always connectable. */
+export async function canConnectAnotherStore(userId: string): Promise<boolean> {
+  const memberships = await prisma.shopMembership.findMany({
+    where: { userId },
+    select: {
+      shop: {
+        select: {
+          subscription: { select: { plan: true, status: true } },
+        },
+      },
+    },
+  });
+  if (memberships.length === 0) return true;
+  return memberships.some(({ shop }) => {
+    const subscription = shop.subscription;
+    return (
+      subscription?.status.toLowerCase() === "active" &&
+      subscription.plan.replace(/-annual$/, "") === "scale"
+    );
+  });
+}
+
 /**
  * Resolve the store a request should render.
  *

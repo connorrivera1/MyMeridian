@@ -211,6 +211,8 @@ export async function loadShopAnalytics(
 
     const startedAt = Date.now();
 
+    try {
+
     const cohortRange: DateRange = {
       from: new Date(range.to.getTime() - COHORT_LOOKBACK_DAYS * 86_400_000),
       to: range.to,
@@ -275,6 +277,27 @@ export async function loadShopAnalytics(
     }
 
     return value;
+    } catch (error) {
+      if (!(error instanceof Error) || error.name !== "WindowTooLargeError") {
+        throw error;
+      }
+      // Large windows read the exact profit ledger already materialized by the
+      // recompute worker and aggregate product lines in SQL. This avoids
+      // hydrating the full order + line-item graph that the guard refused.
+      const { loadMaterializedShopAnalytics } = await import(
+        "./materialized-analytics.server"
+      );
+      const value: ShopAnalytics = await loadMaterializedShopAnalytics(shop, range);
+      if (generation === cacheGeneration) {
+        cache.set(key, {
+          at: Date.now(),
+          weight: value.period.orders.length,
+          value,
+        });
+        trimCaches(key);
+      }
+      return value;
+    }
   });
 
   shopBuildsInFlight.set(flightKey, build);
@@ -344,19 +367,29 @@ export async function loadPeriodProfit(
     // must not coexist with that peak either.
     cache.clear();
 
-    const [orders, spend, rules] = await Promise.all([
-      loadEngineOrders(shop.id, range),
-      loadAdSpend(shop.id, range),
-      loadCostRules(shop.id),
-    ]);
-
-    const value = computeProfitForPeriod(
-      orders,
-      spend,
-      rules,
-      shop.timezone,
-      range,
-    );
+    let value: PeriodProfit;
+    try {
+      const [orders, spend, rules] = await Promise.all([
+        loadEngineOrders(shop.id, range),
+        loadAdSpend(shop.id, range),
+        loadCostRules(shop.id),
+      ]);
+      value = computeProfitForPeriod(
+        orders,
+        spend,
+        rules,
+        shop.timezone,
+        range,
+      );
+    } catch (error) {
+      if (!(error instanceof Error) || error.name !== "WindowTooLargeError") {
+        throw error;
+      }
+      const { loadMaterializedPeriodProfit } = await import(
+        "./materialized-analytics.server"
+      );
+      value = await loadMaterializedPeriodProfit(shop.id, range);
+    }
     const { orders: _discardedOrders, ...summary } = value;
 
     // Comparison routes read scalar deltas only. Keeping `value.orders` here

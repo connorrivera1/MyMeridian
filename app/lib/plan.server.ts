@@ -68,6 +68,18 @@ export const FEATURE_MIN_PLAN = {
   pricing: "growth",
   /** Fulfilment capacity modelling and backlog alerts. */
   capacity: "growth",
+  /** Daily margin, refund, missing-cost and connector-health monitoring. */
+  anomalyAlerts: "growth",
+  /** Merchant-managed Meta, Google Ads and TikTok Ads OAuth connections. */
+  adConnections: "growth",
+  /** Merchant-managed ShipStation label-cost reconciliation. */
+  carrierConnections: "growth",
+  /** Automated weekly profit email. */
+  scheduledReports: "scale",
+  /** Streamed accountant-grade order profitability export. */
+  exports: "scale",
+  /** One web account may manage more than one connected Shopify store. */
+  multiStore: "scale",
 } as const satisfies Record<string, PlanId>;
 
 export type Feature = keyof typeof FEATURE_MIN_PLAN;

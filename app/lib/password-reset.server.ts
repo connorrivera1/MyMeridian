@@ -24,6 +24,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { User } from "@prisma/client";
 
 import prisma from "~/db.server";
+import { mailConfiguration, sendEmail } from "~/lib/mail.server";
 import { CODE_LENGTH } from "./password-reset";
 import { readCookie } from "./web-session.server";
 import { hashPassword, normalizeEmail, passwordProblem } from "./webauth.server";
@@ -289,22 +290,24 @@ export function readPendingResetEmail(request: Request): string | null {
 }
 
 /**
- * Hand the code to whatever can actually deliver it.
- *
- * There is no mail transport configured yet, so outside production the code is
- * written to the server log — that is what makes the flow walkable today. The
- * production branch deliberately does nothing rather than logging: a reset code
- * in a log file is a credential in a log file, and log files get shipped to
- * places the mailbox owner never agreed to.
+ * Deliver through the configured transactional provider. Local development may
+ * explicitly fall back to the terminal so the flow remains testable without a
+ * mail account; production fails closed instead of claiming it sent nothing.
  */
 export async function deliverResetCode(
   email: string,
   code: string,
 ): Promise<void> {
-  if (process.env.NODE_ENV === "production") {
-    // TODO(email): send through the transport once the mail domain is live.
+  if (!mailConfiguration().configured && process.env.NODE_ENV !== "production") {
+    console.info(`[password-reset] code for ${email}: ${code}`);
     return;
   }
 
-  console.info(`[password-reset] code for ${email}: ${code}`);
+  await sendEmail({
+    to: email,
+    subject: "Your MyMeridian password reset code",
+    text: `Your MyMeridian password reset code is ${code}. It expires in 15 minutes. If you did not request it, you can ignore this email.`,
+    html: `<p>Your MyMeridian password reset code is <strong>${code}</strong>.</p><p>It expires in 15 minutes. If you did not request it, you can ignore this email.</p>`,
+    idempotencyKey: `password-reset:${email}:${code}`,
+  });
 }

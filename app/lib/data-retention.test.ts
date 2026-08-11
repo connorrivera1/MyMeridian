@@ -2,12 +2,27 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const purgeExpiredDataRequests = vi.fn();
 const purgeFinishedRecalcJobs = vi.fn();
+const purgeExpiredSecurityAuditEvents = vi.fn();
+const purgeExpiredConnectorOAuthStates = vi.fn();
+const purgeOldMerchantNotifications = vi.fn();
 
 vi.mock("~/lib/data-request.server", () => ({
   purgeExpiredDataRequests: (...args: unknown[]) => purgeExpiredDataRequests(...args),
 }));
 vi.mock("~/lib/recalc-queue.server", () => ({
   purgeFinishedRecalcJobs: (...args: unknown[]) => purgeFinishedRecalcJobs(...args),
+}));
+vi.mock("~/lib/security-audit.server", () => ({
+  purgeExpiredSecurityAuditEvents: (...args: unknown[]) =>
+    purgeExpiredSecurityAuditEvents(...args),
+}));
+vi.mock("~/lib/connector-oauth.server", () => ({
+  purgeExpiredConnectorOAuthStates: (...args: unknown[]) =>
+    purgeExpiredConnectorOAuthStates(...args),
+}));
+vi.mock("~/lib/merchant-notifications.server", () => ({
+  purgeOldMerchantNotifications: (...args: unknown[]) =>
+    purgeOldMerchantNotifications(...args),
 }));
 
 const {
@@ -21,6 +36,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   purgeExpiredDataRequests.mockResolvedValue(0);
   purgeFinishedRecalcJobs.mockResolvedValue(0);
+  purgeExpiredSecurityAuditEvents.mockResolvedValue(0);
+  purgeExpiredConnectorOAuthStates.mockResolvedValue(0);
+  purgeOldMerchantNotifications.mockResolvedValue(0);
   stopDataRetentionScheduler();
 });
 

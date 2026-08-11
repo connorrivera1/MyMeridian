@@ -176,8 +176,12 @@ export default function Plan() {
                     {plan.blurb}
                     {yearly && (
                       <>
-                        {" "}
-                        · saves{" "}
+                        {" "}· effective{" "}
+                        <Money
+                          cents={Math.round((plan.annualPrice * 100) / 12)}
+                          currency="USD"
+                        />
+                        /month · saves{" "}
                         <Money
                           cents={(plan.price * 12 - plan.annualPrice) * 100}
                           currency="USD"

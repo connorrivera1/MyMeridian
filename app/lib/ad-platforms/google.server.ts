@@ -21,7 +21,7 @@ import {
  * an auth failure *after* a refresh is a real revocation, not staleness.
  */
 
-const API_VERSION = "v18";
+const API_VERSION = "v25";
 /** Overridable so staging and local debugging can point at a mock platform. */
 const ADS_BASE =
   process.env.MERIDIAN_GOOGLE_ADS_API_BASE ??

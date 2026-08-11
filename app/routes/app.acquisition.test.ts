@@ -91,7 +91,7 @@ describe("Acquisition", () => {
       "Customer-level acquisition metrics are unavailable",
     );
     expect(html).toContain("fall back to Direct");
-    expect(html).toContain("No ad-spend source is connected in this release");
+    expect(html).toContain("No ad-spend source has completed a sync");
     expect(html).not.toContain("See plans");
   });
 

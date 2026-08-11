@@ -67,9 +67,10 @@ describe("public legal pages", () => {
     expect(privacy).toContain("<code>read_customers</code> and");
     expect(privacy).toMatch(/not<\/strong> requested/);
 
-    // No ad connector exists in this release — app/lib has no AdSpend writer
-    // outside the seed, so the policy must not describe one.
-    expect(privacy).toContain("does not connect to any advertising");
+    // Provider connections are merchant-controlled, and credentials must be
+    // described without implying that Shopify customer records are shared.
+    expect(privacy).toContain("meta ads");
+    expect(privacy).toContain("encrypted at rest");
     expect(privacy).toContain("currently pre-launch");
     expect(privacy).toContain("fly managed postgres");
   });

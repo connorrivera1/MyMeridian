@@ -1,4 +1,5 @@
 import {
+  ConnectorProvider,
   ConnectorStatus,
   CostRuleKind,
   CostRuleOrigin,
@@ -18,16 +19,25 @@ import { invalidateAnalyticsCache } from "~/data/analytics.server";
 import { Badge, Banner, Card, Stat } from "~/design/components";
 import { requireShopContext } from "~/lib/auth.server";
 import { backfillIsStale } from "~/lib/backfill-claim.server";
-import { requireActivePlan } from "~/lib/plan.server";
+import { mailConfiguration } from "~/lib/mail.server";
+import { nextWeeklyOccurrence } from "~/lib/merchant-notifications.server";
+import {
+  connectorOAuthConfigured,
+  disconnectConnector,
+} from "~/lib/connector-oauth.server";
+import { planAllows, requireActivePlan } from "~/lib/plan.server";
 import { recomputeShopProfitability } from "~/lib/recompute.server";
 import { scopeReport } from "~/lib/scopes";
 import { PLANS } from "~/lib/plans";
+import { storeConnectorCredentials } from "~/integrations/ad-health.server";
+import { ensureShipStationWebhook } from "~/integrations/shipping.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const ctx = await requireShopContext(request);
   const { shop } = ctx;
   const plan = await requireActivePlan(ctx, request);
   const staleBackfill = backfillIsStale(shop);
+  const url = new URL(request.url);
 
   const [costRules, connectors, orderCount, productCount] = await Promise.all([
     prisma.costRule.findMany({
@@ -87,10 +97,51 @@ export async function loader({ request }: LoaderFunctionArgs) {
       provider: connector.provider,
       status: connector.status,
       displayName: connector.displayName,
+      externalAccountId: connector.externalAccountId,
+      availableAccounts: Array.isArray(connector.availableAccounts)
+        ? connector.availableAccounts.flatMap((value) => {
+            if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+            const account = value as Record<string, unknown>;
+            return typeof account.id === "string"
+              ? [{
+                  id: account.id,
+                  name: typeof account.name === "string" ? account.name : null,
+                  currency: typeof account.currency === "string" ? account.currency : null,
+                }]
+              : [];
+          })
+        : [],
       lastSyncedAt: connector.lastSyncedAt,
       lastError: connector.lastError,
+      selfServeConfigured:
+        connector.provider === ConnectorProvider.FACEBOOK_ADS
+          ? connectorOAuthConfigured("meta")
+          : connector.provider === ConnectorProvider.GOOGLE_ADS
+            ? connectorOAuthConfigured("google")
+            : connector.provider === ConnectorProvider.TIKTOK_ADS
+              ? connectorOAuthConfigured("tiktok")
+              : true,
     })),
     plan: plan.planId,
+    reporting: {
+      anomalyAlertsEnabled: shop.anomalyAlertsEnabled,
+      weeklySummaryEnabled: shop.weeklySummaryEnabled,
+      weeklySummaryEmail: shop.weeklySummaryEmail ?? shop.email ?? "",
+      weeklySummaryDay: shop.weeklySummaryDay,
+      lastWeeklySummaryAt: shop.lastWeeklySummaryAt,
+      lastWeeklySummaryError: shop.lastWeeklySummaryError,
+      mailConfigured: mailConfiguration().configured,
+      canUseAlerts: planAllows(plan, "anomalyAlerts"),
+      canUseWeekly: planAllows(plan, "scheduledReports"),
+      canExport: planAllows(plan, "exports"),
+      canUseConnections: planAllows(plan, "adConnections"),
+      canUseCarrierConnections: planAllows(plan, "carrierConnections"),
+    },
+    connectionFeedback: url.searchParams.get("connection_error")
+      ? { ok: false, message: url.searchParams.get("connection_error")! }
+      : url.searchParams.get("connected")
+        ? { ok: true, message: `${url.searchParams.get("connected")} connected. Initial spend sync is queued.` }
+        : null,
   };
 }
 
@@ -147,9 +198,134 @@ function valuesForRuleKind(
 
 export async function action({ request }: ActionFunctionArgs) {
   const ctx = await requireShopContext(request);
-  await requireActivePlan(ctx, request);
+  const plan = await requireActivePlan(ctx, request);
   const { shop, admin } = ctx;
   const form = await request.formData();
+
+  if (form.get("intent") === "reporting") {
+    const anomalyAlertsEnabled = form.get("anomalyAlertsEnabled") === "on";
+    const weeklySummaryEnabled = form.get("weeklySummaryEnabled") === "on";
+    const weeklySummaryEmail = String(form.get("weeklySummaryEmail") ?? "").trim();
+    const weeklySummaryDay = Number(form.get("weeklySummaryDay") ?? 1);
+    if (weeklySummaryEnabled && !planAllows(plan, "scheduledReports")) {
+      return { ok: false, message: "Weekly summaries require the Scale plan." };
+    }
+    if (anomalyAlertsEnabled && !planAllows(plan, "anomalyAlerts")) {
+      return { ok: false, message: "Profit anomaly alerts require Growth or Scale." };
+    }
+    if (
+      weeklySummaryEnabled &&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(weeklySummaryEmail)
+    ) {
+      return { ok: false, message: "Enter a valid report email address." };
+    }
+    if (!Number.isInteger(weeklySummaryDay) || weeklySummaryDay < 0 || weeklySummaryDay > 6) {
+      return { ok: false, message: "Choose a valid summary day." };
+    }
+    await prisma.shop.update({
+      where: { id: shop.id },
+      data: {
+        anomalyAlertsEnabled: planAllows(plan, "anomalyAlerts")
+          ? anomalyAlertsEnabled
+          : false,
+        weeklySummaryEnabled: planAllows(plan, "scheduledReports")
+          ? weeklySummaryEnabled
+          : false,
+        weeklySummaryEmail: weeklySummaryEmail || null,
+        weeklySummaryDay,
+        nextWeeklySummaryAt: weeklySummaryEnabled
+          ? nextWeeklyOccurrence(weeklySummaryDay)
+          : null,
+        lastWeeklySummaryError: null,
+      },
+    });
+    return { ok: true, message: "Reporting preferences saved." };
+  }
+
+  if (form.get("intent") === "shipstation-connect") {
+    if (!planAllows(plan, "carrierConnections")) {
+      return { ok: false, message: "ShipStation requires Growth or Scale." };
+    }
+    const apiKey = String(form.get("apiKey") ?? "").trim();
+    if (apiKey.length < 10 || apiKey.length > 1_000) {
+      return { ok: false, message: "Enter a valid ShipStation API key." };
+    }
+    try {
+      const connector = await storeConnectorCredentials({
+        shopId: shop.id,
+        provider: ConnectorProvider.SHIPSTATION,
+        accessToken: apiKey,
+      });
+      await ensureShipStationWebhook(
+        connector,
+        process.env.SHOPIFY_APP_URL ?? new URL(request.url).origin,
+      );
+      return { ok: true, message: "ShipStation connected and its cost webhook is active." };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "ShipStation setup failed.";
+      await prisma.connector.updateMany({
+        where: { shopId: shop.id, provider: ConnectorProvider.SHIPSTATION },
+        data: { status: ConnectorStatus.ERROR, lastError: message.slice(0, 1_000) },
+      });
+      return { ok: false, message };
+    }
+  }
+
+  if (form.get("intent") === "select-connector-account") {
+    const provider = String(form.get("provider") ?? "") as ConnectorProvider;
+    const externalAccountId = String(form.get("externalAccountId") ?? "");
+    const connector = await prisma.connector.findFirst({
+      where: { shopId: shop.id, provider },
+    });
+    const accounts = Array.isArray(connector?.availableAccounts)
+      ? connector.availableAccounts
+      : [];
+    const selected = accounts.find((value) => {
+      return value && typeof value === "object" && !Array.isArray(value) &&
+        (value as Record<string, unknown>).id === externalAccountId;
+    }) as Record<string, unknown> | undefined;
+    if (!connector || !selected) {
+      return { ok: false, message: "That ad account is not authorized for this connection." };
+    }
+    await prisma.connector.update({
+      where: { id: connector.id },
+      data: {
+        externalAccountId,
+        displayName: typeof selected.name === "string" ? selected.name : null,
+        accountCurrency: typeof selected.currency === "string" ? selected.currency : null,
+        lastSyncedAt: null,
+        lastDeepSyncAt: null,
+        lastError: null,
+      },
+    });
+    return { ok: true, message: "Ad account changed. A fresh spend sync is queued." };
+  }
+
+  if (form.get("intent") === "disconnect") {
+    const provider = String(form.get("provider") ?? "") as ConnectorProvider;
+    if (!new Set<ConnectorProvider>([
+      ConnectorProvider.FACEBOOK_ADS,
+      ConnectorProvider.GOOGLE_ADS,
+      ConnectorProvider.TIKTOK_ADS,
+      ConnectorProvider.SHIPSTATION,
+    ]).has(provider)) {
+      return { ok: false, message: "That data source cannot be disconnected here." };
+    }
+    try {
+      const disconnected = await disconnectConnector({ shopId: shop.id, provider });
+      return {
+        ok: true,
+        message: disconnected.remoteRevoked
+          ? "Connection removed and provider access revoked."
+          : "Local credentials removed. The provider did not confirm remote revocation; remove MyMeridian in that provider too.",
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        message: error instanceof Error ? error.message : "Disconnect failed.",
+      };
+    }
+  }
 
   if (form.get("intent") === "resync") {
     if (!admin) {
@@ -241,6 +417,12 @@ const CONNECTOR_LABEL: Record<string, string> = {
   WAREHOUSE_3PL: "3PL / warehouse",
   SHIPSTATION: "ShipStation",
   SHOPIFY_SHIPPING: "Shopify Shipping",
+};
+
+const CONNECTOR_SLUG: Partial<Record<ConnectorProvider, string>> = {
+  [ConnectorProvider.FACEBOOK_ADS]: "meta",
+  [ConnectorProvider.GOOGLE_ADS]: "google",
+  [ConnectorProvider.TIKTOK_ADS]: "tiktok",
 };
 
 const CONNECTOR_PURPOSE: Record<string, string> = {
@@ -397,6 +579,11 @@ export default function Settings() {
 
   return (
     <>
+      {data.connectionFeedback?.message && (
+        <Banner tone={data.connectionFeedback.ok ? "neutral" : "warn"}>
+          {data.connectionFeedback.message}
+        </Banner>
+      )}
       {result?.message && (
         <Banner tone={result.ok ? "neutral" : "warn"}>{result.message}</Banner>
       )}
@@ -650,7 +837,7 @@ export default function Settings() {
 
       <Card
         title="Connections"
-        hint="Configured data sources appear here. Ad and ShipStation credentials are operator-provisioned in this release; Stripe and 3PL sources remain unavailable, and missing costs are never inferred."
+        hint="Connect measured ad spend and carrier label costs without sending credentials to support. Tokens are encrypted at rest and removed on disconnect; Stripe and 3PL sources remain unavailable."
         actions={
           <Form method="post">
             <button
@@ -673,6 +860,7 @@ export default function Settings() {
                 <th>What it provides</th>
                 <th>Status</th>
                 <th>Last sync</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -713,11 +901,187 @@ export default function Settings() {
                         )
                       : "—"}
                   </td>
+                  <td>
+                    {connector.status === ConnectorStatus.CONNECTED && new Set<ConnectorProvider>([
+                      ConnectorProvider.FACEBOOK_ADS,
+                      ConnectorProvider.GOOGLE_ADS,
+                      ConnectorProvider.TIKTOK_ADS,
+                      ConnectorProvider.SHIPSTATION,
+                    ]).has(connector.provider as ConnectorProvider) ? (
+                      <div className="stack" style={{ gap: 6 }}>
+                        {connector.availableAccounts.length > 1 && (
+                          <Form method="post" className="row" style={{ gap: 6 }}>
+                            <input type="hidden" name="intent" value="select-connector-account" />
+                            <input type="hidden" name="provider" value={connector.provider} />
+                            <select
+                              className="field-input"
+                              name="externalAccountId"
+                              defaultValue={connector.externalAccountId ?? ""}
+                            >
+                              {connector.availableAccounts.map((account) => (
+                                <option key={account.id} value={account.id}>
+                                  {account.name ?? account.id}
+                                </option>
+                              ))}
+                            </select>
+                            <button className="btn sm" disabled={busy}>Use</button>
+                          </Form>
+                        )}
+                        <Form method="post">
+                          <input type="hidden" name="intent" value="disconnect" />
+                          <input type="hidden" name="provider" value={connector.provider} />
+                          <button className="btn sm" disabled={busy}>Disconnect</button>
+                        </Form>
+                      </div>
+                    ) : connector.provider === ConnectorProvider.FACEBOOK_ADS ||
+                      connector.provider === ConnectorProvider.GOOGLE_ADS ||
+                      connector.provider === ConnectorProvider.TIKTOK_ADS ? (
+                      connector.selfServeConfigured ? (
+                        <Form
+                          method="post"
+                          action={`/app/connections/${CONNECTOR_SLUG[connector.provider]}/start`}
+                        >
+                          <button
+                            className="btn sm"
+                            disabled={busy || !data.reporting.canUseConnections}
+                          >
+                            Connect
+                          </button>
+                        </Form>
+                      ) : (
+                        <span className="tiny muted">Awaiting provider app approval</span>
+                      )
+                    ) : connector.provider === ConnectorProvider.SHIPSTATION ? (
+                      <span className="tiny muted">Use the secure key form below</span>
+                    ) : (
+                      <span className="tiny muted">—</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        <div style={{ padding: "14px 16px" }}>
+          <Form method="post" className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+            <input type="hidden" name="intent" value="shipstation-connect" />
+            <label className="stack" style={{ gap: 4, flex: "1 1 260px" }}>
+              <span className="tiny muted">ShipStation API key</span>
+              <input
+                className="field-input"
+                type="password"
+                name="apiKey"
+                autoComplete="off"
+                placeholder="Not stored in the browser"
+                disabled={!data.reporting.canUseCarrierConnections}
+              />
+            </label>
+            <button
+              className="btn sm"
+              disabled={busy || !data.reporting.canUseCarrierConnections}
+            >
+              Connect ShipStation
+            </button>
+          </Form>
+        </div>
+      </Card>
+
+      <Card
+        title="Reports and alerts"
+        hint="MyMeridian monitors qualified profit inputs daily. Scale can also send a weekly summary and export order-level figures for an accountant."
+        actions={
+          data.reporting.canExport ? (
+            <a className="btn sm" href="/app/export/profit.csv">
+              Export profit CSV
+            </a>
+          ) : (
+            <a className="btn sm" href="/app/plan">
+              Scale features
+            </a>
+          )
+        }
+      >
+        {!data.reporting.mailConfigured && (
+          <Banner tone="warn">
+            Email delivery is not active on this deployment yet. Preferences are
+            saved, but the operator must configure the verified sending domain
+            before any message can leave MyMeridian.
+          </Banner>
+        )}
+        <Form method="post" className="stack">
+          <input type="hidden" name="intent" value="reporting" />
+          <label className="row" style={{ gap: 10, alignItems: "flex-start" }}>
+            <input
+              type="checkbox"
+              name="anomalyAlertsEnabled"
+              defaultChecked={data.reporting.anomalyAlertsEnabled}
+              disabled={!data.reporting.canUseAlerts}
+            />
+            <span>
+              <strong>Profit anomaly alerts</strong>
+              <span className="cell-sub">
+                Margin drops, refund spikes, carrier-cost drift, missing COGS and
+                unhealthy data sources. Growth or Scale.
+              </span>
+            </span>
+          </label>
+          <label className="row" style={{ gap: 10, alignItems: "flex-start" }}>
+            <input
+              type="checkbox"
+              name="weeklySummaryEnabled"
+              defaultChecked={data.reporting.weeklySummaryEnabled}
+              disabled={!data.reporting.canUseWeekly}
+            />
+            <span>
+              <strong>Weekly profit summary</strong>
+              <span className="cell-sub">Current week, prior-week change and missing-cost disclosure. Scale.</span>
+            </span>
+          </label>
+          <div className="row" style={{ gap: 16, flexWrap: "wrap" }}>
+            <label className="stack" style={{ gap: 4, flex: "1 1 240px" }}>
+              <span className="tiny muted">Report email</span>
+              <input
+                className="field-input"
+                type="email"
+                name="weeklySummaryEmail"
+                defaultValue={data.reporting.weeklySummaryEmail}
+                disabled={!data.reporting.canUseWeekly}
+              />
+            </label>
+            <label className="stack" style={{ gap: 4 }}>
+              <span className="tiny muted">Send day</span>
+              <select
+                className="field-input"
+                name="weeklySummaryDay"
+                defaultValue={data.reporting.weeklySummaryDay}
+                disabled={!data.reporting.canUseWeekly}
+              >
+                {[
+                  [1, "Monday"],
+                  [2, "Tuesday"],
+                  [3, "Wednesday"],
+                  [4, "Thursday"],
+                  [5, "Friday"],
+                  [6, "Saturday"],
+                  [0, "Sunday"],
+                ].map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {data.reporting.lastWeeklySummaryAt && (
+            <p className="tiny muted">
+              Last sent {new Date(data.reporting.lastWeeklySummaryAt).toLocaleString()}.
+            </p>
+          )}
+          {data.reporting.lastWeeklySummaryError && (
+            <p className="tiny negative">Last delivery failed: {data.reporting.lastWeeklySummaryError}</p>
+          )}
+          <button className="btn primary" disabled={busy}>
+            Save reporting preferences
+          </button>
+        </Form>
       </Card>
 
       <Card

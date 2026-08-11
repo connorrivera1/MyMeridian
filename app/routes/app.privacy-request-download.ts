@@ -6,6 +6,7 @@ import type {
 
 import { requireShopContext } from "~/lib/auth.server";
 import { collectDataRequestForDownload } from "~/lib/data-request.server";
+import { recordSensitiveAction } from "~/lib/security-audit.server";
 
 const NO_STORE_HEADERS = {
   "Cache-Control": "private, no-store, max-age=0",
@@ -18,7 +19,8 @@ export const headers: HeadersFunction = () => NO_STORE_HEADERS;
 
 /** Full exports only cross this authenticated, shop-scoped collection edge. */
 export async function action({ request, params }: ActionFunctionArgs) {
-  const { shop } = await requireShopContext(request);
+  const ctx = await requireShopContext(request);
+  const { shop } = ctx;
   const id = params.id?.trim();
   if (!id) {
     throw new Response("Export not found.", {
@@ -40,6 +42,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const filename = `meridian-data-request-${collected.requestedAt
     .toISOString()
     .slice(0, 10)}.json`;
+  await recordSensitiveAction({
+    shopId: shop.id,
+    actorType: ctx.user ? "web_account" : "shopify_session",
+    actorId: ctx.user?.id ?? ctx.session?.id ?? shop.id,
+    request,
+    action: "CUSTOMER_EXPORT_DOWNLOADED",
+    resource: `data_request:${id}`,
+  });
   return new Response(JSON.stringify(collected.report, null, 2), {
     status: 200,
     headers: {

@@ -73,6 +73,14 @@ export async function loader({ request }: LoaderFunctionArgs) {
   // by typing its URL.
   const plan = await resolvePlan(ctx);
   const url = new URL(request.url);
+
+  if (
+    !isDemo &&
+    shop.onboardingStep !== "complete" &&
+    url.pathname.replace(/\/+$/, "") !== "/app/onboarding"
+  ) {
+    throw redirect(`/app/onboarding${url.search}`);
+  }
   const operationalRoute =
     Boolean(plan.planId) && !isEntitlementExemptPath(url.pathname);
 
@@ -141,6 +149,7 @@ export function isEntitlementExemptPath(pathname: string): boolean {
   const normalized = pathname.replace(/\/+$/, "");
   return (
     normalized === "/app/plan" ||
+    normalized === "/app/onboarding" ||
     normalized === "/app/privacy-requests" ||
     /^\/app\/privacy-requests\/[^/]+\/download$/.test(normalized)
   );

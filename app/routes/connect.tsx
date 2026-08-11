@@ -11,7 +11,10 @@ import {
 import { AccountShell, Field, FormError } from "~/design/account";
 import { resolveWebUser } from "~/lib/auth.server";
 import { APP_NAME } from "~/lib/brand";
-import { listMemberships } from "~/lib/shop-access.server";
+import {
+  canConnectAnotherStore,
+  listMemberships,
+} from "~/lib/shop-access.server";
 import {
   normalizeShopDomain,
   serializePendingStoreCookie,
@@ -27,7 +30,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
   // Someone who already has a store here took a wrong turn, not a new install.
   const memberships = await listMemberships(user.id);
 
-  return { alreadyConnected: memberships.length > 0, name: user.name };
+  return {
+    alreadyConnected: memberships.length > 0,
+    canAdd: await canConnectAnotherStore(user.id),
+    name: user.name,
+  };
 }
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -36,6 +43,13 @@ export async function action({ request }: ActionFunctionArgs) {
 
   if (!requestOriginIsSelf(request)) {
     return data({ error: "Your session expired. Try again." }, { status: 403 });
+  }
+
+  if (!(await canConnectAnotherStore(user.id))) {
+    return data(
+      { error: "Adding another store requires Scale on one of your connected stores." },
+      { status: 403 },
+    );
   }
 
   const form = await request.formData();
@@ -62,7 +76,7 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 export default function Connect() {
-  const { alreadyConnected } = useLoaderData<typeof loader>();
+  const { alreadyConnected, canAdd } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
 
   return (
@@ -83,14 +97,15 @@ export default function Connect() {
           hint="acme.myshopify.com"
         />
         <FormError message={actionData?.error ?? null} />
-        <button type="submit" className="account-submit">
+        <button type="submit" className="account-submit" disabled={!canAdd}>
           Continue to Shopify
         </button>
       </Form>
 
       <p className="account-fineprint">
-        Shopify will ask you to approve read-only access. Your plan and billing
-        stay with Shopify — MyMeridian never sees a card number.
+        {canAdd
+          ? "Shopify will ask you to approve read-only access. Your plan and billing stay with Shopify — MyMeridian never sees a card number."
+          : "Multi-store portfolio access is included on Scale. Upgrade one connected store before adding another."}
       </p>
     </AccountShell>
   );

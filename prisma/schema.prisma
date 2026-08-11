@@ -118,6 +118,17 @@ model Shop {
   onboardingStep     String    @default("connect_costs")
   fulfillmentSlaDays Int       @default(2)
 
+  // --- merchant reporting and alerts ----------------------------------
+  weeklySummaryEnabled   Boolean   @default(false)
+  weeklySummaryEmail     String?
+  weeklySummaryDay       Int       @default(1)
+  nextWeeklySummaryAt    DateTime?
+  lastWeeklySummaryAt    DateTime?
+  lastWeeklySummaryError String?
+  anomalyAlertsEnabled   Boolean   @default(false)
+  lastAnomalyCheckAt     DateTime?
+  lastAnomalyAlertAt     DateTime?
+
   // --- historical backfill ---------------------------------------------
   // Webhooks only ever describe what happens next. Without an initial import
   // a freshly installed store has a dashboard full of zeroes, so install
@@ -181,6 +192,9 @@ model Shop {
   shippingAdjustments   ShippingLabelAdjustment[]
   adSyncWindows         AdSyncWindow[]
   memberships           ShopMembership[]
+  merchantNotifications MerchantNotification[]
+  connectorOAuthStates  ConnectorOAuthState[]
+  securityAuditEvents   SecurityAuditEvent[]
 
   @@index([domain])
 }
@@ -734,14 +748,25 @@ model Order {
   isFirstOrder Boolean @default(false)
 
   // --- materialized by the profit engine ---
-  cogsTotal          Decimal   @default(0) @db.Decimal(12, 2)
-  shippingCost       Decimal   @default(0) @db.Decimal(12, 2)
-  paymentFee         Decimal   @default(0) @db.Decimal(12, 2)
-  adCostAttributed   Decimal   @default(0) @db.Decimal(12, 2)
-  overheadAllocated  Decimal   @default(0) @db.Decimal(12, 2)
-  contributionProfit Decimal   @default(0) @db.Decimal(12, 2)
-  netProfit          Decimal   @default(0) @db.Decimal(12, 2)
-  computedAt         DateTime?
+  cogsTotal                        Decimal   @default(0) @db.Decimal(12, 2)
+  shippingCost                     Decimal   @default(0) @db.Decimal(12, 2)
+  paymentFee                       Decimal   @default(0) @db.Decimal(12, 2)
+  adCostAttributed                 Decimal   @default(0) @db.Decimal(12, 2)
+  overheadAllocated                Decimal   @default(0) @db.Decimal(12, 2)
+  contributionProfit               Decimal   @default(0) @db.Decimal(12, 2)
+  netProfit                        Decimal   @default(0) @db.Decimal(12, 2)
+  /// Exact components for the large-window materialized analytics path. The
+  /// legacy shippingCost/paymentFee columns historically combined return
+  /// shipping and pick/pack respectively; these keep each economic input
+  /// independently auditable without rewriting old column semantics.
+  materializedPaymentFee           Decimal   @default(0) @db.Decimal(12, 2)
+  materializedPickPackCost         Decimal   @default(0) @db.Decimal(12, 2)
+  materializedOutboundShippingCost Decimal   @default(0) @db.Decimal(12, 2)
+  materializedReturnShippingCost   Decimal   @default(0) @db.Decimal(12, 2)
+  materializedUnits                Int       @default(0)
+  materializedMissingCogs          Boolean   @default(false)
+  materializedModeledCosts         Boolean   @default(false)
+  computedAt                       DateTime?
 
   lineItems                OrderLineItem[]
   fulfillments             Fulfillment[]
@@ -1023,6 +1048,7 @@ model Connector {
 
   externalAccountId String?
   displayName       String?
+  availableAccounts Json?
 
   /// AES-256-GCM ciphertext. See app/lib/crypto.server.ts — never plaintext.
   accessTokenEnc  String?
@@ -1081,6 +1107,66 @@ model ConnectorHealthEvent {
 
   @@index([shopId, createdAt])
   @@index([connectorId, createdAt])
+}
+
+/// Durable merchant-facing mail outbox. Report generation and delivery are
+/// separate so a provider outage cannot lose a scheduled summary or alert.
+model MerchantNotification {
+  id     String @id @default(cuid())
+  shopId String
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  kind      MerchantNotificationKind
+  status    MerchantNotificationStatus @default(PENDING)
+  recipient String
+  subject   String
+  payload   Json
+  dedupeKey String                     @unique
+
+  attempts       Int       @default(0)
+  availableAt    DateTime  @default(now())
+  leaseToken     String?
+  leaseExpiresAt DateTime?
+  sentAt         DateTime?
+  error          String?
+  createdAt      DateTime  @default(now())
+
+  @@index([status, availableAt, leaseExpiresAt])
+  @@index([shopId, createdAt])
+}
+
+/// One-use, short-lived state for merchant initiated connector OAuth. Only a
+/// SHA-256 hash is stored, so a database reader cannot replay the callback.
+model ConnectorOAuthState {
+  id        String            @id @default(cuid())
+  tokenHash String            @unique
+  shopId    String
+  shop      Shop              @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  provider  ConnectorProvider
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime          @default(now())
+
+  @@index([shopId, provider, createdAt])
+  @@index([expiresAt, usedAt])
+}
+
+/// Append-only access evidence for protected-data operating controls. Actor
+/// identifiers are one-way hashes and request paths contain no query string.
+model SecurityAuditEvent {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  actorType   String
+  actorHash   String
+  action      String
+  resource    String
+  requestPath String
+  dedupeKey   String?  @unique
+  occurredAt  DateTime @default(now())
+
+  @@index([shopId, occurredAt])
+  @@index([action, occurredAt])
 }
 
 /// Durable per-connector/day ad sync ledger. Redis schedules work, while this
@@ -1417,6 +1503,18 @@ enum ConnectorHealthEventKind {
   FAILOVER_ACTIVATED
   ALERT_SENT
   ALERT_FAILED
+}
+
+enum MerchantNotificationKind {
+  WEEKLY_SUMMARY
+  ANOMALY_ALERT
+}
+
+enum MerchantNotificationStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
 }
 
 enum TaxRegime {

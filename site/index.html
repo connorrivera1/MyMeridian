@@ -585,7 +585,7 @@ document.documentElement.classList.add("js");
         </p>
         <p class="caption">
           Figures from the seeded demo store. Profit is explicitly before paid
-          marketing while no ad source is connected.
+          marketing while no ad source has completed a sync.
         </p>
       </div>
     </div>
@@ -854,15 +854,18 @@ document.documentElement.classList.add("js");
           <div class="plan-top">
             <span class="plan-name">Growth</span>
             <strong class="plan-price"
-                    data-monthly="$149" data-monthly-unit="/month"
-                    data-annual="$1,490" data-annual-unit="/year">$149<small>/month</small></strong>
-            <span class="plan-sub" data-monthly="Billed monthly" data-annual="$124.17 a month, billed once">Billed monthly</span>
+                    data-monthly="$129" data-monthly-unit="/month"
+                    data-annual="$1,290" data-annual-unit="/year">$129<small>/month</small></strong>
+            <span class="plan-sub" data-monthly="Billed monthly" data-annual="$107.50 a month, billed once">Billed monthly</span>
           </div>
           <p class="plan-for">For a store that already knows it is growing faster than it is shipping.</p>
           <ul>
             <li>Everything in Starter</li>
             <li>Pricing recommendations from observed history</li>
             <li>Fulfilment capacity alerts, 14 days ahead</li>
+            <li>Profit anomaly alerts</li>
+            <li>Meta, Google and TikTok spend connections</li>
+            <li>ShipStation carrier-cost connection</li>
           </ul>
           <a class="pill" href="https://apps.shopify.com/meridian-profit">Start free trial</a>
         </article>
@@ -871,14 +874,16 @@ document.documentElement.classList.add("js");
           <div class="plan-top">
             <span class="plan-name">Scale</span>
             <strong class="plan-price"
-                    data-monthly="$399" data-monthly-unit="/month"
-                    data-annual="$3,990" data-annual-unit="/year">$399<small>/month</small></strong>
-            <span class="plan-sub" data-monthly="Billed monthly" data-annual="$332.50 a month, billed once">Billed monthly</span>
+                    data-monthly="$299" data-monthly-unit="/month"
+                    data-annual="$2,990" data-annual-unit="/year">$299<small>/month</small></strong>
+            <span class="plan-sub" data-monthly="Billed monthly" data-annual="$249.17 a month, billed once">Billed monthly</span>
           </div>
           <p class="plan-for">For a catalogue and an order book large enough that a day of backlog is expensive.</p>
           <ul>
             <li>Everything in Growth</li>
-            <li>Priority support</li>
+            <li>Weekly profit summaries</li>
+            <li>Advanced CSV exports</li>
+            <li>Multi-store portfolio access</li>
           </ul>
           <a class="plan-link" href="https://apps.shopify.com/meridian-profit">Start with Scale</a>
         </article>
@@ -926,11 +931,11 @@ document.documentElement.classList.add("js");
           </summary>
           <div class="faq-answer">
             <p>
-              No — and every screen it touches says so. This release has no
-              paid-marketing connector, so profit is labelled
-              <em>before paid marketing</em> throughout and the Ad spend row
-              shows a dash rather than a zero. If you run ads, read the figure
-              as a ceiling, not a bottom line.
+              Growth and Scale stores can connect Meta Ads, Google Ads and
+              TikTok Ads from inside MyMeridian. Until a connector is healthy
+              and its spend has synced, the app labels profit as
+              <em>before paid marketing</em> and shows unavailable spend rather
+              than silently treating it as zero.
             </p>
           </div>
         </details>

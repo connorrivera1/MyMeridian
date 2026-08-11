@@ -302,7 +302,14 @@ async function writeOrderProfits(profits: readonly OrderProfit[]) {
         ${centsToDollars(p.adCostCents)}::numeric,
         ${centsToDollars(p.overheadCents)}::numeric,
         ${centsToDollars(p.contributionProfitCents)}::numeric,
-        ${centsToDollars(p.netProfitCents)}::numeric
+        ${centsToDollars(p.netProfitCents)}::numeric,
+        ${centsToDollars(p.paymentFeeCents)}::numeric,
+        ${centsToDollars(p.pickPackCents)}::numeric,
+        ${centsToDollars(p.shippingCostCents)}::numeric,
+        ${centsToDollars(p.returnShippingCostCents)}::numeric,
+        ${p.units}::integer,
+        ${p.hasMissingCogs}::boolean,
+        ${p.usesModeledCosts}::boolean
       )`,
     );
 
@@ -315,9 +322,18 @@ async function writeOrderProfits(profits: readonly OrderProfit[]) {
         "overheadAllocated"  = v.overhead,
         "contributionProfit" = v.contribution,
         "netProfit"          = v.net,
+        "materializedPaymentFee" = v.payment_fee,
+        "materializedPickPackCost" = v.pick_pack,
+        "materializedOutboundShippingCost" = v.outbound_shipping,
+        "materializedReturnShippingCost" = v.return_shipping,
+        "materializedUnits" = v.units,
+        "materializedMissingCogs" = v.missing_cogs,
+        "materializedModeledCosts" = v.modeled_costs,
         "computedAt"         = NOW()
       FROM (VALUES ${Prisma.join(rows)})
-        AS v(id, cogs, shipping, fees, ad_cost, overhead, contribution, net)
+        AS v(id, cogs, shipping, fees, ad_cost, overhead, contribution, net,
+             payment_fee, pick_pack, outbound_shipping, return_shipping,
+             units, missing_cogs, modeled_costs)
       WHERE o.id = v.id
     `;
   }

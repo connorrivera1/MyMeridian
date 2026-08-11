@@ -2,9 +2,10 @@
 
 A unified profitability dashboard for Shopify stores. Revenue, COGS,
 fulfilment, payment fees and overhead resolved into one number a merchant can
-act on. That number is calculated from available recorded and modeled inputs: this release has no live
-ad-spend connector, so ad spend is disclosed as unavailable and the result must
-not be marketed as complete net profit.
+act on. That number is calculated from available recorded and modeled inputs.
+Growth and Scale merchants can connect Meta Ads, Google Ads and TikTok Ads;
+until a connector is healthy and synced, ad spend is disclosed as unavailable
+and the result is qualified rather than marketed as complete net profit.
 
 Built as a real embedded Shopify app: React Router 7, Prisma/PostgreSQL,
 read-only Shopify scopes and the mandatory GDPR webhooks. Billing is enforced:
@@ -12,9 +13,11 @@ the app resolves the active Billing API subscription, redirects an unsubscribed
 store to the plan screen, gates paid features, and re-checks the plan before a
 protected pricing mutation.
 
-**Release status (verified 2026-08-11):** `npm run ci` passes with 930 unit
-tests, while the explicit real-PostgreSQL run passes all 987 tests (including
-57 opt-in integration tests) after all 23 migrations apply from empty. The app has
+**Release status (verified 2026-08-11):** `npm run ci` passes type checking,
+coverage thresholds, 1,074 unit tests and the production build. All 1,131 tests
+pass when the 57 database integration cases run against a fresh PostgreSQL
+database after all 27 migrations apply from empty. The repository also includes
+automated dependency, secret and CodeQL security checks. The app has
 still never been installed on a real Shopify store, so OAuth, Shopify-delivered
 webhooks, and a real billing approval/return flow remain unproved. Submission is
 also waiting on external decisions and accounts: a non-confusable app name, a
@@ -148,14 +151,12 @@ affected screens explain what is unavailable instead of rendering a zero.
   app detects this and says so in a banner rather than implying the store had no
   earlier trading. Add the scope to `shopify.app.toml` only once it is approved —
   requesting an ungranted scope fails OAuth.
-- **Ad spend has no live connector yet.** Facebook/Google/TikTok are modelled but
-  not wired to OAuth, so CAC, ROAS, payback and marketing efficiency are
-  unavailable rather than zero. Acquisition still shows order-derived channel
-  revenue and contribution profit. Historical imports without customer access
+- **Ad spend requires an explicit merchant connection.** Growth and Scale
+  merchants can connect Meta, Google or TikTok from inside the embedded app.
+  CAC, ROAS and marketing efficiency stay unavailable rather than zero until a
+  selected account has synced. Historical imports without customer access
   cannot read journey attribution and fall back to Direct; new-order webhooks
-  retain landing/referring signals when Shopify supplies them. Operator-provisioned
-  credentials are health-checked, refreshed or failed over as described below;
-  that operational monitoring does not pretend MyMeridian has imported ad spend.
+  retain landing/referring signals when Shopify supplies them.
 
 ### Tax and carrier reconciliation
 
@@ -180,7 +181,7 @@ random per-connector authentication header; the poll remains the recovery path
 for missed events and late label voids. Database leases prevent two app
 instances from duplicating a provider read or alert.
 
-### Connector health and operator provisioning
+### Self-service connections and connector health
 
 Ad credentials are encrypted at rest. A five-minute health routine validates
 Meta through token debugging plus live ad-account access, Google Ads through
@@ -195,9 +196,13 @@ receiver is configured. Other failures use exponential backoff and alert on the
 third consecutive check. Alert delivery failures are retained as health events
 instead of being silently swallowed.
 
-There is deliberately no merchant-facing OAuth screen yet. An operator can
-bootstrap ShipStation or an ad credential without placing the secret in command
-history:
+Merchants connect and disconnect Meta Ads, Google Ads and TikTok Ads through
+provider OAuth from *Costs & connections*. The callback uses a one-use, hashed,
+expiring state value; tokens are encrypted at rest, and merchants choose the
+account MyMeridian should sync. ShipStation is connected with an API key in the
+same screen and registers an authenticated webhook when the app has a public
+HTTPS origin. The operator command below remains only as a recovery and support
+tool; it is not the normal merchant onboarding path:
 
 ```bash
 MERIDIAN_CONNECTOR_TOKEN='<secret>' npm run connector:configure -- \
@@ -348,9 +353,10 @@ or bleeding verdict; modeled inputs stay visibly qualified.
 ### Acquisition
 
 The current release attributes order-derived revenue and qualified contribution
-to channels from UTM and referring signals. It has no live ad-platform connector,
-so spend, CAC, ROAS and marketing efficiency remain unavailable rather than
-becoming zero. The dormant cohort engine is also hidden because the requested
+to channels from UTM and referring signals and can import spend from a
+merchant-selected Meta, Google or TikTok account. Until a connector is healthy
+and synced, spend, CAC, ROAS and marketing efficiency remain unavailable rather
+than becoming zero. The dormant cohort engine is also hidden because the requested
 scope set does not include `read_customers`; unmeasurable cohort checkpoints
 remain represented as “not yet”, never `0.00×`.
 
@@ -529,10 +535,9 @@ and fought with over mark geometry.
 
 ## Known gaps
 
-- Ad platform connectors are modelled but not wired to live
-  Facebook/Google/TikTok OAuth. The Acquisition screen therefore leaves spend,
-  CAC and ROAS unavailable while keeping order-derived channel revenue and
-  contribution profit visible.
+- Provider credentials, reviewed OAuth apps and a durable Redis worker are
+  deployment configuration, so ad spend remains unavailable in an environment
+  where those external dependencies have not been activated.
 - Historical COGS is not retrievable from Shopify. The import snapshots each
   variant's *current* landed cost onto its line items, which is the best
   available basis; from then on webhooks snapshot the cost in force at the time.

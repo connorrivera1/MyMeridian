@@ -33,10 +33,9 @@ primary_region = "iad"
 
   [[http_service.checks]]
     method = "GET"
-    # Not "/". With Shopify credentials present, the index route redirects to
-    # /auth/login (302) — see app/routes/home.tsx. /privacy is public,
-    # unauthenticated and returns 200, which is what a health check wants.
-    path = "/privacy"
+    # Liveness is deliberately independent from Shopify and Postgres. `/readyz`
+    # remains available for deploy smoke tests that need database/config proof.
+    path = "/healthz"
     interval = "30s"
     timeout = "5s"
     grace_period = "20s"

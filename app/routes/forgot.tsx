@@ -73,7 +73,15 @@ export async function action({ request }: ActionFunctionArgs) {
      * just typed, never one read back from the database — so the form says
      * nothing about who has an account here.
      */
-    if (issued.code) await deliverResetCode(email, issued.code);
+    if (issued.code) {
+      try {
+        await deliverResetCode(email, issued.code);
+      } catch (error) {
+        // Keep account existence private. The provider error is actionable;
+        // the reset code itself is never written to production logs.
+        console.error("[password-reset] delivery failed", error);
+      }
+    }
 
     return redirect("/forgot", {
       headers: { "set-cookie": serializeResetCookie(email, secure) },

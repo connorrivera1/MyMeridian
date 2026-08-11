@@ -746,15 +746,23 @@ export function Banner({
 }
 
 /** Series colours, by slot. Order is the colourblind-safety mechanism. */
+/*
+ * Channel identity, not the generic value ramp.
+ *
+ * `--series-*` is spent all over the app on things that are not categories —
+ * KPI tile tints, single-series plots — so hue cannot live there without
+ * colouring all of it. These eight are only ever handed out by `seriesColor`,
+ * which only ever receives a channel.
+ */
 export const SERIES_VARS = [
-  "var(--series-1)",
-  "var(--series-2)",
-  "var(--series-3)",
-  "var(--series-4)",
-  "var(--series-5)",
-  "var(--series-6)",
-  "var(--series-7)",
-  "var(--series-8)",
+  "var(--channel-1)",
+  "var(--channel-2)",
+  "var(--channel-3)",
+  "var(--channel-4)",
+  "var(--channel-5)",
+  "var(--channel-6)",
+  "var(--channel-7)",
+  "var(--channel-8)",
 ] as const;
 
 /**

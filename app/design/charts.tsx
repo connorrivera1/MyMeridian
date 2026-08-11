@@ -586,7 +586,58 @@ export function ProfitBridge({
 
   if (steps.length === 0) return <div className="empty">No data in this range.</div>;
 
-  const pad = { top: 16, right: 14, bottom: 46, left: 56 };
+  /*
+   * Category labels wrap to their own column.
+   *
+   * These were single lines centred under each bar with nothing stopping them
+   * from running into their neighbours, and at any width where the columns get
+   * tight they did exactly that — "PICK & PACK" and "PAYMENT FEES" merging into
+   * one another, "OVERHEAD" and "PROFIT BEFORE PAID MARKETING" overprinting.
+   * The chart has seven columns and one of the labels is five words long, so
+   * this is the normal case, not an edge case.
+   *
+   * Greedy word wrap against the measured column width. SVG cannot measure text
+   * before layout, so the per-character estimate is deliberately generous: too
+   * many lines is untidy, overlapping words is unreadable.
+   */
+  const LABEL_CH = 6.4;
+  const LABEL_LINE_H = 12;
+
+  const wrapLabel = (label: string, maxWidth: number): string[] => {
+    const words = label.split(/\s+/).filter(Boolean);
+    if (words.length === 0) return [label];
+    const fits = Math.max(4, Math.floor(maxWidth / LABEL_CH));
+
+    const lines: string[] = [];
+    let line = "";
+    for (const word of words) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (candidate.length <= fits || !line) line = candidate;
+      else {
+        lines.push(line);
+        line = word;
+      }
+    }
+    if (line) lines.push(line);
+    return lines;
+  };
+
+  const slotFor = (count: number) =>
+    Math.max(1, width - 14 - 56) / Math.max(1, count);
+
+  const wrapped = steps.map((step) =>
+    wrapLabel(step.label, slotFor(steps.length) - 8),
+  );
+  const labelLines = Math.max(1, ...wrapped.map((l) => l.length));
+
+  // The axis grows downward to hold however many lines the widest label needs,
+  // so wrapping never eats into the plot or runs off the bottom of the card.
+  const pad = {
+    top: 16,
+    right: 14,
+    bottom: 34 + labelLines * LABEL_LINE_H,
+    left: 56,
+  };
   const plotW = Math.max(1, width - pad.left - pad.right);
   const plotH = Math.max(1, height - pad.top - pad.bottom);
 
@@ -723,15 +774,23 @@ export function ProfitBridge({
               />
               <text
                 x={x + barW / 2}
-                y={height - 28}
+                y={height - 20 - labelLines * LABEL_LINE_H}
                 textAnchor="middle"
                 className="bridge-label"
               >
-                {bar.step.label}
+                {(wrapped[i] ?? [bar.step.label]).map((line, li) => (
+                  <tspan
+                    key={line + li}
+                    x={x + barW / 2}
+                    dy={li === 0 ? 0 : LABEL_LINE_H}
+                  >
+                    {line}
+                  </tspan>
+                ))}
               </text>
               <text
                 x={x + barW / 2}
-                y={height - 13}
+                y={height - 12}
                 textAnchor="middle"
                 className="bridge-value"
                 style={

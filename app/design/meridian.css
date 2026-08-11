@@ -194,14 +194,14 @@
   --series-8: #4a4a4a;
 
   /* legacy hue names, re-aimed at the ramp; routes still address these */
-  --viz-mint: var(--accent);
+  --viz-mint: var(--pos);
   --viz-teal: #9b9b9b;
   --viz-blue: #7d7d7d;
   --viz-violet: #b9b9b9;
   --viz-pink: #d7d7d7;
-  --viz-amber: #e8e8e8;
+  --viz-amber: var(--caution);
   --viz-orange: #8a8a8a;
-  --viz-rose: #616161;
+  --viz-rose: var(--neg);
 
   /* Inset for type in a full-bleed ledger; the rules ignore it. */
   --ledger-gutter: 22px;
@@ -312,14 +312,14 @@
   --series-7: #363636;
   --series-8: #a8a8a8;
 
-  --viz-mint: var(--accent);
+  --viz-mint: var(--pos);
   --viz-teal: #757575;
   --viz-blue: #9a9a9a;
   --viz-violet: #575757;
   --viz-pink: #2e2e2e;
-  --viz-amber: #414141;
+  --viz-amber: var(--caution);
   --viz-orange: #8a8a8a;
-  --viz-rose: #b5b5b5;
+  --viz-rose: var(--neg);
 
   --shadow:
     0 1px 3px rgba(10, 10, 10, 0.06),
@@ -4010,6 +4010,15 @@ table td,
  * Stacked, eleven navigation links push the actual page a full screen down.
  * A horizontally scrolling strip keeps them one thumb-reach away — and the
  * scroll is inside the rail, so the page itself still only moves vertically.
+ *
+ * Several of the declarations below are re-statements rather than new ideas.
+ * The redesign that turned the sidebar into a column rule and the topbar into
+ * a floating HUD set `flex-direction: column` and `margin-bottom: -52px`
+ * unconditionally, *after* the small-screen media query that had already
+ * handled both — so on a phone the brand and the nav stacked into two rows and
+ * the range chips were drawn straight through the date caption. Restating them
+ * here, in the last block that touches these elements, is what actually makes
+ * the breakpoint hold.
  */
 @media (max-width: 760px) {
   .sidebar {
@@ -4017,34 +4026,54 @@ table td,
     top: 0;
     z-index: 40;
     display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
     align-items: center;
-    gap: 12px;
-    padding: 10px 12px;
+    gap: var(--s-3);
+    height: auto;
+    padding: var(--s-2) var(--s-3);
     border-right: none;
     border-bottom: 1px solid var(--rule);
+    background: var(--plane);
   }
 
   .brand { flex: none; margin: 0; padding: 0; }
   .brand-shop { display: none; }
 
   .nav {
-    flex: 1;
+    flex: 1 1 0;
     min-width: 0;
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: 4px;
+    gap: 2px;
     overflow-x: auto;
+    overscroll-behavior-x: contain;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
   }
   .nav::-webkit-scrollbar { display: none; }
 
-  .nav-link { white-space: nowrap; flex: none; padding: 7px 11px; }
+  .nav-link {
+    white-space: nowrap;
+    flex: none;
+    padding: 7px 11px;
+    font-size: 12px;
+  }
   /* The active marker is a left edge on the rail; on a row it belongs under. */
   .nav-link::before { inset: auto 0 0 0; width: auto; height: 2px; }
-  .nav-section { display: none; }
+  .nav-section,
   .sidebar-footer { display: none; }
+
+  /* The HUD stops floating, so it must stop pulling the page up under itself. */
+  .topbar {
+    position: static;
+    margin-bottom: 0;
+    padding: var(--s-3) var(--s-4) 0;
+    justify-content: flex-start;
+  }
+
+  .content { padding-top: var(--s-3); }
 }
 
 /* =========================================================================

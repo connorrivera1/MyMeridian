@@ -1,10 +1,15 @@
-import { Form, useActionData, useLoaderData } from "react-router";
+import { data, Form, useActionData, useLoaderData } from "react-router";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { LoginErrorType } from "@shopify/shopify-app-react-router/server";
 
 import { BrandMark } from "~/design/components";
 import { demoAvailable } from "~/lib/auth.server";
 import { hasShopifyCredentials, login } from "~/shopify.server";
+import {
+  firstDeniedRequestLimit,
+  RATE_LIMIT_MESSAGE,
+  rateLimitHeaders,
+} from "~/lib/rate-limit.server";
 
 /**
  * Shop-domain entry point.
@@ -25,6 +30,19 @@ export async function loader({ request }: LoaderFunctionArgs) {
 export async function action({ request }: ActionFunctionArgs) {
   if (!hasShopifyCredentials || !login) {
     return { errors: { shop: "Shopify credentials are not configured." } };
+  }
+
+  const limited = await firstDeniedRequestLimit({
+    request,
+    scope: "shopify-auth-start",
+    windowMs: 15 * 60 * 1_000,
+    ipLimit: 30,
+  });
+  if (limited) {
+    return data(
+      { errors: { shop: RATE_LIMIT_MESSAGE } },
+      { status: 429, headers: rateLimitHeaders(limited) },
+    );
   }
 
   const errors = await login(request);
@@ -62,7 +80,11 @@ export default function Login() {
         </p>
 
         {data.configured ? (
-          <Form method="post" className="stack" style={{ gap: 10, textAlign: "left" }}>
+          <Form
+            method="post"
+            className="stack"
+            style={{ gap: 10, textAlign: "left" }}
+          >
             <label className="stack" style={{ gap: 5 }}>
               <span className="tiny muted">Store domain</span>
               <input
@@ -74,21 +96,27 @@ export default function Login() {
                 style={{ width: "100%" }}
               />
               {errors.shop && (
-                <span className="tiny" style={{ color: "var(--status-critical)" }}>
+                <span
+                  className="tiny"
+                  style={{ color: "var(--status-critical)" }}
+                >
                   {errors.shop}
                 </span>
               )}
             </label>
-            <button className="btn primary" type="submit" style={{ justifyContent: "center" }}>
+            <button
+              className="btn primary"
+              type="submit"
+              style={{ justifyContent: "center" }}
+            >
               Continue to Shopify
             </button>
           </Form>
         ) : (
           <div className="banner warn" style={{ textAlign: "left" }}>
             <div>
-              Shopify credentials are not configured. Set{" "}
-              <code>SHOPIFY_API_KEY</code> and <code>SHOPIFY_API_SECRET</code>,
-              then run <code>npm run shopify:dev</code>.
+              The server-side Shopify connection is not configured. Finish the
+              private environment setup, then restart MyMeridian.
             </div>
           </div>
         )}

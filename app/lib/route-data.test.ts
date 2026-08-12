@@ -17,6 +17,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const requireShopContext = vi.fn();
 vi.mock("~/lib/auth.server", () => ({
   requireShopContext: (...args: unknown[]) => requireShopContext(...args),
+  withShopContext: async (
+    request: Request,
+    work: (context: unknown) => unknown,
+  ) => work(await requireShopContext(request)),
 }));
 
 const requireActivePlan = vi.fn();

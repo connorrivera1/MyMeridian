@@ -13,7 +13,7 @@ primary_region = "iad"
 
 [deploy]
   # Runs on a temporary machine before the new version takes traffic. There are
-  # 27 migrations in prisma/migrations, none applied to a production database.
+  # 31 migrations in prisma/migrations, none applied to a production database.
   # fly mpg attach gives runtime DATABASE_URL the pooled PgBouncer endpoint.
   # Prisma Migrate needs a direct session, so only this release process swaps
   # the separately configured direct URL into the name Prisma reads.

@@ -1222,6 +1222,21 @@ model OperatorAuditEvent {
   @@index([outcome, occurredAt])
 }
 
+/// Durable fixed-window abuse controls for public and authenticated routes.
+/// Only a keyed HMAC of the client/subject is retained; IP addresses, emails,
+/// session tokens and shop domains never enter this table in recoverable form.
+model RateLimitBucket {
+  scope       String
+  subjectHash String
+  windowStart DateTime
+  count       Int      @default(0)
+  expiresAt   DateTime
+  updatedAt   DateTime @updatedAt
+
+  @@id([scope, subjectHash, windowStart])
+  @@index([expiresAt])
+}
+
 /// Durable per-connector/day ad sync ledger. Redis schedules work, while this
 /// table makes missing and restated days recoverable after a worker restart.
 model AdSyncWindow {
@@ -1313,6 +1328,14 @@ model User {
 
   emailVerifiedAt DateTime?
 
+  /// Standalone-account MFA. The phone is Protected Account Data: ciphertext
+  /// only, with a last-four display hint so Settings never decrypts it merely
+  /// to render a page. Shopify-embedded sessions do not use these fields.
+  phoneNumberEnc  String?
+  phoneLast4      String?
+  phoneVerifiedAt DateTime?
+  mfaEnrolledAt   DateTime?
+
   /// Gate for the one-time post-signup splash. A timestamp rather than a
   /// boolean so it also answers "when did this account start", and so the
   /// splash cannot be replayed by a second device or a re-login.
@@ -1332,6 +1355,7 @@ model User {
   memberships        ShopMembership[]
   verificationTokens EmailVerificationToken[]
   passwordResetCodes PasswordResetCode[]
+  mfaChallenges      MfaChallenge[]
 
   @@index([email])
 }
@@ -1367,15 +1391,47 @@ model WebSession {
   /// must not be enough to log in as anyone.
   tokenHash String @unique
 
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
-  lastSeenAt DateTime @default(now())
+  expiresAt              DateTime
+  createdAt              DateTime  @default(now())
+  lastSeenAt             DateTime  @default(now())
+  /// Primary authentication is not a merchant-data session until MFA succeeds.
+  primaryAuthenticatedAt DateTime  @default(now())
+  mfaVerifiedAt          DateTime?
+  reauthenticatedAt      DateTime?
   /// Recorded so a user can recognise a session when revoking it.
-  userAgent  String?
+  userAgent              String?
 
   revokedAt DateTime?
 
+  mfaChallenges MfaChallenge[]
+
   @@index([userId])
+  @@index([expiresAt])
+}
+
+/// One short-lived email or SMS possession challenge. Codes are never stored
+/// in plaintext. Twilio Verify owns production SMS codes; locally generated
+/// email/dev codes use a keyed HMAC so a database dump cannot brute-force six
+/// digits offline.
+model MfaChallenge {
+  id        String     @id @default(cuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId String
+  session   WebSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  purpose         String
+  channel         String
+  codeHash        String?
+  destinationHash String
+  providerRef     String?
+  attempts        Int       @default(0)
+  expiresAt       DateTime
+  consumedAt      DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([sessionId, purpose, channel, createdAt])
+  @@index([userId, createdAt])
   @@index([expiresAt])
 }
 

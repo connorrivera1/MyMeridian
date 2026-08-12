@@ -8,7 +8,13 @@ const loadCapacityDays = vi.fn();
 const planAllows = vi.fn((_plan: unknown, _feature: unknown) => true);
 
 vi.mock("~/lib/route-data.server", () => ({
-  loadDashboard: (...args: unknown[]) => loadDashboard(...args),
+  loadDashboardForContext: (...args: unknown[]) => loadDashboard(...args),
+}));
+vi.mock("~/lib/auth.server", () => ({
+  withShopContext: async (
+    _request: Request,
+    work: (context: unknown) => unknown,
+  ) => work({ shop: { id: "shop_1" } }),
 }));
 vi.mock("~/data/queries.server", () => ({
   loadCapacityDays: (...args: unknown[]) => loadCapacityDays(...args),
@@ -106,9 +112,7 @@ describe("Fulfilment", () => {
       request: new Request("https://example.com/app/fulfilment"),
     } as never);
 
-    const html = renderToStaticMarkup(
-      createElement(FulfilmentView, { data }),
-    );
+    const html = renderToStaticMarkup(createElement(FulfilmentView, { data }));
 
     expect(html).toContain("No fulfilment history yet");
     expect(html).not.toContain("Orders waiting");
@@ -124,9 +128,7 @@ describe("Fulfilment", () => {
       to: new Date("2026-08-11T23:59:59.999Z"),
     });
 
-    const html = renderToStaticMarkup(
-      createElement(FulfilmentView, { data }),
-    );
+    const html = renderToStaticMarkup(createElement(FulfilmentView, { data }));
 
     expect(html).toContain("Orders waiting");
     expect(html).toContain("2.4 days to clear");

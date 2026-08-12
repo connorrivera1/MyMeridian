@@ -12,6 +12,12 @@ import { AccountShell, Field, FormError } from "~/design/account";
 import { resolveWebUser } from "~/lib/auth.server";
 import { APP_NAME } from "~/lib/brand";
 import {
+  firstDeniedRequestLimit,
+  RATE_LIMIT_MESSAGE,
+  rateLimitHeaders,
+} from "~/lib/rate-limit.server";
+import { requireRecentReauthentication } from "~/lib/reauth.server";
+import {
   canConnectAnotherStore,
   listMemberships,
 } from "~/lib/shop-access.server";
@@ -26,6 +32,7 @@ export const meta = () => [{ title: `Connect your store — ${APP_NAME}` }];
 export async function loader({ request }: LoaderFunctionArgs) {
   const user = await resolveWebUser(request);
   if (!user) throw redirect("/login");
+  await requireRecentReauthentication(request, user);
 
   // Someone who already has a store here took a wrong turn, not a new install.
   const memberships = await listMemberships(user.id);
@@ -44,10 +51,27 @@ export async function action({ request }: ActionFunctionArgs) {
   if (!requestOriginIsSelf(request)) {
     return data({ error: "Your session expired. Try again." }, { status: 403 });
   }
+  const limited = await firstDeniedRequestLimit({
+    request,
+    scope: "connect-shop",
+    windowMs: 15 * 60 * 1_000,
+    ipLimit: 20,
+    subject: user.id,
+    subjectLimit: 10,
+  });
+  if (limited) {
+    return data(
+      { error: RATE_LIMIT_MESSAGE },
+      { status: 429, headers: rateLimitHeaders(limited) },
+    );
+  }
 
   if (!(await canConnectAnotherStore(user.id))) {
     return data(
-      { error: "Adding another store requires Scale on one of your connected stores." },
+      {
+        error:
+          "Adding another store requires Scale on one of your connected stores.",
+      },
       { status: 403 },
     );
   }
@@ -70,7 +94,10 @@ export async function action({ request }: ActionFunctionArgs) {
    */
   return redirect(`/auth/login?shop=${encodeURIComponent(domain)}`, {
     headers: {
-      "set-cookie": serializePendingStoreCookie(domain, requestIsSecure(request)),
+      "set-cookie": serializePendingStoreCookie(
+        domain,
+        requestIsSecure(request),
+      ),
     },
   });
 }

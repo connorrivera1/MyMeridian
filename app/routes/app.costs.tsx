@@ -1,12 +1,18 @@
 import { PeriodStatus, CostSource } from "@prisma/client";
-import { Form, useActionData, useLoaderData, useNavigation } from "react-router";
+import {
+  Form,
+  useActionData,
+  useLoaderData,
+  useNavigation,
+} from "react-router";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { z } from "zod";
 
 import prisma from "~/db.server";
 import { Badge, Banner, Card, Empty, Money } from "~/design/components";
 import { toMicros } from "~/engine/money";
-import { requireShopContext } from "~/lib/auth.server";
+import { withShopContext, type ShopContext } from "~/lib/auth.server";
+import { requireRecentReauthentication } from "~/lib/reauth.server";
 import {
   confirmBundleComponent,
   enqueueBundleDetection,
@@ -34,7 +40,10 @@ import {
 const VARIANT_LIMIT = 250;
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const ctx = await requireShopContext(request);
+  return withShopContext(request, (ctx) => loadCosts(request, ctx));
+}
+
+async function loadCosts(request: Request, ctx: ShopContext) {
   const { shop } = ctx;
   await requireActivePlan(ctx, request);
 
@@ -74,10 +83,20 @@ export async function loader({ request }: LoaderFunctionArgs) {
           evidence: true,
           confirmedAt: true,
           bundleVariant: {
-            select: { id: true, title: true, sku: true, product: { select: { title: true } } },
+            select: {
+              id: true,
+              title: true,
+              sku: true,
+              product: { select: { title: true } },
+            },
           },
           componentVariant: {
-            select: { id: true, title: true, sku: true, product: { select: { title: true } } },
+            select: {
+              id: true,
+              title: true,
+              sku: true,
+              product: { select: { title: true } },
+            },
           },
         },
         orderBy: [{ confirmedAt: "asc" }, { createdAt: "asc" }],
@@ -190,7 +209,11 @@ const BundleEdit = z.object({
 });
 
 export async function action({ request }: ActionFunctionArgs) {
-  const ctx = await requireShopContext(request);
+  return withShopContext(request, (ctx) => updateCosts(request, ctx));
+}
+
+async function updateCosts(request: Request, ctx: ShopContext) {
+  await requireRecentReauthentication(request, ctx.user);
   await requireActivePlan(ctx, request);
   const { shop } = ctx;
   const form = await request.formData();
@@ -239,7 +262,10 @@ export async function action({ request }: ActionFunctionArgs) {
         message: reachesBack
           ? `Saved. This changes the cost basis from ${result.divergedFrom
               .toISOString()
-              .slice(0, 10)}. Reported figures have not moved — use Restate history to apply it.`
+              .slice(
+                0,
+                10,
+              )}. Reported figures have not moved — use Restate history to apply it.`
           : "Saved. It takes effect from the date you chose; nothing historical has changed.",
         divergedFrom: result.divergedFrom.toISOString(),
       };
@@ -288,7 +314,10 @@ export async function action({ request }: ActionFunctionArgs) {
         quantity: form.get("quantity"),
       });
       if (!parsed.success) {
-        return { ok: false, message: "Pick two variants and a whole quantity." };
+        return {
+          ok: false,
+          message: "Pick two variants and a whole quantity.",
+        };
       }
       await upsertBundleComponent({ shopId: shop.id, ...parsed.data });
       return { ok: true, message: "Mapping saved. Costs are re-deriving." };
@@ -296,7 +325,10 @@ export async function action({ request }: ActionFunctionArgs) {
 
     if (intent === "close-period") {
       await closePeriod(shop.id, String(form.get("periodKey")));
-      return { ok: true, message: "Period closed. Its figures are now locked." };
+      return {
+        ok: true,
+        message: "Period closed. Its figures are now locked.",
+      };
     }
 
     if (intent === "reopen-period") {
@@ -399,7 +431,12 @@ function VariantPicker({
   return (
     <label className="stack" style={{ gap: 4 }}>
       <span className="tiny muted">{label}</span>
-      <select className="field-input" name={name} required style={{ width: 260 }}>
+      <select
+        className="field-input"
+        name={name}
+        required
+        style={{ width: 260 }}
+      >
         <option value="">Choose a variant…</option>
         {variants.map((variant) => (
           <option key={variant.id} value={variant.id}>
@@ -448,15 +485,17 @@ export function CostsView({
       )}
 
       <Banner tone="neutral">
-        Saving a cost records what a variant cost from a date onward. It does not
-        move a figure you have already reported — restating history is the
+        Saving a cost records what a variant cost from a date onward. It does
+        not move a figure you have already reported — restating history is the
         separate action below, it freezes each affected month before it changes
         anything, and it refuses to touch a closed period.
       </Banner>
 
       {activeJobs.length > 0 && (
         <Banner tone="neutral">
-          {activeJobs.length === 1 ? "A recalculation is" : `${activeJobs.length} recalculations are`}{" "}
+          {activeJobs.length === 1
+            ? "A recalculation is"
+            : `${activeJobs.length} recalculations are`}{" "}
           running in the background:{" "}
           {activeJobs.map((job) => JOB_LABEL[job.kind] ?? job.kind).join(", ")}.
           Figures update when it finishes.
@@ -470,7 +509,14 @@ export function CostsView({
         <Form method="post" className="stack">
           <input type="hidden" name="intent" value="restate" />
           <span className="row" style={{ gap: 16, flexWrap: "wrap" }}>
-            <Field label="Restate from" name="from" type="date" defaultValue={today} required width={150} />
+            <Field
+              label="Restate from"
+              name="from"
+              type="date"
+              defaultValue={today}
+              required
+              width={150}
+            />
             <Field
               label="Reason"
               name="reason"
@@ -479,7 +525,10 @@ export function CostsView({
               placeholder="Corrected Q1 freight costs"
               width={260}
             />
-            <label className="row" style={{ gap: 6, alignSelf: "flex-end", paddingBottom: 8 }}>
+            <label
+              className="row"
+              style={{ gap: 6, alignSelf: "flex-end", paddingBottom: 8 }}
+            >
               <input type="checkbox" name="includeClosed" />
               <span className="tiny muted">Include closed periods</span>
             </label>
@@ -523,7 +572,9 @@ export function CostsView({
                     <td>
                       <Badge
                         tone={
-                          variant.costSource === "ESTIMATED" ? "warning" : "neutral"
+                          variant.costSource === "ESTIMATED"
+                            ? "warning"
+                            : "neutral"
                         }
                       >
                         {SOURCE_LABEL[variant.costSource] ?? variant.costSource}
@@ -685,7 +736,11 @@ export function CostsView({
                     <td>{SOURCE_LABEL[mapping.source] ?? mapping.source}</td>
                     <td>
                       <Form method="post">
-                        <input type="hidden" name="intent" value="remove-bundle" />
+                        <input
+                          type="hidden"
+                          name="intent"
+                          value="remove-bundle"
+                        />
                         <input type="hidden" name="id" value={mapping.id} />
                         <button className="btn sm ghost" disabled={busy}>
                           Remove
@@ -761,10 +816,14 @@ export function CostsView({
                     <td>
                       <Badge
                         tone={
-                          period.status === PeriodStatus.CLOSED ? "good" : "neutral"
+                          period.status === PeriodStatus.CLOSED
+                            ? "good"
+                            : "neutral"
                         }
                       >
-                        {period.status === PeriodStatus.CLOSED ? "Closed" : "Open"}
+                        {period.status === PeriodStatus.CLOSED
+                          ? "Closed"
+                          : "Open"}
                       </Badge>
                     </td>
                     <td className="right num">
@@ -797,7 +856,9 @@ export function CostsView({
                           }
                           disabled={busy}
                         >
-                          {period.status === PeriodStatus.CLOSED ? "Reopen" : "Close"}
+                          {period.status === PeriodStatus.CLOSED
+                            ? "Reopen"
+                            : "Close"}
                         </button>
                       </Form>
                     </td>

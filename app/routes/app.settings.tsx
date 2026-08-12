@@ -17,7 +17,8 @@ import { z } from "zod";
 import prisma from "~/db.server";
 import { invalidateAnalyticsCache } from "~/data/analytics.server";
 import { Badge, Banner, Card, Stat } from "~/design/components";
-import { requireShopContext } from "~/lib/auth.server";
+import { withShopContext, type ShopContext } from "~/lib/auth.server";
+import { requireRecentReauthentication } from "~/lib/reauth.server";
 import { backfillIsStale } from "~/lib/backfill-claim.server";
 import { mailConfiguration } from "~/lib/mail.server";
 import { nextWeeklyOccurrence } from "~/lib/merchant-notifications.server";
@@ -37,7 +38,10 @@ import {
 } from "~/integrations/shipping.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const ctx = await requireShopContext(request);
+  return withShopContext(request, (ctx) => loadSettings(request, ctx));
+}
+
+async function loadSettings(request: Request, ctx: ShopContext) {
   const { shop } = ctx;
   const plan = await requireActivePlan(ctx, request);
   const staleBackfill = backfillIsStale(shop);
@@ -211,7 +215,11 @@ function valuesForRuleKind(
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  const ctx = await requireShopContext(request);
+  return withShopContext(request, (ctx) => updateSettings(request, ctx));
+}
+
+async function updateSettings(request: Request, ctx: ShopContext) {
+  await requireRecentReauthentication(request, ctx.user);
   const plan = await requireActivePlan(ctx, request);
   const { shop, admin } = ctx;
   const form = await request.formData();

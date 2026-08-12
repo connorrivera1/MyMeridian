@@ -1,4 +1,8 @@
-import { redirect, type ActionFunctionArgs, type LoaderFunctionArgs } from "react-router";
+import {
+  redirect,
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs,
+} from "react-router";
 
 import {
   packHandshake,
@@ -9,6 +13,10 @@ import {
 import { requestIsSecure, requestOriginIsSelf } from "~/lib/web-session.server";
 import { publicAppOrigin } from "~/lib/public-origin.server";
 import { HANDSHAKE_COOKIE } from "~/lib/web-oauth-cookie";
+import {
+  firstDeniedRequestLimit,
+  rateLimitHeaders,
+} from "~/lib/rate-limit.server";
 
 /**
  * The handshake cookie.
@@ -22,7 +30,11 @@ import { HANDSHAKE_COOKIE } from "~/lib/web-oauth-cookie";
  * provider and then lands here with no state to compare, which is
  * indistinguishable from a forged callback and is rejected.
  */
-function serializeHandshake(value: string, secure: boolean, crossSite: boolean): string {
+function serializeHandshake(
+  value: string,
+  secure: boolean,
+  crossSite: boolean,
+): string {
   const parts = [
     `${HANDSHAKE_COOKIE}=${encodeURIComponent(value)}`,
     "Path=/",
@@ -56,6 +68,18 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const provider = params.provider;
   if (provider !== "google" && provider !== "apple") {
     throw new Response("Unknown provider", { status: 404 });
+  }
+  const limited = await firstDeniedRequestLimit({
+    request,
+    scope: `oauth-start-${provider}`,
+    windowMs: 15 * 60 * 1_000,
+    ipLimit: 20,
+  });
+  if (limited) {
+    throw new Response("Too many requests.", {
+      status: 429,
+      headers: rateLimitHeaders(limited),
+    });
   }
 
   const form = await request.formData();

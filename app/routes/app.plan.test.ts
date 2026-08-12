@@ -7,6 +7,10 @@ const resolveBillingChargeMode = vi.fn();
 
 vi.mock("~/lib/auth.server", () => ({
   requireShopContext: (...args: unknown[]) => requireShopContext(...args),
+  withShopContext: async (
+    request: Request,
+    work: (context: unknown) => unknown,
+  ) => work(await requireShopContext(request)),
 }));
 
 vi.mock("~/lib/plan.server", () => ({
@@ -19,11 +23,14 @@ vi.mock("~/lib/plan.server", () => ({
 const { action } = await import("./app.plan");
 
 function request(plan = "growth") {
-  return new Request("https://meridian.example/app/plan?shop=store.myshopify.com", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ plan }),
-  });
+  return new Request(
+    "https://meridian.example/app/plan?shop=store.myshopify.com",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ plan }),
+    },
+  );
 }
 
 function context() {
@@ -57,15 +64,16 @@ describe("plan charge action", () => {
     expect(billingRequest).toHaveBeenCalledWith({
       plan: "growth",
       isTest: false,
-      returnUrl:
-        "https://meridian.example/app/plan?shop=store.myshopify.com",
+      returnUrl: "https://meridian.example/app/plan?shop=store.myshopify.com",
     });
   });
 
   it("creates no charge when Shopify store-type verification fails", async () => {
     const { ctx, billingRequest } = context();
     requireShopContext.mockResolvedValue(ctx);
-    resolveBillingChargeMode.mockRejectedValue(new Error("Shopify unavailable"));
+    resolveBillingChargeMode.mockRejectedValue(
+      new Error("Shopify unavailable"),
+    );
 
     const result = await action({ request: request("starter") } as never);
 

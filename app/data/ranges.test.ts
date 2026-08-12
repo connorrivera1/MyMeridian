@@ -30,7 +30,9 @@ describe("resolveRange", () => {
     const range = resolveRange(shopWithLastSync(staleSync), "7d");
 
     expect(range.to.getTime()).toBeGreaterThan(staleSync.getTime());
-    expect(Math.abs(range.to.getTime() - Date.now())).toBeLessThan(5_000);
+    expect(Math.abs(range.to.getTime() - Date.now())).toBeLessThan(60_000);
+    expect(range.to.getUTCSeconds()).toBe(0);
+    expect(range.to.getUTCMilliseconds()).toBe(0);
   });
 
   it("includes an order that arrived by webhook after the last backfill", () => {
@@ -40,8 +42,7 @@ describe("resolveRange", () => {
     const range = resolveRange(shopWithLastSync(backfilledAt), "7d");
 
     // This is exactly the predicate loadEngineOrders applies.
-    const visible =
-      webhookOrderAt >= range.from && webhookOrderAt <= range.to;
+    const visible = webhookOrderAt >= range.from && webhookOrderAt <= range.to;
 
     expect(visible).toBe(true);
   });
@@ -69,6 +70,6 @@ describe("resolveRange", () => {
       anchorToData: true,
     });
 
-    expect(Math.abs(range.to.getTime() - Date.now())).toBeLessThan(5_000);
+    expect(Math.abs(range.to.getTime() - Date.now())).toBeLessThan(60_000);
   });
 });

@@ -3,7 +3,7 @@ import { Link, useLoaderData, useRevalidator } from "react-router";
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
 
 import { Badge, Banner, Card, Empty } from "~/design/components";
-import { requireShopContext } from "~/lib/auth.server";
+import { withShopContext } from "~/lib/auth.server";
 import {
   DATA_REQUEST_RETENTION_DAYS,
   listDataRequests,
@@ -23,19 +23,20 @@ export const headers: HeadersFunction = () => ({
  * shop scoping still apply, but this route deliberately has no plan gate.
  */
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { shop } = await requireShopContext(request);
-  const requestedPage = Number.parseInt(
-    new URL(request.url).searchParams.get("historyPage") ?? "1",
-    10,
-  );
+  return withShopContext(request, async ({ shop }) => {
+    const requestedPage = Number.parseInt(
+      new URL(request.url).searchParams.get("historyPage") ?? "1",
+      10,
+    );
 
-  return {
-    requests: await listDataRequests(shop.id, {
-      historyPage: Number.isSafeInteger(requestedPage) ? requestedPage : 1,
-    }),
-    timezone: shop.timezone,
-    retentionDays: DATA_REQUEST_RETENTION_DAYS,
-  };
+    return {
+      requests: await listDataRequests(shop.id, {
+        historyPage: Number.isSafeInteger(requestedPage) ? requestedPage : 1,
+      }),
+      timezone: shop.timezone,
+      retentionDays: DATA_REQUEST_RETENTION_DAYS,
+    };
+  });
 }
 
 type LoadedDataRequest = Awaited<

@@ -6,12 +6,16 @@ const purgeExpiredSecurityAuditEvents = vi.fn();
 const purgeExpiredConnectorOAuthStates = vi.fn();
 const purgeOldMerchantNotifications = vi.fn();
 const purgeExpiredOperatorSecurityData = vi.fn();
+const purgeExpiredRateLimitBuckets = vi.fn();
+const purgeExpiredMfaChallenges = vi.fn();
 
 vi.mock("~/lib/data-request.server", () => ({
-  purgeExpiredDataRequests: (...args: unknown[]) => purgeExpiredDataRequests(...args),
+  purgeExpiredDataRequests: (...args: unknown[]) =>
+    purgeExpiredDataRequests(...args),
 }));
 vi.mock("~/lib/recalc-queue.server", () => ({
-  purgeFinishedRecalcJobs: (...args: unknown[]) => purgeFinishedRecalcJobs(...args),
+  purgeFinishedRecalcJobs: (...args: unknown[]) =>
+    purgeFinishedRecalcJobs(...args),
 }));
 vi.mock("~/lib/security-audit.server", () => ({
   purgeExpiredSecurityAuditEvents: (...args: unknown[]) =>
@@ -28,6 +32,14 @@ vi.mock("~/lib/merchant-notifications.server", () => ({
 vi.mock("~/lib/operator-auth.server", () => ({
   purgeExpiredOperatorSecurityData: (...args: unknown[]) =>
     purgeExpiredOperatorSecurityData(...args),
+}));
+vi.mock("~/lib/rate-limit.server", () => ({
+  purgeExpiredRateLimitBuckets: (...args: unknown[]) =>
+    purgeExpiredRateLimitBuckets(...args),
+}));
+vi.mock("~/lib/mfa.server", () => ({
+  purgeExpiredMfaChallenges: (...args: unknown[]) =>
+    purgeExpiredMfaChallenges(...args),
 }));
 
 const {
@@ -48,6 +60,8 @@ beforeEach(() => {
     sessions: 0,
     auditEvents: 0,
   });
+  purgeExpiredRateLimitBuckets.mockResolvedValue(0);
+  purgeExpiredMfaChallenges.mockResolvedValue(0);
   stopDataRetentionScheduler();
 });
 
@@ -170,5 +184,21 @@ describe("operator security retention", () => {
     await dataRetentionSettled();
     expect(purgeExpiredConnectorOAuthStates).toHaveBeenCalledTimes(1);
     expect(purgeOldMerchantNotifications).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("rate-limit retention", () => {
+  it("purges expired privacy-safe request fingerprints", async () => {
+    startDataRetentionScheduler(60_000);
+    await dataRetentionSettled();
+    expect(purgeExpiredRateLimitBuckets).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("MFA challenge retention", () => {
+  it("purges expired one-time challenges", async () => {
+    startDataRetentionScheduler(60_000);
+    await dataRetentionSettled();
+    expect(purgeExpiredMfaChallenges).toHaveBeenCalledTimes(1);
   });
 });

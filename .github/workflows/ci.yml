@@ -74,9 +74,13 @@ jobs:
           app/lib/cost-restatement.integration.test.ts
           app/lib/data-request.integration.test.ts
           app/lib/order-lock.integration.test.ts
+          app/lib/operator-auth.integration.test.ts
+          app/lib/operator-data.integration.test.ts
           app/lib/product-sync.integration.test.ts
+          app/lib/rate-limit.integration.test.ts
           app/lib/economic-ingestion.integration.test.ts
           app/lib/recompute.integration.test.ts
+          app/lib/tenant-rls.integration.test.ts
           app/lib/webhooks.integration.test.ts
 
       - name: Build

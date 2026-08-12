@@ -18,11 +18,16 @@ import {
 } from "~/design/components";
 import { formatPercent } from "~/engine/money";
 import { loadCapacityDays } from "~/data/queries.server";
+import { withShopContext, type ShopContext } from "~/lib/auth.server";
 import { planAllows, planFor } from "~/lib/plan.server";
-import { loadDashboard } from "~/lib/route-data.server";
+import { loadDashboardForContext } from "~/lib/route-data.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { shop, analytics, plan } = await loadDashboard(request);
+  return withShopContext(request, (ctx) => loadFulfilment(request, ctx));
+}
+
+async function loadFulfilment(request: Request, ctx: ShopContext) {
+  const { shop, analytics, plan } = await loadDashboardForContext(request, ctx);
 
   if (!planAllows(plan, "capacity")) {
     const required = planFor("capacity");
@@ -101,8 +106,9 @@ export function FulfilmentView({ data }: { data: FulfilmentData }) {
     return (
       <Card title="Fulfilment capacity">
         <Empty>
-          No fulfilment history yet. Once orders start shipping, MyMeridian learns
-          your warehouse&rsquo;s real throughput and warns you before it falls behind.
+          No fulfilment history yet. Once orders start shipping, MyMeridian
+          learns your warehouse&rsquo;s real throughput and warns you before it
+          falls behind.
         </Empty>
       </Card>
     );
@@ -141,10 +147,13 @@ export function FulfilmentView({ data }: { data: FulfilmentData }) {
           tone="var(--viz-amber)"
           icon={<IconOverview />}
           label="Capacity used"
-          value={m.utilisationPct === null ? "—" : formatPercent(m.utilisationPct, 0)}
+          value={
+            m.utilisationPct === null ? "—" : formatPercent(m.utilisationPct, 0)
+          }
           meta={
             <span>
-              ceiling {Math.round(m.effectiveCapacityPerDay).toLocaleString()}/day
+              ceiling {Math.round(m.effectiveCapacityPerDay).toLocaleString()}
+              /day
             </span>
           }
         />
@@ -152,7 +161,9 @@ export function FulfilmentView({ data }: { data: FulfilmentData }) {
           tone="var(--viz-teal)"
           icon={<IconChannels />}
           label="Demand trend"
-          value={m.demandTrendPct === null ? "—" : formatPercent(m.demandTrendPct, 0)}
+          value={
+            m.demandTrendPct === null ? "—" : formatPercent(m.demandTrendPct, 0)
+          }
           spark={data.receivedSpark}
           meta={<span>last 28 days vs the 28 before</span>}
         />
@@ -225,7 +236,8 @@ export function FulfilmentView({ data }: { data: FulfilmentData }) {
             </thead>
             <tbody>
               {data.forecast.map((day) => {
-                const late = day.shipDelay !== null && day.shipDelay > data.slaDays;
+                const late =
+                  day.shipDelay !== null && day.shipDelay > data.slaDays;
                 return (
                   <tr key={String(day.date)}>
                     <td className="primary-cell">
@@ -238,8 +250,12 @@ export function FulfilmentView({ data }: { data: FulfilmentData }) {
                         day: "numeric",
                       })}
                     </td>
-                    <td className="right num">{day.inbound.toLocaleString()}</td>
-                    <td className="right num">{day.backlog.toLocaleString()}</td>
+                    <td className="right num">
+                      {day.inbound.toLocaleString()}
+                    </td>
+                    <td className="right num">
+                      {day.backlog.toLocaleString()}
+                    </td>
                     <td className="right num">
                       {day.shipDelay === null
                         ? "—"

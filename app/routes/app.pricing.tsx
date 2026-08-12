@@ -1,4 +1,9 @@
-import { Form, useActionData, useLoaderData, useNavigation } from "react-router";
+import {
+  Form,
+  useActionData,
+  useLoaderData,
+  useNavigation,
+} from "react-router";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { RecStatus } from "@prisma/client";
 
@@ -18,14 +23,22 @@ import {
   UpgradeNotice,
 } from "~/design/components";
 import { formatPercent, toCents } from "~/engine/money";
-import { requireShopContext } from "~/lib/auth.server";
+import { withShopContext, type ShopContext } from "~/lib/auth.server";
+import { requireRecentReauthentication } from "~/lib/reauth.server";
 import { planAllows, planFor, resolvePlan } from "~/lib/plan.server";
 import { generatePricingRecommendations } from "~/lib/pricing.server";
 import { PRICING_LOOKBACK_DAYS } from "~/lib/ranges";
-import { loadDashboard } from "~/lib/route-data.server";
+import { loadDashboardForContext } from "~/lib/route-data.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { shop, rangeLabel, plan } = await loadDashboard(request);
+  return withShopContext(request, (ctx) => loadPricing(request, ctx));
+}
+
+async function loadPricing(request: Request, ctx: ShopContext) {
+  const { shop, rangeLabel, plan } = await loadDashboardForContext(
+    request,
+    ctx,
+  );
 
   if (!planAllows(plan, "pricing")) {
     const required = planFor("pricing");
@@ -106,7 +119,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  const ctx = await requireShopContext(request);
+  return withShopContext(request, (ctx) => updatePricing(request, ctx));
+}
+
+async function updatePricing(request: Request, ctx: ShopContext) {
+  await requireRecentReauthentication(request, ctx.user);
   const { shop } = ctx;
 
   // The loader hides this screen below Growth, but a form post does not go
@@ -234,9 +251,9 @@ export default function Pricing() {
         price={data.locked.price}
       >
         Meridian fits a demand curve only to price history observed after this
-        app was installed, then solves for the price that maximises contribution profit — not a rule of
-        thumb, and never a number invented for a variant that has never changed
-        price.
+        app was installed, then solves for the price that maximises contribution
+        profit — not a rule of thumb, and never a number invented for a variant
+        that has never changed price.
       </UpgradeNotice>
     );
   }
@@ -252,7 +269,13 @@ export default function Pricing() {
           tone="var(--viz-mint)"
           icon={<IconPricing />}
           label="Modelled monthly upside"
-          value={<AnimatedMoney cents={data.upsideCents} currency={data.currency} decimals={false} />}
+          value={
+            <AnimatedMoney
+              cents={data.upsideCents}
+              currency={data.currency}
+              decimals={false}
+            />
+          }
           meta={
             <span>
               across {data.actionableCount} actionable{" "}
@@ -278,10 +301,10 @@ export default function Pricing() {
 
       <Banner>
         Meridian fits a demand curve only to price history observed after this
-        app was installed, then solves for the price that maximises contribution profit. Where a variant
-        has never changed price there is nothing to fit, and it says so rather
-        than inventing an elasticity. Every move is capped at 25% and floored at
-        a 15% margin.
+        app was installed, then solves for the price that maximises contribution
+        profit. Where a variant has never changed price there is nothing to fit,
+        and it says so rather than inventing an elasticity. Every move is capped
+        at 25% and floored at a 15% margin.
       </Banner>
 
       <Card
@@ -303,7 +326,8 @@ export default function Pricing() {
       >
         {data.recommendations.length === 0 ? (
           <Empty>
-            No pricing recommendations yet — seed or sync some order history first.
+            No pricing recommendations yet — seed or sync some order history
+            first.
           </Empty>
         ) : (
           <div className="table-wrap">
@@ -325,7 +349,8 @@ export default function Pricing() {
                   const actionable =
                     rec.method === "ELASTICITY_REGRESSION" ||
                     rec.method === "MARGIN_TARGET";
-                  const rising = rec.suggestedPriceCents > rec.currentPriceCents;
+                  const rising =
+                    rec.suggestedPriceCents > rec.currentPriceCents;
 
                   return (
                     <tr key={rec.id}>
@@ -334,17 +359,25 @@ export default function Pricing() {
                         <div className="cell-sub">{rec.rationale}</div>
                       </td>
                       <td className="right">
-                        <Money cents={rec.currentPriceCents} currency={data.currency} />
+                        <Money
+                          cents={rec.currentPriceCents}
+                          currency={data.currency}
+                        />
                       </td>
                       <td className="right" style={{ fontWeight: 600 }}>
                         {actionable ? (
                           <>
-                            <Money cents={rec.suggestedPriceCents} currency={data.currency} />
+                            <Money
+                              cents={rec.suggestedPriceCents}
+                              currency={data.currency}
+                            />
                             <div className="cell-sub">
                               {rising ? "▲" : "▼"}{" "}
                               {formatPercent(
                                 Math.abs(
-                                  rec.suggestedPriceCents / rec.currentPriceCents - 1,
+                                  rec.suggestedPriceCents /
+                                    rec.currentPriceCents -
+                                    1,
                                 ),
                                 0,
                               )}
@@ -453,10 +486,16 @@ export default function Pricing() {
                       <div className="cell-sub">{rec.variantTitle}</div>
                     </td>
                     <td className="right">
-                      <Money cents={rec.currentPriceCents} currency={data.currency} />
+                      <Money
+                        cents={rec.currentPriceCents}
+                        currency={data.currency}
+                      />
                     </td>
                     <td className="right">
-                      <Money cents={rec.suggestedPriceCents} currency={data.currency} />
+                      <Money
+                        cents={rec.suggestedPriceCents}
+                        currency={data.currency}
+                      />
                     </td>
                     <td>
                       {rec.status === "APPLIED" ? (
@@ -466,11 +505,14 @@ export default function Pricing() {
                       )}
                       {rec.actionedAt && (
                         <div className="cell-sub">
-                          {new Date(rec.actionedAt).toLocaleDateString("en-US", {
-                            timeZone: data.timezone,
-                            month: "short",
-                            day: "numeric",
-                          })}
+                          {new Date(rec.actionedAt).toLocaleDateString(
+                            "en-US",
+                            {
+                              timeZone: data.timezone,
+                              month: "short",
+                              day: "numeric",
+                            },
+                          )}
                         </div>
                       )}
                     </td>

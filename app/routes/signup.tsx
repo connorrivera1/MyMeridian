@@ -15,10 +15,15 @@ import {
   FormError,
   ProviderButtons,
 } from "~/design/account";
-import { resolveWebUser } from "~/lib/auth.server";
+import { resolvePendingWebSession, resolveWebUser } from "~/lib/auth.server";
 import { APP_NAME } from "~/lib/brand";
 import { safeReturnPath } from "~/lib/web-oauth.server";
 import { providerNotice } from "~/lib/provider-notice";
+import {
+  firstDeniedRequestLimit,
+  RATE_LIMIT_MESSAGE,
+  rateLimitHeaders,
+} from "~/lib/rate-limit.server";
 import {
   requestIsSecure,
   requestOriginIsSelf,
@@ -29,6 +34,7 @@ import {
   createPasswordUser,
   createSession,
   createVerificationToken,
+  normalizeEmail,
 } from "~/lib/webauth.server";
 
 export const meta = () => [{ title: `Create your ${APP_NAME} account` }];
@@ -39,6 +45,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   const url = new URL(request.url);
   const returnTo = safeReturnPath(url.searchParams.get("returnTo"));
+  if (await resolvePendingWebSession(request)) {
+    throw redirect(`/mfa?returnTo=${encodeURIComponent(returnTo)}`);
+  }
 
   return {
     returnTo,
@@ -56,10 +65,27 @@ export async function action({ request }: ActionFunctionArgs) {
   const password = String(form.get("password") ?? "");
   const name = form.get("name") ? String(form.get("name")) : null;
   const returnTo = safeReturnPath(String(form.get("returnTo") ?? ""));
+  const limited = await firstDeniedRequestLimit({
+    request,
+    scope: "web-signup",
+    windowMs: 60 * 60 * 1_000,
+    ipLimit: 10,
+    subject: normalizeEmail(email),
+    subjectLimit: 3,
+  });
+  if (limited) {
+    return data(
+      { error: RATE_LIMIT_MESSAGE },
+      { status: 429, headers: rateLimitHeaders(limited) },
+    );
+  }
 
   const result = await createPasswordUser(email, password, name);
   if (!result.ok) {
-    return data({ error: result.error ?? "Check your details." }, { status: 400 });
+    return data(
+      { error: result.error ?? "Check your details." },
+      { status: 400 },
+    );
   }
 
   /*
@@ -93,15 +119,18 @@ export async function action({ request }: ActionFunctionArgs) {
   const welcome = new URL("/welcome", request.url);
   welcome.searchParams.set("next", returnTo);
 
-  return redirect(welcome.pathname + welcome.search, {
-    headers: {
-      "set-cookie": serializeSessionCookie(
-        token,
-        requestIsSecure(request),
-        Math.floor(SESSION_TTL_MS / 1000),
-      ),
+  return redirect(
+    `/mfa?returnTo=${encodeURIComponent(welcome.pathname + welcome.search)}`,
+    {
+      headers: {
+        "set-cookie": serializeSessionCookie(
+          token,
+          requestIsSecure(request),
+          Math.floor(SESSION_TTL_MS / 1000),
+        ),
+      },
     },
-  });
+  );
 }
 
 export default function Signup() {
@@ -125,7 +154,13 @@ export default function Signup() {
 
       <Form method="post" className="account-form">
         <input type="hidden" name="returnTo" value={returnTo} />
-        <Field label="Name" name="name" type="text" autoComplete="name" required={false} />
+        <Field
+          label="Name"
+          name="name"
+          type="text"
+          autoComplete="name"
+          required={false}
+        />
         <Field label="Email" name="email" type="email" autoComplete="email" />
         <Field
           label="Password"

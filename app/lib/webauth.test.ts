@@ -14,8 +14,8 @@ const tokenCreate = vi.fn();
 const tokenFindUnique = vi.fn();
 const tokenUpdateMany = vi.fn();
 
-vi.mock("~/db.server", () => ({
-  default: {
+vi.mock("~/db.server", () => {
+  const client = {
     user: {
       findUnique: (...a: unknown[]) => userFindUnique(...a),
       create: (...a: unknown[]) => userCreate(...a),
@@ -37,8 +37,9 @@ vi.mock("~/db.server", () => ({
       findUnique: (...a: unknown[]) => tokenFindUnique(...a),
       updateMany: (...a: unknown[]) => tokenUpdateMany(...a),
     },
-  },
-}));
+  };
+  return { default: client, systemPrisma: client };
+});
 
 import type { LockoutState } from "./webauth.server";
 
@@ -57,6 +58,7 @@ const {
   nextLockoutState,
   normalizeEmail,
   passwordProblem,
+  resolvePendingSession,
   resolveSession,
   revokeSession,
   sessionIsLive,
@@ -254,7 +256,10 @@ describe("lockout", () => {
   });
 
   it("reports an expired lock as no lock", () => {
-    const state = { failedLoginCount: 0, lockedUntil: new Date(NOW.getTime() - 1) };
+    const state = {
+      failedLoginCount: 0,
+      lockedUntil: new Date(NOW.getTime() - 1),
+    };
     expect(lockoutRemainingMs(state, NOW)).toBe(0);
 
     // And a fresh failure after it expires starts counting again.
@@ -270,7 +275,10 @@ describe("session lifetime", () => {
     expect(sessionIsLive(live, NOW)).toBe(true);
 
     expect(
-      sessionIsLive({ expiresAt: new Date(NOW.getTime() - 1), revokedAt: null }, NOW),
+      sessionIsLive(
+        { expiresAt: new Date(NOW.getTime() - 1), revokedAt: null },
+        NOW,
+      ),
     ).toBe(false);
     expect(sessionIsLive({ ...live, revokedAt: NOW }, NOW)).toBe(false);
   });
@@ -293,9 +301,25 @@ describe("session lifetime", () => {
       expiresAt: new Date(NOW.getTime() + 1000),
       revokedAt: null,
       lastSeenAt: NOW,
+      mfaVerifiedAt: NOW,
     });
 
     expect(await resolveSession("tok", NOW)).toBe(user);
+  });
+
+  it("keeps a primary-auth session restricted until MFA succeeds", async () => {
+    const user = { id: "user-1" };
+    sessionFindUnique.mockResolvedValue({
+      id: "s1",
+      user,
+      expiresAt: new Date(NOW.getTime() + 1000),
+      revokedAt: null,
+      lastSeenAt: NOW,
+      mfaVerifiedAt: null,
+    });
+
+    expect(await resolveSession("tok", NOW)).toBeNull();
+    expect(await resolvePendingSession("tok", NOW)).toMatchObject({ user });
   });
 
   it("refuses an unknown, expired or revoked token", async () => {
@@ -368,7 +392,11 @@ describe("signup", () => {
       ...(data as object),
     }));
 
-    const result = await createPasswordUser("New@Example.com", "a-good-password", " Ada ");
+    const result = await createPasswordUser(
+      "New@Example.com",
+      "a-good-password",
+      " Ada ",
+    );
 
     expect(result.ok).toBe(true);
     const data = userCreate.mock.calls[0]?.[0].data;
@@ -394,7 +422,9 @@ describe("signup", () => {
   });
 
   it("rejects a bad address or a weak password before any write", async () => {
-    expect((await createPasswordUser("nope", "a-good-password", null)).ok).toBe(false);
+    expect((await createPasswordUser("nope", "a-good-password", null)).ok).toBe(
+      false,
+    );
     expect((await createPasswordUser("a@b.com", "short", null)).ok).toBe(false);
     expect(userCreate).not.toHaveBeenCalled();
   });
@@ -410,7 +440,11 @@ describe("login", () => {
       lockedUntil: null,
     });
 
-    const result = await authenticateWithPassword("a@b.com", "a-good-password", NOW);
+    const result = await authenticateWithPassword(
+      "a@b.com",
+      "a-good-password",
+      NOW,
+    );
 
     expect(result.status).toBe("ok");
     expect(userUpdate.mock.calls[0]?.[0].data).toEqual({
@@ -431,7 +465,11 @@ describe("login", () => {
     const wrong = await authenticateWithPassword("a@b.com", "not-it", NOW);
 
     userFindUnique.mockResolvedValue(null);
-    const missing = await authenticateWithPassword("nobody@b.com", "not-it", NOW);
+    const missing = await authenticateWithPassword(
+      "nobody@b.com",
+      "not-it",
+      NOW,
+    );
 
     expect(wrong.status).toBe("invalid");
     expect(missing.status).toBe("invalid");
@@ -459,7 +497,11 @@ describe("login", () => {
       lockedUntil: new Date(NOW.getTime() + 60_000),
     });
 
-    const result = await authenticateWithPassword("a@b.com", "a-good-password", NOW);
+    const result = await authenticateWithPassword(
+      "a@b.com",
+      "a-good-password",
+      NOW,
+    );
 
     expect(result.status).toBe("locked");
     expect(userUpdate).not.toHaveBeenCalled();

@@ -16,10 +16,15 @@ import {
   FormError,
   ProviderButtons,
 } from "~/design/account";
-import { resolveWebUser } from "~/lib/auth.server";
+import { resolvePendingWebSession, resolveWebUser } from "~/lib/auth.server";
 import { APP_NAME } from "~/lib/brand";
 import { safeReturnPath } from "~/lib/web-oauth.server";
 import { providerNotice } from "~/lib/provider-notice";
+import {
+  firstDeniedRequestLimit,
+  RATE_LIMIT_MESSAGE,
+  rateLimitHeaders,
+} from "~/lib/rate-limit.server";
 import {
   requestIsSecure,
   requestOriginIsSelf,
@@ -29,6 +34,7 @@ import {
   SESSION_TTL_MS,
   authenticateWithPassword,
   createSession,
+  normalizeEmail,
 } from "~/lib/webauth.server";
 
 export const meta = () => [{ title: `Sign in to ${APP_NAME}` }];
@@ -38,6 +44,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   const url = new URL(request.url);
   const returnTo = safeReturnPath(url.searchParams.get("returnTo"));
+  if (await resolvePendingWebSession(request)) {
+    throw redirect(`/mfa?returnTo=${encodeURIComponent(returnTo)}`);
+  }
 
   return {
     returnTo,
@@ -54,6 +63,20 @@ export async function action({ request }: ActionFunctionArgs) {
   const email = String(form.get("email") ?? "");
   const password = String(form.get("password") ?? "");
   const returnTo = safeReturnPath(String(form.get("returnTo") ?? ""));
+  const limited = await firstDeniedRequestLimit({
+    request,
+    scope: "web-login",
+    windowMs: 15 * 60 * 1_000,
+    ipLimit: 20,
+    subject: normalizeEmail(email),
+    subjectLimit: 10,
+  });
+  if (limited) {
+    return data(
+      { error: RATE_LIMIT_MESSAGE },
+      { status: 429, headers: rateLimitHeaders(limited) },
+    );
+  }
 
   const outcome = await authenticateWithPassword(email, password);
 
@@ -73,7 +96,10 @@ export async function action({ request }: ActionFunctionArgs) {
     // One message for a wrong password, an unknown address, and an account
     // that only has Apple or Google sign-in. Telling them apart is exactly
     // what makes the form useful to someone with a list of addresses.
-    return data({ error: "That email and password do not match." }, { status: 401 });
+    return data(
+      { error: "That email and password do not match." },
+      { status: 401 },
+    );
   }
 
   const token = await createSession(
@@ -81,7 +107,7 @@ export async function action({ request }: ActionFunctionArgs) {
     request.headers.get("user-agent"),
   );
 
-  return redirect(returnTo, {
+  return redirect(`/mfa?returnTo=${encodeURIComponent(returnTo)}`, {
     headers: {
       "set-cookie": serializeSessionCookie(
         token,

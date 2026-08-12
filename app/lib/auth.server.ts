@@ -5,8 +5,14 @@ import { loadDemoShop } from "~/lib/demo-access.server";
 import { authenticate, hasShopifyCredentials } from "~/shopify.server";
 import { resolveAccessibleShop } from "./shop-access.server";
 import { readSessionToken } from "./web-session.server";
-import { resolveSession } from "./webauth.server";
+import {
+  resolvePendingSession,
+  resolveSession,
+  type ResolvedPendingSession,
+} from "./webauth.server";
+import { safeReturnPath } from "./web-oauth.server";
 import { recordMerchantAccess } from "./security-audit.server";
+import { withTenantDatabase } from "~/db.server";
 
 const demoModeRequested = process.env.MERIDIAN_DEMO_MODE === "true";
 
@@ -112,7 +118,9 @@ export function shouldLoadAppBridge(request: Request): boolean {
  * stale. The seeded demo is only ever reached by a genuinely unauthenticated
  * visitor, on a non-production build, with demo mode explicitly enabled.
  */
-export async function requireShopContext(request: Request): Promise<ShopContext> {
+export async function requireShopContext(
+  request: Request,
+): Promise<ShopContext> {
   const shopifyRequest = looksLikeShopifyRequest(request);
 
   /*
@@ -143,7 +151,14 @@ export async function requireShopContext(request: Request): Promise<ShopContext>
    * A signed-in web account. Costs nothing when there is no cookie: the token
    * read is a header parse, and a null token short-circuits before any query.
    */
-  const user = await resolveWebUser(request);
+  const pendingWebSession = await resolvePendingWebSession(request);
+  if (pendingWebSession && !pendingWebSession.session.mfaVerifiedAt) {
+    const returnTo = safeReturnPath(
+      `${new URL(request.url).pathname}${new URL(request.url).search}`,
+    );
+    throw redirect(`/mfa?returnTo=${encodeURIComponent(returnTo)}`);
+  }
+  const user = pendingWebSession?.user ?? null;
   if (user) {
     const requested = new URL(request.url).searchParams.get("store");
     const shop = await resolveAccessibleShop(user, requested);
@@ -207,6 +222,21 @@ export async function requireShopContext(request: Request): Promise<ShopContext>
 }
 
 /**
+ * Authenticate first through the system boundary, then execute all merchant
+ * data work under PostgreSQL's transaction-local tenant role and shop id.
+ */
+export async function withShopContext<T>(
+  request: Request,
+  work: (context: ShopContext) => Promise<T>,
+): Promise<T> {
+  const context = await requireShopContext(request);
+  return withTenantDatabase(
+    { shopId: context.shop.id, userId: context.user?.id ?? null },
+    () => work(context),
+  );
+}
+
+/**
  * The signed-in web account on this request, if any.
  *
  * Separate from `requireShopContext` because the login, signup and connect
@@ -215,4 +245,11 @@ export async function requireShopContext(request: Request): Promise<ShopContext>
  */
 export async function resolveWebUser(request: Request): Promise<User | null> {
   return resolveSession(readSessionToken(request));
+}
+
+/** Restricted primary-auth session, used only to complete mandatory MFA. */
+export async function resolvePendingWebSession(
+  request: Request,
+): Promise<ResolvedPendingSession | null> {
+  return resolvePendingSession(readSessionToken(request));
 }

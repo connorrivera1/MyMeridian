@@ -24,6 +24,7 @@
     "db:reset": "prisma migrate reset --force && npm run db:seed",
     "setup": "prisma generate && prisma migrate deploy && tsx prisma/seed.ts",
     "test:coverage": "vitest run --coverage",
+    "test:load": "node scripts/load-test.mjs",
     "verify:production-bundle": "node scripts/verify-production-bundle.mjs",
     "ci": "npm run typecheck && npm run test:coverage && npm run build"
   },

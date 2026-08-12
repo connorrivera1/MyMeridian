@@ -12,8 +12,8 @@ is reconciled on the next polling cycle. Google Ads also needs its client id,
 secret, and developer token configured as deployment secrets.
 
 **Current snapshot, 2026-08-11.** This snapshot overrides stale "now" claims in
-the dated audit history below. Billing is enforced, the suite has 1,122 passing
-unit tests plus 61 passing opt-in PostgreSQL integration tests, all 28 migrations
+the dated audit history below. Billing is enforced, the suite has 1,142 passing
+unit tests plus 67 passing opt-in PostgreSQL integration tests, all 31 migrations
 apply to a fresh database, Docker and flyctl are installed, `read_all_orders` is
 approved, and the development app has passed a real Shopify install, onboarding,
 full-history import and test-billing approval/return flow. The remaining release
@@ -39,15 +39,15 @@ the ordered path from here to a submitted listing.
 
 ## 1. Current state, verified now
 
-| Check                             | Result                                                                                                                                                                                                                                                                                                                          |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm run ci`                      | **Passes** (2026-08-11): typecheck, coverage thresholds and production build.                                                                                                                                                                                                                                                   |
-| `npx vitest run`                  | **1,122 passed, 61 skipped**. The 61 skipped cases are opt-in PostgreSQL integration tests; the explicit real-PostgreSQL run passes **61/61** after applying all 28 migrations to a fresh database.                                                                                                                                  |
-| Billing enforcement               | **Implemented and tested.** `resolvePlan` reads/caches Billing API state, the app layout redirects stores without an active plan, `planAllows` enforces paid capabilities, and `/app/plan` calls `billing.request`. A real Shopify development-store test charge completed its approval and return flow without moving money. |
-| `npx shopify app config validate` | **Passes.** On CLI 4.x, `app config` has `link`, `pull`, `use`, and `validate`; **there is no `config push`**. Config is published by `shopify app deploy` because `include_config_on_deploy = true`.                                                                                                                           |
-| Docker / flyctl                   | **Installed.** Docker CLI 29.7.1 and flyctl 0.4.79 are present. The image was previously built and booted locally (§11); the Docker daemon was stopped during this verification. flyctl is not authenticated (`fly auth whoami` returns `no access token available`).                                                           |
+| Check                             | Result                                                                                                                                                                                                                                                                                                                                                                                                           |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run ci`                      | **Passes** (2026-08-11): typecheck, coverage thresholds and production build.                                                                                                                                                                                                                                                                                                                                    |
+| `npx vitest run`                  | **1,142 passed, 67 skipped**. The 67 skipped cases are opt-in PostgreSQL integration tests; the explicit real-PostgreSQL run passes **67/67** after applying all 31 migrations to a fresh database.                                                                                                                                                                                                              |
+| Billing enforcement               | **Implemented and tested.** `resolvePlan` reads/caches Billing API state, the app layout redirects stores without an active plan, `planAllows` enforces paid capabilities, and `/app/plan` calls `billing.request`. A real Shopify development-store test charge completed its approval and return flow without moving money.                                                                                    |
+| `npx shopify app config validate` | **Passes.** On CLI 4.x, `app config` has `link`, `pull`, `use`, and `validate`; **there is no `config push`**. Config is published by `shopify app deploy` because `include_config_on_deploy = true`.                                                                                                                                                                                                            |
+| Docker / flyctl                   | **Installed.** Docker CLI 29.7.1 and flyctl 0.4.79 are present. The image was previously built and booted locally (§11); the Docker daemon was stopped during this verification. flyctl is not authenticated (`fly auth whoami` returns `no access token available`).                                                                                                                                            |
 | Shopify development acceptance    | **Passed for the currently testable core path.** The app installed and rendered embedded in Shopify Admin; onboarding persisted; all six monthly/annual prices rendered; Starter test billing returned active; and a zero-order store completed a full-history import with `read_all_orders`. Shopify Shipping correctly paused with an actionable error because the remaining ShopifyQL PCD approval is absent. |
-| Production state                  | `Dockerfile`, `.dockerignore`, and `fly.toml` exist, but there is no Fly app, managed Postgres cluster, production origin, or deployment.                                                                                                                                                                                        |
+| Production state                  | `Dockerfile`, `.dockerignore`, and `fly.toml` exist, but there is no Fly app, managed Postgres cluster, production origin, or deployment.                                                                                                                                                                                                                                                                        |
 
 The code is in good shape. Nothing here blocks starting deployment work.
 
@@ -462,17 +462,17 @@ MyMeridian support email still need owner values.
 
 Assets state:
 
-| Item                                      | State                                                                                                                                            |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| App icon 1200×1200                        | File exists; verify it matches the final MyMeridian wordmark before upload                                                                       |
-| Screenshots 1600×900                      | **Locally refreshed.** Six current files were captured and visually checked on 2026-08-11. Re-capture from the final real review store only if its data or identity differs. |
-| Privacy policy URL                        | Done — `/privacy`, public                                                                                                                        |
-| Support page                              | Done — `/support`, public                                                                                                                        |
-| Name / intro / details / features         | **Drafted and measured** under MyMeridian; re-check after any copy edit                                                                           |
-| Meridian domain, publisher + support email | **Owner** — §6e; must belong to Meridian, not another product                                                                                |
-| Feature media (1600×900 or 2–3 min video) | **Missing**                                                                                                                                      |
-| Demo store URL                            | **Missing** — §6f                                                                                                                                |
-| Setup screencast                          | **Missing — automatic bounce without it**                                                                                                        |
+| Item                                       | State                                                                                                                                                                        |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| App icon 1200×1200                         | File exists; verify it matches the final MyMeridian wordmark before upload                                                                                                   |
+| Screenshots 1600×900                       | **Locally refreshed.** Six current files were captured and visually checked on 2026-08-11. Re-capture from the final real review store only if its data or identity differs. |
+| Privacy policy URL                         | Done — `/privacy`, public                                                                                                                                                    |
+| Support page                               | Done — `/support`, public                                                                                                                                                    |
+| Name / intro / details / features          | **Drafted and measured** under MyMeridian; re-check after any copy edit                                                                                                      |
+| Meridian domain, publisher + support email | **Owner** — §6e; must belong to Meridian, not another product                                                                                                                |
+| Feature media (1600×900 or 2–3 min video)  | **Missing**                                                                                                                                                                  |
+| Demo store URL                             | **Missing** — §6f                                                                                                                                                            |
+| Setup screencast                           | **Missing — automatic bounce without it**                                                                                                                                    |
 
 The screencast is the one that cannot be worked around. A real development-store
 install and first dashboard view now work, so the technical prerequisite is
@@ -511,8 +511,8 @@ them because the work landed:
    at the last and most important step.
 2. **Test count.** v1 said 178 tests in 16 files and this section previously
    recorded intermediate milestones. The current baseline is the §1 result:
-   **1,122 passed and 61 skipped** in the default run; the explicit
-   real-PostgreSQL integration run passes **61/61** after all 28 migrations.
+   **1,142 passed and 67 skipped** in the default run; the explicit
+   real-PostgreSQL integration run passes **67/67** after all 31 migrations.
 3. **`Shop.syncCursor` is no longer write-only.** v1 listed "written but never
    read" as a fast-follow. Commit `200a350` reads it; an interrupted import now
    resumes from the cursor instead of restarting.
@@ -643,10 +643,10 @@ blocks knowing the backfill survives real data. Phases 3 and 4 run alongside.
 
 ## Where this leaves it
 
-The local code gate is green: `npm run ci` passes, with 1,122 unit tests passing
-and 57 opt-in integration tests skipped, coverage thresholds met, and a clean
-production build. The explicit real-PostgreSQL integration run passes 61/61
-against a fresh database after all 28 migrations. Billing is enforced in code
+The local code gate is green: `npm run ci` passes, with 1,142 unit tests passing
+and 67 opt-in integration tests skipped, coverage thresholds met, and a clean
+production build. The explicit real-PostgreSQL integration run passes 67/67
+against a fresh database after all 31 migrations. Billing is enforced in code
 and its Shopify test-charge approval/return flow has been exercised.
 
 What remains before submission is infrastructure, external approval, business
@@ -695,8 +695,8 @@ never installed and Colima needs no license and no GUI. Docker daemon 29.5.2,
 | Server boots                                    | **Yes.** `react-router-serve` comes up and is serving in about two seconds, so fly.toml's 20s `grace_period` is comfortable.                                                                                              |
 | `GET /privacy`                                  | **200.** The health check path in fly.toml is right.                                                                                                                                                                      |
 | `GET /support`                                  | **200.**                                                                                                                                                                                                                  |
-| `release_command` — `npx prisma migrate deploy` | **Runs from inside the image** against a real Postgres. The current migration-set proof is repeated in the release verification below; the Prisma CLI reinstalled after the prune resolves without a network fetch.        |
-| `/privacy` and `/support` contact block         | Both show an explicit pre-launch configuration gap while Meridian's domain, publisher and monitored inbox are unset.                                                                                                  |
+| `release_command` — `npx prisma migrate deploy` | **Runs from inside the image** against a real Postgres. The current migration-set proof is repeated in the release verification below; the Prisma CLI reinstalled after the prune resolves without a network fetch.       |
+| `/privacy` and `/support` contact block         | Both show an explicit pre-launch configuration gap while Meridian's domain, publisher and monitored inbox are unset.                                                                                                      |
 | `fly.toml`                                      | Parses, and every key lands where Fly's schema expects it. `fly config validate` itself needs an account and was not run.                                                                                                 |
 | `npx vitest run`                                | **Historical 2026-08-06 result:** 290 tests in 24 files, all passing. The current baseline is in §1.                                                                                                                      |
 
@@ -841,11 +841,11 @@ direct connection.
 
 State them honestly, because half the data is not reconstructible.
 
-|                                 | Value                                                                                                                                                                            |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|                                 | Value                                                                                                                                                                                                                     |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **RPO — Shopify-derived data**  | Backup interval. Source fields are re-fetchable only inside the history Shopify still exposes. Historical COGS snapshots, observed price changes and data older than the accessible order window are not reconstructible. |
-| **RPO — merchant-entered data** | **Backup interval, and nothing else.** Not reconstructible from Shopify at any price.                                                                                            |
-| **RTO**                         | Restore time of the managed snapshot, plus a redeploy. Minutes, not the previously-unbounded "recreate and hope every merchant notices the banner".                              |
+| **RPO — merchant-entered data** | **Backup interval, and nothing else.** Not reconstructible from Shopify at any price.                                                                                                                                     |
+| **RTO**                         | Restore time of the managed snapshot, plus a redeploy. Minutes, not the previously-unbounded "recreate and hope every merchant notices the banner".                                                                       |
 
 **What a restore must recover, because re-importing cannot:**
 

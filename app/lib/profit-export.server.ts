@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 
-import prisma from "~/db.server";
+import prisma, { withTenantDatabase } from "~/db.server";
 
 export const PROFIT_EXPORT_HEADER = [
   "order_number",
@@ -86,7 +86,9 @@ export function createProfitExportStream(input: {
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
-      controller.enqueue(encoder.encode(`${PROFIT_EXPORT_HEADER.join(",")}\r\n`));
+      controller.enqueue(
+        encoder.encode(`${PROFIT_EXPORT_HEADER.join(",")}\r\n`),
+      );
     },
     async pull(controller) {
       if (done) {
@@ -94,34 +96,36 @@ export function createProfitExportStream(input: {
         return;
       }
       try {
-        const rows = await prisma.order.findMany({
-          where: {
-            shopId: input.shopId,
-            processedAt: { gte: input.from, lt: input.to },
-            ...(cursor ? { id: { gt: cursor } } : {}),
-          },
-          orderBy: { id: "asc" },
-          take: 1_000,
-          select: {
-            id: true,
-            orderNumber: true,
-            processedAt: true,
-            currency: true,
-            channel: true,
-            total: true,
-            refundedTotal: true,
-            cogsTotal: true,
-            materializedOutboundShippingCost: true,
-            materializedReturnShippingCost: true,
-            materializedPaymentFee: true,
-            materializedPickPackCost: true,
-            adCostAttributed: true,
-            overheadAllocated: true,
-            contributionProfit: true,
-            netProfit: true,
-            computedAt: true,
-          },
-        });
+        const rows = await withTenantDatabase({ shopId: input.shopId }, () =>
+          prisma.order.findMany({
+            where: {
+              shopId: input.shopId,
+              processedAt: { gte: input.from, lt: input.to },
+              ...(cursor ? { id: { gt: cursor } } : {}),
+            },
+            orderBy: { id: "asc" },
+            take: 1_000,
+            select: {
+              id: true,
+              orderNumber: true,
+              processedAt: true,
+              currency: true,
+              channel: true,
+              total: true,
+              refundedTotal: true,
+              cogsTotal: true,
+              materializedOutboundShippingCost: true,
+              materializedReturnShippingCost: true,
+              materializedPaymentFee: true,
+              materializedPickPackCost: true,
+              adCostAttributed: true,
+              overheadAllocated: true,
+              contributionProfit: true,
+              netProfit: true,
+              computedAt: true,
+            },
+          }),
+        );
         if (rows.length === 0) {
           done = true;
           controller.close();

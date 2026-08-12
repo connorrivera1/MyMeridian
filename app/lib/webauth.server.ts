@@ -27,9 +27,9 @@ import {
 } from "node:crypto";
 import { promisify } from "node:util";
 
-import type { User } from "@prisma/client";
+import type { User, WebSession } from "@prisma/client";
 
-import prisma from "~/db.server";
+import { systemPrisma as prisma } from "~/db.server";
 
 /*
  * promisify picks the no-options overload, so the cost parameters would be
@@ -462,7 +462,8 @@ export async function upsertOAuthUser(input: {
    * which a random one would not.
    */
   const storedEmail =
-    email ?? `${input.provider.toLowerCase()}-${input.providerUserId}@users.noreply.mymeridian.app`;
+    email ??
+    `${input.provider.toLowerCase()}-${input.providerUserId}@users.noreply.mymeridian.app`;
 
   const user = await prisma.user.create({
     data: {
@@ -519,6 +520,25 @@ export async function resolveSession(
   token: string | null,
   now: Date = new Date(),
 ): Promise<User | null> {
+  const resolved = await resolvePendingSession(token, now);
+  if (!resolved?.session.mfaVerifiedAt) return null;
+  return resolved.user;
+}
+
+export interface ResolvedPendingSession {
+  session: WebSession;
+  user: User;
+}
+
+/**
+ * Resolve a live primary-authentication session even before MFA succeeds.
+ * Only the /mfa and /reauth routes may use this; merchant-data authorization
+ * continues to call resolveSession, which rejects an unverified session.
+ */
+export async function resolvePendingSession(
+  token: string | null,
+  now: Date = new Date(),
+): Promise<ResolvedPendingSession | null> {
   if (!token) return null;
 
   const session = await prisma.webSession.findUnique({
@@ -536,7 +556,7 @@ export async function resolveSession(
     });
   }
 
-  return session.user;
+  return { session, user: session.user };
 }
 
 /** Revoke rather than delete, so a stolen token stays known-bad. */

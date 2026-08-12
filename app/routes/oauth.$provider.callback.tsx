@@ -1,4 +1,8 @@
-import { redirect, type ActionFunctionArgs, type LoaderFunctionArgs } from "react-router";
+import {
+  redirect,
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs,
+} from "react-router";
 
 import {
   completeApple,
@@ -18,6 +22,10 @@ import {
 } from "~/lib/webauth.server";
 import { publicAppOrigin } from "~/lib/public-origin.server";
 import { HANDSHAKE_COOKIE } from "~/lib/web-oauth-cookie";
+import {
+  firstDeniedRequestLimit,
+  rateLimitHeaders,
+} from "~/lib/rate-limit.server";
 
 function clearHandshake(secure: boolean): string {
   return [
@@ -55,6 +63,18 @@ async function handle(
   if (provider !== "google" && provider !== "apple") {
     throw new Response("Unknown provider", { status: 404 });
   }
+  const limited = await firstDeniedRequestLimit({
+    request,
+    scope: `oauth-callback-${provider}`,
+    windowMs: 15 * 60 * 1_000,
+    ipLimit: 30,
+  });
+  if (limited) {
+    return new Response("Too many requests.", {
+      status: 429,
+      headers: rateLimitHeaders(limited),
+    });
+  }
 
   const handshake = unpackHandshake(readCookie(request, HANDSHAKE_COOKIE));
 
@@ -76,7 +96,12 @@ async function handle(
           handshake.codeVerifier,
           handshake.nonce,
         )
-      : await completeApple(input.code, redirectUri, handshake.nonce, input.name);
+      : await completeApple(
+          input.code,
+          redirectUri,
+          handshake.nonce,
+          input.name,
+        );
 
   if (!identity) return rejected(secure);
 
@@ -98,6 +123,7 @@ async function handle(
    */
   const next = safeReturnPath(handshake.returnTo);
   const welcome = `/welcome?next=${encodeURIComponent(next)}`;
+  const mfa = `/mfa?returnTo=${encodeURIComponent(welcome)}`;
 
   const headers = new Headers();
   headers.append("set-cookie", clearHandshake(secure));
@@ -105,7 +131,7 @@ async function handle(
     "set-cookie",
     serializeSessionCookie(token, secure, Math.floor(SESSION_TTL_MS / 1000)),
   );
-  headers.set("location", welcome);
+  headers.set("location", mfa);
 
   return new Response(null, { status: 302, headers });
 }

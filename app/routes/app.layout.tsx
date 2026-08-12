@@ -35,7 +35,12 @@ import {
   loadAdSpendCoverage,
   type AdSpendCoverage,
 } from "~/lib/ad-spend-coverage.server";
-import { requireShopContext, resolveWebUser } from "~/lib/auth.server";
+import {
+  requireShopContext,
+  resolveWebUser,
+  type ShopContext,
+} from "~/lib/auth.server";
+import { withTenantDatabase } from "~/db.server";
 import { completePendingLink } from "~/lib/store-link.server";
 import { planAllows, resolvePlan } from "~/lib/plan.server";
 import {
@@ -47,27 +52,33 @@ import { PLANS } from "~/lib/plans";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const ctx = await requireShopContext(request);
-  const { shop, isDemo } = ctx;
-
+  let linkedUserId = ctx.user?.id ?? null;
   /*
    * A web account finishing Shopify's install lands here, and this is the only
-   * place a ShopMembership is ever written.
-   *
-   * It is safe precisely because of where it sits: `requireShopContext` has
-   * already returned a Shopify session, so `authenticate.admin` proved this
-   * request belongs to this store. The cookie only says which store the user
-   * asked for; it grants nothing by itself, and a mismatch is ignored.
-   *
-   * The cookie is left to expire rather than cleared, which keeps this to a
-   * read: `grantMembership` is an upsert, so a repeat is a no-op.
+   * place a ShopMembership is ever written. Shopify authentication has already
+   * proved the store; the pending cookie grants nothing by itself. This link is
+   * completed before the tenant role is entered because identity/membership
+   * authorisation belongs to the system authentication boundary.
    */
   if (ctx.session) {
     const webUser = await resolveWebUser(request);
     if (webUser) {
-      await completePendingLink(request, webUser.id, shop.domain, shop.id);
+      await completePendingLink(
+        request,
+        webUser.id,
+        ctx.shop.domain,
+        ctx.shop.id,
+      );
+      linkedUserId = webUser.id;
     }
   }
+  return withTenantDatabase({ shopId: ctx.shop.id, userId: linkedUserId }, () =>
+    loadAppLayout(request, ctx),
+  );
+}
 
+async function loadAppLayout(request: Request, ctx: ShopContext) {
+  const { shop, isDemo } = ctx;
   // Resolved here rather than per route so the answer is read once per
   // navigation, and so a store with no active charge cannot reach a paid screen
   // by typing its URL.

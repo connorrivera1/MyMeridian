@@ -7,7 +7,7 @@ import {
 import type { DateRange } from "~/data/queries.server";
 import { ratio } from "~/engine/money";
 import { loadAdSpendCoverage } from "~/lib/ad-spend-coverage.server";
-import { requireShopContext } from "~/lib/auth.server";
+import { withShopContext, type ShopContext } from "~/lib/auth.server";
 import { requireActivePlan } from "~/lib/plan.server";
 import { parseRangePreset, RANGE_PRESETS } from "~/lib/ranges";
 import { capabilitiesForShop } from "~/lib/scopes";
@@ -21,7 +21,15 @@ import { capabilitiesForShop } from "~/lib/scopes";
  * that comparison is loaded once here rather than by each route.
  */
 export async function loadDashboard(request: Request) {
-  const ctx = await requireShopContext(request);
+  return withShopContext(request, (ctx) =>
+    loadDashboardForContext(request, ctx),
+  );
+}
+
+export async function loadDashboardForContext(
+  request: Request,
+  ctx: ShopContext,
+) {
   const { shop, isDemo } = ctx;
 
   // Cheap after the layout loader has already run in the same navigation — the

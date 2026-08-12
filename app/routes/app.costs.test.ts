@@ -32,16 +32,25 @@ vi.mock("~/lib/restatement.server", () => ({
   reopenPeriod: (...args: unknown[]) => reopenPeriod(...args),
 }));
 vi.mock("~/lib/bundles.server", () => ({
-  confirmBundleComponent: (...args: unknown[]) => confirmBundleComponent(...args),
+  confirmBundleComponent: (...args: unknown[]) =>
+    confirmBundleComponent(...args),
   removeBundleComponent: (...args: unknown[]) => removeBundleComponent(...args),
   upsertBundleComponent: (...args: unknown[]) => upsertBundleComponent(...args),
-  enqueueBundleDetection: (...args: unknown[]) => enqueueBundleDetection(...args),
+  enqueueBundleDetection: (...args: unknown[]) =>
+    enqueueBundleDetection(...args),
 }));
-vi.mock("~/lib/auth.server", () => ({
-  requireShopContext: async () => ({
+vi.mock("~/lib/auth.server", () => {
+  const context = {
     shop: { id: "shop_1", currency: "USD", timezone: "America/New_York" },
-  }),
-}));
+  };
+  return {
+    requireShopContext: async () => context,
+    withShopContext: async (
+      _request: Request,
+      work: (value: unknown) => unknown,
+    ) => work(context),
+  };
+});
 vi.mock("~/lib/plan.server", () => ({
   requireActivePlan: async () => ({ planId: "growth", status: "active" }),
 }));
@@ -164,7 +173,12 @@ function render(overrides: Record<string, unknown> = {}, result = null) {
 const form = (fields: Record<string, string>) => {
   const body = new FormData();
   for (const [key, value] of Object.entries(fields)) body.append(key, value);
-  return { request: new Request("https://example.com/app/costs", { method: "POST", body }) } as never;
+  return {
+    request: new Request("https://example.com/app/costs", {
+      method: "POST",
+      body,
+    }),
+  } as never;
 };
 
 beforeEach(() => {
@@ -354,7 +368,9 @@ describe("Costs actions", () => {
       }),
     );
 
-    expect(enqueueRestatement.mock.calls[0]![0].includeClosedPeriods).toBe(true);
+    expect(enqueueRestatement.mock.calls[0]![0].includeClosedPeriods).toBe(
+      true,
+    );
   });
 
   it("will not restate from a date it cannot read", async () => {

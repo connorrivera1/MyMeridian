@@ -32,6 +32,9 @@ export default [
   // Email entry, code entry and the confirmation are one path in three phases,
   // so the code goes in on the screen that announced it.
   route("forgot", "routes/forgot.tsx"),
+  // Restricted primary-auth sessions complete mandatory web-account MFA here.
+  route("mfa", "routes/mfa.tsx"),
+  route("reauth", "routes/reauth.tsx"),
   // Claims the one-time post-signup splash, then forwards.
   route("welcome", "routes/welcome.tsx"),
   // Where an account with no store connected is sent.
@@ -90,10 +93,7 @@ export default [
     "routes/webhooks.inventory-items.tsx",
   ),
   route("webhooks/fulfillments/create", "routes/webhooks.fulfillments.tsx"),
-  route(
-    "webhooks/shipstation/:connectorId",
-    "routes/webhooks.shipstation.tsx",
-  ),
+  route("webhooks/shipstation/:connectorId", "routes/webhooks.shipstation.tsx"),
   route(
     "webhooks/app-subscriptions/update",
     "routes/webhooks.app-subscriptions.tsx",

@@ -95,6 +95,7 @@ export function Field({
   defaultValue,
   required = true,
   hint,
+  inputMode,
 }: {
   label: string;
   name: string;
@@ -103,6 +104,15 @@ export function Field({
   defaultValue?: string;
   required?: boolean;
   hint?: string;
+  inputMode?:
+    | "none"
+    | "text"
+    | "tel"
+    | "url"
+    | "email"
+    | "numeric"
+    | "decimal"
+    | "search";
 }) {
   return (
     <label className="account-field">
@@ -114,6 +124,7 @@ export function Field({
         autoComplete={autoComplete}
         defaultValue={defaultValue}
         required={required}
+        inputMode={inputMode}
       />
       {hint ? <span className="account-hint">{hint}</span> : null}
     </label>

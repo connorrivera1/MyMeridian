@@ -23,6 +23,10 @@ const prismaMock = {
 
 vi.mock("~/lib/auth.server", () => ({
   requireShopContext: (...args: unknown[]) => requireShopContext(...args),
+  withShopContext: async (
+    request: Request,
+    work: (context: unknown) => unknown,
+  ) => work(await requireShopContext(request)),
 }));
 vi.mock("~/lib/plan.server", () => ({
   requireActivePlan: (...args: unknown[]) => requireActivePlan(...args),

@@ -6,6 +6,10 @@ const recordSensitiveAction = vi.fn();
 
 vi.mock("~/lib/auth.server", () => ({
   requireShopContext: (...args: unknown[]) => requireShopContext(...args),
+  withShopContext: async (
+    request: Request,
+    work: (context: unknown) => unknown,
+  ) => work(await requireShopContext(request)),
 }));
 vi.mock("~/lib/data-request.server", () => ({
   collectDataRequestForDownload: (...args: unknown[]) =>
@@ -15,8 +19,9 @@ vi.mock("~/lib/security-audit.server", () => ({
   recordSensitiveAction: (...args: unknown[]) => recordSensitiveAction(...args),
 }));
 
-const { action, headers, loader } =
-  await import("./app.privacy-request-download");
+const { action, headers, loader } = await import(
+  "./app.privacy-request-download"
+);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -92,11 +97,11 @@ describe("customer data export download resource", () => {
 
   it("refuses side effects through GET", () => {
     const response = loader({
-        request: new Request(
-          "https://meridian.example/app/privacy-requests/request_1/download",
-        ),
-        params: { id: "request_1" },
-      } as never);
+      request: new Request(
+        "https://meridian.example/app/privacy-requests/request_1/download",
+      ),
+      params: { id: "request_1" },
+    } as never);
     expect(response.status).toBe(405);
     expect(response.headers.get("Allow")).toBe("POST");
   });

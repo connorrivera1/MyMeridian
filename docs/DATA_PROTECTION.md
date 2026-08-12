@@ -8,8 +8,11 @@ Protected Customer Data Level 2 access.
 
 - Shopify scopes are read-only and limited to orders, products, fulfilments,
   inventory and reports. `read_customers` is not requested.
-- Street addresses, phone numbers, order notes and full checkout payloads are
-  not retained. Webhook bodies are erased after durable processing.
+- Shopper street addresses and phone numbers, order notes and full checkout
+  payloads are not retained. A standalone account's MFA phone is collected only
+  for authentication, encrypted with AES-256-GCM and unavailable to merchant
+  analytics or the operator dashboard. Webhook bodies are erased after durable
+  processing.
 - Development uses seeded synthetic data. Production data may not be copied to
   developer laptops, screenshots, test fixtures or support tickets.
 - Connector tokens use AES-256-GCM envelopes and a deployment secret separate
@@ -18,12 +21,17 @@ Protected Customer Data Level 2 access.
 
 ## Access
 
-There is no staff/admin route in the application. Merchant access is proved by
-Shopify Admin authentication or a verified web account linked through a
-Shopify-authenticated install. Production database and Fly access must be
-limited to named operators with individual accounts, MFA and least privilege;
-shared accounts are prohibited. Review the access list quarterly and within one
-business day of an operator leaving.
+The publisher operator dashboard is isolated under `/operator`, rejects
+merchant cookies and Shopify sessions, requires a dedicated scrypt password and
+TOTP, and audits every privileged read. It exposes aggregate/store health but no
+customer or order detail, merchant contact data, tokens, raw payloads, secrets,
+or arbitrary database editor. Merchant access is proved by Shopify Admin
+authentication or a mandatory-MFA web account linked through a
+Shopify-authenticated install. PostgreSQL RLS forces every merchant request to
+the authenticated shop; the merchant role cannot read identity/operator tables.
+Production database and hosting access must be limited to named operators with
+individual accounts, MFA and least privilege; shared accounts are prohibited.
+Review access quarterly and within one business day of an operator leaving.
 
 ## Leakage prevention
 
@@ -36,7 +44,9 @@ exports. Customer exports expire through the retention worker.
 
 ## Production evidence checklist
 
-- [x] Repository is private.
+- [ ] Repository visibility is set to the publisher's intended launch state;
+      if temporarily public for review, return it to private before loading any
+      production configuration or customer data.
 - [x] Full-history gitleaks and Semgrep SAST scans run in GitHub Actions.
 - [ ] GitHub-hosted secret scanning and push protection require a repository
       plan that supports Secret Protection for private repositories; the API

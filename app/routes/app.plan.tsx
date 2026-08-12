@@ -1,21 +1,22 @@
 import { useState } from "react";
-import { Form, useActionData, useLoaderData, useNavigation } from "react-router";
+import {
+  Form,
+  useActionData,
+  useLoaderData,
+  useNavigation,
+} from "react-router";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 
 import { Badge, Banner, Money, Stat } from "~/design/components";
-import { requireShopContext } from "~/lib/auth.server";
+import { withShopContext } from "~/lib/auth.server";
 import {
   billingIsTestForShop,
   resolveBillingChargeMode,
   resolvePlan,
 } from "~/lib/plan.server";
-import {
-  annualKey,
-  basePlanId,
-  PLANS,
-  type BillingKey,
-} from "~/lib/plans";
+import { annualKey, basePlanId, PLANS, type BillingKey } from "~/lib/plans";
 import { publicAppOrigin } from "~/lib/public-origin.server";
+import { requireRecentReauthentication } from "~/lib/reauth.server";
 
 /**
  * Plan selection, upgrade and downgrade.
@@ -28,63 +29,66 @@ import { publicAppOrigin } from "~/lib/public-origin.server";
  * serve as upgrade and downgrade.
  */
 export async function loader({ request }: LoaderFunctionArgs) {
-  const ctx = await requireShopContext(request);
-  const plan = await resolvePlan(ctx);
-  const isTest = billingIsTestForShop(ctx.shop);
+  return withShopContext(request, async (ctx) => {
+    const plan = await resolvePlan(ctx);
+    const isTest = billingIsTestForShop(ctx.shop);
 
-  return {
-    isDemo: plan.isDemo,
-    currentPlan: plan.planId,
-    status: plan.status,
-    plans: Object.values(PLANS),
-    /** Surfaced so a reviewer can see the charge is a test one, not a real bill. */
-    isTest,
-  };
+    return {
+      isDemo: plan.isDemo,
+      currentPlan: plan.planId,
+      status: plan.status,
+      plans: Object.values(PLANS),
+      /** Surfaced so a reviewer can see the charge is a test one, not a real bill. */
+      isTest,
+    };
+  });
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  const ctx = await requireShopContext(request);
+  return withShopContext(request, async (ctx) => {
+    await requireRecentReauthentication(request, ctx.user);
 
-  if (!ctx.billing) {
-    return {
-      error:
-        "The seeded demo store has no Shopify billing session, so no plan can " +
-        "be selected here. Install MyMeridian on a store to subscribe.",
-    };
-  }
+    if (!ctx.billing) {
+      return {
+        error:
+          "The seeded demo store has no Shopify billing session, so no plan can " +
+          "be selected here. Install MyMeridian on a store to subscribe.",
+      };
+    }
 
-  const form = await request.formData();
-  const requested = String(form.get("plan") ?? "");
+    const form = await request.formData();
+    const requested = String(form.get("plan") ?? "");
 
-  // `requested` is a billing key: a plan id, or a plan id with the annual
-  // suffix. Validating via basePlanId accepts exactly those and nothing else —
-  // a crafted "starter-weekly" resolves to null, not to a charge.
-  if (!basePlanId(requested)) {
-    return { error: "That plan does not exist." };
-  }
+    // `requested` is a billing key: a plan id, or a plan id with the annual
+    // suffix. Validating via basePlanId accepts exactly those and nothing else —
+    // a crafted "starter-weekly" resolves to null, not to a charge.
+    if (!basePlanId(requested)) {
+      return { error: "That plan does not exist." };
+    }
 
-  let isTest: boolean;
-  try {
-    isTest = await resolveBillingChargeMode(ctx);
-  } catch (error) {
-    console.error(
-      "[billing] could not verify store type for %s:",
-      ctx.shop.domain,
-      error,
-    );
-    return {
-      error:
-        "Could not verify whether this store can accept a real charge. " +
-        "No charge was created; retry in a moment.",
-    };
-  }
+    let isTest: boolean;
+    try {
+      isTest = await resolveBillingChargeMode(ctx);
+    } catch (error) {
+      console.error(
+        "[billing] could not verify store type for %s:",
+        ctx.shop.domain,
+        error,
+      );
+      return {
+        error:
+          "Could not verify whether this store can accept a real charge. " +
+          "No charge was created; retry in a moment.",
+      };
+    }
 
-  // Shopify sends the merchant back here after they approve or decline, so the
-  // page they land on reflects the charge they just made.
-  return ctx.billing.request({
-    plan: requested as BillingKey,
-    isTest,
-    returnUrl: `${publicAppOrigin(request)}/app/plan?shop=${encodeURIComponent(ctx.shop.domain)}`,
+    // Shopify sends the merchant back here after they approve or decline, so the
+    // page they land on reflects the charge they just made.
+    return ctx.billing.request({
+      plan: requested as BillingKey,
+      isTest,
+      returnUrl: `${publicAppOrigin(request)}/app/plan?shop=${encodeURIComponent(ctx.shop.domain)}`,
+    });
   });
 }
 
@@ -123,15 +127,19 @@ export default function Plan() {
 
       {data.isTest && (
         <Banner>
-          Test mode: charges created for this development store are Shopify
-          test charges and take no money.
+          Test mode: charges created for this development store are Shopify test
+          charges and take no money.
         </Banner>
       )}
 
       {/* Billed monthly / billed yearly. A group of two buttons rather than a
           switch: "which price list am I looking at" is a choice between two
           named things, and a switch hides one of the names. */}
-      <div className="interval-toggle" role="group" aria-label="Billing interval">
+      <div
+        className="interval-toggle"
+        role="group"
+        aria-label="Billing interval"
+      >
         <button
           type="button"
           className="btn sm"
@@ -176,7 +184,8 @@ export default function Plan() {
                     {plan.blurb}
                     {yearly && (
                       <>
-                        {" "}· effective{" "}
+                        {" "}
+                        · effective{" "}
                         <Money
                           cents={Math.round((plan.annualPrice * 100) / 12)}
                           currency="USD"
@@ -218,9 +227,7 @@ export default function Plan() {
                       value={yearly ? annualKey(plan.id) : plan.id}
                     />
                     <button
-                      className={
-                        data.currentPlan ? "btn sm" : "btn primary sm"
-                      }
+                      className={data.currentPlan ? "btn sm" : "btn primary sm"}
                       disabled={busy || data.isDemo}
                     >
                       {!data.currentPlan
@@ -239,8 +246,8 @@ export default function Plan() {
 
       <p className="tiny muted" style={{ maxWidth: "72ch", lineHeight: 1.7 }}>
         Billing is handled entirely by Shopify and appears on your Shopify
-        invoice. MyMeridian never sees a card number. Cancelling the app from your
-        Shopify admin cancels the subscription with it.
+        invoice. MyMeridian never sees a card number. Cancelling the app from
+        your Shopify admin cancels the subscription with it.
       </p>
     </>
   );

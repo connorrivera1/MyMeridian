@@ -1,4 +1,10 @@
-import { Form, data, redirect, useActionData, useLoaderData } from "react-router";
+import {
+  Form,
+  data,
+  redirect,
+  useActionData,
+  useLoaderData,
+} from "react-router";
 import type {
   ActionFunctionArgs,
   HeadersFunction,
@@ -11,6 +17,10 @@ import {
   OPERATOR_SECURITY_HEADERS,
   operatorConfiguration,
 } from "~/lib/operator-auth.server";
+import {
+  firstDeniedRequestLimit,
+  rateLimitHeaders,
+} from "~/lib/rate-limit.server";
 import { requestOriginIsSelf } from "~/lib/web-session.server";
 
 export function loader(_args: LoaderFunctionArgs) {
@@ -23,6 +33,24 @@ export async function action({ request }: ActionFunctionArgs) {
     return data(
       { error: "This sign-in request could not be verified." },
       { status: 403, headers: OPERATOR_SECURITY_HEADERS },
+    );
+  }
+  const limited = await firstDeniedRequestLimit({
+    request,
+    scope: "operator-login",
+    windowMs: 15 * 60 * 1_000,
+    ipLimit: 10,
+  });
+  if (limited) {
+    return data(
+      { error: "Too many sign-in attempts. Wait and try again." },
+      {
+        status: 429,
+        headers: {
+          ...OPERATOR_SECURITY_HEADERS,
+          ...rateLimitHeaders(limited),
+        },
+      },
     );
   }
   const form = await request.formData();
@@ -50,7 +78,10 @@ export async function action({ request }: ActionFunctionArgs) {
             ? "Too many sign-in attempts. Wait 15 minutes and try again."
             : "The credentials or authentication code are invalid.",
       },
-      { status: 401, headers: OPERATOR_SECURITY_HEADERS },
+      {
+        status: result.reason === "rate_limited" ? 429 : 401,
+        headers: OPERATOR_SECURITY_HEADERS,
+      },
     );
   }
   return redirect("/operator", {
@@ -70,7 +101,10 @@ export default function OperatorLogin() {
 
   return (
     <main className="operator-login-shell">
-      <section className="operator-login-card" aria-labelledby="operator-login-title">
+      <section
+        className="operator-login-card"
+        aria-labelledby="operator-login-title"
+      >
         <p className="operator-kicker">Publisher operations</p>
         <h1 id="operator-login-title">Meridian operator access</h1>
         <p className="operator-muted">
@@ -117,7 +151,10 @@ export default function OperatorLogin() {
               />
             </label>
             {actionData?.error && (
-              <div className="operator-alert operator-alert-critical" role="alert">
+              <div
+                className="operator-alert operator-alert-critical"
+                role="alert"
+              >
                 {actionData.error}
               </div>
             )}

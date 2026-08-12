@@ -12,13 +12,17 @@ import {
 import prisma from "~/db.server";
 import { invalidateAnalyticsCache } from "~/data/analytics.server";
 import { Banner, Card, Money, Stat } from "~/design/components";
-import { requireShopContext } from "~/lib/auth.server";
+import { withShopContext, type ShopContext } from "~/lib/auth.server";
+import { requireRecentReauthentication } from "~/lib/reauth.server";
 import { recomputeShopProfitability } from "~/lib/recompute.server";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { shop } = await requireShopContext(request);
+  return withShopContext(request, (ctx) => loadOnboarding(ctx));
+}
+
+async function loadOnboarding({ shop }: ShopContext) {
   if (shop.isDemo || shop.onboardingStep === "complete") {
     throw redirect("/app");
   }
@@ -53,23 +57,40 @@ export async function loader({ request }: LoaderFunctionArgs) {
     profitCents: Math.round(Number(totals._sum.netProfit ?? 0) * 100),
     missingCostLines,
     defaults: {
-      paymentPercent: Number(rule(CostRuleKind.PAYMENT_FEE)?.percentRate ?? 0.029) * 100,
-      paymentFixed: Number(rule(CostRuleKind.PAYMENT_FEE)?.fixedPerOrder ?? 0.3),
-      shipping: Number(rule(CostRuleKind.SHIPPING_DEFAULT)?.fixedPerOrder ?? 8.5),
-      pickPackOrder: Number(rule(CostRuleKind.PICK_PACK)?.fixedPerOrder ?? 1.75),
+      paymentPercent:
+        Number(rule(CostRuleKind.PAYMENT_FEE)?.percentRate ?? 0.029) * 100,
+      paymentFixed: Number(
+        rule(CostRuleKind.PAYMENT_FEE)?.fixedPerOrder ?? 0.3,
+      ),
+      shipping: Number(
+        rule(CostRuleKind.SHIPPING_DEFAULT)?.fixedPerOrder ?? 8.5,
+      ),
+      pickPackOrder: Number(
+        rule(CostRuleKind.PICK_PACK)?.fixedPerOrder ?? 1.75,
+      ),
       pickPackItem: Number(rule(CostRuleKind.PICK_PACK)?.fixedPerItem ?? 0.35),
       overhead: Number(rule(CostRuleKind.OVERHEAD_MONTHLY)?.monthlyAmount ?? 0),
     },
   };
 }
 
-function bounded(form: FormData, key: string, min: number, max: number): number | null {
+function bounded(
+  form: FormData,
+  key: string,
+  min: number,
+  max: number,
+): number | null {
   const value = Number(form.get(key));
   return Number.isFinite(value) && value >= min && value <= max ? value : null;
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  const { shop } = await requireShopContext(request);
+  return withShopContext(request, (ctx) => updateOnboarding(request, ctx));
+}
+
+async function updateOnboarding(request: Request, ctx: ShopContext) {
+  await requireRecentReauthentication(request, ctx.user);
+  const { shop } = ctx;
   const form = await request.formData();
   const paymentPercent = bounded(form, "paymentPercent", 0, 25);
   const paymentFixed = bounded(form, "paymentFixed", 0, 100_000);
@@ -77,7 +98,16 @@ export async function action({ request }: ActionFunctionArgs) {
   const pickPackOrder = bounded(form, "pickPackOrder", 0, 100_000);
   const pickPackItem = bounded(form, "pickPackItem", 0, 100_000);
   const overhead = bounded(form, "overhead", 0, 10_000_000);
-  if ([paymentPercent, paymentFixed, shipping, pickPackOrder, pickPackItem, overhead].some((value) => value === null)) {
+  if (
+    [
+      paymentPercent,
+      paymentFixed,
+      shipping,
+      pickPackOrder,
+      pickPackItem,
+      overhead,
+    ].some((value) => value === null)
+  ) {
     return { error: "Check the cost figures and try again." };
   }
   const confirmedAt = new Date();
@@ -91,7 +121,11 @@ export async function action({ request }: ActionFunctionArgs) {
       },
     }),
     prisma.costRule.updateMany({
-      where: { shopId: shop.id, kind: CostRuleKind.SHIPPING_DEFAULT, active: true },
+      where: {
+        shopId: shop.id,
+        kind: CostRuleKind.SHIPPING_DEFAULT,
+        active: true,
+      },
       data: { fixedPerOrder: shipping!.toFixed(4), confirmedAt },
     }),
     prisma.costRule.updateMany({
@@ -103,7 +137,11 @@ export async function action({ request }: ActionFunctionArgs) {
       },
     }),
     prisma.costRule.updateMany({
-      where: { shopId: shop.id, kind: CostRuleKind.OVERHEAD_MONTHLY, active: true },
+      where: {
+        shopId: shop.id,
+        kind: CostRuleKind.OVERHEAD_MONTHLY,
+        active: true,
+      },
       data: { monthlyAmount: overhead!.toFixed(2), confirmedAt },
     }),
     prisma.shop.update({
@@ -130,10 +168,26 @@ export default function Onboarding() {
           : `The Shopify import is ${data.syncStage ?? "still running"}; figures will keep filling in.`}
       </Banner>
       <div className="grid cols-4">
-        <Stat small label="Orders found · 30d" value={data.orders.toLocaleString()} />
-        <Stat small label="Revenue found · 30d" value={<Money cents={data.revenueCents} currency={data.currency} />} />
-        <Stat small label="Qualified profit · 30d" value={<Money cents={data.profitCents} currency={data.currency} />} />
-        <Stat small label="Lines missing COGS" value={data.missingCostLines.toLocaleString()} />
+        <Stat
+          small
+          label="Orders found · 30d"
+          value={data.orders.toLocaleString()}
+        />
+        <Stat
+          small
+          label="Revenue found · 30d"
+          value={<Money cents={data.revenueCents} currency={data.currency} />}
+        />
+        <Stat
+          small
+          label="Qualified profit · 30d"
+          value={<Money cents={data.profitCents} currency={data.currency} />}
+        />
+        <Stat
+          small
+          label="Lines missing COGS"
+          value={data.missingCostLines.toLocaleString()}
+        />
       </div>
       <Card
         title="Confirm the costs behind your profit"
@@ -142,12 +196,43 @@ export default function Onboarding() {
         {result?.error && <Banner tone="warn">{result.error}</Banner>}
         <Form method="post" className="stack">
           <div className="grid cols-2">
-            <OnboardingField label="Payment rate" name="paymentPercent" defaultValue={data.defaults.paymentPercent} suffix="%" step="0.01" />
-            <OnboardingField label="Payment fee per order" name="paymentFixed" defaultValue={data.defaults.paymentFixed} prefix="$" />
-            <OnboardingField label="Shipping per order" name="shipping" defaultValue={data.defaults.shipping} prefix="$" />
-            <OnboardingField label="Pick and pack per order" name="pickPackOrder" defaultValue={data.defaults.pickPackOrder} prefix="$" />
-            <OnboardingField label="Materials per item" name="pickPackItem" defaultValue={data.defaults.pickPackItem} prefix="$" />
-            <OnboardingField label="Fixed monthly overhead" name="overhead" defaultValue={data.defaults.overhead} prefix="$" />
+            <OnboardingField
+              label="Payment rate"
+              name="paymentPercent"
+              defaultValue={data.defaults.paymentPercent}
+              suffix="%"
+              step="0.01"
+            />
+            <OnboardingField
+              label="Payment fee per order"
+              name="paymentFixed"
+              defaultValue={data.defaults.paymentFixed}
+              prefix="$"
+            />
+            <OnboardingField
+              label="Shipping per order"
+              name="shipping"
+              defaultValue={data.defaults.shipping}
+              prefix="$"
+            />
+            <OnboardingField
+              label="Pick and pack per order"
+              name="pickPackOrder"
+              defaultValue={data.defaults.pickPackOrder}
+              prefix="$"
+            />
+            <OnboardingField
+              label="Materials per item"
+              name="pickPackItem"
+              defaultValue={data.defaults.pickPackItem}
+              prefix="$"
+            />
+            <OnboardingField
+              label="Fixed monthly overhead"
+              name="overhead"
+              defaultValue={data.defaults.overhead}
+              prefix="$"
+            />
           </div>
           <button className="btn primary" disabled={busy}>
             {busy ? "Recomputing your store…" : "Save costs and choose a plan"}
@@ -158,7 +243,14 @@ export default function Onboarding() {
   );
 }
 
-function OnboardingField({ label, name, defaultValue, prefix, suffix, step = "0.01" }: {
+function OnboardingField({
+  label,
+  name,
+  defaultValue,
+  prefix,
+  suffix,
+  step = "0.01",
+}: {
   label: string;
   name: string;
   defaultValue: number;
@@ -171,7 +263,15 @@ function OnboardingField({ label, name, defaultValue, prefix, suffix, step = "0.
       <span className="tiny muted">{label}</span>
       <span className="row">
         {prefix && <span className="muted">{prefix}</span>}
-        <input className="field-input" type="number" name={name} min="0" step={step} required defaultValue={defaultValue} />
+        <input
+          className="field-input"
+          type="number"
+          name={name}
+          min="0"
+          step={step}
+          required
+          defaultValue={defaultValue}
+        />
         {suffix && <span className="muted">{suffix}</span>}
       </span>
     </label>

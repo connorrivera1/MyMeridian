@@ -16,6 +16,11 @@ import { BrandMark } from "~/design/components";
 import { APP_NAME } from "~/lib/brand";
 import { CODE_LENGTH } from "~/lib/password-reset";
 import {
+  firstDeniedRequestLimit,
+  RATE_LIMIT_MESSAGE,
+  rateLimitHeaders,
+} from "~/lib/rate-limit.server";
+import {
   clearResetCookie,
   deliverResetCode,
   issueResetCode,
@@ -63,6 +68,20 @@ export async function action({ request }: ActionFunctionArgs) {
     if (!emailLooksValid(email)) {
       return data({ error: "Enter a valid email address." }, { status: 400 });
     }
+    const limited = await firstDeniedRequestLimit({
+      request,
+      scope: "password-reset-request",
+      windowMs: 60 * 60 * 1_000,
+      ipLimit: 10,
+      subject: email,
+      subjectLimit: 3,
+    });
+    if (limited) {
+      return data(
+        { error: RATE_LIMIT_MESSAGE },
+        { status: 429, headers: rateLimitHeaders(limited) },
+      );
+    }
 
     const issued = await issueResetCode(email);
 
@@ -93,6 +112,20 @@ export async function action({ request }: ActionFunctionArgs) {
   if (intent === "reset") {
     const email = readPendingResetEmail(request);
     if (!email) return redirect("/forgot");
+    const limited = await firstDeniedRequestLimit({
+      request,
+      scope: "password-reset-code",
+      windowMs: 15 * 60 * 1_000,
+      ipLimit: 20,
+      subject: email,
+      subjectLimit: 10,
+    });
+    if (limited) {
+      return data(
+        { error: RATE_LIMIT_MESSAGE },
+        { status: 429, headers: rateLimitHeaders(limited) },
+      );
+    }
 
     const outcome = await resetPasswordWithCode(
       email,
@@ -256,7 +289,9 @@ function ResetDone() {
   const [leaving, setLeaving] = useState(false);
 
   useEffect(() => {
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reduced = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
     const hold = reduced ? 1200 : 2600;
 
     const toFade = window.setTimeout(() => setLeaving(true), hold);
@@ -272,7 +307,11 @@ function ResetDone() {
   }, [navigate]);
 
   return (
-    <div className={leaving ? "splash welcome-splash out" : "splash welcome-splash"}>
+    <div
+      className={
+        leaving ? "splash welcome-splash out" : "splash welcome-splash"
+      }
+    >
       <div className="welcome-inner">
         <div className="splash-globe">
           <BrandMark size={104} spin />

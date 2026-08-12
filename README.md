@@ -27,7 +27,7 @@ payloads and raw provider errors, and provide no arbitrary database editor. See
 
 **Release status (verified 2026-08-12):** `npm run ci` passes type checking,
 coverage thresholds, 1,156 unit tests and the production build. The 72 opt-in
-database integration cases pass against a fresh PostgreSQL database after all 33
+database integration cases pass against a fresh PostgreSQL database after all 34
 migrations apply from empty. The production bundle scan checks 29 server-only
 configuration fields across every public text asset, and the dependency audit
 reports no high-severity vulnerabilities. A real Shopify development store has passed embedded install,

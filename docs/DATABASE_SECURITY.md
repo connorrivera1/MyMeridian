@@ -6,10 +6,27 @@ publisher operator dashboard. `MERIDIAN_TENANT_DATABASE_URL` is used for every
 merchant-facing data route. It must be a separate login with no ownership,
 superuser or `BYPASSRLS` privilege.
 
-Migration `20260812001000_tenant_row_level_security` creates the NOLOGIN group
-roles, forces RLS on every merchant table, and grants the migration owner the
-system and tenant groups. Provision the production login once, using a password
-generated and stored in the platform secret vault (never in this repository):
+Migrations `20260812001000_tenant_row_level_security` and
+`20260812013000_system_runtime_role_privileges` create the NOLOGIN group roles,
+force RLS on every merchant table, and give the system group the runtime table
+privileges it needs without making the application login a database owner.
+Provision the two production logins once, using passwords generated and stored
+in the platform secret vault (never in this repository):
+
+```sql
+CREATE ROLE meridian_app_system
+  LOGIN
+  NOSUPERUSER
+  NOCREATEDB
+  NOCREATEROLE
+  INHERIT
+  NOREPLICATION
+  NOBYPASSRLS
+  PASSWORD '<vault-generated-password>';
+GRANT CONNECT ON DATABASE meridian TO meridian_app_system;
+GRANT USAGE ON SCHEMA public TO meridian_app_system;
+GRANT meridian_system TO meridian_app_system;
+```
 
 ```sql
 CREATE ROLE meridian_app_tenant
@@ -27,9 +44,9 @@ GRANT meridian_tenant TO meridian_app_tenant;
 ```
 
 If the managed service database name is not `meridian`, change only the
-`GRANT CONNECT` target. Put the resulting connection string in
-`MERIDIAN_TENANT_DATABASE_URL`. Keep `DATABASE_URL` on the worker/system login
-and `DIRECT_DATABASE_URL` on the migration endpoint.
+`GRANT CONNECT` target. Put the tenant connection string in
+`MERIDIAN_TENANT_DATABASE_URL`, the system connection string in `DATABASE_URL`,
+and reserve `DIRECT_DATABASE_URL` for the migration endpoint.
 
 Each merchant transaction explicitly assumes `meridian_tenant`; the login
 cannot query merchant tables before that role switch. `/readyz` fails closed
@@ -51,7 +68,8 @@ After every schema change:
 3. Confirm `/readyz` reports `tenantIsolation: "enforced"` before routing
    traffic.
 4. Never grant the tenant login membership in `meridian_system`, table-owner
-   status, superuser, or `BYPASSRLS`.
+   status, superuser, or `BYPASSRLS`. Never grant the system login table-owner,
+   superuser, or `BYPASSRLS` either.
 
 Do not use Prisma Studio with the tenant URL for support work. The operator
 dashboard is the approved, audited support surface and intentionally has no

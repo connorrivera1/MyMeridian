@@ -21,6 +21,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "connector:configure": "tsx scripts/configure-connector.ts",
     "operator:provision": "tsx scripts/provision-operator.ts",
+    "operator:verify-live": "tsx scripts/verify-operator-live.ts",
     "db:reset": "prisma migrate reset --force && npm run db:seed",
     "setup": "prisma generate && prisma migrate deploy && tsx prisma/seed.ts",
     "test:coverage": "vitest run --coverage",

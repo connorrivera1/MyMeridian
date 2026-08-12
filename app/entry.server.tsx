@@ -55,10 +55,17 @@ const ABORT_DELAY = 5000;
  *    subdomains this deployment does not control would be a promise the
  *    operator cannot keep.
  */
-function addSecurityHeaders(headers: Headers) {
+export function addSecurityHeaders(headers: Headers) {
   headers.set("Strict-Transport-Security", "max-age=31536000");
-  headers.set("X-Content-Type-Options", "nosniff");
-  headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  // Route-specific policies are allowed to be stricter. `/operator` uses
+  // `no-referrer`; overwriting it here silently weakened the dedicated control
+  // plane even though its route export and unit-level constant were correct.
+  if (!headers.has("X-Content-Type-Options")) {
+    headers.set("X-Content-Type-Options", "nosniff");
+  }
+  if (!headers.has("Referrer-Policy")) {
+    headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  }
 }
 
 export default function handleRequest(

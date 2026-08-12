@@ -95,3 +95,19 @@ arbitrary SQL/database editing remain prohibited.
    confirm the cookie is cleared and the session is revoked.
 8. Review the route after every schema expansion; adding a protected field to a
    merchant model does not authorize adding it to an operator select.
+
+The HTTP portion of steps 4–7 is automated by `npm run operator:verify-live`.
+It reads the operator email, TOTP secret and session key from the normal
+server-side environment plus the raw password from the temporary
+`MERIDIAN_OPERATOR_ACCEPTANCE_PASSWORD` variable. It never prints any of those
+values or the session cookie, refuses remote targets unless explicitly
+authorized, verifies the PII-minimized store view and security headers, rejects
+TOTP replay and merchant-cookie crossover, revokes the session on logout, and
+checks the resulting audit hashes directly in PostgreSQL.
+
+On 2026-08-12 this acceptance was run against the compiled production container
+with a disposable PostgreSQL database, two separately provisioned non-owner
+logins, and HTTPS-forwarded cookie semantics. `/readyz` reported enforced tenant
+isolation; operator password plus TOTP, replay rejection, logout revocation,
+merchant-cookie isolation, audit evidence and PII-minimized store support all
+passed. No production service or credential was used.

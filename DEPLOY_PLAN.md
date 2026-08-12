@@ -13,7 +13,7 @@ secret, and developer token configured as deployment secrets.
 
 **Current snapshot, 2026-08-12.** This snapshot overrides stale "now" claims in
 the dated audit history below. Billing is enforced, the suite has 1,156 passing
-unit tests plus 72 passing opt-in PostgreSQL integration tests, all 33 migrations
+unit tests plus 72 passing opt-in PostgreSQL integration tests, all 34 migrations
 apply to a fresh database, Docker and flyctl are installed, `read_all_orders` is
 approved, and the development app has passed a real Shopify install, onboarding,
 full-history import and test-billing approval/return flow. The remaining release
@@ -42,7 +42,7 @@ the ordered path from here to a submitted listing.
 | Check                             | Result                                                                                                                                                                                                                                                                                                                                                                                                           |
 | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `npm run ci`                      | **Passes** (2026-08-11): typecheck, coverage thresholds and production build.                                                                                                                                                                                                                                                                                                                                    |
-| `npx vitest run`                  | **1,156 passed, 72 skipped**. The 72 skipped cases are opt-in PostgreSQL integration tests; the explicit real-PostgreSQL run passes **72/72** after applying all 33 migrations to a fresh database.                                                                                                                                                                                                              |
+| `npx vitest run`                  | **1,156 passed, 72 skipped**. The 72 skipped cases are opt-in PostgreSQL integration tests; the explicit real-PostgreSQL run passes **72/72** after applying all 34 migrations to a fresh database.                                                                                                                                                                                                              |
 | Billing enforcement               | **Implemented and tested.** `resolvePlan` reads/caches Billing API state, the app layout redirects stores without an active plan, `planAllows` enforces paid capabilities, and `/app/plan` calls `billing.request`. A real Shopify development-store test charge completed its approval and return flow without moving money.                                                                                    |
 | `npx shopify app config validate` | **Passes.** On CLI 4.x, `app config` has `link`, `pull`, `use`, and `validate`; **there is no `config push`**. Config is published by `shopify app deploy` because `include_config_on_deploy = true`.                                                                                                                                                                                                            |
 | Docker / flyctl                   | **Installed.** Docker CLI 29.7.1 and flyctl 0.4.79 are present. The image was previously built and booted locally (§11); the Docker daemon was stopped during this verification. flyctl is not authenticated (`fly auth whoami` returns `no access token available`).                                                                                                                                            |
@@ -512,7 +512,7 @@ them because the work landed:
 2. **Test count.** v1 said 178 tests in 16 files and this section previously
    recorded intermediate milestones. The current baseline is the §1 result:
    **1,156 passed and 72 skipped** in the default run; the explicit
-   real-PostgreSQL integration run passes **72/72** after all 33 migrations.
+   real-PostgreSQL integration run passes **72/72** after all 34 migrations.
 3. **`Shop.syncCursor` is no longer write-only.** v1 listed "written but never
    read" as a fast-follow. Commit `200a350` reads it; an interrupted import now
    resumes from the cursor instead of restarting.
@@ -636,7 +636,7 @@ blocks knowing the backfill survives real data. Phases 3 and 4 run alongside.
 The local code gate is green: `npm run ci` passes, with 1,156 unit tests passing
 and 72 opt-in integration tests skipped, coverage thresholds met, and a clean
 production build. The explicit real-PostgreSQL integration run passes 72/72
-against a fresh database after all 33 migrations. Billing is enforced in code
+against a fresh database after all 34 migrations. Billing is enforced in code
 and its Shopify test-charge approval/return flow has been exercised.
 
 What remains before submission is infrastructure, external approval, business

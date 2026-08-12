@@ -7,23 +7,22 @@ again on 2026-08-11.
 Current implementation branch: `feature/mymeridian-web-accounts`. The GitHub
 remote is `connorrivera1/MyMeridian`; nothing has been deployed or submitted.
 
-**Read this first:** everything below was verified against a locally running
-server with **no Shopify API credentials**. The app has never been installed on
-a real store, and no part of the OAuth, webhook-delivery or billing flow has
-been exercised against Shopify itself. Where a claim below says "verified", it
-means verified at the level stated — over HTTP, against the live database, or
-with credentials injected into the real route modules — and the level is named
-each time. See _What has not been tested_ at the end.
+**Read this first:** the development app has now been installed on a real Shopify
+development store and rendered embedded in Admin. Onboarding persisted, a
+zero-order full-history import completed with `read_all_orders`, and Shopify's
+test-charge approval returned with Starter active without moving money. This
+does not prove production webhook delivery, production charging or a
+representative order-volume backfill. Where a claim below says "verified", the
+level is named. See _What has not been tested_ at the end.
 
 **Current local gate:** `npm run ci` passes — typecheck, coverage thresholds,
-1,074 unit tests and production build. The explicit ten-file real-PostgreSQL
-run passes all 1,131 tests, including the 57 integration cases, after all 27
-migrations apply from empty.
+1,084 unit tests and production build. The explicit real-PostgreSQL run passes
+all 57 opt-in integration cases after all 27 migrations apply from empty.
 Billing is no longer merely declared:
 `resolvePlan`, the layout subscription redirect, the `planAllows`
 capability gates, the pricing-action re-check, and `billing.request` implement
-enforcement. None of that changes the central release fact above: the real
-Shopify billing flow has never run.
+enforcement. Shopify's development-store test charge has exercised approval,
+return and active-plan lookup; production charging and billing webhooks have not.
 
 **Current product-truth boundary:** plan prices and entitlements are enforced;
 order-volume blurbs and the false location-specific capacity claim are removed.
@@ -81,11 +80,12 @@ done from this repo — each is written up with where it lives and what it needs
   reasoning, re-verified against live docs on 6 August 2026. Each plan now has
   monthly and annual Billing API intervals ($49/$490, $129/$1,290,
   $299/$2,990), which the current blocked listing draft reflects. The draft is
-  still not paste-ready because the public name is unresolved.
-- The **public app name**. `Meridian` is only the working development identity;
-  a published Shopify app already uses it. Choose a distinctive,
-  non-confusable name before finalizing the Fly slug, logo, landing page,
-  listing copy, or screenshots.
+  still not paste-ready because reviewer credentials and support facts are
+  unresolved.
+- The **public app name is decided: MyMeridian.** The repo config, app UI,
+  landing page, legal pages and listing draft use it. The linked development app
+  still shows the old dashboard name until the production config is safely
+  released; the Fly slug and final uploaded assets must stay consistent.
 - A **Protected Customer Data** request approved. **This line used to say the
   request only mattered "if CAC/LTV/payback are to work (`read_customers`)" and
   that the app "degrades honestly without it". Both halves are wrong**, and the
@@ -121,7 +121,13 @@ done from this repo — each is written up with where it lives and what it needs
   after the essential order scope is approved and an optional field or scope is
   absent; it does not soften this release gate.
 
-- A **`read_all_orders`** access request, or order history is capped at 60 days.
+  The saved request currently covers email. ShopifyQL separately requires Level
+  2 approval covering **name, address, phone and email** before it exposes the
+  aggregate `shipping_labels` report. MyMeridian does not query or persist name,
+  address or phone; those additional approvals are a platform access gate for
+  shipping-label totals, not an expansion of the app's collection.
+
+- **`read_all_orders` is approved** as of 2026-08-11 and is present in config.
 - An **emergency developer contact** (email + phone) — a separate field from the
   support contact.
 
@@ -129,16 +135,16 @@ done from this repo — each is written up with where it lives and what it needs
 
 | Item                                                                       | State                                                                                                                                                                                                                                                                                                                                                                                                        |
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| App icon, 1200×1200 PNG                                                    | File exists at `listing/app-icon-1200.png`; re-check it after the public name/brand decision.                                                                                                                                                                                                                                                                                                                |
+| App icon, 1200×1200 PNG                                                    | File exists at `listing/app-icon-1200.png`; verify that it matches the final MyMeridian wordmark before upload.                                                                                                                                                                                                                                                                                              |
 | Screenshots, 1600×900, 3–6 desktop                                         | **Locally refreshed.** Six current files exist — Overview, Orders, Products, Acquisition, Pricing and Fulfilment — and were visually checked at 1600×900 on 2026-08-11. Re-capture them from the final real review store if its data or public identity differs from the seeded review dataset.                                                                                                                                                                          |
 | Privacy policy URL                                                         | **Done** — `/privacy`, public and unauthenticated.                                                                                                                                                                                                                                                                                                                                                           |
 | Support page                                                               | **Done** — `/support`, public.                                                                                                                                                                                                                                                                                                                                                                               |
 | Meridian domain, publisher + support email                                 | **Missing.** They must belong to Meridian. The app pages show an explicit pre-launch configuration gap and the standalone legal drafts state that they are not effective until these facts are selected.                                                                                                                                     |
-| Listing copy — name ≤30 chars, intro ≤100, details ≤500, features ≤80 each | **Needs revision.** Annual pricing is current, but the public name is unresolved; replace it and re-measure every field. It correctly avoids ad-performance claims.                                                                                                                                                                                                                                          |
+| Listing copy — name ≤30 chars, intro ≤100, details ≤500, features ≤80 each | **Drafted and measured** under MyMeridian with current annual pricing. Re-measure after any edit. It correctly avoids ad-performance claims.                                                                                                                                                                                                                                                                 |
 | Feature media, 1600×900 or a 2–3 min video                                 | **Missing.**                                                                                                                                                                                                                                                                                                                                                                                                 |
 | Demo store URL for reviewers                                               | **Missing.**                                                                                                                                                                                                                                                                                                                                                                                                 |
 | Reviewer testing instructions (4.5.4 / 4.5.5)                              | **Drafted, not paste-ready.** Update the name, then fill the demo store URL, storefront password and Meridian support email. The block directs the reviewer to Growth monthly so Pricing and Fulfilment are reachable and explicitly identifies the customer/ad analyses unavailable in this release.                                                                                                         |
-| Screencast of the full setup process, English or English-subtitled         | **Missing, and blocked on the owner.** An automatic bounce if absent. It has to show a real OAuth install through to a first dashboard view; the app has never been installed on any store, and it cannot be filmed against the demo bypass because that bypass is exactly what the recording exists to prove is not being used. Record it during the first real install rather than staging the flow twice. |
+| Screencast of the full setup process, English or English-subtitled         | **Missing.** An automatic bounce if absent. The real development-store install and first dashboard view now work; record the final flow only after the public identity and populated reviewer store are ready, without the demo bypass. |
 | `extensions/`                                                              | Empty, and correctly so — Meridian ships no theme or checkout extension.                                                                                                                                                                                                                                                                                                                                     |
 
 The prior ad-spend gap is closed in the repository: Growth and Scale include
@@ -229,7 +235,7 @@ Drafted in `listing/copy.md` under _Testing instructions for the reviewer_, in
 the same form as the rest of that file: a block to paste, then a table tracing
 every claim in it to the code that makes it true. It was paste-ready when this
 dated audit entry was written; the 2026-08-10 snapshot above supersedes that
-status because the final name and annual pricing still need to be reflected. Each citation
+status because reviewer credentials and final support facts still need to be inserted. Each citation
 was opened and checked rather than carried over — install-time scopes
 (`shopify.app.toml:59`), the three plan prices and `TRIAL_DAYS`
 (`app/lib/plans.ts`), the live `ShopPlan.partnerDevelopment` check
@@ -1121,11 +1127,11 @@ the bug, and why the third row of that table matches.
 | `app/scopes_update`                        | **Added** | Keeps `grantedScopes` honest under managed installation                                                                                                                                                                                                                                                                                                                                                                      |
 | Reinstall re-imports                       | Done      | Reinstall used to leave `syncStatus = COMPLETE`, skipping the backfill                                                                                                                                                                                                                                                                                                                                                       |
 | Billing: one model, enforced               | **Fixed** | Billing API; `billing.check` gating; in-app upgrade _and_ downgrade                                                                                                                                                                                                                                                                                                                                                          |
-| Read-only scopes                           | Done      | `read_orders,read_products,read_fulfillments,read_inventory`; no write scope; accepted price changes are recorded, never pushed                                                                                                                                                                                                                                                                                              |
+| Read-only scopes                           | Done      | `read_orders,read_all_orders,read_products,read_fulfillments,read_inventory,read_reports`; no write scope; accepted price changes are recorded, never pushed                                                                                                                                                                                                                                                                 |
 | GraphQL Admin API only                     | Done      | No REST calls anywhere; new public apps may not use REST                                                                                                                                                                                                                                                                                                                                                                     |
 | Webhook API version                        | Done      | `2026-07`, matching `@shopify/shopify-api` 13.1.0                                                                                                                                                                                                                                                                                                                                                                            |
 | Production build                           | Done      | `npm run ci` production build clean on 2026-08-11                                                                                                                                                                                                                                                                                                                                                                            |
-| Test suite                                 | Done      | **907 collected: 850 passed, 57 opt-in PostgreSQL integration tests skipped; explicit real-PostgreSQL suite 57/57 across ten files** (verified 2026-08-11)                                                                                                                                                                                                                                                                |
+| Test suite                                 | Done      | **1,084 unit tests passed and 57 opt-in PostgreSQL integration tests skipped; explicit real-PostgreSQL suite 57/57 after all 27 migrations** (verified 2026-08-11)                                                                                                                                                                                                                                                        |
 | Engine output unchanged by the query work  | Done      | `npx tsx scripts/verify-data.ts` against live Postgres, diffed byte-for-byte against its output before the change                                                                                                                                                                                                                                                                                                            |
 | Typecheck                                  | Done      | Clean in `npm run ci` on 2026-08-11                                                                                                                                                                                                                                                                                                                                                                                          |
 | Config validity                            | Done      | `shopify app config validate` passes on 2026-08-10; CLI 4.x publishes config through `shopify app deploy`, not the removed `config push` command                                                                                                                                                                                                                                                                             |
@@ -1165,36 +1171,30 @@ thrown from the same function that throws the 401.
    boot-time throw when `NODE_ENV=production` and by Shopify-signal detection,
    which is solid, but the whole guard depends on `NODE_ENV` being set correctly
    at deploy. A reviewer reading the source will pause here.
-5. **Browser-level platform E2E is still missing.** Server-rendered route tests
+5. **Browser-level platform E2E is partial.** Server-rendered route tests
    now cover Overview, Orders, Products, Acquisition, Pricing, Settings, Plan,
    Layout and both Privacy-request routes; chart labels have explicit timezone
    and one-point regressions. Fulfilment, auth/home and legal wrappers still lack
-   dedicated route tests, and no automated test can substitute for the first
-   Shopify OAuth, webhook, billing and historical-import run described below.
+   dedicated route tests. A real embedded install, onboarding, zero-order
+   full-history completion and Shopify test billing have run; production
+   webhooks and representative order-volume import remain unproved.
 
 ---
 
 ## What has not been tested
 
-No app flow has run against Shopify. The CLI is linked to the development app,
-but a 2026-08-10 `shopify app dev` attempt stopped during preview preparation:
-Shopify rejected every protected-customer-data webhook subscription because the
-app is not approved for that data. The failed preview was cleaned and the active
-app version restored. Every application-server check therefore still uses local
-or scripted state rather than a completed install. None of the following has
-been exercised even once:
+The real development-store core path is now proven: managed installation and
+session exchange, embedded Admin rendering, onboarding persistence, a zero-order
+full-history completion, all monthly/annual plan displays, and a Shopify test
+charge approval/return with an active plan. The remaining unproved platform
+paths are:
 
-- A real OAuth install, or the token exchange that the session fix repairs.
-- Real webhook delivery from Shopify, with Shopify's own HMAC.
-- `billing.check` / `billing.request` against a real charge, including the
-  approval screen and the return redirect.
-- The historical import against a real store's catalogue and orders — including
-  the pagination and cost fixes, which were unit-tested against a scripted admin
-  client but never against Shopify.
-- Anything inside the admin iframe: App Bridge session tokens, `frame-ancestors`,
-  the embedded launch path.
-
-The next step is `shopify app dev` against a development store. Given the
-session-storage defect, it is likely that **no install has ever succeeded**, so
-that run should be treated as the first real test of the whole flow rather than
-a regression check.
+- Real Shopify webhook delivery with Shopify's own HMAC, including compliance
+  webhook effects and uninstall/reinstall recovery.
+- A historical import against representative catalogue and order volume; the
+  live development store had 17 products but zero orders.
+- Shopify Shipping label ingestion after the broader four-field Level 2
+  approval. Its current denial is handled safely and the connector pauses.
+- Production billing, billing-webhook delivery and a non-test charge.
+- The production origin, Managed Postgres, provider OAuth credentials and Redis
+  worker infrastructure.

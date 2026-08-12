@@ -70,6 +70,12 @@ describe("public legal pages", () => {
     expect(privacy).toMatch(/not<\/strong> requested/);
     expect(privacy).toContain("<code>read_all_orders</code>");
     expect(privacy).toContain("<code>read_reports</code>");
+    expect(privacy).toContain(
+      "level 2 protected-customer-data approval covering name,",
+    );
+    expect(privacy).toContain(
+      "mymeridian does not query or persist shopper name, address or phone",
+    );
 
     // Provider connections are merchant-controlled, and credentials must be
     // described without implying that Shopify customer records are shared.

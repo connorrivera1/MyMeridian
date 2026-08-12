@@ -65,7 +65,7 @@ Every claim in it is load-bearing and checked:
 | which products carry the business and which bleed | `PROFITABLE` / `BLEEDING` classifications, `app/engine/products.ts:11-15` |
 | prices fitted to post-install observed history | weighted log-log OLS on price points Meridian records from first observation onward; pre-install history is never invented |
 | which day your warehouse falls behind | 14-day forecast against demonstrated throughput, `app/engine/capacity.ts:152-182` |
-| requests no write access | `scopes = "read_orders,read_products,read_fulfillments,read_inventory"`, `shopify.app.toml:59` |
+| requests no write access | `scopes = "read_orders,read_all_orders,read_products,read_fulfillments,read_inventory,read_reports"`, `shopify.app.toml:72` |
 
 Deliberately **not** claimed: protected-customer cohort LTV/payback or
 location-specific capacity. Ad connections are now merchant-managed and spend
@@ -299,14 +299,10 @@ until these are known; do not reuse another product's domain or terms.
 ### 2. The setup screencast — an automatic bounce if missing
 
 Shopify requires a screencast of the full setup flow, in English or with English
-subtitles, and rejects the submission outright without one. It cannot be recorded
-yet: it has to show a real OAuth install and the first dashboard view, the app
-has never been installed on any store, and it cannot be filmed against the demo
-bypass because that is exactly the path the recording is meant to prove works.
-
-This is not a copy task and nothing in this file unblocks it. It comes free with
-Phase 2 in `DEPLOY_PLAN.md` — record it during the first real install rather than
-staging it twice.
+subtitles, and rejects the submission outright without one. A real development-
+store install and first dashboard view now work. Record the final version after
+the public identity and populated reviewer store are ready; it cannot use the
+demo bypass because that is exactly the path the recording must prove is absent.
 
 ### 3. Still missing from the listing, unrelated to copy
 
@@ -348,11 +344,11 @@ edit, put the text in a file and run:
 node -e 'console.log(require("fs").readFileSync(process.argv[1],"utf8").replace(/\n$/,"").length)' /tmp/draft.txt
 ```
 
-Measured for the current blocked draft on 2026-08-10:
+Measured for the current MyMeridian draft on 2026-08-11:
 
 | Field | Limit | Draft |
 |---|---|---|
-| Name | 30 | blocked — distinctive public name not chosen |
+| Name | 30 | 10 |
 | Introduction | 100 | 100 |
 | Details | 500 | 444 |
 | Feature 1 | 80 | 75 |

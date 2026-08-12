@@ -14,17 +14,17 @@ store to the plan screen, gates paid features, and re-checks the plan before a
 protected pricing mutation.
 
 **Release status (verified 2026-08-11):** `npm run ci` passes type checking,
-coverage thresholds, 1,074 unit tests and the production build. All 1,131 tests
-pass when the 57 database integration cases run against a fresh PostgreSQL
-database after all 27 migrations apply from empty. The repository also includes
-automated dependency, full-history secret and Semgrep security checks. The app has
-still never been installed on a real Shopify store, so OAuth, Shopify-delivered
-webhooks, and a real billing approval/return flow remain unproved. Submission is
-also waiting on external decisions and accounts: a non-confusable app name, a
-Fly production origin and managed database, Shopify's Protected Customer Data
-Level 2 and `read_all_orders` requests, MyMeridian's own domain/publisher/support
-identity, and the review assets that require a real install. See `DEPLOY_PLAN.md` and
-`SUBMISSION.md` for the ordered checklist.
+coverage thresholds, 1,084 unit tests and the production build. The 57 opt-in
+database integration cases pass against a fresh PostgreSQL database after all 27
+migrations apply from empty. GitHub dependency, secret and Semgrep security
+checks are green. A real Shopify development store has passed embedded install,
+onboarding, zero-order full-history completion and the test-billing approval and
+return flow. `read_all_orders` is approved. Submission is still waiting on a
+Fly production origin and database, ShopifyQL's broader Level 2 approval,
+MyMeridian's final publisher/domain/support identity, App Store registration and
+reviewer assets. Production webhooks, production billing and a representative
+order-volume import remain unproved. See `DEPLOY_PLAN.md` and `SUBMISSION.md` for
+the ordered checklist.
 
 ---
 
@@ -138,7 +138,7 @@ fails the *entire* query rather than returning null for that field.
 | `read_inventory` | **No COGS.** Margins read as ~100% and every profit figure is overstated. Requested by default; not protected data. |
 | `read_customers` | No CAC, LTV, payback or customer-lifecycle product classification. **Protected customer data** — needs an approved request in the Partner Dashboard, not just the scope. |
 | `read_fulfillments` | No capacity forecasting. MyMeridian writes no capacity data at all rather than inferring a backlog that only ever grows. |
-| `read_reports` | No Shopify Shipping label-cost reconciliation. The `shipping_labels` ShopifyQL schema also requires Level 2 Protected Customer Data approval. |
+| `read_reports` | No Shopify Shipping label-cost reconciliation. Shopify also requires Level 2 Protected Customer Data approval covering name, address, phone and email before it exposes the `shipping_labels` ShopifyQL schema. MyMeridian does not query or persist shopper name, address or phone; those additional approvals are a ShopifyQL access gate, not additional collection by the app. |
 
 Missing permissions surface in *Costs & connections → Data access*, and the
 affected screens explain what is unavailable instead of rendering a zero.
@@ -169,7 +169,10 @@ one-cent rounding differences. Unknown detail is retained as an explicit
 `UNALLOCATED` component instead of being guessed.
 
 Shopify Shipping costs are read from the ShopifyQL `shipping_labels` report when
-`read_reports` is granted. ShipStation uses its v2 label feed. Both sources are
+`read_reports` is granted and Shopify has approved Level 2 protected-customer-data
+access covering name, address, phone and email. That four-field approval is a
+ShopifyQL platform gate: MyMeridian does not query or persist shopper name,
+address or phone. ShipStation uses its v2 label feed. Both sources are
 retained as observations and matched by Shopify order GID, numeric ID or order
 name. Equal totals corroborate each other; conflicting totals remain auditable
 and only the most complete, newest source is applied. Voids, refunds and currency
@@ -543,10 +546,10 @@ and fought with over mark geometry.
   available basis; from then on webhooks snapshot the cost in force at the time.
 - Accepted price changes are recorded, not pushed to Shopify (requires
   `write_products`, deliberately not requested).
-- Billing is implemented and enforced with the Billing API, but its real Shopify
-  approval screen, return redirect, subscription lookup, and webhook delivery
-  have never been exercised. That is a deployment acceptance test, not a
-  missing gate in the code.
+- Billing is implemented and enforced with the Billing API. Its Shopify test
+  approval screen, return redirect and active subscription lookup have been
+  exercised on the development store without moving money. Production charging
+  and webhook delivery remain deployment acceptance tests.
 - The backfill and recompute both run in-process. That is correct on a
   long-lived server and wrong on a serverless platform, where the process may
   not outlive the response — both belong in a job queue before deploying there.

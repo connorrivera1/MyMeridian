@@ -1,7 +1,9 @@
 # Meridian deploy plan
 
-Canonical checkout: branch `main`, no git remote. Nothing here has been deployed,
-pushed or submitted.
+Canonical checkout: `/Users/connorrivera/Meridian`, branch
+`feature/mymeridian-web-accounts`, with GitHub remote
+`connorrivera1/MyMeridian`. The implementation is pushed to draft PR #1. No
+production deployment or App Store submission has been made.
 
 **Ads ingestion dependency.** `MERIDIAN_REDIS_URL` enables continuous
 Meta/Google/TikTok polling; without it the app stays up and ad ingestion is
@@ -10,10 +12,14 @@ is reconciled on the next polling cycle. Google Ads also needs its client id,
 secret, and developer token configured as deployment secrets.
 
 **Current snapshot, 2026-08-11.** This snapshot overrides stale "now" claims in
-the dated audit history below. In particular, billing is enforced, the suite has
-907 tests, Docker and flyctl are installed, and the remaining release gates are
-external configuration, access requests, business decisions, and real-Shopify
-acceptance testing.
+the dated audit history below. Billing is enforced, the suite has 1,084 passing
+unit tests plus 57 passing opt-in PostgreSQL integration tests, all 27 migrations
+apply to a fresh database, Docker and flyctl are installed, `read_all_orders` is
+approved, and the development app has passed a real Shopify install, onboarding,
+full-history import and test-billing approval/return flow. The remaining release
+gates are production infrastructure, final business/legal identity, full
+protected-customer-data approval for ShopifyQL reports, App Store registration
+and listing/reviewer evidence.
 
 **Version 2, 2026-08-05 23:58.** This supersedes the version written earlier the
 same day at 18:53. That version's hosting analysis was sound and is carried
@@ -36,11 +42,12 @@ the ordered path from here to a submitted listing.
 | Check                             | Result                                                                                                                                                                                                                                                                                                                          |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `npm run ci`                      | **Passes** (2026-08-11): typecheck, coverage thresholds and production build.                                                                                                                                                                                                                                                   |
-| `npx vitest run`                  | **907 collected: 850 passed, 57 skipped** across 87 files. All 57 skipped cases are opt-in PostgreSQL integration tests; the explicit ten-file real-PostgreSQL run passes **57/57**.                                                                                                                                              |
-| Billing enforcement               | **Implemented and tested locally.** `resolvePlan` reads/caches Billing API state, the app layout redirects stores without an active plan, `planAllows` enforces the paid capabilities, the pricing action re-checks its gate, and `/app/plan` calls `billing.request`. The real Shopify approval/return flow is still untested. |
+| `npx vitest run`                  | **1,084 passed, 57 skipped**. The 57 skipped cases are opt-in PostgreSQL integration tests; the explicit real-PostgreSQL run passes **57/57** after applying all 27 migrations to a fresh database.                                                                                                                                  |
+| Billing enforcement               | **Implemented and tested.** `resolvePlan` reads/caches Billing API state, the app layout redirects stores without an active plan, `planAllows` enforces paid capabilities, and `/app/plan` calls `billing.request`. A real Shopify development-store test charge completed its approval and return flow without moving money. |
 | `npx shopify app config validate` | **Passes.** On CLI 4.x, `app config` has `link`, `pull`, `use`, and `validate`; **there is no `config push`**. Config is published by `shopify app deploy` because `include_config_on_deploy = true`.                                                                                                                           |
 | Docker / flyctl                   | **Installed.** Docker CLI 29.7.1 and flyctl 0.4.79 are present. The image was previously built and booted locally (§11); the Docker daemon was stopped during this verification. flyctl is not authenticated (`fly auth whoami` returns `no access token available`).                                                           |
-| Production state                  | `Dockerfile`, `.dockerignore`, and `fly.toml` exist, but there is no Fly app, managed Postgres cluster, production origin, or deployment. The app has never been installed on a real Shopify store.                                                                                                                             |
+| Shopify development acceptance    | **Passed for the currently testable core path.** The app installed and rendered embedded in Shopify Admin; onboarding persisted; all six monthly/annual prices rendered; Starter test billing returned active; and a zero-order store completed a full-history import with `read_all_orders`. Shopify Shipping correctly paused with an actionable error because the remaining ShopifyQL PCD approval is absent. |
+| Production state                  | `Dockerfile`, `.dockerignore`, and `fly.toml` exist, but there is no Fly app, managed Postgres cluster, production origin, or deployment.                                                                                                                                                                                        |
 
 The code is in good shape. Nothing here blocks starting deployment work.
 
@@ -62,9 +69,9 @@ name is decided and the first Fly deployment returns the real stable HTTPS
 origin. `SHOPIFY_APP_URL` in the local `.env` remains
 `http://localhost:3000`; `.shopify/` contains only the CLI project link.
 
-This blocks OAuth callbacks and webhook delivery. It is not the only critical
-path: the app-name decision and Shopify access requests can start before a host
-exists and should run in parallel.
+This blocks production OAuth callbacks and webhook delivery. It is not the only
+critical path: Shopify access and App Store registration work can proceed before
+a host exists.
 
 ---
 
@@ -216,14 +223,14 @@ primary_region = "iad"
 
 ## 5. Exact deploy sequence
 
-Run from the repo root only after choosing the public app name and Fly slug.
+Run from the repo root only after choosing the Fly slug for MyMeridian.
 Authentication, provisioning, secrets, deployment, and Partner Dashboard writes
 change external state and incur charges; none has been run from this repository.
 The task-specific shell variables below are deliberately blank decisions, not
 suggested production values.
 
 ```sh
-# 1. Fill these only after the public name/slug decision.
+# 1. Fill these only after the Fly slug decision.
 MERIDIAN_FLY_APP="<chosen-fly-app-slug>"
 MERIDIAN_FLY_DB="<chosen-managed-postgres-name>"
 MERIDIAN_FLY_DB_ID="<cluster-id returned by fly mpg create>"
@@ -250,7 +257,7 @@ fly mpg attach "$MERIDIAN_FLY_DB_ID" --app "$MERIDIAN_FLY_APP"   # sets pooled D
 fly secrets set \
   SHOPIFY_API_KEY="<from Partner Dashboard>" \
   SHOPIFY_API_SECRET="<from Partner Dashboard>" \
-  SCOPES="read_orders,read_products,read_fulfillments,read_inventory,read_reports" \
+  SCOPES="read_orders,read_all_orders,read_products,read_fulfillments,read_inventory,read_reports" \
   SHOPIFY_APP_URL="$MERIDIAN_PROD_ORIGIN" \
   DIRECT_DATABASE_URL="<direct URL from the MPG Connect tab>" \
   MERIDIAN_ENCRYPTION_KEY="$MERIDIAN_ENCRYPTION_KEY" \
@@ -343,12 +350,12 @@ with the version. There is no separate config-push step; see §8.
 None of this is code and none of it can be done from this repo. It needs a
 signed-in Partner account.
 
-**Precondition — decide the public app name.** The current `Meridian` value is a
-development working name, not an approved listing decision. A published Shopify
-app already uses Meridian, so the final name must start with a distinctive brand
-identifier and be checked for confusion before the Fly slug, logo, landing page,
-listing copy, and screenshots are finalized. Do not rename the linked development
-app piecemeal; make the config and asset changes together after the decision.
+**Public identity — decided: MyMeridian.** The repo config, app UI, landing page,
+legal pages and listing draft use MyMeridian because a published Shopify app
+already uses Meridian. The linked development app still displays the former
+dashboard name; change it only through the safe config-release path after the
+production origin exists, and keep the Fly slug and remaining brand assets on
+the chosen identity.
 
 **a. Opt into manual pricing (Billing API), not Shopify App Pricing.**
 Partner Dashboard → the app → Pricing. The app creates its own charges from
@@ -404,11 +411,18 @@ limits and an access log, strong staff passwords, an incident response
 policy). Requesting Level 1 and discovering the gap later costs another round
 of Shopify's clock.
 
-**c. `read_all_orders` access request.**
-Same screen, separate request, same reasoning. Without it Shopify caps order
-history at 60 days, which is a real limitation for a profitability tool — the
-app detects the cap and shows a persistent banner about it. Worth requesting
-even if submission proceeds without it.
+ShopifyQL adds a separate, broader platform gate for the `shipping_labels`
+report: Shopify requires the Level 2 request to cover **name, address, phone and
+email** before it exposes that aggregate report. MyMeridian does not query or
+persist shopper name, address or phone. Requesting those three additional field
+approvals is therefore necessary to unlock Shopify Shipping costs, but it does
+not authorize adding those fields to MyMeridian's queries or storage.
+
+**c. `read_all_orders` access request — approved 2026-08-11.**
+Shopify granted the separate request. The scope is now present in the app config,
+and a real development-store install verified that a zero-order store is still
+correctly recognized as having complete history rather than falsely showing the
+60-day-limit warning.
 
 **d. Emergency developer contact.**
 Partner Dashboard → the app → App setup. Email **and phone**, and it is a
@@ -429,31 +443,29 @@ data to click through. Depends on Phase 2.
 
 ## 7. Listing
 
-Copy exists in **`listing/copy.md`** and its reviewer instructions now include
-monthly and annual Billing API prices. It is not paste-ready because the public
-name is unresolved and the demo-store, storefront-password and Meridian support
-email placeholders still need owner values. Re-measure every bounded field
-after the name is changed.
+Copy exists in **`listing/copy.md`** under the chosen MyMeridian identity, and
+its reviewer instructions include monthly and annual Billing API prices. It is
+not paste-ready because the demo-store URL, storefront password and monitored
+MyMeridian support email still need owner values.
 
 Assets state:
 
 | Item                                      | State                                                                                                                                            |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| App icon 1200×1200                        | File exists, but re-check after the name/brand decision                                                                                          |
+| App icon 1200×1200                        | File exists; verify it matches the final MyMeridian wordmark before upload                                                                       |
 | Screenshots 1600×900                      | **Locally refreshed.** Six current files were captured and visually checked on 2026-08-11. Re-capture from the final real review store only if its data or identity differs. |
 | Privacy policy URL                        | Done — `/privacy`, public                                                                                                                        |
 | Support page                              | Done — `/support`, public                                                                                                                        |
-| Name / intro / details / features         | **Needs revision** — final name is not reflected; annual pricing is current                                                                      |
+| Name / intro / details / features         | **Drafted and measured** under MyMeridian; re-check after any copy edit                                                                           |
 | Meridian domain, publisher + support email | **Owner** — §6e; must belong to Meridian, not another product                                                                                |
 | Feature media (1600×900 or 2–3 min video) | **Missing**                                                                                                                                      |
 | Demo store URL                            | **Missing** — §6f                                                                                                                                |
 | Setup screencast                          | **Missing — automatic bounce without it**                                                                                                        |
 
-The screencast is the one that cannot be worked around. It has to show a real
-OAuth install through to a first dashboard view; the app has never been
-installed on any store, and it cannot be filmed against the demo bypass because
-that bypass is precisely what the recording exists to prove is not being used.
-Record it during Phase 2's real install rather than staging the whole flow twice.
+The screencast is the one that cannot be worked around. A real development-store
+install and first dashboard view now work, so the technical prerequisite is
+met. The final recording still needs the chosen public identity, populated
+reviewer store and production-like setup; it cannot use the demo bypass.
 
 The Scale cohort claim has been removed without expanding access:
 `read_customers` remains absent and no paid plan promises LTV/payback. Scale is
@@ -486,9 +498,9 @@ them because the work landed:
    `include_config_on_deploy = true`. Following v1 literally would have failed
    at the last and most important step.
 2. **Test count.** v1 said 178 tests in 16 files and this section previously
-   recorded the intermediate 212-in-20 milestone. The current baseline is the
-   §1 result: **907 collected, 850 passed, 57 skipped**; the explicit
-   real-PostgreSQL integration run passes **57/57**.
+   recorded intermediate milestones. The current baseline is the §1 result:
+   **1,084 passed and 57 skipped** in the default run; the explicit
+   real-PostgreSQL integration run passes **57/57** after all 27 migrations.
 3. **`Shop.syncCursor` is no longer write-only.** v1 listed "written but never
    read" as a fast-follow. Commit `200a350` reads it; an interrupted import now
    resumes from the cursor instead of restarting.
@@ -506,13 +518,9 @@ runtime is now memory-bounded and whole-history recompute is month-sliced; see
 
 ### Must happen before submission
 
-- **Decide the public app name** (§6 precondition). Do this before finalizing the
-  Fly slug, logo, landing page, copy, or screenshots.
 - **Protected Customer Data request, Level 2** (§6b). The longest-lead item on
   this page and a hard gate — start it first, everything else can proceed in
   parallel while it's on Shopify's clock.
-- **Request `read_all_orders` access** (§6c). Do not add the scope to the config
-  until Shopify approves it.
 - **Authenticate to Fly, provision Managed Postgres, deploy, and set the real
   `application_url`** (§2–§5). Cannot exercise OAuth or webhooks without it.
 - **Partner Dashboard items** (§6a, §6d) and the refreshed listing assets in §7.
@@ -520,6 +528,12 @@ runtime is now memory-bounded and whole-history recompute is month-sliced; see
   or a reviewer sees the explicit pre-launch configuration gap.
 
 ### Done this session, previously on this list
+
+- **`read_all_orders`.** Shopify approved the request, the scope is in config,
+  and the full-history path was exercised in a real development-store install.
+- **Core development-store acceptance.** Embedded install, onboarding, monthly
+  and annual pricing, test-billing approval/return and zero-order full-history
+  completion were verified in Shopify Admin.
 
 - **Dashboard loaders.** Two of the three costs named in `SUBMISSION.md`
   blocker 4 are fixed. `loadEngineOrders` no longer hydrates every fulfilment
@@ -570,8 +584,9 @@ runtime is now memory-bounded and whole-history recompute is month-sliced; see
 
 ```
 Phase 0 — Decisions and access requests (start immediately)
-  0a. Decide the non-confusable public app name
-  0b. Submit Protected Customer Data Level 2 and read_all_orders requests
+  0a. DONE: MyMeridian is the non-confusable public identity
+  0b. Expand the saved PCD request to ShopifyQL's required name/address/phone/
+      email coverage; read_all_orders is already approved
 
 Phase 1 — A real origin
   1a. fly auth login; choose the Fly app slug after Phase 0a
@@ -585,20 +600,17 @@ Phase 1 — A real origin
 
 Phase 2 — Exercise it for real
   2a. A Partner development store
-  2b. Install for real. First live test of session storage, token exchange
-      and the backfill — given the session-storage defect this session fixed,
-      it is likely no install has ever succeeded, so treat this as a first
-      test rather than a regression check
-  2c. Watch the backfill finish on real volume; this is what validates §3
+  2b. DONE on the development store: install, session storage and token exchange
+  2c. Zero-order full-history completion is verified; repeat on representative
+      order volume after a populated reviewer store is available
   2d. Fire each webhook for real: place an order, request and redact customer
       data, uninstall and reinstall
-  2e. Walk billing.request end to end — approval screen, return redirect,
-      and billing.check gating Pricing, Fulfilment and Acquisition
+  2e. DONE with a Shopify test charge: approval, return redirect and active plan
   2f. Record the setup screencast during this pass
   -> Unblocks the screencast, and confidence in everything above
 
 Phase 3 — Partner Dashboard        Phase 4 — Listing
-  §6a manual pricing                 4a. Update copy for final name + annual plans
+  §6a manual pricing                 4a. DONE: MyMeridian + annual-plan copy
   §6b protected customer data        4b. Feature media
   §6c read_all_orders                4c. Re-shoot every screenshot from final UI
   §6d emergency contact              4d. Attach the Phase 2 screencast
@@ -619,17 +631,19 @@ blocks knowing the backfill survives real data. Phases 3 and 4 run alongside.
 
 ## Where this leaves it
 
-The local code gate is green: `npm run ci` passes, with 907 tests collected (850
-passed and 57 opt-in integration tests skipped), coverage thresholds met, and a
-clean production build. All ten real-PostgreSQL integration files pass 57/57
-against a fresh database after all 21 migrations. Billing is enforced in code
-rather than merely declared.
+The local code gate is green: `npm run ci` passes, with 1,084 unit tests passing
+and 57 opt-in integration tests skipped, coverage thresholds met, and a clean
+production build. The explicit real-PostgreSQL integration run passes 57/57
+against a fresh database after all 27 migrations. Billing is enforced in code
+and its Shopify test-charge approval/return flow has been exercised.
 
 What remains before submission is infrastructure, external approval, business
 decisions, assets, and real-platform proof:
 
-- Shopify Shipping reconciliation additionally needs `read_reports` granted
-  and the `shipping_labels` dataset's Level 2 Protected Customer Data approval.
+- Shopify Shipping reconciliation has `read_reports`, but the `shipping_labels`
+  dataset still needs Level 2 Protected Customer Data approval covering name,
+  address, phone and email. MyMeridian does not query or persist name, address
+  or phone; this is ShopifyQL's access gate.
 - ShipStation's immediate reconciliation webhook is registered only after
   `SHOPIFY_APP_URL` becomes the real public HTTPS origin; until then its tested
   five-minute reconciliation fallback is the only reachable path.
@@ -638,16 +652,13 @@ decisions, assets, and real-platform proof:
    §4 files are built and booted rather than merely written (§11). What is left
    is a final app/Fly name, Fly authentication, Managed Postgres, and the
    production sequence in §5. flyctl is installed but not authenticated.
-2. **No real Shopify app flow has run.** The CLI is linked to the development
-   app. A 2026-08-10 `shopify app dev` attempt reached dev-preview preparation,
-   then Shopify rejected the protected-customer-data webhook subscriptions
-   because this app is not approved for that data; the failed preview was
-   cleaned and the active app version restored. Phase 2 is therefore still the
-   first trial by fire for OAuth, session storage, backfill, live webhook
-   delivery and billing after PCD approval.
-3. **Owner/Partner decisions remain:** final public name, Protected Customer Data
-   Level 2 and `read_all_orders` requests, Meridian domain/support identity,
-   emergency contact, real-store install, refreshed
+2. **The core development-store path has run.** Embedded installation,
+   onboarding, session storage, the zero-order full-history path and a Shopify
+   test billing approval/return were verified. Representative order-volume
+   backfill, production webhook delivery and production billing remain unproven.
+3. **Owner/Partner decisions remain:** expanded Protected Customer Data Level 2
+   coverage, MyMeridian domain/support identity, App Store
+   registration attestations and payment, emergency contact, refreshed
    screenshots, feature media, demo-store details, and the setup screencast.
 
 ---

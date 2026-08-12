@@ -146,8 +146,10 @@ document.documentElement.classList.add("js");
           <li>
             <code>read_reports</code> — Shopify Shipping label-cost reports by
             order, carrier and service. Shopify separately gates those reports
-            behind Level 2 protected-customer-data approval; the connection
-            stays paused until that approval exists.
+            behind Level 2 protected-customer-data approval covering name,
+            address, phone and email. This is a ShopifyQL access gate:
+            MyMeridian does not query or persist shopper name, address or phone,
+            and the connection stays paused until Shopify grants the approval.
           </li>
         </ul>
         <p>

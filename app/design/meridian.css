@@ -1849,6 +1849,130 @@ a.chip.solid:hover,
   background: #ffffff;
 }
 
+/* In-app calendar: the browser's date popup cannot inherit Meridian's type or
+   palette, so date selection stays inside the same visual system as the form. */
+.meridian-date-field { position: relative; }
+
+.meridian-date-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 40px;
+  width: 100%;
+  cursor: pointer;
+  text-align: left;
+}
+
+.meridian-date-trigger svg { width: 16px; height: 16px; stroke-width: 1.8; }
+
+.meridian-date-trigger:hover {
+  border-color: var(--accent);
+  background: rgba(var(--ink-rgb), 0.07);
+}
+
+.meridian-calendar {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 7px);
+  left: 0;
+  width: 268px;
+  padding: 12px;
+  color: var(--ink-primary);
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.16);
+  font: inherit;
+}
+
+.meridian-calendar-head {
+  display: grid;
+  grid-template-columns: 32px 1fr 32px;
+  align-items: center;
+  min-height: 30px;
+  margin-bottom: 8px;
+  text-align: center;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.meridian-calendar-head button,
+.meridian-calendar-grid button,
+.meridian-calendar-today {
+  appearance: none;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.meridian-calendar-head button {
+  width: 30px;
+  height: 30px;
+  color: var(--ink-secondary);
+  font-size: 25px;
+  font-weight: 300;
+  line-height: 1;
+}
+
+.meridian-calendar-head button:hover,
+.meridian-calendar-today:hover { color: var(--accent); }
+
+.meridian-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  align-items: center;
+}
+
+.meridian-calendar-weekday {
+  display: grid;
+  height: 28px;
+  place-items: center;
+  color: var(--ink-muted);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+}
+
+.meridian-calendar-grid button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  color: var(--ink-secondary);
+  font-size: 12px;
+  font-weight: 570;
+}
+
+.meridian-calendar-grid button:hover {
+  color: var(--ink-primary);
+  background: rgba(var(--ink-rgb), 0.09);
+}
+
+.meridian-calendar-grid button.today { box-shadow: inset 0 0 0 1px var(--accent); }
+
+.meridian-calendar-grid button.selected,
+.meridian-calendar-grid button.selected:hover {
+  color: var(--pill-ink);
+  background: var(--accent);
+}
+
+.meridian-calendar-today {
+  width: 100%;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--rule) !important;
+  color: var(--ink-secondary);
+  font-size: 11px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0.08em;
+  text-align: right;
+  text-transform: uppercase;
+}
+
 /* segmented — the range chips. The active window is the solid pill. */
 /*
  * The range control, with a pill that travels between segments.

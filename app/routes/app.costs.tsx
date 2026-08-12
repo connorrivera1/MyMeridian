@@ -5,7 +5,7 @@ import {
   useLoaderData,
   useNavigation,
 } from "react-router";
-import type { MouseEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { z } from "zod";
 
@@ -401,12 +401,17 @@ function Field({
   required?: boolean;
   width?: number;
 }) {
-  const openDatePicker = (
-    event: MouseEvent<HTMLInputElement>,
-  ) => {
-    if (type !== "date") return;
-    event.currentTarget.showPicker?.();
-  };
+  if (type === "date") {
+    return (
+      <MeridianDateField
+        label={label}
+        name={name}
+        defaultValue={defaultValue}
+        required={required}
+        width={width}
+      />
+    );
+  }
 
   return (
     <label className="stack" style={{ gap: 4 }}>
@@ -422,9 +427,158 @@ function Field({
         placeholder={placeholder}
         required={required}
         style={width ? { width } : undefined}
-        onClick={type === "date" ? openDatePicker : undefined}
       />
     </label>
+  );
+}
+
+function dateFromValue(value: string | undefined): Date {
+  const [year, month, day] = (value ?? "").split("-").map(Number);
+  if (!year || !month || !day) return new Date();
+  return new Date(year, month - 1, day);
+}
+
+function toDateValue(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function displayDate(value: string): string {
+  const date = dateFromValue(value);
+  return new Intl.DateTimeFormat("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
+
+function MeridianDateField({
+  label,
+  name,
+  defaultValue,
+  required,
+  width,
+}: {
+  label: string;
+  name: string;
+  defaultValue?: string;
+  required?: boolean;
+  width?: number;
+}) {
+  const initialValue = defaultValue ?? toDateValue(new Date());
+  const [value, setValue] = useState(initialValue);
+  const [open, setOpen] = useState(false);
+  const [month, setMonth] = useState(() => dateFromValue(initialValue));
+  const rootRef = useRef<HTMLDivElement>(null);
+  const labelId = `${name}-label`;
+
+  useEffect(() => {
+    const dismiss = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", dismiss);
+    return () => document.removeEventListener("mousedown", dismiss);
+  }, []);
+
+  const year = month.getFullYear();
+  const monthIndex = month.getMonth();
+  const firstDay = new Date(year, monthIndex, 1).getDay();
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+  const monthName = new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    year: "numeric",
+  }).format(month);
+  const selectedValue = dateFromValue(value);
+
+  const changeMonth = (offset: number) => {
+    setMonth((current) => new Date(current.getFullYear(), current.getMonth() + offset, 1));
+  };
+
+  const choose = (day: number) => {
+    const next = new Date(year, monthIndex, day);
+    setValue(toDateValue(next));
+    setOpen(false);
+  };
+
+  return (
+    <div
+      className="stack meridian-date-field"
+      style={{ gap: 4, width: width ? `${width}px` : undefined }}
+      ref={rootRef}
+    >
+      <span id={labelId} className="tiny muted">{label}</span>
+      <input type="hidden" name={name} value={value} required={required} />
+      <button
+        type="button"
+        className="field-input meridian-date-trigger"
+        aria-labelledby={labelId}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span>{displayDate(value)}</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+          <rect x="4" y="5" width="16" height="15" rx="1" />
+          <path d="M8 3v4M16 3v4M4 10h16" />
+        </svg>
+      </button>
+      {open && (
+        <div className="meridian-calendar" role="dialog" aria-label={`Choose date for ${label}`}>
+          <div className="meridian-calendar-head">
+            <button type="button" aria-label="Previous Month" onClick={() => changeMonth(-1)}>‹</button>
+            <strong>{monthName}</strong>
+            <button type="button" aria-label="Next Month" onClick={() => changeMonth(1)}>›</button>
+          </div>
+          <div className="meridian-calendar-grid" role="grid" aria-label={monthName}>
+            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
+              <span className="meridian-calendar-weekday" key={`${day}-${index}`}>{day}</span>
+            ))}
+            {Array.from({ length: firstDay }, (_, index) => (
+              <span aria-hidden="true" key={`empty-${index}`} />
+            ))}
+            {Array.from({ length: daysInMonth }, (_, index) => {
+              const day = index + 1;
+              const isSelected =
+                selectedValue.getFullYear() === year &&
+                selectedValue.getMonth() === monthIndex &&
+                selectedValue.getDate() === day;
+              const today = new Date();
+              const isToday =
+                today.getFullYear() === year &&
+                today.getMonth() === monthIndex &&
+                today.getDate() === day;
+              return (
+                <button
+                  type="button"
+                  role="gridcell"
+                  key={day}
+                  className={isSelected ? "selected" : isToday ? "today" : undefined}
+                  aria-label={`${monthName} ${day}`}
+                  aria-pressed={isSelected}
+                  onClick={() => choose(day)}
+                >
+                  {day}
+                </button>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            className="meridian-calendar-today"
+            onClick={() => {
+              const today = new Date();
+              setMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+              setValue(toDateValue(today));
+              setOpen(false);
+            }}
+          >
+            Today
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

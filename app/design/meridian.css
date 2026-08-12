@@ -64,7 +64,7 @@
   color-scheme: dark;
 
   /* Ink as a channel, so alpha rules work in both themes. */
-  --ink-rgb: 244, 239, 230;
+  --ink-rgb: 245, 245, 245;
 
   /*
    * Type, shared with the marketing site.
@@ -85,83 +85,123 @@
   --font: "Plus Jakarta Sans Variable", ui-sans-serif, -apple-system,
     BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 
-  /* Golden hour — a twilight sky with sunlight reserved for profit. */
-  --plane: #161c36;
-  --sky-zenith: #141a33;
-  --sky-upper: #232c52;
-  --sky-mid: #3a4671;
-  --sky-haze: #5d6493;
-  --sky-veil: #8a7590;
-  --horizon-ember: #c08a6e;
-  --horizon-glow: #e7ae78;
+  /*
+   * Monochrome — night.
+   *
+   * The golden-hour scene is retired. The marketing site is white and black
+   * and the app now matches it: one ink, one ground, and every distinction
+   * carried by VALUE rather than hue. That is a harder discipline than a
+   * palette and a better fit for the product — a page of figures should not
+   * have eight colours competing with the numbers on it.
+   *
+   * The one rule that survives intact: profit is the strongest mark on the
+   * screen. It used to be gold; here it is pure white on black, which is the
+   * same idea with the colour taken out.
+   */
 
-  --surface-1: #1a2140;
-  --surface-2: #202950;
-  --surface-3: rgba(244, 239, 230, 0.07);
-  --surface-hover: rgba(244, 239, 230, 0.12);
+  /* ground — the sky is gone, these are flat planes now */
+  --plane: #0a0a0a;
+  --sky-zenith: #0a0a0a;
+  --sky-upper: #0a0a0a;
+  --sky-mid: #0a0a0a;
+  --sky-haze: #0a0a0a;
+  --sky-veil: #0a0a0a;
+  --horizon-ember: #0a0a0a;
+  --horizon-glow: #0a0a0a;
 
-  --glass: rgba(21, 26, 51, 0.5);
-  --glass-strong: rgba(18, 23, 46, 0.78);
-  --glass-edge: rgba(255, 255, 255, 0.14);
+  --surface-1: #121212;
+  --surface-2: #171717;
+  --surface-3: rgba(245, 245, 245, 0.06);
+  --surface-hover: rgba(245, 245, 245, 0.1);
 
-  --ink-primary: #f4efe6;
-  --ink-secondary: rgba(244, 239, 230, 0.74);
-  --ink-muted: rgba(244, 239, 230, 0.55);
+  /* panels are solid, not glass: there is no scene left to show through */
+  --glass: #101010;
+  --glass-strong: #141414;
+  --glass-edge: rgba(245, 245, 245, 0.1);
+
+  /* ink */
+  --ink-primary: #f5f5f5;
+  --ink-secondary: rgba(245, 245, 245, 0.74);
+  --ink-muted: rgba(245, 245, 245, 0.6);
 
   /* line work */
-  --border: rgba(244, 239, 230, 0.13);
-  --border-strong: rgba(244, 239, 230, 0.24);
-  --edge-light: rgba(255, 255, 255, 0.1);
-  --gridline: rgba(244, 239, 230, 0.08);
-  --baseline: rgba(244, 239, 230, 0.22);
+  --border: rgba(245, 245, 245, 0.14);
+  --border-strong: rgba(245, 245, 245, 0.26);
+  --edge-light: rgba(245, 245, 245, 0.08);
+  --gridline: rgba(245, 245, 245, 0.08);
+  --baseline: rgba(245, 245, 245, 0.22);
 
-  --accent: #f0c273;
-  --accent-2: #e69f5c;
-  --accent-soft: #f6d9a4;
-  --accent-dim: rgba(240, 194, 115, 0.16);
-  --accent-glow: rgba(240, 194, 115, 0.45);
-  --accent-ink: #241c33;
+  /* brand — reserved for the number the merchant came for */
+  --accent: #ffffff;
+  --accent-2: #d6d6d6;
+  --accent-soft: #ffffff;
+  --accent-dim: rgba(245, 245, 245, 0.1);
+  --accent-glow: rgba(245, 245, 245, 0.28);
+  --accent-ink: #0a0a0a;
 
-  --pill: #f6f1e7;
-  --pill-ink: #232a4d;
+  --pill: #f5f5f5;
+  --pill-ink: #0a0a0a;
 
-  --pos: #ecc06e;
-  --neg: #ee8570;
-  --caution: #f2a35c;
+  /*
+   * Status is a value ramp: the more serious it is, the brighter it gets.
+   * All four clear AA on --glass; with hue gone, severity has to be carried
+   * by luminance and by the wording beside it.
+   */
+  /*
+   * Polarity — the only hue in the system.
+   *
+   * The palette is monochrome by value, and that is not decoration: a ramp
+   * separated by luminance is legible to every form of colour vision
+   * deficiency without a special case. Hue is added back for one job only —
+   * saying whether a number is good or bad — and it is always the *second*
+   * channel, never the first. Every place these appear, the meaning is already
+   * carried by something else: an arrow glyph, a minus sign, a word, a label.
+   * Remove the colour and nothing becomes unreadable; it only becomes slower.
+   *
+   * That is also why they are muted. These sit as small accents inside a grey
+   * world — a green that shouts would make the composition a traffic light,
+   * and the figures are supposed to be the loudest thing on the page.
+   */
+  --pos: #6fc593;
+  --neg: #e8776d;
+  --caution: #d9a441;
 
-  --status-good: #ecc06e;
-  --status-warning: #f2a35c;
-  --status-serious: #ea7d55;
-  --status-critical: #e75f6b;
+  --status-good: var(--pos);
+  --status-warning: var(--caution);
+  --status-serious: color-mix(in srgb, var(--neg) 65%, var(--caution));
+  --status-critical: var(--neg);
 
   /* money polarity — up reads as gain, down as loss */
   --delta-up: var(--pos);
   --delta-down: var(--neg);
-  --delta-up-wash: rgba(240, 194, 115, 0.15);
-  --delta-down-wash: rgba(238, 133, 112, 0.15);
+  --delta-up-wash: color-mix(in srgb, var(--pos) 12%, transparent);
+  --delta-down-wash: color-mix(in srgb, var(--neg) 10%, transparent);
 
   /* semantic chart marks */
-  --mark-structure: #9db1e8;
-  --mark-cost: #8a90b8;
-  --mark-result: #f0c273;
+  --mark-structure: #5c5c5c;
+  --mark-cost: #8a8a8a;
+  --mark-result: #ffffff;
 
-  --series-1: #9db1e8;
-  --series-2: #eec983;
-  --series-3: #f2a582;
-  --series-4: #bda6e8;
-  --series-5: #93c6d4;
-  --series-6: #e98fa7;
-  --series-7: #e6d7b2;
-  --series-8: #97a0c4;
+  /* categorical series — a value ladder with enough separation between
+     neighbours to be told apart without hue */
+  --series-1: #f5f5f5;
+  --series-2: #b9b9b9;
+  --series-3: #7d7d7d;
+  --series-4: #d7d7d7;
+  --series-5: #9b9b9b;
+  --series-6: #616161;
+  --series-7: #e8e8e8;
+  --series-8: #4a4a4a;
 
+  /* legacy hue names, re-aimed at the ramp; routes still address these */
   --viz-mint: var(--pos);
-  --viz-teal: #93c6d4;
-  --viz-blue: #9db1e8;
-  --viz-violet: #bda6e8;
-  --viz-pink: #e98fa7;
-  --viz-amber: #eec983;
-  --viz-orange: #f2a582;
-  --viz-rose: #ee8570;
+  --viz-teal: #9b9b9b;
+  --viz-blue: #7d7d7d;
+  --viz-violet: #b9b9b9;
+  --viz-pink: #d7d7d7;
+  --viz-amber: var(--caution);
+  --viz-orange: #8a8a8a;
+  --viz-rose: var(--neg);
 
   /* Inset for type in a full-bleed ledger; the rules ignore it. */
   --ledger-gutter: 22px;
@@ -183,8 +223,8 @@
   --radius: 22px;
   --radius-sm: 13px;
   --shadow:
-    0 2px 8px rgba(8, 10, 26, 0.35),
-    0 28px 70px -30px rgba(8, 10, 26, 0.7);
+    0 2px 8px rgba(0, 0, 0, 0.5),
+    0 28px 70px -30px rgba(0, 0, 0, 0.8);
 
   /* Micro-interactions live in 150-300ms. Anything slower stops feeling like a
      response to the pointer and starts feeling like a wait. */
@@ -192,89 +232,98 @@
   --micro: 220ms;
 }
 
-/* Daybreak — the same scene a few hours later. */
+/*
+ * Daylight — the same system inverted.
+ *
+ * Paper ground, near-black ink, and the identical value ramp turned upside
+ * down: profit is now the darkest mark rather than the brightest. Matches the
+ * marketing site exactly, so a merchant who clicks through from the page into
+ * the app does not change worlds.
+ */
 :root[data-theme="light"] {
   color-scheme: light;
 
-  --ink-rgb: 38, 43, 74;
+  --ink-rgb: 10, 10, 10;
 
-  --plane: #f4efe5;
-  --sky-zenith: #f7f3ea;
-  --sky-upper: #e9e9ec;
-  --sky-mid: #dee5f2;
-  --sky-haze: #e6e3e6;
-  --sky-veil: #f2e5d5;
-  --horizon-ember: #f3d9b6;
-  --horizon-glow: #f7e6c6;
+  --plane: #ffffff;
+  --sky-zenith: #ffffff;
+  --sky-upper: #ffffff;
+  --sky-mid: #ffffff;
+  --sky-haze: #ffffff;
+  --sky-veil: #ffffff;
+  --horizon-ember: #ffffff;
+  --horizon-glow: #ffffff;
 
-  --surface-1: #fbf8f1;
+  --surface-1: #fafafa;
   --surface-2: #ffffff;
-  --surface-3: rgba(38, 43, 74, 0.06);
-  --surface-hover: rgba(38, 43, 74, 0.1);
+  --surface-3: rgba(10, 10, 10, 0.05);
+  --surface-hover: rgba(10, 10, 10, 0.08);
 
-  --glass: rgba(255, 253, 248, 0.6);
-  --glass-strong: rgba(255, 253, 248, 0.88);
-  --glass-edge: rgba(255, 255, 255, 0.85);
+  --glass: #ffffff;
+  --glass-strong: #ffffff;
+  --glass-edge: rgba(10, 10, 10, 0.08);
 
-  --ink-primary: #262b4a;
-  --ink-secondary: rgba(38, 43, 74, 0.76);
-  --ink-muted: rgba(38, 43, 74, 0.55);
+  --ink-primary: #0a0a0a;
+  --ink-secondary: rgba(10, 10, 10, 0.72);
+  --ink-muted: rgba(10, 10, 10, 0.58);
 
-  --border: rgba(38, 43, 74, 0.13);
-  --border-strong: rgba(38, 43, 74, 0.24);
-  --edge-light: rgba(255, 255, 255, 0.9);
-  --gridline: rgba(38, 43, 74, 0.08);
-  --baseline: rgba(38, 43, 74, 0.24);
+  --border: rgba(10, 10, 10, 0.13);
+  --border-strong: rgba(10, 10, 10, 0.26);
+  --edge-light: rgba(10, 10, 10, 0.06);
+  --gridline: rgba(10, 10, 10, 0.08);
+  --baseline: rgba(10, 10, 10, 0.24);
 
-  --accent: #b07f2a;
-  --accent-2: #c2701f;
-  --accent-soft: #8a6410;
-  --accent-dim: rgba(176, 127, 42, 0.13);
-  --accent-glow: rgba(194, 141, 51, 0.35);
-  --accent-ink: #fffdf8;
+  --accent: #0a0a0a;
+  --accent-2: #333333;
+  --accent-soft: #0a0a0a;
+  --accent-dim: rgba(10, 10, 10, 0.07);
+  --accent-glow: rgba(10, 10, 10, 0.2);
+  --accent-ink: #ffffff;
 
-  --pill: #232a4d;
-  --pill-ink: #f6f1e7;
+  --pill: #0a0a0a;
+  --pill-ink: #ffffff;
 
-  --pos: #8a6410;
-  --neg: #bf4936;
-  --caution: #a35c17;
+  /* Severity darkens on paper, the mirror of the night ramp. */
+  /* Paper. The same three hues, darkened until they hold ~5:1 on white. */
+  --pos: #2e7d55;
+  --neg: #c0453a;
+  --caution: #8a6212;
 
-  --status-good: #8a6410;
-  --status-warning: #a35c17;
-  --status-serious: #b0491d;
-  --status-critical: #c03540;
+  --status-good: var(--pos);
+  --status-warning: var(--caution);
+  --status-serious: color-mix(in srgb, var(--neg) 65%, var(--caution));
+  --status-critical: var(--neg);
 
   --delta-up: var(--pos);
   --delta-down: var(--neg);
-  --delta-up-wash: rgba(138, 100, 16, 0.12);
-  --delta-down-wash: rgba(191, 73, 54, 0.11);
+  --delta-up-wash: color-mix(in srgb, var(--pos) 10%, transparent);
+  --delta-down-wash: color-mix(in srgb, var(--neg) 9%, transparent);
 
-  --mark-structure: #4d68b8;
-  --mark-cost: #9aa0bd;
-  --mark-result: #c28d33;
+  --mark-structure: #8e8e8e;
+  --mark-cost: #b4b4b4;
+  --mark-result: #0a0a0a;
 
-  --series-1: #4d68b8;
-  --series-2: #b98a2e;
-  --series-3: #c56a3d;
-  --series-4: #7d5fb3;
-  --series-5: #3d8ba0;
-  --series-6: #b8547a;
-  --series-7: #8a7a4a;
-  --series-8: #6a7396;
+  --series-1: #0a0a0a;
+  --series-2: #4a4a4a;
+  --series-3: #7d7d7d;
+  --series-4: #262626;
+  --series-5: #616161;
+  --series-6: #949494;
+  --series-7: #363636;
+  --series-8: #a8a8a8;
 
   --viz-mint: var(--pos);
-  --viz-teal: #3d8ba0;
-  --viz-blue: #4d68b8;
-  --viz-violet: #7d5fb3;
-  --viz-pink: #b8547a;
-  --viz-amber: #b98a2e;
-  --viz-orange: #c56a3d;
+  --viz-teal: #757575;
+  --viz-blue: #9a9a9a;
+  --viz-violet: #575757;
+  --viz-pink: #2e2e2e;
+  --viz-amber: var(--caution);
+  --viz-orange: #8a8a8a;
   --viz-rose: var(--neg);
 
   --shadow:
-    0 1px 3px rgba(52, 48, 80, 0.07),
-    0 22px 60px -28px rgba(52, 48, 80, 0.28);
+    0 1px 3px rgba(10, 10, 10, 0.06),
+    0 22px 50px -28px rgba(10, 10, 10, 0.3);
 }
 
 
@@ -347,24 +396,28 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* The fixed sky is the product's colour field. */
+/*
+ * The scene is one flat plane.
+ *
+ * This used to be a fixed sky: indigo zenith falling through periwinkle haze
+ * to a warm band of light low in the viewport, with the sun's glow bleeding up
+ * from the horizon. It was the best thing in the old design and it is the
+ * first thing that had to go, because a monochrome system cannot have a
+ * gradient doing its emotional work — the moment there is a coloured wash
+ * behind the panels, the greys stop reading as a deliberate ramp and start
+ * reading as an absence.
+ *
+ * The grain stays. On a flat near-black or near-white field it is the only
+ * thing standing between the eye and visible banding, and it is what keeps
+ * the surface feeling printed rather than filled.
+ */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  background:
-    radial-gradient(120rem 44rem at 50% 118%, rgba(231, 174, 120, 0.5), rgba(192, 138, 110, 0.22) 38%, transparent 66%),
-    radial-gradient(70rem 30rem at 78% 108%, rgba(240, 194, 115, 0.32), transparent 60%),
-    linear-gradient(180deg, var(--sky-zenith) 0%, var(--sky-upper) 30%, var(--sky-mid) 54%, var(--sky-haze) 72%, var(--sky-veil) 84%, var(--horizon-ember) 100%);
-}
-
-:root[data-theme="light"] body::before {
-  background:
-    radial-gradient(110rem 40rem at 50% -18%, rgba(222, 229, 242, 0.9), transparent 62%),
-    radial-gradient(80rem 34rem at 82% 112%, rgba(247, 230, 198, 0.85), transparent 58%),
-    linear-gradient(180deg, var(--sky-upper) 0%, var(--sky-zenith) 34%, var(--plane) 60%, var(--sky-veil) 100%);
+  background: var(--plane);
 }
 
 body::after {
@@ -374,12 +427,14 @@ body::after {
   pointer-events: none;
   z-index: 0;
   opacity: 0.05;
-  mix-blend-mode: overlay;
+  mix-blend-mode: screen;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
+/* On paper the grain has to bite, not lift. */
 :root[data-theme="light"] body::after {
-  opacity: 0.035;
+  opacity: 0.028;
+  mix-blend-mode: multiply;
 }
 
 a {
@@ -2711,6 +2766,28 @@ a.chip:hover, button.chip:hover { background: none; border-color: var(--rule-str
    sky quietened and type this large it is no longer earning its keep. */
 .sky-text::before { content: none; }
 
+/* --------------------------------------------------------------- the field
+ *
+ * The sky loses its sunset.
+ *
+ * With the glass panels gone, type sits directly on the backdrop, and the old
+ * scene ran to a bright peach horizon that measured 1.45:1 against muted ink —
+ * unreadable. Glass had been hiding that all along.
+ *
+ * So the app's sky is now the moment *after* the sun goes down: deep indigo
+ * falling to a warm plum, with only a rumour of gold at the very bottom edge.
+ * Every stop is dark enough that cream ink clears AA on bare sky, which is what
+ * lets the panels stay gone. The full sunset still belongs to the landing page,
+ * where the type is large and the scrims are doing the work.
+ */
+body::before {
+  background: var(--plane);
+}
+
+:root[data-theme="light"] body::before {
+  background: var(--plane);
+}
+
 /* =========================================================================
  * SPATIAL PASS — depth without glass
  *
@@ -3110,17 +3187,31 @@ table.data .right { font-variant-numeric: tabular-nums lining-nums; }
 .chart-tooltip { border-radius: 2px; }
 
 /* =========================================================================
- * CHART PALETTE — golden-hour categorical marks
+ * CHART PALETTE — a value ramp, validated the same way
  *
  * The previous palette was chosen by running a ΔE validator: revenue and cost
- * has a stable hue while direct labels and signed values remain the primary
- * encoding, so the charts stay readable without colour alone.
+ * had collided at ΔE 5.8 in normal vision, so the two primary categories of a
+ * waterfall were, to any reader, the same colour. That fix was correct and the
+ * reasoning still holds — but the system is monochrome now, so hue separation
+ * is not available and is also no longer the thing to measure.
+ *
+ * What replaces it is LUMINANCE separation, which has one large advantage: a
+ * ramp that is legible by value is legible to every form of colour vision
+ * deficiency without a special case, because it never depended on hue in the
+ * first place. The steps below are spaced by relative luminance, not by eye.
+ *
+ * Adjacent series differ by at least ~14 points of L*; marks that must never
+ * be confused (structure vs cost vs result) sit at the far ends of the ramp.
+ * Direct labelling stays mandatory: it was the secondary encoding that made
+ * the old channel pairs legal, and with hue gone it matters more, not less.
  * ====================================================================== */
 
 :root {
-  --mark-structure: #9db1e8;
-  --mark-cost: #8a90b8;
-  --mark-result: #f0c273;
+  /* Night. Result is the brightest thing on the plot — profit is the number
+     the merchant came for, and it should be the first mark the eye lands on. */
+  --mark-structure: #9a9a9a;
+  --mark-cost: #6d6d6d;
+  --mark-result: #ffffff;
 
 /*
  * Categorical identity — the one place hue is the point.
@@ -3151,21 +3242,21 @@ table.data .right { font-variant-numeric: tabular-nums lining-nums; }
  * bucket, and dressing an absence of attribution in a brand colour would give
  * it a confidence it has not earned.
  */
-  --series-1: #9db1e8;
+  --series-1: #ffffff;
   --channel-1: oklch(0.704 0.13 258);  /* facebook */
-  --series-2: #eec983;
+  --series-2: #c9c9c9;
   --channel-2: oklch(0.786 0.11 70);  /* google */
-  --series-3: #f2a582;
+  --series-3: #9a9a9a;
   --channel-3: oklch(0.846 0.10 190);  /* tiktok */
-  --series-4: #bda6e8;
+  --series-4: #e2e2e2;
   --channel-4: oklch(0.680 0.13 320);  /* email */
-  --series-5: #93c6d4;
+  --series-5: #b0b0b0;
   --channel-5: oklch(0.810 0.11 130);  /* organic */
-  --series-6: #e98fa7;
+  --series-6: #808080;
   --channel-6: oklch(0.894 0.035 220);  /* direct */
-  --series-7: #e6d7b2;
+  --series-7: #f0f0f0;
   --channel-7: oklch(0.757 0.13 25);  /* referral */
-  --series-8: #97a0c4;
+  --series-8: #666666;
   --channel-8: oklch(0.633 0.12 285);  /* affiliate */
 
   /*
@@ -3180,11 +3271,11 @@ table.data .right { font-variant-numeric: tabular-nums lining-nums; }
    * beside a word ("Profitable", "Bleeding") or a signed figure, so the hue is
    * redundant reinforcement rather than the only thing distinguishing them.
    */
-  --viz-blue: #9db1e8;
-  --viz-teal: #93c6d4;
-  --viz-pink: #e98fa7;
-  --viz-violet: #bda6e8;
-  --viz-orange: #f2a582;
+  --viz-blue: var(--series-1);
+  --viz-teal: var(--series-3);
+  --viz-pink: var(--series-4);
+  --viz-violet: var(--series-6);
+  --viz-orange: var(--series-7);
 
   --viz-mint: var(--pos);
   --viz-rose: var(--neg);
@@ -3192,25 +3283,26 @@ table.data .right { font-variant-numeric: tabular-nums lining-nums; }
 }
 
 :root[data-theme="light"] {
-  --mark-structure: #4d68b8;
-  --mark-cost: #9aa0bd;
-  --mark-result: #c28d33;
+  /* Paper. The ramp inverts: result is now the darkest mark, same idea. */
+  --mark-structure: #8e8e8e;
+  --mark-cost: #b4b4b4;
+  --mark-result: #0a0a0a;
 
-  --series-1: #4d68b8;
+  --series-1: #0a0a0a;
   --channel-1: oklch(0.427 0.13 258);  /* facebook */
-  --series-2: #b98a2e;
+  --series-2: #4a4a4a;
   --channel-2: oklch(0.549 0.11 70);  /* google */
-  --series-3: #c56a3d;
+  --series-3: #7d7d7d;
   --channel-3: oklch(0.608 0.10 190);  /* tiktok */
-  --series-4: #7d5fb3;
+  --series-4: #262626;
   --channel-4: oklch(0.395 0.13 320);  /* email */
-  --series-5: #3d8ba0;
+  --series-5: #616161;
   --channel-5: oklch(0.574 0.11 130);  /* organic */
-  --series-6: #b8547a;
+  --series-6: #949494;
   --channel-6: oklch(0.656 0.035 220);  /* direct */
-  --series-7: #8a7a4a;
+  --series-7: #363636;
   --channel-7: oklch(0.514 0.13 25);  /* referral */
-  --series-8: #6a7396;
+  --series-8: #a8a8a8;
   --channel-8: oklch(0.355 0.12 285);  /* affiliate */
 }
 

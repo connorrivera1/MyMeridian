@@ -17,9 +17,17 @@ The seeded local demo is development-only. Production builds resolve its shop
 lookup to a fail-closed stub and scan every emitted server file; the build fails
 if the demo domain or seeded-authentication implementation survives bundling.
 
+Publisher operations live under a separate `/operator` security boundary with
+dedicated scrypt credentials, mandatory TOTP MFA, one-time-code replay
+protection, short-lived Strict sessions and append-only access auditing. Its
+business/system dashboard and store-support view expose aggregate status only;
+they deliberately exclude customer/order detail, merchant contact data, tokens,
+payloads and raw provider errors, and provide no arbitrary database editor. See
+[`docs/OPERATOR_SECURITY.md`](docs/OPERATOR_SECURITY.md).
+
 **Release status (verified 2026-08-11):** `npm run ci` passes type checking,
-coverage thresholds, 1,096 unit tests and the production build. The 57 opt-in
-database integration cases pass against a fresh PostgreSQL database after all 27
+coverage thresholds, 1,122 unit tests and the production build. The 61 opt-in
+database integration cases pass against a fresh PostgreSQL database after all 28
 migrations apply from empty. GitHub dependency, secret and Semgrep security
 checks are green. A real Shopify development store has passed embedded install,
 onboarding, zero-order full-history completion and the test-billing approval and

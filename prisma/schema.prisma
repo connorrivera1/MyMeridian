@@ -195,6 +195,7 @@ model Shop {
   merchantNotifications MerchantNotification[]
   connectorOAuthStates  ConnectorOAuthState[]
   securityAuditEvents   SecurityAuditEvent[]
+  operatorAuditEvents   OperatorAuditEvent[]
 
   @@index([domain])
 }
@@ -1167,6 +1168,58 @@ model SecurityAuditEvent {
 
   @@index([shopId, occurredAt])
   @@index([action, occurredAt])
+}
+
+/// Publisher-only browser session. This is deliberately unrelated to User,
+/// WebSession and ShopMembership: a merchant account must never become an
+/// operator account through a role edit or an OAuth callback.
+model OperatorSession {
+  id            String    @id @default(cuid())
+  tokenHash     String    @unique
+  actorHash     String
+  role          String
+  mfaAt         DateTime
+  createdAt     DateTime  @default(now())
+  lastSeenAt    DateTime  @default(now())
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  ipHash        String
+  userAgentHash String
+
+  @@index([actorHash, expiresAt])
+  @@index([expiresAt, revokedAt])
+}
+
+/// The most recent accepted TOTP counter for an operator identity. Keeping
+/// this outside the session closes same-code replay, including concurrent
+/// login attempts during the 30-second TOTP window.
+model OperatorMfaState {
+  actorHash           String   @id
+  lastAcceptedCounter BigInt
+  updatedAt           DateTime @updatedAt
+}
+
+/// Append-only evidence for every publisher login, dashboard read, store view
+/// and rejected privileged request. Actor/network identifiers are keyed hashes;
+/// neither the publisher email nor a raw IP/user-agent is retained here.
+model OperatorAuditEvent {
+  id            String   @id @default(cuid())
+  actorHash     String
+  action        String
+  resource      String
+  requestPath   String
+  outcome       String
+  reason        String?
+  shopId        String?
+  shop          Shop?    @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  ipHash        String
+  userAgentHash String
+  occurredAt    DateTime @default(now())
+
+  @@index([actorHash, occurredAt])
+  @@index([action, occurredAt])
+  @@index([shopId, occurredAt])
+  @@index([outcome, occurredAt])
 }
 
 /// Durable per-connector/day ad sync ledger. Redis schedules work, while this

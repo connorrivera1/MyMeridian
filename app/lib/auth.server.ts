@@ -93,6 +93,11 @@ export function looksLikeShopifyRequest(request: Request): boolean {
  * admin, which would bounce a demo visitor straight out of the app.
  */
 export function shouldLoadAppBridge(request: Request): boolean {
+  // Publisher routes are a separate top-level security boundary. Loading App
+  // Bridge here would make this look like a merchant surface and could let an
+  // admin iframe influence navigation on the one route that must never trust a
+  // merchant Shopify session.
+  if (new URL(request.url).pathname.startsWith("/operator")) return false;
   if (!hasShopifyCredentials) return false;
   if (demoAvailable && !looksLikeShopifyRequest(request)) return false;
   return true;

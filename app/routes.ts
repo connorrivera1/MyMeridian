@@ -39,6 +39,18 @@ export default [
   route("oauth/:provider", "routes/oauth.$provider.tsx"),
   route("oauth/:provider/callback", "routes/oauth.$provider.callback.tsx"),
 
+  /*
+   * Publisher operations. This namespace has its own password + TOTP session,
+   * never accepts Shopify or merchant web sessions, and contains no general
+   * database mutation route.
+   */
+  route("operator/login", "routes/operator.login.tsx"),
+  route("operator/logout", "routes/operator.logout.ts"),
+  route("operator", "routes/operator.layout.tsx", [
+    index("routes/operator.index.tsx"),
+    route("stores/:shopId", "routes/operator.stores.$shopId.tsx"),
+  ]),
+
   // Third-party data-source OAuth callbacks authenticate with one-use state;
   // they cannot require a Shopify iframe session because providers return in a
   // top-level browser context.

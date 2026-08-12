@@ -3,6 +3,7 @@ import { purgeFinishedRecalcJobs } from "~/lib/recalc-queue.server";
 import { purgeExpiredSecurityAuditEvents } from "~/lib/security-audit.server";
 import { purgeExpiredConnectorOAuthStates } from "~/lib/connector-oauth.server";
 import { purgeOldMerchantNotifications } from "~/lib/merchant-notifications.server";
+import { purgeExpiredOperatorSecurityData } from "~/lib/operator-auth.server";
 
 /**
  * The retention boundary is measured in days, but an hourly sweep keeps the
@@ -61,6 +62,17 @@ function beginSweep(): void {
     })
     .catch((error: unknown) => {
       console.error("[security] access-event purge failed", error);
+    })
+    .then(() => purgeExpiredOperatorSecurityData())
+    .then(({ sessions, auditEvents }) => {
+      if (sessions > 0 || auditEvents > 0) {
+        console.info(
+          `[operator-security] purged ${sessions} expired session(s) and ${auditEvents} expired audit event(s)`,
+        );
+      }
+    })
+    .catch((error: unknown) => {
+      console.error("[operator-security] retention purge failed", error);
     })
     .then(async () => {
       const [oauth, notifications] = await Promise.all([

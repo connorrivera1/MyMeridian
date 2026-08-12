@@ -25,3 +25,8 @@ with synthetic data instead.
 
 The complete operating procedure is in
 [`docs/INCIDENT_RESPONSE.md`](docs/INCIDENT_RESPONSE.md).
+
+The publisher-only dashboard has a separate password + TOTP boundary,
+append-only privileged-access ledger, PII-minimized read models and no database
+editing surface. Provisioning, review and response controls are documented in
+[`docs/OPERATOR_SECURITY.md`](docs/OPERATOR_SECURITY.md).

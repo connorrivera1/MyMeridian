@@ -12,8 +12,8 @@ is reconciled on the next polling cycle. Google Ads also needs its client id,
 secret, and developer token configured as deployment secrets.
 
 **Current snapshot, 2026-08-11.** This snapshot overrides stale "now" claims in
-the dated audit history below. Billing is enforced, the suite has 1,096 passing
-unit tests plus 57 passing opt-in PostgreSQL integration tests, all 27 migrations
+the dated audit history below. Billing is enforced, the suite has 1,122 passing
+unit tests plus 61 passing opt-in PostgreSQL integration tests, all 28 migrations
 apply to a fresh database, Docker and flyctl are installed, `read_all_orders` is
 approved, and the development app has passed a real Shopify install, onboarding,
 full-history import and test-billing approval/return flow. The remaining release
@@ -42,7 +42,7 @@ the ordered path from here to a submitted listing.
 | Check                             | Result                                                                                                                                                                                                                                                                                                                          |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `npm run ci`                      | **Passes** (2026-08-11): typecheck, coverage thresholds and production build.                                                                                                                                                                                                                                                   |
-| `npx vitest run`                  | **1,096 passed, 57 skipped**. The 57 skipped cases are opt-in PostgreSQL integration tests; the explicit real-PostgreSQL run passes **57/57** after applying all 27 migrations to a fresh database.                                                                                                                                  |
+| `npx vitest run`                  | **1,122 passed, 61 skipped**. The 61 skipped cases are opt-in PostgreSQL integration tests; the explicit real-PostgreSQL run passes **61/61** after applying all 28 migrations to a fresh database.                                                                                                                                  |
 | Billing enforcement               | **Implemented and tested.** `resolvePlan` reads/caches Billing API state, the app layout redirects stores without an active plan, `planAllows` enforces paid capabilities, and `/app/plan` calls `billing.request`. A real Shopify development-store test charge completed its approval and return flow without moving money. |
 | `npx shopify app config validate` | **Passes.** On CLI 4.x, `app config` has `link`, `pull`, `use`, and `validate`; **there is no `config push`**. Config is published by `shopify app deploy` because `include_config_on_deploy = true`.                                                                                                                           |
 | Docker / flyctl                   | **Installed.** Docker CLI 29.7.1 and flyctl 0.4.79 are present. The image was previously built and booted locally (§11); the Docker daemon was stopped during this verification. flyctl is not authenticated (`fly auth whoami` returns `no access token available`).                                                           |
@@ -240,6 +240,14 @@ MERIDIAN_PROD_ORIGIN="https://${MERIDIAN_FLY_APP}.fly.dev"
 # `fly secrets set` command.
 MERIDIAN_ENCRYPTION_KEY="<stable value retrieved from credential vault>"
 MERIDIAN_CUSTOMER_ERASURE_KEY="<stable value retrieved from credential vault>"
+# Generate these four once with:
+#   npm run operator:provision -- publisher@example.com
+# Enroll the printed authenticator URI, then retrieve every value from the
+# production credential vault. Never paste the URI or raw password into Git.
+MERIDIAN_OPERATOR_EMAIL="<publisher email>"
+MERIDIAN_OPERATOR_PASSWORD_HASH="<scrypt hash>"
+MERIDIAN_OPERATOR_TOTP_SECRET="<base32 TOTP secret>"
+MERIDIAN_OPERATOR_SESSION_KEY="<stable 256-bit session and audit HMAC key>"
 
 # 2. Authenticate, create the app shell, and provision managed Postgres.
 fly auth login
@@ -262,6 +270,10 @@ fly secrets set \
   DIRECT_DATABASE_URL="<direct URL from the MPG Connect tab>" \
   MERIDIAN_ENCRYPTION_KEY="$MERIDIAN_ENCRYPTION_KEY" \
   MERIDIAN_CUSTOMER_ERASURE_KEY="$MERIDIAN_CUSTOMER_ERASURE_KEY" \
+  MERIDIAN_OPERATOR_EMAIL="$MERIDIAN_OPERATOR_EMAIL" \
+  MERIDIAN_OPERATOR_PASSWORD_HASH="$MERIDIAN_OPERATOR_PASSWORD_HASH" \
+  MERIDIAN_OPERATOR_TOTP_SECRET="$MERIDIAN_OPERATOR_TOTP_SECRET" \
+  MERIDIAN_OPERATOR_SESSION_KEY="$MERIDIAN_OPERATOR_SESSION_KEY" \
   MERIDIAN_SUPPORT_EMAIL="<Meridian's monitored inbox on its final domain>" \
   MERIDIAN_LEGAL_ENTITY="<Meridian's actual publishing entity>" \
   --app "$MERIDIAN_FLY_APP"
@@ -499,8 +511,8 @@ them because the work landed:
    at the last and most important step.
 2. **Test count.** v1 said 178 tests in 16 files and this section previously
    recorded intermediate milestones. The current baseline is the §1 result:
-   **1,096 passed and 57 skipped** in the default run; the explicit
-   real-PostgreSQL integration run passes **57/57** after all 27 migrations.
+   **1,122 passed and 61 skipped** in the default run; the explicit
+   real-PostgreSQL integration run passes **61/61** after all 28 migrations.
 3. **`Shop.syncCursor` is no longer write-only.** v1 listed "written but never
    read" as a fast-follow. Commit `200a350` reads it; an interrupted import now
    resumes from the cursor instead of restarting.
@@ -631,10 +643,10 @@ blocks knowing the backfill survives real data. Phases 3 and 4 run alongside.
 
 ## Where this leaves it
 
-The local code gate is green: `npm run ci` passes, with 1,096 unit tests passing
+The local code gate is green: `npm run ci` passes, with 1,122 unit tests passing
 and 57 opt-in integration tests skipped, coverage thresholds met, and a clean
-production build. The explicit real-PostgreSQL integration run passes 57/57
-against a fresh database after all 27 migrations. Billing is enforced in code
+production build. The explicit real-PostgreSQL integration run passes 61/61
+against a fresh database after all 28 migrations. Billing is enforced in code
 and its Shopify test-charge approval/return flow has been exercised.
 
 What remains before submission is infrastructure, external approval, business

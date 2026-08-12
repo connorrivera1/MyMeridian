@@ -5,6 +5,7 @@ const purgeFinishedRecalcJobs = vi.fn();
 const purgeExpiredSecurityAuditEvents = vi.fn();
 const purgeExpiredConnectorOAuthStates = vi.fn();
 const purgeOldMerchantNotifications = vi.fn();
+const purgeExpiredOperatorSecurityData = vi.fn();
 
 vi.mock("~/lib/data-request.server", () => ({
   purgeExpiredDataRequests: (...args: unknown[]) => purgeExpiredDataRequests(...args),
@@ -24,6 +25,10 @@ vi.mock("~/lib/merchant-notifications.server", () => ({
   purgeOldMerchantNotifications: (...args: unknown[]) =>
     purgeOldMerchantNotifications(...args),
 }));
+vi.mock("~/lib/operator-auth.server", () => ({
+  purgeExpiredOperatorSecurityData: (...args: unknown[]) =>
+    purgeExpiredOperatorSecurityData(...args),
+}));
 
 const {
   dataRetentionSettled,
@@ -39,6 +44,10 @@ beforeEach(() => {
   purgeExpiredSecurityAuditEvents.mockResolvedValue(0);
   purgeExpiredConnectorOAuthStates.mockResolvedValue(0);
   purgeOldMerchantNotifications.mockResolvedValue(0);
+  purgeExpiredOperatorSecurityData.mockResolvedValue({
+    sessions: 0,
+    auditEvents: 0,
+  });
   stopDataRetentionScheduler();
 });
 
@@ -139,5 +148,27 @@ describe("recalculation job retention", () => {
     await dataRetentionSettled();
 
     expect(purgeExpiredDataRequests).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("operator security retention", () => {
+  it("purges expired operator sessions and audit evidence on every sweep", async () => {
+    startDataRetentionScheduler(60_000);
+    await dataRetentionSettled();
+    expect(purgeExpiredOperatorSecurityData).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    await dataRetentionSettled();
+    expect(purgeExpiredOperatorSecurityData).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not let an operator purge failure stop other retention work", async () => {
+    purgeExpiredOperatorSecurityData.mockRejectedValue(
+      new Error("operator retention unavailable"),
+    );
+    startDataRetentionScheduler(60_000);
+    await dataRetentionSettled();
+    expect(purgeExpiredConnectorOAuthStates).toHaveBeenCalledTimes(1);
+    expect(purgeOldMerchantNotifications).toHaveBeenCalledTimes(1);
   });
 });

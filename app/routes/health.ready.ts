@@ -1,4 +1,5 @@
 import prisma from "~/db.server";
+import { operatorConfiguration } from "~/lib/operator-config";
 
 const PRODUCTION_REQUIRED = [
   "DATABASE_URL",
@@ -7,6 +8,10 @@ const PRODUCTION_REQUIRED = [
   "SHOPIFY_APP_URL",
   "MERIDIAN_ENCRYPTION_KEY",
   "MERIDIAN_CUSTOMER_ERASURE_KEY",
+  "MERIDIAN_OPERATOR_EMAIL",
+  "MERIDIAN_OPERATOR_PASSWORD_HASH",
+  "MERIDIAN_OPERATOR_TOTP_SECRET",
+  "MERIDIAN_OPERATOR_SESSION_KEY",
 ] as const;
 
 export function readinessConfiguration(env: NodeJS.ProcessEnv = process.env): {
@@ -24,6 +29,8 @@ export function readinessConfiguration(env: NodeJS.ProcessEnv = process.env): {
       missing.push("SHOPIFY_APP_URL_VALID");
     }
   }
+  const operator = operatorConfiguration(env);
+  for (const name of operator.invalid) missing.push(`${name}_VALID`);
   return { ready: missing.length === 0, missing };
 }
 

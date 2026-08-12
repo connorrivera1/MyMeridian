@@ -3,6 +3,7 @@ import {
   ApiVersion,
   AppDistribution,
   BillingInterval,
+  BillingReplacementBehavior,
   DeliveryMethod,
   shopifyApp,
 } from "@shopify/shopify-app-react-router/server";
@@ -13,6 +14,8 @@ import {
   PLANS,
   TRIAL_DAYS,
   ANNUAL_SUFFIX,
+  CHANGE_SUFFIX,
+  NEXT_CYCLE_SUFFIX,
   USAGE_CAP_AMOUNT,
   USAGE_TERMS,
 } from "./lib/plans";
@@ -31,6 +34,9 @@ export {
   basePlanId,
   type PlanId,
   type BillingKey,
+  billingKeyInfo,
+  changeKey,
+  nextCycleKey,
 } from "./lib/plans";
 
 /**
@@ -80,8 +86,11 @@ function buildShopify() {
      * price change in plans.ts cannot desync from what Shopify charges: these
      * three literals were exactly the kind of duplication that drifts.
      *
-     * Both intervals carry the same trial. Shopify prorates a mid-cycle switch
-     * between them and shows the merchant the amount before confirming.
+     * The normal keys are used only for a first subscription and carry the
+     * 14-day trial. A `-change` key replaces an existing plan without a second
+     * trial. Its `-next-cycle` companion is used only for a downgrade, which
+     * preserves the current plan until the next billing cycle. Shopify shows
+     * that timing before a merchant confirms.
      */
     billing: Object.fromEntries(
       Object.values(PLANS).flatMap((plan) => [
@@ -121,6 +130,82 @@ function buildShopify() {
               },
             ],
             trialDays: TRIAL_DAYS,
+          },
+        ],
+        [
+          `${plan.id}${CHANGE_SUFFIX}`,
+          {
+            lineItems: [
+              {
+                amount: plan.price,
+                currencyCode: "USD",
+                interval: BillingInterval.Every30Days,
+              },
+              {
+                amount: USAGE_CAP_AMOUNT,
+                currencyCode: "USD",
+                interval: BillingInterval.Usage,
+                terms: USAGE_TERMS,
+              },
+            ],
+          },
+        ],
+        [
+          `${plan.id}${ANNUAL_SUFFIX}${CHANGE_SUFFIX}`,
+          {
+            lineItems: [
+              {
+                amount: plan.annualPrice,
+                currencyCode: "USD",
+                interval: BillingInterval.Annual,
+              },
+              {
+                amount: USAGE_CAP_AMOUNT,
+                currencyCode: "USD",
+                interval: BillingInterval.Usage,
+                terms: USAGE_TERMS,
+              },
+            ],
+          },
+        ],
+        [
+          `${plan.id}${NEXT_CYCLE_SUFFIX}`,
+          {
+            lineItems: [
+              {
+                amount: plan.price,
+                currencyCode: "USD",
+                interval: BillingInterval.Every30Days,
+              },
+              {
+                amount: USAGE_CAP_AMOUNT,
+                currencyCode: "USD",
+                interval: BillingInterval.Usage,
+                terms: USAGE_TERMS,
+              },
+            ],
+            replacementBehavior:
+              BillingReplacementBehavior.ApplyOnNextBillingCycle,
+          },
+        ],
+        [
+          `${plan.id}${ANNUAL_SUFFIX}${NEXT_CYCLE_SUFFIX}`,
+          {
+            lineItems: [
+              {
+                amount: plan.annualPrice,
+                currencyCode: "USD",
+                interval: BillingInterval.Annual,
+              },
+              {
+                amount: USAGE_CAP_AMOUNT,
+                currencyCode: "USD",
+                interval: BillingInterval.Usage,
+                terms: USAGE_TERMS,
+              },
+            ],
+            replacementBehavior:
+              BillingReplacementBehavior.ApplyOnNextBillingCycle,
           },
         ],
       ]),

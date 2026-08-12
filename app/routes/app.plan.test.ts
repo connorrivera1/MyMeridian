@@ -4,6 +4,7 @@ import type { ShopContext } from "~/lib/auth.server";
 
 const requireShopContext = vi.fn();
 const resolveBillingChargeMode = vi.fn();
+const resolvePlan = vi.fn();
 const firstDeniedRequestLimit = vi.fn();
 const recordSensitiveAction = vi.fn();
 
@@ -19,7 +20,7 @@ vi.mock("~/lib/plan.server", () => ({
   billingIsTestForShop: vi.fn(() => false),
   resolveBillingChargeMode: (...args: unknown[]) =>
     resolveBillingChargeMode(...args),
-  resolvePlan: vi.fn(),
+  resolvePlan: (...args: unknown[]) => resolvePlan(...args),
 }));
 vi.mock("~/lib/rate-limit.server", () => ({
   firstDeniedRequestLimit: (...args: unknown[]) =>
@@ -58,6 +59,8 @@ function context() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resolvePlan.mockReset();
+  resolvePlan.mockResolvedValue({ planId: null, isDemo: false });
   firstDeniedRequestLimit.mockResolvedValue(null);
   recordSensitiveAction.mockResolvedValue(undefined);
   vi.stubEnv("APP_URL", "");
@@ -68,7 +71,8 @@ describe("plan charge action", () => {
   it("uses the freshly resolved store type for the charge", async () => {
     const { ctx, billingRequest } = context();
     requireShopContext.mockResolvedValue(ctx);
-    resolveBillingChargeMode.mockResolvedValue(false);
+  resolveBillingChargeMode.mockResolvedValue(false);
+  resolvePlan.mockResolvedValue({ planId: null, isDemo: false });
     billingRequest.mockResolvedValue(new Response(null, { status: 302 }));
 
     await action({ request: request("growth") } as never);
@@ -90,6 +94,28 @@ describe("plan charge action", () => {
       expect.objectContaining({
         action: "BILLING_PLAN_CHANGE_REQUESTED",
         resource: "plan:growth",
+      }),
+    );
+  });
+
+  it("accepts a downgrade that Shopify applies on the next billing cycle", async () => {
+    const { ctx, billingRequest } = context();
+    requireShopContext.mockResolvedValue(ctx);
+    resolvePlan.mockResolvedValue({ planId: "scale", isDemo: false });
+    resolveBillingChargeMode.mockResolvedValue(false);
+    billingRequest.mockResolvedValue(new Response(null, { status: 302 }));
+
+    await action({ request: request("starter-next-cycle") } as never);
+
+    expect(billingRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        plan: "starter-next-cycle",
+        isTest: false,
+      }),
+    );
+    expect(recordSensitiveAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resource: "plan:starter-next-cycle",
       }),
     );
   });
@@ -131,6 +157,17 @@ describe("plan charge action", () => {
 
     await expect(
       action({ request: request("growth-weekly") } as never),
+    ).resolves.toEqual({ error: "That plan does not exist." });
+    expect(resolveBillingChargeMode).not.toHaveBeenCalled();
+    expect(billingRequest).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed deferred billing keys", async () => {
+    const { ctx, billingRequest } = context();
+    requireShopContext.mockResolvedValue(ctx);
+
+    await expect(
+      action({ request: request("growth-next-cycle-annual") } as never),
     ).resolves.toEqual({ error: "That plan does not exist." });
     expect(resolveBillingChargeMode).not.toHaveBeenCalled();
     expect(billingRequest).not.toHaveBeenCalled();

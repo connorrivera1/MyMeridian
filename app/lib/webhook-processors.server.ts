@@ -8,7 +8,7 @@ import {
   recordDataRequest,
 } from "~/lib/data-request.server";
 import { redactCustomerEverywhere } from "~/lib/customer-erasure.server";
-import { ANNUAL_SUFFIX } from "~/lib/plans";
+import { billingKeyIsAnnual } from "~/lib/plans";
 import { capabilitiesForShop, parseScopes } from "~/lib/scopes";
 import { synchroniseShopifyShippingConnector } from "~/lib/provision.server";
 import {
@@ -310,7 +310,7 @@ export async function processAppSubscriptionsWebhook({
     );
   }
 
-  const interval = (sub.name ?? "").trim().toLowerCase().endsWith(ANNUAL_SUFFIX)
+  const interval = billingKeyIsAnnual((sub.name ?? "").trim().toLowerCase())
     ? "annual"
     : "monthly";
   const data = {

@@ -6,6 +6,7 @@ process.env.SHOPIFY_APP_URL = "https://meridian-test.example.com";
 process.env.SCOPES = "read_orders,read_products";
 
 const { planIdForSubscriptionName } = await import("./billing.server");
+const { billingKeyIsAnnual } = await import("./plans");
 
 /**
  * Plan selection happens on Shopify's billing screen, so the subscription name
@@ -63,5 +64,33 @@ describe("planIdForSubscriptionName: annual keys", () => {
   it("does not invent a plan for an annual-looking unknown", () => {
     expect(planIdForSubscriptionName("enterprise-annual")).toBeNull();
     expect(planIdForSubscriptionName("-annual")).toBeNull();
+  });
+});
+
+describe("planIdForSubscriptionName: deferred downgrade keys", () => {
+  it("maps a next-cycle monthly key to its entitlement plan", () => {
+    expect(planIdForSubscriptionName("starter-next-cycle")).toBe("starter");
+  });
+
+  it("maps a next-cycle annual key to its entitlement plan", () => {
+    expect(planIdForSubscriptionName("growth-annual-next-cycle")).toBe(
+      "growth",
+    );
+  });
+});
+
+describe("planIdForSubscriptionName: plan-change keys", () => {
+  it("maps a replacement key to its entitlement plan", () => {
+    expect(planIdForSubscriptionName("growth-change")).toBe("growth");
+  });
+});
+
+describe("billingKeyIsAnnual", () => {
+  it("keeps an annual deferred downgrade on the annual interval", () => {
+    expect(billingKeyIsAnnual("growth-annual-next-cycle")).toBe(true);
+  });
+
+  it("keeps a monthly deferred downgrade on the monthly interval", () => {
+    expect(billingKeyIsAnnual("starter-next-cycle")).toBe(false);
   });
 });

@@ -15,7 +15,14 @@ import {
   resolveBillingChargeMode,
   resolvePlan,
 } from "~/lib/plan.server";
-import { annualKey, basePlanId, PLANS, type BillingKey } from "~/lib/plans";
+import {
+  annualKey,
+  billingKeyInfo,
+  changeKey,
+  nextCycleKey,
+  PLANS,
+  type BillingKey,
+} from "~/lib/plans";
 import { publicAppOrigin } from "~/lib/public-origin.server";
 import {
   firstDeniedRequestLimit,
@@ -31,9 +38,10 @@ import { recordSensitiveAction } from "~/lib/security-audit.server";
  * Shopify's App Store requirements are explicit that a merchant must be able to
  * change plans in both directions without contacting support, and that charge
  * approval must not open in a pop-up. `billing.request` satisfies both: it
- * returns a redirect to Shopify's own confirmation page, and requesting a
- * different plan replaces the existing subscription, so the same three buttons
- * serve as upgrade and downgrade.
+ * returns a redirect to Shopify's own confirmation page. Upgrades use
+ * Shopify's normal immediate/prorated replacement while a downgrade is sent
+ * using the separate next-cycle billing key, so the merchant keeps their
+ * current plan until the next billing cycle.
  */
 export async function loader({ request }: LoaderFunctionArgs) {
   return withShopContext(request, async (ctx) => {
@@ -66,11 +74,37 @@ export async function action({ request }: ActionFunctionArgs) {
     const form = await request.formData();
     const requested = String(form.get("plan") ?? "");
 
-    // `requested` is a billing key: a plan id, or a plan id with the annual
-    // suffix. Validating via basePlanId accepts exactly those and nothing else —
-    // a crafted "starter-weekly" resolves to null, not to a charge.
-    if (!basePlanId(requested)) {
+    // A billing key names a plan/interval and, for lower-tier changes, can
+    // carry the next-cycle suffix. It must match one of the exact keys in the
+    // server billing configuration — a crafted "starter-weekly" must never
+    // resolve to a charge.
+    const requestedPlan = billingKeyInfo(requested);
+    if (!requestedPlan) {
       return { error: "That plan does not exist." };
+    }
+
+    // A plan-change key carries no trial days; an initial key does. Enforce
+    // that distinction on the server rather than trusting the hidden form
+    // field, so a merchant cannot manufacture a second trial or request an
+    // immediate downgrade by editing the page.
+    const current = await resolvePlan(ctx);
+    if (current.planId) {
+      const isDowngrade =
+        PLANS[requestedPlan.planId].price < PLANS[current.planId].price;
+      const expectedKind = isDowngrade ? "downgrade" : "change";
+
+      if (requestedPlan.planId === current.planId) {
+        return { error: "You are already on that plan." };
+      }
+      if (requestedPlan.kind !== expectedKind) {
+        return {
+          error: isDowngrade
+            ? "Downgrades take effect at the next billing cycle."
+            : "Plan changes must be confirmed through Shopify.",
+        };
+      }
+    } else if (requestedPlan.kind !== "initial") {
+      return { error: "Start with a plan before changing it." };
     }
 
     const limited = await firstDeniedRequestLimit({
@@ -140,8 +174,9 @@ export default function Plan() {
       ) : data.currentPlan ? (
         <Banner>
           You are on <strong>{PLANS[data.currentPlan].name}</strong>. Choosing a
-          different plan replaces your subscription — Shopify prorates the
-          change and shows you the amount before you confirm.
+          higher plan takes effect after Shopify confirms it. A downgrade takes
+          effect at your next billing cycle, so you keep your current plan until
+          then. Shopify shows the timing and amount before you confirm.
         </Banner>
       ) : (
         <Banner tone="warn">
@@ -187,6 +222,16 @@ export default function Plan() {
       <div className="grid cols-3">
         {data.plans.map((plan) => {
           const current = data.currentPlan === plan.id;
+          const isDowngrade = Boolean(
+            data.currentPlan &&
+              plan.price < (PLANS[data.currentPlan].price ?? 0),
+          );
+          const selectedKey = yearly ? annualKey(plan.id) : plan.id;
+          const billingKey = isDowngrade
+            ? nextCycleKey(selectedKey)
+            : data.currentPlan
+              ? changeKey(selectedKey)
+              : selectedKey;
 
           return (
             <div className="card plan-card" key={plan.id}>
@@ -250,18 +295,25 @@ export default function Plan() {
                     <input
                       type="hidden"
                       name="plan"
-                      value={yearly ? annualKey(plan.id) : plan.id}
+                      value={billingKey}
                     />
                     <button
                       className={data.currentPlan ? "btn sm" : "btn primary sm"}
-                      disabled={busy || data.isDemo}
+                      disabled={busy}
                     >
                       {!data.currentPlan
                         ? `Start 14-day trial`
-                        : plan.price > (PLANS[data.currentPlan].price ?? 0)
+                        : isDowngrade
+                          ? `Downgrade to ${plan.name}`
+                          : plan.price > (PLANS[data.currentPlan].price ?? 0)
                           ? `Upgrade to ${plan.name}`
                           : `Switch to ${plan.name}`}
                     </button>
+                    {isDowngrade && (
+                      <p className="tiny muted plan-change-note">
+                        Takes effect next billing cycle.
+                      </p>
+                    )}
                   </Form>
                 )}
               </div>

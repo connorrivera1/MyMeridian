@@ -221,7 +221,7 @@ describe("Costs page", () => {
 
   it("shows a proposal with the evidence behind it, and does not present it as applied", () => {
     const html = render();
-    expect(html).toContain("Proposed bundle");
+    expect(html).toContain("Proposed Bundle");
     expect(html).toContain("matches &quot;WIDGET&quot; ×3");
     expect(html).toContain("Confirm");
   });
@@ -296,7 +296,7 @@ describe("Costs actions", () => {
     )) as { ok: boolean; message: string };
 
     expect(result.message).toContain("2026-01-15");
-    expect(result.message).toContain("Restate history");
+    expect(result.message).toContain("Restate History");
     expect(enqueueRestatement).not.toHaveBeenCalled();
   });
 

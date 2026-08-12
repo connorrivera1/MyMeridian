@@ -265,7 +265,7 @@ async function updateCosts(request: Request, ctx: ShopContext) {
               .slice(
                 0,
                 10,
-              )}. Reported figures have not moved — use Restate history to apply it.`
+              )}. Reported figures have not moved — use Restate History to apply it.`
           : "Saved. It takes effect from the date you chose; nothing historical has changed.",
         divergedFrom: result.divergedFrom.toISOString(),
       };
@@ -459,7 +459,7 @@ const SOURCE_LABEL: Record<string, string> = {
 };
 
 const JOB_LABEL: Record<string, string> = {
-  COST_RESTATEMENT: "Restate history",
+  COST_RESTATEMENT: "Restate History",
   BUNDLE_ROLLUP: "Re-derive bundle costs",
   BUNDLE_DETECTION: "Scan for bundles",
 };
@@ -503,14 +503,14 @@ export function CostsView({
       )}
 
       <Card
-        title="Restate history"
+        title="Restate History"
         hint="Re-derives every order's COGS from the cost timeline as it stood on the day that order was placed, then re-materialises profit. Each affected month is frozen as-reported first."
       >
         <Form method="post" className="stack">
           <input type="hidden" name="intent" value="restate" />
           <span className="row" style={{ gap: 16, flexWrap: "wrap" }}>
             <Field
-              label="Restate from"
+              label="Restate From"
               name="from"
               type="date"
               defaultValue={today}
@@ -530,17 +530,17 @@ export function CostsView({
               style={{ gap: 6, alignSelf: "flex-end", paddingBottom: 8 }}
             >
               <input type="checkbox" name="includeClosed" />
-              <span className="tiny muted">Include closed periods</span>
+              <span className="tiny muted">Include Closed Periods</span>
             </label>
           </span>
           <button className="btn primary" disabled={busy}>
-            Restate history
+            Restate History
           </button>
         </Form>
       </Card>
 
       <Card
-        title="Cost history"
+        title="Cost History"
         hint={
           data.variantCount > data.variantsShown
             ? `Showing ${data.variantsShown.toLocaleString()} of ${data.variantCount.toLocaleString()} variants.`
@@ -556,10 +556,10 @@ export function CostsView({
               <thead>
                 <tr>
                   <th>Variant</th>
-                  <th className="right">Cost today</th>
+                  <th className="right">Cost Today</th>
                   <th>Source</th>
                   <th>History</th>
-                  <th>New cost</th>
+                  <th>New Cost</th>
                 </tr>
               </thead>
               <tbody>
@@ -652,13 +652,13 @@ export function CostsView({
       </Card>
 
       <Card
-        title="Bundles and multi-packs"
+        title="Bundles & Multi-Packs"
         hint="A multi-pack costs what its components cost. Map one once and every future component cost change flows through it automatically, at every level of nesting."
       >
         <Form method="post" className="stack">
           <input type="hidden" name="intent" value="detect-bundles" />
           <button className="btn" disabled={busy}>
-            Scan the catalog for multi-packs
+            Scan the Catalog for Multi-Packs
           </button>
         </Form>
 
@@ -667,7 +667,7 @@ export function CostsView({
             <table className="data">
               <thead>
                 <tr>
-                  <th>Proposed bundle</th>
+                  <th>Proposed Bundle</th>
                   <th>Contains</th>
                   <th className="right">Qty</th>
                   <th>Why</th>
@@ -779,13 +779,13 @@ export function CostsView({
             />
           </span>
           <button className="btn primary" disabled={busy}>
-            Add mapping
+            Add Mapping
           </button>
         </Form>
       </Card>
 
       <Card
-        title="Reported periods"
+        title="Reported Periods"
         hint="What each month said when it was frozen. These figures never change; a restatement records its effect separately. Closing a month refuses any later restatement that would move it."
         flush
       >
@@ -802,9 +802,9 @@ export function CostsView({
                   <th>Month</th>
                   <th></th>
                   <th className="right">Orders</th>
-                  <th className="right">Revenue as reported</th>
-                  <th className="right">COGS as reported</th>
-                  <th className="right">Net profit as reported</th>
+                  <th className="right">Revenue as Reported</th>
+                  <th className="right">COGS as Reported</th>
+                  <th className="right">Net Profit as Reported</th>
                   <th className="right">Restatements</th>
                   <th></th>
                 </tr>
@@ -871,7 +871,7 @@ export function CostsView({
       </Card>
 
       <Card
-        title="Restatement history"
+        title="Restatement History"
         hint="Append-only. Every correction that moved a month, and by how much."
         flush
       >
@@ -886,9 +886,9 @@ export function CostsView({
                   <th>Month</th>
                   <th>Reason</th>
                   <th className="right">Orders</th>
-                  <th className="right">COGS before</th>
-                  <th className="right">COGS after</th>
-                  <th className="right">Net profit change</th>
+                  <th className="right">COGS Before</th>
+                  <th className="right">COGS After</th>
+                  <th className="right">Net Profit Change</th>
                 </tr>
               </thead>
               <tbody>
@@ -926,7 +926,7 @@ export function CostsView({
 
       {data.jobs.length > 0 && (
         <Card
-          title="Background recalculations"
+          title="Background Recalculations"
           hint="Restatements and bundle rollups run off the request thread and survive a deploy."
           flush
         >

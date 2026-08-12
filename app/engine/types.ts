@@ -22,7 +22,7 @@ export const CHANNEL_LABELS: Record<Channel, string> = {
   GOOGLE: "Google Ads",
   TIKTOK: "TikTok Ads",
   EMAIL: "Email",
-  ORGANIC_SEARCH: "Organic search",
+  ORGANIC_SEARCH: "Organic Search",
   DIRECT: "Direct",
   REFERRAL: "Referral",
   AFFILIATE: "Affiliate",

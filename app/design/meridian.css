@@ -3648,6 +3648,10 @@ button.chip:active { transform: scale(0.98); }
 .legend-swatch { border-radius: 3px; width: 9px; height: 9px; }
 .estimate-flag { border-radius: 50%; width: 5px; height: 5px; }
 
+/* A flush chart card still needs its legend to align with the plot, rather
+   than beginning against the card rule. */
+.chart-legend-inset { padding-inline: var(--s-4); }
+
 /* Inputs and selects share the field radius so a form reads as one object. */
 input,
 select,

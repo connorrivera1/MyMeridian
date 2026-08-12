@@ -194,13 +194,15 @@ export function FulfilmentView({ data }: { data: FulfilmentData }) {
         hint="Solid region is history; shaded region is the next 14 days, projected from trailing demand with your weekday pattern applied."
         flush
       >
-        <Legend
-          items={[
-            { label: "Orders received", color: "var(--mark-structure)" },
-            { label: "Backlog", color: "var(--delta-down)" },
-            { label: "Capacity ceiling", color: "var(--status-warning)" },
-          ]}
-        />
+        <div className="chart-legend-inset">
+          <Legend
+            items={[
+              { label: "Orders received", color: "var(--mark-structure)" },
+              { label: "Backlog", color: "var(--delta-down)" },
+              { label: "Capacity ceiling", color: "var(--status-warning)" },
+            ]}
+          />
+        </div>
         <div style={{ padding: "4px 16px 14px" }}>
           <CapacityChart
             history={data.history.map((day) => ({

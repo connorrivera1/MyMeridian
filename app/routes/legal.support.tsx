@@ -47,7 +47,7 @@ export default function Support() {
           <strong>History only reaches back 60 days.</strong> MyMeridian is
           approved for <code>read_all_orders</code>, but an installation created
           before that approval may still need to grant the updated scope. Open
-          <em> Costs &amp; connections</em> to see the scopes this store granted.
+          <em>Costs &amp; connections</em> to see the scopes this store granted.
         </li>
         <li>
           <strong>Acquisition shows no customer acquisition cost.</strong> CAC,
@@ -59,9 +59,11 @@ export default function Support() {
           <strong>Numbers disagree with Shopify&rsquo;s own reports.</strong>{" "}
           They are measuring different things. Shopify reports gross sales;{" "}
           {APP_NAME} reports what is left after cost of goods, shipping, pick
-          and pack, payment fees and overhead. This release has no ad-spend
-          connector, so <em>Overview</em> labels the result as profit before
-          paid marketing and shows ad spend as unavailable rather than zero.
+          and pack, payment fees, overhead and any paid-marketing spend that a
+          connected Meta, Google or TikTok source has successfully synced. If
+          no source has completed a sync, <em>Overview</em> labels the result as
+          profit before paid marketing and shows ad spend as unavailable rather
+          than zero. It never treats an unconnected account as zero spend.
         </li>
         <li>
           <strong>A new product shows no cost.</strong> Set{" "}

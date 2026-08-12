@@ -16,7 +16,7 @@ representative order-volume backfill. Where a claim below says "verified", the
 level is named. See _What has not been tested_ at the end.
 
 **Current local gate:** `npm run ci` passes — typecheck, coverage thresholds,
-1,085 unit tests and production build. The explicit real-PostgreSQL run passes
+1,096 unit tests and production build. The explicit real-PostgreSQL run passes
 all 57 opt-in integration cases after all 27 migrations apply from empty.
 Billing is no longer merely declared:
 `resolvePlan`, the layout subscription redirect, the `planAllows`
@@ -327,14 +327,13 @@ Also re-confirmed while scoping this: known gap #7's other half,
 is already stale — `app/routes/webhooks.hmac.test.ts` (commit `d075cc4`)
 covers exactly that. Text below corrected to match.
 
-What's still genuinely untested: 20 of 21 route loaders remain uncovered
-(`app.orders.tsx`, `app.products.tsx`, `app.fulfilment.tsx`,
-`app.acquisition.tsx`, `app.pricing.tsx`, `app.settings.tsx`, `app.plan.tsx`,
-`app.layout.tsx`, `auth.*`, `home.tsx`, `legal.*`) — most are thin wrappers
-over `loadDashboard` or already-tested pieces, but none has a test asserting
-that wiring specifically. `loadEngineOrders` still protects the full-hydration
-path, while larger windows switch to the verified materialized ledger and SQL
-product roll-up; whole-history recompute is merchant-month chunked.
+That route-coverage snapshot is no longer current. Dedicated server-rendered or
+loader/action tests now cover Overview, Orders, Products, Acquisition, Pricing,
+Settings, Plan, Layout, both Privacy-request routes, Fulfilment, the embedded
+Shopify login entry, the marketing-home resource route, and both legal wrappers.
+`loadEngineOrders` still protects the full-hydration path, while larger windows
+switch to the verified materialized ledger and SQL product roll-up;
+whole-history recompute is merchant-month chunked.
 
 Baseline before this change: typecheck clean, vitest 348/348 in 29 files,
 `verify-data.ts` exit 0 twice, byte-identical
@@ -1131,7 +1130,7 @@ the bug, and why the third row of that table matches.
 | GraphQL Admin API only                     | Done      | No REST calls anywhere; new public apps may not use REST                                                                                                                                                                                                                                                                                                                                                                     |
 | Webhook API version                        | Done      | `2026-07`, matching `@shopify/shopify-api` 13.1.0                                                                                                                                                                                                                                                                                                                                                                            |
 | Production build                           | Done      | `npm run ci` production build clean on 2026-08-11                                                                                                                                                                                                                                                                                                                                                                            |
-| Test suite                                 | Done      | **1,085 unit tests passed and 57 opt-in PostgreSQL integration tests skipped; explicit real-PostgreSQL suite 57/57 after all 27 migrations** (verified 2026-08-11)                                                                                                                                                                                                                                                        |
+| Test suite                                 | Done      | **1,096 unit tests passed and 57 opt-in PostgreSQL integration tests skipped; explicit real-PostgreSQL suite 57/57 after all 27 migrations** (verified 2026-08-11)                                                                                                                                                                                                                                                        |
 | Engine output unchanged by the query work  | Done      | `npx tsx scripts/verify-data.ts` against live Postgres, diffed byte-for-byte against its output before the change                                                                                                                                                                                                                                                                                                            |
 | Typecheck                                  | Done      | Clean in `npm run ci` on 2026-08-11                                                                                                                                                                                                                                                                                                                                                                                          |
 | Config validity                            | Done      | `shopify app config validate` passes on 2026-08-10; CLI 4.x publishes config through `shopify app deploy`, not the removed `config push` command                                                                                                                                                                                                                                                                             |
@@ -1167,13 +1166,14 @@ thrown from the same function that throws the 401.
    heartbeat, owner-fenced writes and cursor-preserving takeover, so a Fly
    restart is recoverable; recompute preflights and processes one merchant-local
    month at a time. A serverless host would still need a durable job queue.
-4. **Browser-level platform E2E is partial.** Server-rendered route tests
-   now cover Overview, Orders, Products, Acquisition, Pricing, Settings, Plan,
-   Layout and both Privacy-request routes; chart labels have explicit timezone
-   and one-point regressions. Fulfilment, auth/home and legal wrappers still lack
-   dedicated route tests. A real embedded install, onboarding, zero-order
-   full-history completion and Shopify test billing have run; production
-   webhooks and representative order-volume import remain unproved.
+4. **Browser-level platform E2E is partial.** Server-rendered route tests now
+   cover Overview, Orders, Products, Acquisition, Pricing, Settings, Plan,
+   Layout, both Privacy-request routes, Fulfilment, the embedded Shopify login
+   entry, the marketing-home resource route and both legal wrappers; chart
+   labels have explicit timezone and one-point regressions. A real embedded
+   install, onboarding, zero-order full-history completion and Shopify test
+   billing have run; production webhooks and representative order-volume import
+   remain unproved.
 
 The former production-bundled demo-auth gap is closed. Vite resolves the
 seeded-store implementation to a fail-closed production stub at build time, and

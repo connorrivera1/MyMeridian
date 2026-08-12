@@ -18,7 +18,7 @@ lookup to a fail-closed stub and scan every emitted server file; the build fails
 if the demo domain or seeded-authentication implementation survives bundling.
 
 **Release status (verified 2026-08-11):** `npm run ci` passes type checking,
-coverage thresholds, 1,085 unit tests and the production build. The 57 opt-in
+coverage thresholds, 1,096 unit tests and the production build. The 57 opt-in
 database integration cases pass against a fresh PostgreSQL database after all 27
 migrations apply from empty. GitHub dependency, secret and Semgrep security
 checks are green. A real Shopify development store has passed embedded install,
@@ -285,17 +285,18 @@ it. To bypass deliberately: `git commit --no-verify`.
 
 `.github/workflows/ci.yml` runs the fuller set — typecheck, coverage
 thresholds, build, a from-empty migration apply against a real Postgres, and a
-dependency audit. **Nothing runs it yet**; it is committed ready for the day a
-remote exists.
+dependency audit. The feature branch is connected to GitHub and these checks
+run on its draft pull request.
 
 Coverage is measured over `app/engine`, `app/lib` and `app/data` — the code the
 suite targets most deeply. Route and design-system `.tsx` files remain outside
 the coverage denominator, but server-rendered regressions now cover Overview,
 Orders, Products, Acquisition, Pricing, Settings, Plan, the app layout, Privacy
-requests and chart date labels. Fulfilment, auth/home and the legal wrappers do
-not yet have dedicated route tests, and the browser-level Shopify install flow
-still needs end-to-end coverage. Thresholds are floors set just under the
-current measurement, so the build fails on regression rather than on ambition.
+requests, Fulfilment, the embedded Shopify login entry, the marketing-home
+resource route, both legal wrappers and chart date labels. The browser-level
+Shopify install flow still needs production end-to-end coverage. Thresholds are
+floors set just under the current measurement, so the build fails on regression
+rather than on ambition.
 
 ## Architecture
 

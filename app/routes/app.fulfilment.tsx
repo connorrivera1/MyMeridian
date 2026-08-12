@@ -77,6 +77,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
 export default function Fulfilment() {
   const data = useLoaderData<typeof loader>();
 
+  return <FulfilmentView data={data} />;
+}
+
+type FulfilmentData = Awaited<ReturnType<typeof loader>>;
+
+export function FulfilmentView({ data }: { data: FulfilmentData }) {
   if (data.locked) {
     return (
       <UpgradeNotice

@@ -665,47 +665,30 @@ export function OrdersView({ data }: { data: OrdersData }) {
         }
         flush
       >
-        <div className="legend" style={{ paddingBottom: 10 }}>
-          <span className="legend-item muted">Channel:</span>
-          <Link
-            to={linkWith({
-              channel: null,
-              page: null,
-              after: null,
-              before: null,
-            })}
-            style={{
-              fontWeight: data.channelFilter ? 400 : 700,
-              color: data.channelFilter ? undefined : "var(--ink-primary)",
+        <div className="channel-filter">
+          <label htmlFor="orders-channel-filter">Channel</label>
+          <select
+            id="orders-channel-filter"
+            value={data.channelFilter ?? ""}
+            onChange={(event) => {
+              navigate(
+                linkWith({
+                  channel: event.currentTarget.value || null,
+                  page: null,
+                  after: null,
+                  before: null,
+                }),
+                { preventScrollReset: true },
+              );
             }}
           >
-            All
-          </Link>
-          {data.channels.map((channel) => (
-            <Link
-              key={channel}
-              to={linkWith({
-                channel,
-                page: null,
-                after: null,
-                before: null,
-              })}
-              className="legend-item"
-              style={{
-                fontWeight: data.channelFilter === channel ? 700 : 400,
-                color:
-                  data.channelFilter === channel
-                    ? "var(--ink-primary)"
-                    : undefined,
-              }}
-            >
-              <span
-                className="legend-swatch"
-                style={{ background: seriesColor(channel, CHANNEL_ORDER) }}
-              />
-              {CHANNEL_LABELS[channel as Channel]}
-            </Link>
-          ))}
+            <option value="">All channels</option>
+            {data.channels.map((channel) => (
+              <option key={channel} value={channel}>
+                {CHANNEL_LABELS[channel as Channel]}
+              </option>
+            ))}
+          </select>
         </div>
 
         {data.orders.length === 0 ? (

@@ -245,6 +245,14 @@ function renderOrders(mode: "connected" | "unavailable") {
 }
 
 describe("Orders ad-spend honesty", () => {
+  it("uses one accessible channel dropdown with an All option", () => {
+    const html = renderOrders("connected");
+
+    expect(html).toContain('id="orders-channel-filter"');
+    expect(html).toContain("All channels");
+    expect(html).toContain("Direct");
+  });
+
   it("renders unavailable live-store Ads cells as a dash and qualifies profit and margin", () => {
     const html = renderOrders("unavailable");
 

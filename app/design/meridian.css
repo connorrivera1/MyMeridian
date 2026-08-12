@@ -4671,6 +4671,42 @@ td.muted .money.neg,
   stroke-linejoin: round;
 }
 
+/* Orders filters live inside the card's reading gutter instead of beginning
+   flush against its edge. A native select keeps switching filters immediate
+   and gives every available channel, including the All state, one target. */
+.channel-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 0 var(--s-6) var(--s-4);
+  border-bottom: 1px solid var(--panel-line);
+}
+
+/* The filter is the first control in this card, so the header does not need a
+   second rule immediately above it. */
+.card:has(.channel-filter) .card-head { border-bottom: none; }
+
+.channel-filter label {
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.channel-filter select {
+  min-width: 180px;
+  cursor: pointer;
+}
+
+@media (max-width: 560px) {
+  .channel-filter {
+    align-items: stretch;
+    flex-direction: column;
+    gap: var(--s-2);
+  }
+
+  .channel-filter select { min-width: 0; width: 100%; }
+}
+
 /* Metric colour is strictly semantic: green only for a good result, red only
    for a bad one. Tile surfaces stay neutral so the figures carry the signal. */
 .tile.value-positive .tile-value { color: var(--pos); }

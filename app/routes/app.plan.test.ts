@@ -71,8 +71,7 @@ describe("plan charge action", () => {
   it("uses the freshly resolved store type for the charge", async () => {
     const { ctx, billingRequest } = context();
     requireShopContext.mockResolvedValue(ctx);
-  resolveBillingChargeMode.mockResolvedValue(false);
-  resolvePlan.mockResolvedValue({ planId: null, isDemo: false });
+    resolveBillingChargeMode.mockResolvedValue(false);
     billingRequest.mockResolvedValue(new Response(null, { status: 302 }));
 
     await action({ request: request("growth") } as never);

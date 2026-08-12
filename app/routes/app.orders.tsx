@@ -512,6 +512,13 @@ export function OrdersView({ data }: { data: OrdersData }) {
       <div className="grid cols-4">
         <Tile
           tone="var(--viz-mint)"
+          valueTone={
+            data.summary.profitPerOrderCents > 0
+              ? "positive"
+              : data.summary.profitPerOrderCents < 0
+                ? "negative"
+                : "neutral"
+          }
           icon={<IconPricing />}
           label={`Profit per order ${profitBasis}`}
           value={
@@ -542,6 +549,15 @@ export function OrdersView({ data }: { data: OrdersData }) {
         />
         <Tile
           tone="var(--viz-teal)"
+          valueTone={
+            data.summary.marginPct === null
+              ? "neutral"
+              : data.summary.marginPct > 0
+                ? "positive"
+                : data.summary.marginPct < 0
+                  ? "negative"
+                  : "neutral"
+          }
           icon={<IconOverview />}
           label={`Margin ${profitBasis}`}
           value={
@@ -559,6 +575,7 @@ export function OrdersView({ data }: { data: OrdersData }) {
         />
         <Tile
           tone="var(--viz-rose)"
+          valueTone={data.summary.lossMakingCount > 0 ? "negative" : "neutral"}
           icon={<IconAlert />}
           label={`Orders losing money ${profitBasis}`}
           value={<AnimatedInt value={data.summary.lossMakingCount} />}

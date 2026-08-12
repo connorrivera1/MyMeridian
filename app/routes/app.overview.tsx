@@ -383,7 +383,14 @@ export function OverviewView({ data }: { data: OverviewData }) {
           in the greeting above, so no tile has to shout over the others. */}
       <div className="grid cols-3">
         <Tile
-          tone="var(--series-1)"
+          tone="var(--mark-structure)"
+          valueTone={
+            kpi.netRevenueCents > 0
+              ? "positive"
+              : kpi.netRevenueCents < 0
+                ? "negative"
+                : "neutral"
+          }
           icon={<IconOrders />}
           label="Net revenue"
           value={
@@ -399,6 +406,13 @@ export function OverviewView({ data }: { data: OverviewData }) {
         />
         <Tile
           tone="var(--series-2)"
+          valueTone={
+            kpi.profitPerOrderCents > 0
+              ? "positive"
+              : kpi.profitPerOrderCents < 0
+                ? "negative"
+                : "neutral"
+          }
           icon={<IconPricing />}
           label="Profit per order"
           value={
@@ -412,6 +426,13 @@ export function OverviewView({ data }: { data: OverviewData }) {
         />
         <Tile
           tone="var(--series-4)"
+          valueTone={
+            kpi.contributionProfitCents > 0
+              ? "positive"
+              : kpi.contributionProfitCents < 0
+                ? "negative"
+                : "neutral"
+          }
           icon={<IconProducts />}
           label="Contribution profit"
           value={

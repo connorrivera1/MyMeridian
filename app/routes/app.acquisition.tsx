@@ -175,7 +175,12 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
             meta={<span>last {data.rangeLabel}</span>}
           />
           <Tile
-            tone="var(--viz-mint)"
+          tone="var(--viz-mint)"
+          valueTone={
+            data.blended.merRatio !== null && data.blended.merRatio > 0
+              ? "positive"
+              : "neutral"
+          }
             icon={<IconOverview />}
             label="Marketing efficiency"
             value={
@@ -186,7 +191,8 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
             meta={<span>store revenue ÷ paid spend</span>}
           />
           <Tile
-            tone="var(--viz-amber)"
+          tone="var(--viz-amber)"
+          valueTone={data.blended.overclaimCents > 0 ? "negative" : "neutral"}
             icon={<IconAlert />}
             label="Platform over-claim"
             value={

@@ -123,6 +123,7 @@ export function FulfilmentView({ data }: { data: FulfilmentData }) {
       <div className="grid cols-4">
         <Tile
           tone="var(--viz-rose)"
+          valueTone={breached && m.currentBacklog > 0 ? "negative" : "neutral"}
           icon={<IconFulfilment />}
           label="Orders waiting"
           value={<AnimatedInt value={m.currentBacklog} />}

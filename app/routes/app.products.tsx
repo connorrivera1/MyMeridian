@@ -167,6 +167,7 @@ export function ProductsView({ data }: { data: ProductsData }) {
       <div className="grid cols-3">
         <Tile
           tone="var(--viz-mint)"
+          valueTone={data.counts.profitable > 0 ? "positive" : "neutral"}
           icon={<IconProducts />}
           label="Profitable"
           value={<AnimatedInt value={data.counts.profitable} />}
@@ -186,6 +187,7 @@ export function ProductsView({ data }: { data: ProductsData }) {
         />
         <Tile
           tone="var(--viz-rose)"
+          valueTone={data.counts.bleeding > 0 ? "negative" : "neutral"}
           icon={<IconAlert />}
           label="Bleeding"
           value={<AnimatedInt value={data.counts.bleeding} />}

@@ -344,6 +344,7 @@ export function Tile({
   icon,
   spark,
   hero = false,
+  valueTone = "neutral",
 }: {
   label: ReactNode;
   value: ReactNode;
@@ -352,10 +353,11 @@ export function Tile({
   icon?: ReactNode;
   spark?: number[];
   hero?: boolean;
+  valueTone?: "positive" | "negative" | "neutral";
 }) {
   return (
     <div
-      className={hero ? "tile hero" : "tile"}
+      className={`${hero ? "tile hero" : "tile"} value-${valueTone}`}
       style={{ ["--tile" as string]: tone }}
     >
       <div className="tile-head">

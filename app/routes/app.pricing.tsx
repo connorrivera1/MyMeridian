@@ -267,6 +267,7 @@ export default function Pricing() {
       <div className="grid cols-3">
         <Tile
           tone="var(--viz-mint)"
+          valueTone={data.upsideCents > 0 ? "positive" : "neutral"}
           icon={<IconPricing />}
           label="Modelled monthly upside"
           value={
@@ -285,6 +286,7 @@ export default function Pricing() {
         />
         <Tile
           tone="var(--viz-teal)"
+          valueTone={data.actionableCount > 0 ? "positive" : "neutral"}
           icon={<IconCheck />}
           label="Ready to act on"
           value={<AnimatedInt value={data.actionableCount} />}

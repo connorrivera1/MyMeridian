@@ -3242,21 +3242,21 @@ table.data .right { font-variant-numeric: tabular-nums lining-nums; }
  * bucket, and dressing an absence of attribution in a brand colour would give
  * it a confidence it has not earned.
  */
-  --series-1: oklch(0.704 0.13 258);
+  --series-1: #ffffff;
   --channel-1: oklch(0.704 0.13 258);  /* facebook */
-  --series-2: oklch(0.786 0.11 70);
+  --series-2: #c9c9c9;
   --channel-2: oklch(0.786 0.11 70);  /* google */
-  --series-3: oklch(0.846 0.10 190);
+  --series-3: #9a9a9a;
   --channel-3: oklch(0.846 0.10 190);  /* tiktok */
-  --series-4: oklch(0.680 0.13 320);
+  --series-4: #e2e2e2;
   --channel-4: oklch(0.680 0.13 320);  /* email */
-  --series-5: oklch(0.810 0.11 130);
+  --series-5: #b0b0b0;
   --channel-5: oklch(0.810 0.11 130);  /* organic */
-  --series-6: oklch(0.894 0.035 220);
+  --series-6: #808080;
   --channel-6: oklch(0.894 0.035 220);  /* direct */
-  --series-7: oklch(0.757 0.13 25);
+  --series-7: #f0f0f0;
   --channel-7: oklch(0.757 0.13 25);  /* referral */
-  --series-8: oklch(0.633 0.12 285);
+  --series-8: #666666;
   --channel-8: oklch(0.633 0.12 285);  /* affiliate */
 
   /*
@@ -3288,21 +3288,21 @@ table.data .right { font-variant-numeric: tabular-nums lining-nums; }
   --mark-cost: #b4b4b4;
   --mark-result: #0a0a0a;
 
-  --series-1: oklch(0.427 0.13 258);
+  --series-1: #0a0a0a;
   --channel-1: oklch(0.427 0.13 258);  /* facebook */
-  --series-2: oklch(0.549 0.11 70);
+  --series-2: #4a4a4a;
   --channel-2: oklch(0.549 0.11 70);  /* google */
-  --series-3: oklch(0.608 0.10 190);
+  --series-3: #7d7d7d;
   --channel-3: oklch(0.608 0.10 190);  /* tiktok */
-  --series-4: oklch(0.395 0.13 320);
+  --series-4: #262626;
   --channel-4: oklch(0.395 0.13 320);  /* email */
-  --series-5: oklch(0.574 0.11 130);
+  --series-5: #616161;
   --channel-5: oklch(0.574 0.11 130);  /* organic */
-  --series-6: oklch(0.656 0.035 220);
+  --series-6: #949494;
   --channel-6: oklch(0.656 0.035 220);  /* direct */
-  --series-7: oklch(0.514 0.13 25);
+  --series-7: #363636;
   --channel-7: oklch(0.514 0.13 25);  /* referral */
-  --series-8: oklch(0.355 0.12 285);
+  --series-8: #a8a8a8;
   --channel-8: oklch(0.355 0.12 285);  /* affiliate */
 }
 
@@ -4671,42 +4671,7 @@ td.muted .money.neg,
   stroke-linejoin: round;
 }
 
-/* KPI colour pass: keep the monochrome shell, but make each metric surface and
-   its figure immediately distinguishable. `--tile` is supplied by every Tile
-   instance, so this stays semantic rather than assigning colour by position. */
-.tile {
-  background:
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--tile) 16%, var(--panel)) 0%,
-      color-mix(in srgb, var(--tile) 6%, var(--panel)) 58%,
-      var(--panel) 100%
-    );
-  border-color: color-mix(in srgb, var(--tile) 36%, var(--panel-line));
-}
-
-.tile::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  z-index: 1;
-  height: 3px;
-  background: linear-gradient(90deg, var(--tile), color-mix(in srgb, var(--tile) 40%, transparent) 62%, transparent);
-}
-
-.tile-value {
-  color: var(--tile);
-  text-shadow: 0 1px 16px color-mix(in srgb, var(--tile) 16%, transparent);
-}
-
-:root[data-theme="light"] .tile {
-  background:
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--tile) 13%, var(--panel)) 0%,
-      color-mix(in srgb, var(--tile) 5%, var(--panel)) 58%,
-      var(--panel) 100%
-    );
-}
-
-:root[data-theme="light"] .tile-value { text-shadow: none; }
+/* Metric colour is strictly semantic: green only for a good result, red only
+   for a bad one. Tile surfaces stay neutral so the figures carry the signal. */
+.tile.value-positive .tile-value { color: var(--pos); }
+.tile.value-negative .tile-value { color: var(--neg); }

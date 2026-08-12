@@ -3,11 +3,29 @@ import { describe, expect, it } from "vitest";
 
 import {
   csvCell,
+  MAX_PROFIT_EXPORT_RANGE_MS,
   PROFIT_EXPORT_HEADER,
+  profitExportRangeIsAllowed,
   profitOrderCsvRow,
 } from "./profit-export.server";
 
 describe("profit CSV export", () => {
+  it("bounds interactive exports to a finite one-year period", () => {
+    const from = new Date("2025-01-01T00:00:00.000Z");
+    expect(
+      profitExportRangeIsAllowed(
+        from,
+        new Date(from.getTime() + MAX_PROFIT_EXPORT_RANGE_MS),
+      ),
+    ).toBe(true);
+    expect(
+      profitExportRangeIsAllowed(
+        from,
+        new Date(from.getTime() + MAX_PROFIT_EXPORT_RANGE_MS + 1),
+      ),
+    ).toBe(false);
+  });
+
   it("quotes cells that could alter CSV structure", () => {
     expect(csvCell('one,"two"\nthree')).toBe('"one,""two""\nthree"');
     expect(csvCell(null)).toBe("");

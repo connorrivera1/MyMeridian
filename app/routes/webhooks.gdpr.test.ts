@@ -678,13 +678,12 @@ describe("malformed mandatory customer deliveries", () => {
         .map(([call]) => call)
         .find(
           (call) =>
-            typeof call?.data?.error === "string" &&
-            call.data.error.includes("customer.id"),
+            call?.data?.error === "Operation failed (Error).",
         );
       expect(failed).toEqual(
         expect.objectContaining({
           data: expect.objectContaining({
-            error: expect.stringContaining("customer.id"),
+            error: "Operation failed (Error).",
             availableAt: expect.any(Date),
             leaseToken: null,
             leaseExpiresAt: null,
@@ -744,7 +743,9 @@ describe("shop/redact", () => {
     expect(webhookEventDeleteMany).not.toHaveBeenCalled();
     expect(webhookEventUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ error: failure.message }),
+        data: expect.objectContaining({
+          error: "Operation failed (Error).",
+        }),
       }),
     );
     expect(shopDelete.mock.invocationCallOrder[0]).toBeLessThan(

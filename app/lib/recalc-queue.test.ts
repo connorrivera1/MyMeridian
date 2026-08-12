@@ -386,7 +386,7 @@ describe("failRecalcJob", () => {
     );
 
     expect(rows[0]!.status).toBe("QUEUED");
-    expect(rows[0]!.error).toBe("boom");
+    expect(rows[0]!.error).toBe("Operation failed (Error).");
     expect(rows[0]!.dedupeKey).toBe("k");
     expect(rows[0]!.availableAt.getTime()).toBeGreaterThan(Date.now());
   });
@@ -409,7 +409,7 @@ describe("failRecalcJob", () => {
     expect(rows[0]!.dedupeKey).toBeNull();
   });
 
-  it("truncates a runaway error message", async () => {
+  it("does not retain a runaway error message", async () => {
     await enqueue();
     const leased = await leaseNextRecalcJob();
     await failRecalcJob(
@@ -419,7 +419,7 @@ describe("failRecalcJob", () => {
       new Error("x".repeat(5_000)),
     );
 
-    expect(rows[0]!.error!.length).toBe(2_000);
+    expect(rows[0]!.error).toBe("Operation failed (Error).");
   });
 
   it("backs off exponentially and then stops growing", () => {
@@ -453,7 +453,7 @@ describe("runRecalcJob", () => {
     errors.mockRestore();
 
     expect(rows[0]!.status).toBe("QUEUED");
-    expect(rows[0]!.error).toContain("No recalculation handler");
+    expect(rows[0]!.error).toBe("Operation failed (Error).");
   });
 
   it("records a handler's own failure against the job", async () => {
@@ -467,7 +467,7 @@ describe("runRecalcJob", () => {
     await runRecalcJob(leased!);
     errors.mockRestore();
 
-    expect(rows[0]!.error).toBe("handler exploded");
+    expect(rows[0]!.error).toBe("Operation failed (Error).");
   });
 });
 

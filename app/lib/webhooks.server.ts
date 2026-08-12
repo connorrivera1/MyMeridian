@@ -3,6 +3,10 @@ import crypto from "node:crypto";
 import { Prisma } from "@prisma/client";
 
 import prisma from "~/db.server";
+import {
+  logOperationalFailure,
+  safeOperationalFailure,
+} from "~/lib/operational-errors.server";
 import { dispatchPersistedWebhook } from "~/lib/webhook-dispatch.server";
 import { minimizeWebhookPayload } from "~/lib/webhook-payload.server";
 import { authenticate, hasShopifyCredentials } from "~/shopify.server";
@@ -206,13 +210,8 @@ async function runHandler(
       await markWebhookSucceeded(context.webhookId, delivery.leaseToken);
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(
-      "[webhook:%s] %s",
-      context.topic,
-      context.shopDomain,
-      error,
-    );
+    const message = safeOperationalFailure(error);
+    logOperationalFailure(`webhook:${context.topic}`, error);
     if (delivery) {
       try {
         await markWebhookFailed(
@@ -225,9 +224,8 @@ async function runHandler(
         // Leave the lease to expire. A later sweep can recover the payload;
         // rejecting this detached promise would instead risk taking down the
         // process after Shopify already received its 200.
-        console.error(
-          "[webhook:%s] failed to record delivery failure",
-          context.webhookId,
+        logOperationalFailure(
+          `webhook:${context.webhookId} delivery-failure persistence`,
           persistenceError,
         );
       }
@@ -249,9 +247,8 @@ function startLeaseHeartbeat(
         data: { leaseExpiresAt },
       })
       .catch((error) =>
-        console.error(
-          "[webhook:%s] failed to extend delivery lease",
-          webhookId,
+        logOperationalFailure(
+          `webhook:${webhookId} lease heartbeat`,
           error,
         ),
       );
@@ -430,9 +427,7 @@ function startDrain(): void {
 
   const work = drainWebhookQueue()
     .then(() => undefined)
-    .catch((error) =>
-      console.error("[webhooks] durable queue sweep failed", error),
-    );
+    .catch((error) => logOperationalFailure("webhook durable queue sweep", error));
   workerState.drain = work;
   trackWork(work);
   void work.then(

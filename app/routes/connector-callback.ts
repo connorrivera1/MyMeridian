@@ -11,9 +11,16 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const slug = String(params.provider ?? "") as ConnectorProviderSlug;
   if (!connectorProviderForSlug(slug)) return new Response("Unknown connector.", { status: 404 });
   const url = new URL(request.url);
-  const providerError = url.searchParams.get("error_description") ?? url.searchParams.get("error");
+  const providerError =
+    url.searchParams.get("error_description") ?? url.searchParams.get("error");
   if (providerError) {
-    throw redirect(`/app/settings?connection_error=${encodeURIComponent(providerError.slice(0, 300))}`);
+    // Provider-controlled text is not safe to preserve in URLs, browser
+    // history, or application logs. OAuth providers can include account or
+    // request context in an error description; the merchant only needs a
+    // recoverable next step.
+    throw redirect(
+      "/app/settings?connection_error=Provider+authorization+was+cancelled+or+failed.+Try+again.",
+    );
   }
   const code = url.searchParams.get("code") ?? url.searchParams.get("auth_code") ?? "";
   const state = url.searchParams.get("state") ?? "";
@@ -30,10 +37,11 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     throw redirect(`/app/settings?connected=${encodeURIComponent(slug)}`);
   } catch (error) {
     if (error instanceof Response) throw error;
-    const message = error instanceof Error ? error.message : "Connector setup failed.";
-    // OAuth client errors can retain the provider response and its headers.
-    // Log only the bounded message, never the full error object.
-    console.error("[connector-oauth:%s] callback failed: %s", slug, message.slice(0, 300));
-    throw redirect(`/app/settings?connection_error=${encodeURIComponent(message.slice(0, 300))}`);
+    // OAuth client errors can retain provider responses, headers, or tokens.
+    // Keep operational logs correlation-safe and never serialize the error.
+    console.error("[connector-oauth:%s] callback failed", slug);
+    throw redirect(
+      "/app/settings?connection_error=Connector+setup+failed.+Try+again.",
+    );
   }
 }

@@ -612,7 +612,9 @@ describe("verified delivery handling", () => {
     expect(response.status).toBe(200);
     expect(webhookEventUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ error: "database is down" }),
+        data: expect.objectContaining({
+          error: "Operation failed (Error).",
+        }),
       }),
     );
     consoleError.mockRestore();

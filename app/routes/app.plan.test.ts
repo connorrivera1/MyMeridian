@@ -4,6 +4,8 @@ import type { ShopContext } from "~/lib/auth.server";
 
 const requireShopContext = vi.fn();
 const resolveBillingChargeMode = vi.fn();
+const firstDeniedRequestLimit = vi.fn();
+const recordSensitiveAction = vi.fn();
 
 vi.mock("~/lib/auth.server", () => ({
   requireShopContext: (...args: unknown[]) => requireShopContext(...args),
@@ -18,6 +20,15 @@ vi.mock("~/lib/plan.server", () => ({
   resolveBillingChargeMode: (...args: unknown[]) =>
     resolveBillingChargeMode(...args),
   resolvePlan: vi.fn(),
+}));
+vi.mock("~/lib/rate-limit.server", () => ({
+  firstDeniedRequestLimit: (...args: unknown[]) =>
+    firstDeniedRequestLimit(...args),
+  RATE_LIMIT_MESSAGE: "Too many requests. Wait a little while and try again.",
+  rateLimitHeaders: () => ({ "retry-after": "60" }),
+}));
+vi.mock("~/lib/security-audit.server", () => ({
+  recordSensitiveAction: (...args: unknown[]) => recordSensitiveAction(...args),
 }));
 
 const { action } = await import("./app.plan");
@@ -47,6 +58,8 @@ function context() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  firstDeniedRequestLimit.mockResolvedValue(null);
+  recordSensitiveAction.mockResolvedValue(undefined);
   vi.stubEnv("APP_URL", "");
   vi.stubEnv("SHOPIFY_APP_URL", "");
 });
@@ -66,6 +79,19 @@ describe("plan charge action", () => {
       isTest: false,
       returnUrl: "https://meridian.example/app/plan?shop=store.myshopify.com",
     });
+    expect(firstDeniedRequestLimit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: "billing_plan_change",
+        subject: "shop-1",
+        subjectLimit: 5,
+      }),
+    );
+    expect(recordSensitiveAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "BILLING_PLAN_CHANGE_REQUESTED",
+        resource: "plan:growth",
+      }),
+    );
   });
 
   it("creates no charge when Shopify store-type verification fails", async () => {
@@ -82,6 +108,20 @@ describe("plan charge action", () => {
         "Could not verify whether this store can accept a real charge. " +
         "No charge was created; retry in a moment.",
     });
+    expect(billingRequest).not.toHaveBeenCalled();
+  });
+
+  it("refuses a limited billing request without creating a charge or audit event", async () => {
+    const { ctx, billingRequest } = context();
+    requireShopContext.mockResolvedValue(ctx);
+    firstDeniedRequestLimit.mockResolvedValue({ retryAfterSeconds: 60 });
+
+    const result = await action({ request: request("growth") } as never);
+
+    expect(result).toBeInstanceOf(Response);
+    expect((result as Response).status).toBe(429);
+    expect(resolveBillingChargeMode).not.toHaveBeenCalled();
+    expect(recordSensitiveAction).not.toHaveBeenCalled();
     expect(billingRequest).not.toHaveBeenCalled();
   });
 

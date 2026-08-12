@@ -8,6 +8,10 @@ import {
 } from "@prisma/client";
 
 import prisma from "~/db.server";
+import {
+  logOperationalFailure,
+  safeOperationalFailure,
+} from "~/lib/operational-errors.server";
 
 /**
  * Durable queue for recalculation work.
@@ -266,7 +270,7 @@ export function startRecalcHeartbeat(
         data: { leaseExpiresAt: new Date(Date.now() + RECALC_LEASE_MS) },
       })
       .catch((error) =>
-        console.error("[recalc:%s] failed to extend job lease", jobId, error),
+        logOperationalFailure(`recalc:${jobId} lease heartbeat`, error),
       );
   }, RECALC_HEARTBEAT_MS);
   timer.unref?.();
@@ -319,9 +323,7 @@ export async function failRecalcJob(
   attempt: number,
   error: unknown,
 ): Promise<boolean> {
-  const message = (
-    error instanceof Error ? error.message : String(error)
-  ).slice(0, MAX_ERROR_LENGTH);
+  const message = safeOperationalFailure(error).slice(0, MAX_ERROR_LENGTH);
   const exhausted = attempt >= RECALC_MAX_ATTEMPTS;
 
   const updated = await prisma.recalcJob.updateMany({
@@ -400,19 +402,12 @@ export async function runRecalcJob(leased: LeasedRecalcJob): Promise<void> {
     const result = await handler(job);
     await completeRecalcJob(job.id, leaseToken, result);
   } catch (error) {
-    console.error(
-      "[recalc:%s] %s attempt %d failed",
-      job.id,
-      job.kind,
-      attempt,
-      error,
-    );
+    logOperationalFailure(`recalc:${job.kind} attempt:${attempt}`, error);
     try {
       await failRecalcJob(job.id, leaseToken, attempt, error);
     } catch (persistenceError) {
-      console.error(
-        "[recalc:%s] could not record job failure",
-        job.id,
+      logOperationalFailure(
+        `recalc:${job.id} failure persistence`,
         persistenceError,
       );
     }
@@ -453,9 +448,7 @@ function startDrain(): void {
 
   const work = drainRecalcQueue()
     .then(() => undefined)
-    .catch((error) =>
-      console.error("[recalc] durable queue sweep failed", error),
-    );
+    .catch((error) => logOperationalFailure("recalc durable queue sweep", error));
   workerState.drain = work;
   void work.then(
     () => {

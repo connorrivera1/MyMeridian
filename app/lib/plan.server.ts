@@ -2,6 +2,7 @@ import prisma from "~/db.server";
 import { redirect } from "react-router";
 import type { ShopContext } from "~/lib/auth.server";
 import { planIdForSubscriptionName } from "~/lib/billing.server";
+import { logOperationalFailure } from "~/lib/operational-errors.server";
 import { PLANS, type PlanId } from "~/lib/plans";
 import { refreshShopPlanSignal } from "~/lib/shop-plan.server";
 
@@ -204,11 +205,7 @@ export async function resolvePlan(ctx: ShopContext): Promise<PlanState> {
       ctx.shop.partnerDevelopment = billingIsTest;
       forceBillingRefresh = true;
     } catch (error) {
-      console.error(
-        "[billing] could not refresh store type for %s:",
-        ctx.shop.domain,
-        error,
-      );
+      logOperationalFailure("billing store-type refresh", error);
       return emptyState();
     }
   }
@@ -257,7 +254,7 @@ export async function resolvePlan(ctx: ShopContext): Promise<PlanState> {
   } catch (error) {
     // Shopify being unreachable must not lock a paying merchant out of the app
     // they have already been charged for.
-    console.error("[billing] check failed for %s:", ctx.shop.domain, error);
+    logOperationalFailure("billing subscription check", error);
     // This check was forced by SHOP_UPDATE invalidation. The cached row might
     // be an old test subscription on a store that just converted to paid, and
     // Subscription has no trustworthy mode marker. Fail closed until Shopify

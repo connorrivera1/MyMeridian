@@ -2,6 +2,14 @@ import type { Prisma } from "@prisma/client";
 
 import prisma, { withTenantDatabase } from "~/db.server";
 
+/** A bounded, interactive export; longer history belongs in an async job. */
+export const MAX_PROFIT_EXPORT_RANGE_MS = 366 * 24 * 60 * 60 * 1_000;
+
+export function profitExportRangeIsAllowed(from: Date, to: Date): boolean {
+  const duration = to.getTime() - from.getTime();
+  return Number.isFinite(duration) && duration > 0 && duration <= MAX_PROFIT_EXPORT_RANGE_MS;
+}
+
 export const PROFIT_EXPORT_HEADER = [
   "order_number",
   "processed_at",

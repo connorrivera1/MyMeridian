@@ -9,6 +9,7 @@ import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 
 import { Badge, Banner, Money, Stat } from "~/design/components";
 import { withShopContext } from "~/lib/auth.server";
+import { logOperationalFailure } from "~/lib/operational-errors.server";
 import {
   billingIsTestForShop,
   resolveBillingChargeMode,
@@ -16,7 +17,13 @@ import {
 } from "~/lib/plan.server";
 import { annualKey, basePlanId, PLANS, type BillingKey } from "~/lib/plans";
 import { publicAppOrigin } from "~/lib/public-origin.server";
+import {
+  firstDeniedRequestLimit,
+  RATE_LIMIT_MESSAGE,
+  rateLimitHeaders,
+} from "~/lib/rate-limit.server";
 import { requireRecentReauthentication } from "~/lib/reauth.server";
+import { recordSensitiveAction } from "~/lib/security-audit.server";
 
 /**
  * Plan selection, upgrade and downgrade.
@@ -66,15 +73,26 @@ export async function action({ request }: ActionFunctionArgs) {
       return { error: "That plan does not exist." };
     }
 
+    const limited = await firstDeniedRequestLimit({
+      request,
+      scope: "billing_plan_change",
+      windowMs: 15 * 60 * 1_000,
+      ipLimit: 10,
+      subject: ctx.user?.id ?? ctx.shop.id,
+      subjectLimit: 5,
+    });
+    if (limited) {
+      return new Response(RATE_LIMIT_MESSAGE, {
+        status: 429,
+        headers: rateLimitHeaders(limited),
+      });
+    }
+
     let isTest: boolean;
     try {
       isTest = await resolveBillingChargeMode(ctx);
     } catch (error) {
-      console.error(
-        "[billing] could not verify store type for %s:",
-        ctx.shop.domain,
-        error,
-      );
+      logOperationalFailure("billing store-type verification", error);
       return {
         error:
           "Could not verify whether this store can accept a real charge. " +
@@ -84,6 +102,14 @@ export async function action({ request }: ActionFunctionArgs) {
 
     // Shopify sends the merchant back here after they approve or decline, so the
     // page they land on reflects the charge they just made.
+    await recordSensitiveAction({
+      shopId: ctx.shop.id,
+      actorType: ctx.user ? "web_account" : "shopify_session",
+      actorId: ctx.user?.id ?? ctx.session?.id ?? ctx.shop.id,
+      request,
+      action: "BILLING_PLAN_CHANGE_REQUESTED",
+      resource: `plan:${requested}`,
+    });
     return ctx.billing.request({
       plan: requested as BillingKey,
       isTest,

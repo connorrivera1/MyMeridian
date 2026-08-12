@@ -4,7 +4,7 @@ import { redirect } from "react-router";
 import { loadDemoShop } from "~/lib/demo-access.server";
 import { authenticate, hasShopifyCredentials } from "~/shopify.server";
 import { resolveAccessibleShop } from "./shop-access.server";
-import { readSessionToken } from "./web-session.server";
+import { readSessionToken, requestOriginIsSelf } from "./web-session.server";
 import {
   resolvePendingSession,
   resolveSession,
@@ -12,6 +12,11 @@ import {
 } from "./webauth.server";
 import { safeReturnPath } from "./web-oauth.server";
 import { recordMerchantAccess } from "./security-audit.server";
+import {
+  firstDeniedRequestLimit,
+  RATE_LIMIT_MESSAGE,
+  rateLimitHeaders,
+} from "./rate-limit.server";
 import { withTenantDatabase } from "~/db.server";
 
 const demoModeRequested = process.env.MERIDIAN_DEMO_MODE === "true";
@@ -230,10 +235,58 @@ export async function withShopContext<T>(
   work: (context: ShopContext) => Promise<T>,
 ): Promise<T> {
   const context = await requireShopContext(request);
+  requireStandaloneMutationOrigin(request, context);
+  await requireMerchantMutationAllowance(request, context);
   return withTenantDatabase(
     { shopId: context.shop.id, userId: context.user?.id ?? null },
     () => work(context),
   );
+}
+
+/**
+ * A durable baseline for every merchant-side unsafe request. Individual high
+ * impact routes (billing, exports, connector OAuth) use stricter scoped
+ * limits as well. Keeping this at the authentication boundary prevents a new
+ * mutation route from accidentally shipping without an anti-abuse control.
+ */
+export async function requireMerchantMutationAllowance(
+  request: Request,
+  context: Pick<ShopContext, "shop" | "user">,
+): Promise<void> {
+  if (["GET", "HEAD", "OPTIONS"].includes(request.method)) return;
+  const limited = await firstDeniedRequestLimit({
+    request,
+    scope: "merchant_mutation",
+    windowMs: 15 * 60 * 1_000,
+    ipLimit: 120,
+    subject: context.user?.id ?? context.shop.id,
+    subjectLimit: 30,
+  });
+  if (limited) {
+    throw new Response(RATE_LIMIT_MESSAGE, {
+      status: 429,
+      headers: rateLimitHeaders(limited),
+    });
+  }
+}
+
+/**
+ * Shopify-embedded mutations carry a short-lived, signed session token and are
+ * deliberately not cookie-authenticated. Standalone accounts are different:
+ * their session is a browser cookie, so every unsafe request gets an explicit
+ * same-origin check in addition to SameSite=Lax. Keeping this here makes it
+ * impossible for a new merchant mutation route to forget the protection.
+ */
+export function requireStandaloneMutationOrigin(
+  request: Request,
+  context: { user: unknown },
+): void {
+  if (!context.user || ["GET", "HEAD", "OPTIONS"].includes(request.method)) {
+    return;
+  }
+  if (!requestOriginIsSelf(request)) {
+    throw new Response("Invalid request origin.", { status: 403 });
+  }
 }
 
 /**

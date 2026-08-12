@@ -2,8 +2,17 @@ import { redirect, type LoaderFunctionArgs } from "react-router";
 
 import { withShopContext } from "~/lib/auth.server";
 import { planAllows, requireActivePlan } from "~/lib/plan.server";
-import { createProfitExportStream } from "~/lib/profit-export.server";
+import {
+  createProfitExportStream,
+  profitExportRangeIsAllowed,
+} from "~/lib/profit-export.server";
+import {
+  firstDeniedRequestLimit,
+  RATE_LIMIT_MESSAGE,
+  rateLimitHeaders,
+} from "~/lib/rate-limit.server";
 import { requireRecentReauthentication } from "~/lib/reauth.server";
+import { recordSensitiveAction } from "~/lib/security-audit.server";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
@@ -40,6 +49,34 @@ export async function loader({ request }: LoaderFunctionArgs) {
         },
       );
     }
+    if (!profitExportRangeIsAllowed(from, to)) {
+      return new Response("The selected export period is too large.", {
+        status: 400,
+        headers: { "cache-control": "private, no-store" },
+      });
+    }
+    const limited = await firstDeniedRequestLimit({
+      request,
+      scope: "profit_export",
+      windowMs: 15 * 60 * 1_000,
+      ipLimit: 10,
+      subject: ctx.user?.id ?? ctx.shop.id,
+      subjectLimit: 3,
+    });
+    if (limited) {
+      return new Response(RATE_LIMIT_MESSAGE, {
+        status: 429,
+        headers: rateLimitHeaders(limited),
+      });
+    }
+    await recordSensitiveAction({
+      shopId: ctx.shop.id,
+      actorType: ctx.user ? "web_account" : "shopify_session",
+      actorId: ctx.user?.id ?? ctx.session?.id ?? ctx.shop.id,
+      request,
+      action: "PROFIT_EXPORT_STARTED",
+      resource: `profit_export:${from.toISOString().slice(0, 10)}:${new Date(to.getTime() - 1).toISOString().slice(0, 10)}`,
+    });
     const filename = `mymeridian-profit-${from.toISOString().slice(0, 10)}-${new Date(to.getTime() - 1).toISOString().slice(0, 10)}.csv`;
     return new Response(
       createProfitExportStream({ shopId: ctx.shop.id, from, to }),

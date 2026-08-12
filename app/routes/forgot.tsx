@@ -14,6 +14,7 @@ import {
 import { AccountShell, Field, FormError } from "~/design/account";
 import { BrandMark } from "~/design/components";
 import { APP_NAME } from "~/lib/brand";
+import { logOperationalFailure } from "~/lib/operational-errors.server";
 import { CODE_LENGTH } from "~/lib/password-reset";
 import {
   firstDeniedRequestLimit,
@@ -96,9 +97,9 @@ export async function action({ request }: ActionFunctionArgs) {
       try {
         await deliverResetCode(email, issued.code);
       } catch (error) {
-        // Keep account existence private. The provider error is actionable;
-        // the reset code itself is never written to production logs.
-        console.error("[password-reset] delivery failed", error);
+        // Keep account existence private. A provider exception can include a
+        // response body, so only its safe category reaches operational logs.
+        logOperationalFailure("password-reset delivery", error);
       }
     }
 

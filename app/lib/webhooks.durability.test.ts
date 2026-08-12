@@ -184,13 +184,13 @@ describe("queue recovery", () => {
       .find(
         (call) =>
           (call as { data?: { error?: string } }).data?.error ===
-          "transient write failure",
+          "Operation failed (Error).",
       ) as {
       data: Record<string, unknown>;
     };
     expect(failureWrite.data).toEqual(
       expect.objectContaining({
-        error: "transient write failure",
+        error: "Operation failed (Error).",
         availableAt: expect.any(Date),
         leaseToken: null,
         leaseExpiresAt: null,
@@ -251,9 +251,9 @@ describe("queue recovery", () => {
 
     await expect(drainWebhookQueue()).resolves.toBe(1);
     expect(consoleError).toHaveBeenCalledWith(
-      "[webhook:%s] failed to record delivery failure",
-      "delivery_1",
-      expect.any(Error),
+      "[%s] %s",
+      "webhook:delivery_1 delivery-failure persistence",
+      "Operation failed (Error).",
     );
     consoleError.mockRestore();
   });

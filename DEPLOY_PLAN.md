@@ -727,8 +727,10 @@ Two further things were confirmed while the image was up, both of which back
 claims made elsewhere in this file: the container idles at **51 MiB** serving
 requests, so §4's 1024 MB VM has room, and booting with
 `MERIDIAN_DEMO_MODE=true` while `NODE_ENV=production` **does** abort the
-process — `Error: MERIDIAN_DEMO_MODE must not be enabled when
-NODE_ENV=production` — so §4's comment on that line is accurate.
+process. This is now defense in depth rather than the only boundary: production
+builds alias the demo lookup to a fail-closed stub, and the build scans every
+emitted server file for the demo domain and seeded-authentication signature.
+The build fails if either survives bundling, regardless of runtime `NODE_ENV`.
 
 ### Two things that still cannot be checked here
 

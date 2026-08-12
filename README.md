@@ -13,6 +13,10 @@ the app resolves the active Billing API subscription, redirects an unsubscribed
 store to the plan screen, gates paid features, and re-checks the plan before a
 protected pricing mutation.
 
+The seeded local demo is development-only. Production builds resolve its shop
+lookup to a fail-closed stub and scan every emitted server file; the build fails
+if the demo domain or seeded-authentication implementation survives bundling.
+
 **Release status (verified 2026-08-11):** `npm run ci` passes type checking,
 coverage thresholds, 1,085 unit tests and the production build. The 57 opt-in
 database integration cases pass against a fresh PostgreSQL database after all 27

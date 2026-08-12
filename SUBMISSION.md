@@ -1167,17 +1167,20 @@ thrown from the same function that throws the 401.
    heartbeat, owner-fenced writes and cursor-preserving takeover, so a Fly
    restart is recoverable; recompute preflights and processes one merchant-local
    month at a time. A serverless host would still need a durable job queue.
-4. **The demo auth bypass ships in the production bundle.** Guarded by a
-   boot-time throw when `NODE_ENV=production` and by Shopify-signal detection,
-   which is solid, but the whole guard depends on `NODE_ENV` being set correctly
-   at deploy. A reviewer reading the source will pause here.
-5. **Browser-level platform E2E is partial.** Server-rendered route tests
+4. **Browser-level platform E2E is partial.** Server-rendered route tests
    now cover Overview, Orders, Products, Acquisition, Pricing, Settings, Plan,
    Layout and both Privacy-request routes; chart labels have explicit timezone
    and one-point regressions. Fulfilment, auth/home and legal wrappers still lack
    dedicated route tests. A real embedded install, onboarding, zero-order
    full-history completion and Shopify test billing have run; production
    webhooks and representative order-volume import remain unproved.
+
+The former production-bundled demo-auth gap is closed. Vite resolves the
+seeded-store implementation to a fail-closed production stub at build time, and
+`npm run build` scans every emitted server file for the demo domain and seeded
+lookup signature. A development-mode HTTP acceptance check still rendered the
+seeded Overview with status 200, while the production artifact contained none
+of the bypass signatures.
 
 ---
 

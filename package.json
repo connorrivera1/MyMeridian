@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "react-router dev",
     "shopify:dev": "shopify app dev",
-    "build": "prisma generate && react-router build",
+    "build": "prisma generate && react-router build && npm run verify:production-bundle",
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc --noEmit",
     "test": "vitest run",
@@ -23,6 +23,7 @@
     "db:reset": "prisma migrate reset --force && npm run db:seed",
     "setup": "prisma generate && prisma migrate deploy && tsx prisma/seed.ts",
     "test:coverage": "vitest run --coverage",
+    "verify:production-bundle": "node scripts/verify-production-bundle.mjs",
     "ci": "npm run typecheck && npm run test:coverage && npm run build"
   },
   "prisma": {

@@ -1,28 +1,33 @@
 import type { Shop, User } from "@prisma/client";
 import { redirect } from "react-router";
 
-import prisma from "~/db.server";
+import { loadDemoShop } from "~/lib/demo-access.server";
 import { authenticate, hasShopifyCredentials } from "~/shopify.server";
 import { resolveAccessibleShop } from "./shop-access.server";
 import { readSessionToken } from "./web-session.server";
 import { resolveSession } from "./webauth.server";
 import { recordMerchantAccess } from "./security-audit.server";
 
-export const DEMO_SHOP_DOMAIN = "meridian-demo.myshopify.com";
-
 const demoModeRequested = process.env.MERIDIAN_DEMO_MODE === "true";
 
-// A demo bypass that could ever be reachable in production would be an
-// authentication hole, not a convenience. Fail at boot rather than serve it.
-if (demoModeRequested && process.env.NODE_ENV === "production") {
+// The build mode is compile-time state, unlike NODE_ENV. Checking both keeps a
+// production artifact closed even if an operator accidentally starts it with a
+// development NODE_ENV; the bundle verifier also proves the demo lookup itself
+// was tree-shaken out.
+if (
+  demoModeRequested &&
+  (import.meta.env.PROD || process.env.NODE_ENV === "production")
+) {
   throw new Error(
-    "MERIDIAN_DEMO_MODE must not be enabled when NODE_ENV=production. " +
+    "MERIDIAN_DEMO_MODE must not be enabled in a production build or when NODE_ENV=production. " +
       "It bypasses Shopify session authentication.",
   );
 }
 
 export const demoAvailable =
-  demoModeRequested && process.env.NODE_ENV !== "production";
+  import.meta.env.DEV &&
+  demoModeRequested &&
+  process.env.NODE_ENV !== "production";
 
 type AdminContext = Awaited<
   ReturnType<NonNullable<typeof authenticate>["admin"]>
@@ -184,13 +189,7 @@ export async function requireShopContext(request: Request): Promise<ShopContext>
     );
   }
 
-  const shop = await prisma.shop.findUnique({ where: { domain: DEMO_SHOP_DOMAIN } });
-  if (!shop) {
-    throw new Response(
-      "Demo store has not been seeded yet. Run `npm run db:seed`.",
-      { status: 503, statusText: "No demo data" },
-    );
-  }
+  const shop = await loadDemoShop();
 
   return {
     shop,

@@ -6,17 +6,21 @@ release status is in [`LAUNCH_READINESS.md`](LAUNCH_READINESS.md).
 
 ## Release inputs and hard stops
 
-Before staging: a reviewed commit, clean CI, a distinct staging origin, isolated
-Postgres/Redis, staging provider credentials, and a controlled Shopify
-development store. Before production: Connor's explicit authorization, a merged
-reviewed commit, completed production account matrix, a stable origin, production
-secrets, backup/PITR retention, monitored alerts, and the staging acceptance
-record. Never use production customer data in staging.
+Before staging: explicit Gate 1 (merge) and Gate 2 (staging deployment)
+approvals, a reviewed commit, clean CI, `https://staging.mymeridian.io`, isolated
+Fly Managed Postgres Basic/Upstash, staging provider credentials, and a
+controlled Shopify development store. Before production: explicit Gate 3,
+the merged reviewed commit, `https://mymeridian.io`, completed production
+account matrix, production secrets, encrypted daily backup/PITR retention,
+monitored alerts, and the staging acceptance record. Never use production
+customer data in staging.
 
 ## Clean-environment procedure
 
-1. Create isolated staging hosting, Postgres and Redis. Create separate system,
-   tenant and migration database roles using `DATABASE_SECURITY.md`.
+1. Create isolated Fly staging hosting, Fly Managed Postgres Basic and Upstash.
+   Create separate system, tenant and migration database roles using
+   `DATABASE_SECURITY.md`. Use the initial production target shared-cpu-2x /
+   2 GB only as a measured baseline, not a capacity claim.
 2. Create the staging secret set from `EXTERNAL_CONFIGURATION.md`. Generate
    cryptographic and operator values once in a private terminal; retain their
    recovery copies outside the deployment platform.
@@ -48,7 +52,8 @@ record. Never use production customer data in staging.
 
 Run in this order against staging, then repeat against production after launch
 authorization. Record timestamp, commit, actor, environment, result and
-sanitized evidence for each item.
+sanitized evidence for each item using
+[`RELEASE_EVIDENCE_TEMPLATE.md`](RELEASE_EVIDENCE_TEMPLATE.md).
 
 1. Migration: all expected migrations present; no drift; no failed release.
 2. RLS: actual tenant and system runtime logins prove cross-store denial and
@@ -81,7 +86,9 @@ sanitized evidence for each item.
 14. Monitoring: alert routing for readiness, database, Redis, queue, webhook,
     import and provider failures; acknowledge and clear every synthetic alert.
 15. Backup/restore: execute `BACKUP_RESTORE_RUNBOOK.md` on an isolated restored
-    cluster; record RPO/RTO and destroy the drill environment.
+    cluster; record daily schedule, encryption, retention, access, RPO, RTO,
+    restoration/verification evidence and incident owner; destroy the drill
+    environment without exposing merchant PII.
 16. Failure recovery: run the cases in the rollback table before launch.
 
 ## Load and soak plan

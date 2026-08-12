@@ -6,7 +6,9 @@ Partner Dashboard without Connor's explicit authorization. Status is governed by
 
 ## Required packet
 
-- [ ] Partner organization and public app registration are owned by Connor.
+- [ ] Partner organization/public app registration are owned by Connor as the
+  individual publisher. The one-time $19 fee is initiated only with a separate
+  explicit Connor authorization at the registration step.
 - [ ] Stable production HTTPS application URL is live; all URLs in deployed
   Shopify configuration use it, not a tunnel, localhost, example or Shopify
   placeholder.
@@ -22,8 +24,9 @@ Partner Dashboard without Connor's explicit authorization. Status is governed by
   pricing and only currently working connector capability.
 - [ ] 1200×1200 JPEG/PNG app icon, primary language, category, listing title,
   truthful description, pricing and support details are complete.
-- [ ] Public privacy policy and terms use Connor's approved legal entity,
-  support address and statements. The repository does not invent these answers.
+- [ ] Public privacy policy and terms use Connor's approved individual legal
+  name, `support@mymeridian.io`, and accurate statements after the mailbox is
+  live. The repository does not invent or publish those private values.
 - [ ] Monitored support contact and emergency technical contact (email + phone)
   are entered by Connor.
 - [ ] Billing uses Shopify Billing API, with current Starter $49/$490, Growth

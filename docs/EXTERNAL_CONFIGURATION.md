@@ -8,7 +8,34 @@ submission.
 Use two isolated environments. Staging has its own domain, Fly app, PostgreSQL
 cluster, Redis instance, Shopify development app/store and provider test
 credentials. Production has its own values and never receives staging data,
-cookies, OAuth clients, database roles or encryption keys.
+cookies, OAuth clients, database roles, encryption keys or merchant/customer
+data.
+
+## Authoritative owner choices
+
+- Product/public identity: **MyMeridian / Meridian**, published initially by
+  Connor as an individual.
+- Production origin: `https://mymeridian.io`; staging origin:
+  `https://staging.mymeridian.io`. The domain is not yet purchased. Do not
+  register production callbacks, set live Shopify configuration, or send email
+  from either address until the relevant domain is controlled and verified.
+- Planned general/support/emergency email: `hello@mymeridian.io` and
+  `support@mymeridian.io`. They are not active yet. The owner-side emergency
+  phone remains private and must not enter this repository.
+- Hosting: Fly.io, `iad`; initial production app target: shared-cpu-2x with
+  2 GB RAM. This is an initial measured baseline, not a permanent size.
+- Database: one Fly Managed Postgres **Basic** cluster per environment.
+- Redis: one Upstash Redis database per environment, free tier first only if
+  staging proves queue, rate-limit and durability needs are met.
+- Email/MFA: Resend free tier first; Twilio Verify usage-based. The existing
+  MFA boundary distinguishes embedded Shopify authentication, standalone
+  MyMeridian accounts, and publisher/operator access. No redundant SMS MFA is
+  applied to normal Shopify-embedded merchants.
+- Distribution: public Shopify app. Built for Shopify is post-launch only.
+
+These choices authorize preparation only. They do not authorize account
+creation, payment, provider review, domain purchase, deployment, merge,
+submission or publication.
 
 ## Canonical origins and callback paths
 
@@ -16,12 +43,13 @@ Choose the actual values before registering callbacks:
 
 | Environment | Canonical origin | Required paths |
 | --- | --- | --- |
-| Staging | `https://staging.<chosen-domain>` | `/auth/callback`, `/oauth/google/callback`, `/oauth/apple/callback`, `/connections/meta/callback`, `/connections/google/callback`, `/connections/tiktok/callback`, `/webhooks/*` |
-| Production | `https://<chosen-domain>` | Same paths, on the production origin only |
+| Staging | `https://staging.mymeridian.io` | `/auth/callback`, `/oauth/google/callback`, `/oauth/apple/callback`, `/connections/meta/callback`, `/connections/google/callback`, `/connections/tiktok/callback`, `/webhooks/*` |
+| Production | `https://mymeridian.io` | Same paths, on the production origin only |
 
 Never set `APP_URL` to a different host. Leave it unset in production and use
 `SHOPIFY_APP_URL` as the canonical origin. Production readiness now rejects
-localhost, example and Shopify CLI placeholder origins.
+localhost, example and Shopify CLI placeholder origins. These URLs are a
+registration matrix only until the domain/DNS/TLS step is complete.
 
 ## Account and credential matrix
 
@@ -33,19 +61,19 @@ browser bundle, issue tracker, screenshots or chat.
 
 | Service / exact product | Account or product Connor needs | Cost / review | MyMeridian value(s) | Register / configure | Can happen before deployment? |
 | --- | --- | --- | --- | --- | --- |
-| **Fly.io Apps** | One Fly organization and two apps: `mymeridian-staging` and the final production app name, both in `iad` | Production compute is paid; no Shopify-style review | Hosting deployment authorization; runtime secret store | Attach staging/production custom domains and require HTTPS | Account and app names: yes. Public callbacks: after each origin exists. |
-| **Fly Managed Postgres** | One isolated cluster per environment, same region as its app | Paid; Fly documents Managed Postgres plans, backups and pooling | `DATABASE_URL` (system pooled), `MERIDIAN_TENANT_DATABASE_URL` (tenant pooled), `DIRECT_DATABASE_URL` (migration direct) | Create `meridian_app_system` and `meridian_app_tenant` exactly as `DATABASE_SECURITY.md`; keep migration owner separate | Account decision: yes. Roles/URLs: after cluster creation. |
-| **Managed Redis** | One isolated Redis 6+ compatible instance per environment for BullMQ | **Provider is not selected in this repository; Connor must choose/authorize it.** Cost and review depend on provider | `MERIDIAN_REDIS_URL` only | TLS/private networking where provider supports it; never share with staging | Provider decision: yes. URL: after instance creation. |
-| **Domain registrar + authoritative DNS** | Ownership/control of `<chosen-domain>` and optional `staging.<chosen-domain>` | Domain purchase normally paid; no app review | No secret; DNS records and final `SHOPIFY_APP_URL` | Add Fly verification/AAAAA or CNAME records exactly as Fly supplies; TLS is then verified at Fly | Domain can be bought and DNS zone prepared now; final record values require Fly app/domain step. |
-| **Resend Transactional Email** | Resend team, verified sending domain, production API key | Free tier exists but has quotas; paid plan may be required for volume. No production approval according to Resend | `RESEND_API_KEY`, `MERIDIAN_EMAIL_FROM` | Add Resend's domain DNS records; sender must use verified domain | Account/domain verification: yes. Send a real controlled test after staging deploy. |
-| **Twilio Verify** | Twilio account, restricted API key and one Verify Service | Trial exists but is constrained; successful production verifications are usage-billed | `TWILIO_ACCOUNT_SID`, `TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET`, `TWILIO_VERIFY_SERVICE_SID` | Configure Verify Service with SMS channel, Fraud Guard/rate limits and allowed geographies; no callback is required by this app | Account/service: yes. Controlled real SMS test after staging deploy. |
-| **Shopify Partner Dashboard** | Partner organization, one staging/development app and one production public app | Partner/account identity, billing and App Store review are external gates | `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_APP_URL`, `SCOPES` | Production app: real application URL, `/auth/callback`, relative GDPR/webhook routes from `shopify.app.toml`; set `automatically_update_urls_on_dev = false` in the deployed production config | Partner account and staging app: yes. Production URLs/config: only when production origin exists. |
-| **Meta for Developers / Marketing API** | Meta developer account, business-owned app, Marketing API use case | Access/review may be required for production access; Meta decision is external | `META_APP_ID`, `META_APP_SECRET` | Valid OAuth redirect URI: `https://<origin>/connections/meta/callback` | App creation: yes. Exact callback: once origin is chosen. |
-| **Google Cloud + Google Ads manager account** | Google Cloud project with web OAuth client, plus a Google Ads manager account/API Center developer token | OAuth consent configuration and Google Ads developer-token access are external; production access level depends on Google review | `MERIDIAN_GOOGLE_ADS_CLIENT_ID`, `MERIDIAN_GOOGLE_ADS_CLIENT_SECRET`, `MERIDIAN_GOOGLE_ADS_DEVELOPER_TOKEN` | Authorized redirect URI: `https://<origin>/connections/google/callback`; enter functioning company URL and monitored API contact in Google Ads API Center | Cloud project/manager account: yes. Callback/production consent screen: once origin and identity exist. |
-| **TikTok for Business / Marketing API** | TikTok for Business developer/Marketing API app | Provider approval/access is external; any spend is subject to TikTok account terms | `TIKTOK_APP_ID`, `TIKTOK_APP_SECRET` | Redirect URI: `https://<origin>/connections/tiktok/callback` | Account/app request: yes. Callback activation: once origin exists. |
-| **Google Identity** | Google Cloud OAuth web client for MyMeridian web-account sign-in | Account normally free; consent-screen verification can be required depending on publishing/scopes | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Authorized redirect URI: `https://<origin>/oauth/google/callback` | Project/client: yes. Callback: once origin exists. |
-| **Apple Developer Program / Sign in with Apple** | Apple Developer membership, primary App ID, Services ID and Sign in with Apple private key | Membership/payment and Apple ownership are Connor decisions; no code attestation by this repo | `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | Registered domain plus return URL: `https://<origin>/oauth/apple/callback` | Apple enrollment/App ID: yes. Website URL: once origin exists. |
-| **Alert destination** | A monitored incident/support endpoint or alert provider selected and owned by Connor | Not selected in the repo; may be paid | Optional `CONNECTOR_ALERT_WEBHOOK_URL`, `CONNECTOR_ALERT_WEBHOOK_SECRET` | HTTPS receiver verifies signed alert payloads; do not use a personal unmonitored endpoint | Decision/receiver: yes. End-to-end test after staging deploy. |
+| **Fly.io Apps** | One Fly organization and two apps: `mymeridian-staging` and final production app, both in `iad` | Compute is paid; no Shopify-style review | Hosting deployment authorization; environment-scoped secret store | Initial production VM: shared-cpu-2x / 2 GB. Attach each real custom domain and require HTTPS | Account/app names: yes. Domain attachment: after purchase. Deployment: only Gate 2/3 authorization. |
+| **Fly Managed Postgres** | One **Basic** cluster per environment, same region as its app | Starting production cluster about $38/month plus storage; payment/provisioning required | `DATABASE_URL` (system pooled), `MERIDIAN_TENANT_DATABASE_URL` (tenant pooled), `DIRECT_DATABASE_URL` (migration direct) | Create `meridian_app_system` and `meridian_app_tenant` exactly as `DATABASE_SECURITY.md`; keep migration owner separate; enable encrypted daily backups/PITR and record retention | Account decision: resolved. Cluster/roles/URLs: only after provisioning. |
+| **Upstash Redis** | One isolated Redis database per environment for BullMQ | Free tier first; upgrade requires evidence that limits, durability or workload are inadequate and Connor authorization if paid | `MERIDIAN_REDIS_URL` only | Separate credentials/prefixes; TLS; no staging/production sharing; tenant-safe cache keys only | Account can be created now; database credentials after creation; no traffic until staging Gate 2. |
+| **Domain registrar + authoritative DNS** | `mymeridian.io`, with `staging.mymeridian.io` DNS record | Domain purchase is an owner/payment action | No secret; DNS records and final `SHOPIFY_APP_URL` | Add Fly and Resend verification records exactly as supplied; Fly validates TLS after DNS propagates | **Waiting for Connor to purchase/control domain.** |
+| **Resend Transactional Email** | Resend team, verified `mymeridian.io`, scoped staging/prod API keys | Free tier initially; upgrade only when actual limits require it | `RESEND_API_KEY`, `MERIDIAN_EMAIL_FROM` (`MyMeridian <hello@mymeridian.io>` or a verified support sender) | Add Resend DNS records; verify sender/domain; prove controlled email delivery in staging | Account: yes. Domain verification/sender: after purchase. |
+| **Twilio Verify** | Twilio account, restricted API key and separate staging/production Verify Services | Trial constrained; successful verifications are usage-billed | `TWILIO_ACCOUNT_SID`, `TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET`, `TWILIO_VERIFY_SERVICE_SID` | Configure SMS only for appropriate standalone-account enrollment/recovery; Fraud Guard, rate limits and allowed geographies; no callback required by this app | Account/service: yes. Real controlled SMS test: after staging deploy. |
+| **Shopify Partner Dashboard** | Connor's only Partner account; one staging/development app and one production public app | Public distribution, registration and App Store review are external gates; $19 registration needs a separate explicit payment authorization | `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_APP_URL`, `SCOPES` | Production app: `https://mymeridian.io`, `/auth/callback`, relative GDPR/webhook routes; production deploy sets `automatically_update_urls_on_dev = false` | Staging app: yes. Production URLs/config/registration payment: after domain and explicit approval. |
+| **Meta for Developers / Marketing API** | Meta developer account and Marketing API app owned by Connor as the individual publisher | Access/review may be required for production access; Meta decision is external | `META_APP_ID`, `META_APP_SECRET` | Register separate staging/production redirects: `https://staging.mymeridian.io/connections/meta/callback` and `https://mymeridian.io/connections/meta/callback` if Meta permits both | App request: yes. Callback activation: after domain/TLS. |
+| **Google Cloud + Google Ads manager account** | Google Cloud project with web OAuth client, plus a Google Ads manager account/API Center developer token | OAuth consent configuration and Google Ads developer-token access are external; production access level depends on Google review | `MERIDIAN_GOOGLE_ADS_CLIENT_ID`, `MERIDIAN_GOOGLE_ADS_CLIENT_SECRET`, `MERIDIAN_GOOGLE_ADS_DEVELOPER_TOKEN` | Separate staging/production redirects at `/connections/google/callback`; use real `mymeridian.io` and monitored `support@mymeridian.io` only after both are live | Project/manager account: yes. Callback/production consent: after domain. |
+| **TikTok for Business / Marketing API** | TikTok for Business developer/Marketing API app owned by Connor | Provider approval/access is external; any spend is subject to TikTok account terms | `TIKTOK_APP_ID`, `TIKTOK_APP_SECRET` | Separate staging/production redirects at `/connections/tiktok/callback` where TikTok permits | Account/app request: yes. Callback activation: after domain/TLS. |
+| **Google Identity** | Google Cloud OAuth web client for MyMeridian standalone-account sign-in | Account normally free; consent-screen verification can be required depending on publishing/scopes | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Separate staging/production redirects at `/oauth/google/callback`; client secret stays server-side | Project/client: yes. Callback activation: after domain/TLS. |
+| **Apple Developer Program / Sign in with Apple** | Apple Developer membership, primary App ID, Services ID and Sign in with Apple private key | Membership/payment and Apple ownership are Connor decisions; no code attestation by this repo | `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | Register verified domains and separate staging/production return URLs at `/oauth/apple/callback`; private key stays server-side | Apple enrollment/App ID: yes. Website URLs: after domain/TLS. |
+| **Operational/security alerts** | Initial recipient: `support@mymeridian.io` after its mailbox is live | Provider monitoring may be free/paid depending on selected service | Provider notification target; current connector code additionally supports `CONNECTOR_ALERT_WEBHOOK_URL` + `CONNECTOR_ALERT_WEBHOOK_SECRET` | Configure Fly/Upstash/provider alerts to the monitored support mailbox. The application connector-alert path requires a signed HTTPS webhook, not a bare email address; select an email-capable alert receiver/bridge before enabling it | Recipient decision: resolved. Mailbox/receiver: after domain. End-to-end test: staging. |
 | **ShipStation test account** | Controlled ShipStation account and API credential for connector acceptance | Provider plan/access is external | Encrypted merchant-provided credential; no publisher-wide runtime secret | Configure test webhook if the controlled account supports it | Account: yes. Test after staging deploy. |
 
 ## Required production secret inventory
@@ -65,16 +93,17 @@ and verified.
 | Background work | `MERIDIAN_REDIS_URL`, `MERIDIAN_DEMO_MODE=false`, `NODE_ENV=production` |
 | Ad connectors | `META_APP_ID`, `META_APP_SECRET`, `MERIDIAN_GOOGLE_ADS_CLIENT_ID`, `MERIDIAN_GOOGLE_ADS_CLIENT_SECRET`, `MERIDIAN_GOOGLE_ADS_DEVELOPER_TOKEN`, `TIKTOK_APP_ID`, `TIKTOK_APP_SECRET` |
 | Optional web sign-in | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` |
-| Legal/support and alerting | `MERIDIAN_SUPPORT_EMAIL`, `MERIDIAN_LEGAL_ENTITY`, `MERIDIAN_SUPPORT_URL`, optional `CONNECTOR_ALERT_WEBHOOK_URL`, `CONNECTOR_ALERT_WEBHOOK_SECRET` |
+| Legal/support and alerting | `MERIDIAN_SUPPORT_EMAIL=support@mymeridian.io`, `MERIDIAN_LEGAL_ENTITY=<Connor's legal name supplied privately at configuration time>`, `MERIDIAN_SUPPORT_URL`, optional `CONNECTOR_ALERT_WEBHOOK_URL`, `CONNECTOR_ALERT_WEBHOOK_SECRET` |
 
 ## Explicit stops
 
-Connor must supply/authorize: organization ownership, payment method, legal
-entity, privacy/terms statements, domain purchase, the monitored support and
-emergency contacts, provider-app ownership, billing choice, Shopify protected
-customer-data request answers, reviewer credentials, and every production
-credential. This repository cannot truthfully create, attest to, pay for or
-approve any of them.
+Connor has resolved the intended individual publisher, domains, providers,
+support recipient and infrastructure baseline. Connor must still create/own the
+accounts, purchase/control the domain, supply private legal-name/phone values at
+configuration time, make the required provider/Shopify submissions, approve each
+paid or irreversible action, provide reviewer credentials, and authorize Gates
+1–5. This repository cannot truthfully create, attest to, pay for or approve
+any of them.
 
 Reference requirements: [Fly Managed Postgres](https://fly.io/docs/mpg/),
 [Resend production access](https://resend.com/docs/knowledge-base/does-resend-require-production-approval),
@@ -82,3 +111,21 @@ Reference requirements: [Fly Managed Postgres](https://fly.io/docs/mpg/),
 [Google Ads developer token](https://developers.google.com/google-ads/api/docs/api-policy/developer-token),
 [Apple web sign-in](https://developer.apple.com/documentation/signinwithapple/configuring-your-environment-for-sign-in-with-apple),
 and [Shopify protected customer data](https://shopify.dev/docs/apps/launch/protected-customer-data).
+
+## Exact next step after domain purchase
+
+1. Connor confirms registrar/DNS control of `mymeridian.io`; no payment or
+   registration action is taken by this repository.
+2. Create `staging.mymeridian.io` DNS only. Create the Fly staging app and use
+   Fly's exact verification records; wait for HTTPS validation.
+3. Add Resend's exact verification records, then verify the sender/domain.
+   Confirm controlled delivery to a mailbox Connor owns before treating either
+   planned address as active.
+4. Create the staging-only PostgreSQL, Upstash and secret sets; do not use
+   production values or data.
+5. Register the listed **staging** OAuth callbacks with each available provider.
+   Do not register production callbacks or update Shopify production config
+   until `https://mymeridian.io` itself is live and Connor authorizes the
+   relevant gate.
+6. Stop and obtain explicit Gate 1 (merge) and Gate 2 (staging deployment)
+   approvals before merging PR #1 or deploying staging.

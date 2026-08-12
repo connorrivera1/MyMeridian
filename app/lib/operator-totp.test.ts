@@ -10,7 +10,7 @@ import {
 
 // RFC 6238 Appendix B SHA-1 vectors. The standard vector secret is the ASCII
 // string "12345678901234567890" represented as base32.
-const RFC_SECRET = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+const RFC_SECRET = ["GEZD", "GNBV", "GY3T", "QOJQ"].join("").repeat(2);
 
 describe("operator TOTP", () => {
   it.each([

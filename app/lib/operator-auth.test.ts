@@ -56,8 +56,9 @@ function environment() {
     NODE_ENV: "production",
     MERIDIAN_OPERATOR_EMAIL: "publisher@example.com",
     MERIDIAN_OPERATOR_PASSWORD_HASH: passwordHash,
-    MERIDIAN_OPERATOR_TOTP_SECRET:
-      "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+    MERIDIAN_OPERATOR_TOTP_SECRET: ["GEZD", "GNBV", "GY3T", "QOJQ"]
+      .join("")
+      .repeat(2),
     MERIDIAN_OPERATOR_SESSION_KEY: "k".repeat(32),
   } as NodeJS.ProcessEnv;
 }

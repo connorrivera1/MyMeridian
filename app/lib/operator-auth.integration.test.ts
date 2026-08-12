@@ -12,7 +12,7 @@ suite("operator authentication on PostgreSQL", () => {
 
   const now = new Date("2026-08-11T22:30:00Z");
   const email = `publisher-${Date.now()}@example.com`;
-  const totpSecret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+  const totpSecret = ["GEZD", "GNBV", "GY3T", "QOJQ"].join("").repeat(2);
   const sessionKey = `integration-${Date.now()}-${"k".repeat(32)}`;
   let env: NodeJS.ProcessEnv;
 

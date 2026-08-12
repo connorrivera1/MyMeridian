@@ -95,7 +95,11 @@ export function verifyTotp(
   options: TotpOptions,
 ): number | null {
   const digits = options.digits ?? 6;
-  if (!new RegExp(`^\\d{${digits}}$`).test(code)) return null;
+  if (code.length !== digits) return null;
+  for (let index = 0; index < code.length; index += 1) {
+    const character = code.charCodeAt(index);
+    if (character < 48 || character > 57) return null;
+  }
 
   const period = options.periodSeconds ?? 30;
   const window = options.window ?? 1;

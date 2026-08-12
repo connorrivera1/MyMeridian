@@ -204,6 +204,14 @@ describe("Costs page", () => {
     expect(html).toContain("Bundle rollup");
   });
 
+  it("keeps restatement date selection and its optional reason directly editable", () => {
+    const html = render();
+    expect(html).toContain('type="date"');
+    expect(html).toContain("Reason (Optional)");
+    expect(html).toContain('type="text" maxLength="200"');
+    expect(html).not.toContain('name="reason" disabled');
+  });
+
   it("renders a four-decimal cost without rounding it away", () => {
     const html = render({
       variants: [

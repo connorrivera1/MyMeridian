@@ -5,6 +5,7 @@ import {
   useLoaderData,
   useNavigation,
 } from "react-router";
+import type { MouseEvent } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { z } from "zod";
 
@@ -400,6 +401,13 @@ function Field({
   required?: boolean;
   width?: number;
 }) {
+  const openDatePicker = (
+    event: MouseEvent<HTMLInputElement>,
+  ) => {
+    if (type !== "date") return;
+    event.currentTarget.showPicker?.();
+  };
+
   return (
     <label className="stack" style={{ gap: 4 }}>
       <span className="tiny muted">{label}</span>
@@ -414,6 +422,7 @@ function Field({
         placeholder={placeholder}
         required={required}
         style={width ? { width } : undefined}
+        onClick={type === "date" ? openDatePicker : undefined}
       />
     </label>
   );
@@ -518,11 +527,10 @@ export function CostsView({
               width={150}
             />
             <Field
-              label="Reason"
+              label="Reason (Optional)"
               name="reason"
               type="text"
               maxLength={200}
-              placeholder="Corrected Q1 freight costs"
               width={260}
             />
             <label

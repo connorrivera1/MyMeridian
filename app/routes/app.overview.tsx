@@ -383,7 +383,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
           in the greeting above, so no tile has to shout over the others. */}
       <div className="grid cols-3">
         <Tile
-          tone="var(--mark-structure)"
+          tone="var(--series-1)"
           icon={<IconOrders />}
           label="Net revenue"
           value={

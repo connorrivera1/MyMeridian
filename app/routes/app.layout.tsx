@@ -221,7 +221,7 @@ const NAV = [
   { to: "/app", label: "Overview", Icon: IconOverview, end: true },
   { to: "/app/orders", label: "Profit per order", Icon: IconOrders },
   { to: "/app/products", label: "Products", Icon: IconProducts },
-  { to: "/app/costs", label: "Costs & bundles", Icon: IconCosts },
+  { to: "/app/costs", label: "Costs & Bundles", Icon: IconCosts },
   { to: "/app/acquisition", label: "Acquisition", Icon: IconChannels },
   { to: "/app/pricing", label: "Pricing", Icon: IconPricing },
   {
@@ -639,7 +639,7 @@ const TITLES: Record<string, { title: string; subtitle: string }> = {
     subtitle: "Bottlenecks before they become problems",
   },
   "/app/costs": {
-    title: "Costs & bundles",
+    title: "Costs & Bundles",
     subtitle: "What things cost, when they cost it, and what a pack is made of",
   },
   "/app/settings": {

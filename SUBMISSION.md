@@ -16,8 +16,8 @@ representative order-volume backfill. Where a claim below says "verified", the
 level is named. See _What has not been tested_ at the end.
 
 **Current local gate:** `npm run ci` passes — typecheck, coverage thresholds,
-1,142 unit tests and production build. The explicit real-PostgreSQL run passes
-all 67 opt-in integration cases after all 31 migrations apply from empty.
+1,156 unit tests and production build. The explicit real-PostgreSQL run passes
+all 72 opt-in integration cases after all 33 migrations apply from empty.
 Billing is no longer merely declared:
 `resolvePlan`, the layout subscription redirect, the `planAllows`
 capability gates, the pricing-action re-check, and `billing.request` implement
@@ -141,7 +141,7 @@ done from this repo — each is written up with where it lives and what it needs
 | Support page                                                               | **Done** — `/support`, public.                                                                                                                                                                                                                                                                        |
 | Meridian domain, publisher + support email                                 | **Missing.** They must belong to Meridian. The app pages show an explicit pre-launch configuration gap and the standalone legal drafts state that they are not effective until these facts are selected.                                                                                              |
 | Listing copy — name ≤30 chars, intro ≤100, details ≤500, features ≤80 each | **Drafted and measured** under MyMeridian with current annual pricing. Re-measure after any edit. It correctly avoids ad-performance claims.                                                                                                                                                          |
-| Feature media, 1600×900 or a 2–3 min video                                 | **Missing.**                                                                                                                                                                                                                                                                                          |
+| Feature media, 1600×900 or a 2–3 min video                                 | **Done locally.** `listing/feature-media-1600x900.png`; exact dimensions are enforced by the listing test.                                                                                                                                                                                            |
 | Demo store URL for reviewers                                               | **Missing.**                                                                                                                                                                                                                                                                                          |
 | Reviewer testing instructions (4.5.4 / 4.5.5)                              | **Drafted, not paste-ready.** Update the name, then fill the demo store URL, storefront password and Meridian support email. The block directs the reviewer to Growth monthly so Pricing and Fulfilment are reachable and explicitly identifies the customer/ad analyses unavailable in this release. |
 | Screencast of the full setup process, English or English-subtitled         | **Missing.** An automatic bounce if absent. The real development-store install and first dashboard view now work; record the final flow only after the public identity and populated reviewer store are ready, without the demo bypass.                                                               |
@@ -175,10 +175,12 @@ Measured on the seeded store (12,379 orders, 19,532 line items): the 30-day
 window went 108ms → 72ms and the 365-day window 400ms → 247ms, on both the
 reporting window and the comparison window built beside it.
 
-What remains: the orders table's `PAGE_SIZE = 60` still slices a lean
-materialized period array, so page 40 is not yet database-keyset paged. The
-former 60,000-order correctness refusal is gone; this remaining item is an
-efficiency improvement rather than a supported-volume boundary.
+The orders table now queries PostgreSQL directly with opaque keyset cursors for
+recent, best and worst sorts, binds each cursor to its date range and channel,
+and fetches at most 61 rows for a 60-row page. If the materialized ledger is
+temporarily incomplete it falls back to the exact live engine instead of hiding
+orders. Forward, backward, filtering and profit sorting pass against real
+PostgreSQL.
 
 Removing that supported-volume boundary means computing the roll-up in SQL.
 Two things were established about what that costs, and both argue for doing it
@@ -588,7 +590,8 @@ orders and 9,192 customers recomputed, unattributed ad spend $0.00.
 
 **Current media state:** all screenshots predate the August 9–10 UI redraw and
 have been re-shot locally. Acquisition no longer depends on a connector to make a useful
-image. Feature media and the demo store URL are also still missing.
+image. The 1600×900 feature-media image is ready locally; the demo store URL is
+still missing.
 
 ### The app sold ad channels it cannot connect
 
@@ -1130,7 +1133,7 @@ the bug, and why the third row of that table matches.
 | GraphQL Admin API only                     | Done      | No REST calls anywhere; new public apps may not use REST                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | Webhook API version                        | Done      | `2026-07`, matching `@shopify/shopify-api` 13.1.0                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | Production build                           | Done      | `npm run ci` production build clean on 2026-08-11                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| Test suite                                 | Done      | **1,142 unit tests passed and 67 opt-in PostgreSQL integration tests skipped; explicit real-PostgreSQL suite 67/67 after all 31 migrations** (verified 2026-08-11)                                                                                                                                                                                                                                                                                                                                                    |
+| Test suite                                 | Done      | **1,156 unit tests passed and 72 opt-in PostgreSQL integration tests skipped; explicit real-PostgreSQL suite 72/72 after all 33 migrations** (verified 2026-08-12)                                                                                                                                                                                                                                                                                                                                                    |
 | Engine output unchanged by the query work  | Done      | `npx tsx scripts/verify-data.ts` against live Postgres, diffed byte-for-byte against its output before the change                                                                                                                                                                                                                                                                                                                                                                                                     |
 | Typecheck                                  | Done      | Clean in `npm run ci` on 2026-08-11                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | Config validity                            | Done      | `shopify app config validate` passes on 2026-08-10; CLI 4.x publishes config through `shopify app deploy`, not the removed `config push` command                                                                                                                                                                                                                                                                                                                                                                      |
@@ -1148,11 +1151,7 @@ thrown from the same function that throws the 401.
 
 ## Known gaps that are not blockers, in rough priority order
 
-1. **The orders table still pages a lean materialized period in memory.** Large
-   analytics windows no longer hydrate the full order graph or refuse above
-   60,000 orders, but database-side keyset paging would reduce repeat work on
-   very deep order-table pages.
-2. **Ad connections require production activation.** The repository includes
+1. **Ad connections require production activation.** The repository includes
    self-service Meta/Google/TikTok OAuth, account selection, encrypted tokens,
    health checks and durable ingestion, but provider-reviewed apps, credentials
    and Redis-backed workers must be configured before live spend can sync.
@@ -1162,11 +1161,11 @@ thrown from the same function that throws the 401.
    wiring that _did_ exist is now consistent: every provider in the enum gets a
    connector row at install, so the Settings screen shows all three ad platforms
    sitting at "Not configured" rather than omitting TikTok entirely.
-3. **Backfill and recompute run in-process.** Backfill now uses a database lease,
-   heartbeat, owner-fenced writes and cursor-preserving takeover, so a Fly
-   restart is recoverable; recompute preflights and processes one merchant-local
-   month at a time. A serverless host would still need a durable job queue.
-4. **Browser-level platform E2E is partial.** Server-rendered route tests now
+2. **Backfill and recompute require an active worker.** Requests persist
+   deduplicated Postgres jobs before returning; leased claims, retry/backoff and
+   resume cursors recover after restart. A serverless host would still need a
+   separate worker process to drain the existing durable queue.
+3. **Browser-level platform E2E is partial.** Server-rendered route tests now
    cover Overview, Orders, Products, Acquisition, Pricing, Settings, Plan,
    Layout, both Privacy-request routes, Fulfilment, the embedded Shopify login
    entry, the marketing-home resource route and both legal wrappers; chart

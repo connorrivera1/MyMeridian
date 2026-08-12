@@ -241,17 +241,17 @@ function buildShopify() {
         // Started in the background: OAuth has to redirect into the app now,
         // and pulling a store's order history takes far longer than a redirect
         // can wait. Progress is polled from the Shop row.
-        const { startBackfill, backfillIsStale } =
-          await import("./lib/backfill.server");
+        const { backfillIsStale } = await import("./lib/backfill.server");
+        const { requestBackfill } = await import("./lib/backfill-queue.server");
 
         const alreadyImported =
           !orderHistoryAccessChanged &&
           (shop.syncStatus === "COMPLETE" || shop.syncStatus === "RUNNING");
 
         if (!alreadyImported || backfillIsStale(shop)) {
-          // Wait only for the atomic claim, not the import. This keeps OAuth
-          // fast while ensuring two callbacks cannot start overlapping walks.
-          await startBackfill(shop.id, admin);
+          // Wait only for the durable enqueue, not the import. This keeps OAuth
+          // fast while ensuring a deploy cannot erase the outstanding work.
+          await requestBackfill(shop.id);
         }
       },
     },

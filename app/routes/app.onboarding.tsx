@@ -10,11 +10,10 @@ import {
 } from "react-router";
 
 import prisma from "~/db.server";
-import { invalidateAnalyticsCache } from "~/data/analytics.server";
 import { Banner, Card, Money, Stat } from "~/design/components";
 import { withShopContext, type ShopContext } from "~/lib/auth.server";
 import { requireRecentReauthentication } from "~/lib/reauth.server";
-import { recomputeShopProfitability } from "~/lib/recompute.server";
+import { enqueueShopRecompute } from "~/lib/recompute-queue.server";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
@@ -149,8 +148,7 @@ async function updateOnboarding(request: Request, ctx: ShopContext) {
       data: { onboardingStep: "complete" },
     }),
   ]);
-  await recomputeShopProfitability(shop.id);
-  invalidateAnalyticsCache();
+  await enqueueShopRecompute(shop.id, "onboarding_costs_confirmed");
   throw redirect("/app/plan");
 }
 

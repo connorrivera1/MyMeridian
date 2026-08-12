@@ -11,9 +11,9 @@ offline. The durable `AdSyncWindow` ledger is Postgres, so a lost Redis queue
 is reconciled on the next polling cycle. Google Ads also needs its client id,
 secret, and developer token configured as deployment secrets.
 
-**Current snapshot, 2026-08-11.** This snapshot overrides stale "now" claims in
-the dated audit history below. Billing is enforced, the suite has 1,142 passing
-unit tests plus 67 passing opt-in PostgreSQL integration tests, all 31 migrations
+**Current snapshot, 2026-08-12.** This snapshot overrides stale "now" claims in
+the dated audit history below. Billing is enforced, the suite has 1,156 passing
+unit tests plus 72 passing opt-in PostgreSQL integration tests, all 33 migrations
 apply to a fresh database, Docker and flyctl are installed, `read_all_orders` is
 approved, and the development app has passed a real Shopify install, onboarding,
 full-history import and test-billing approval/return flow. The remaining release
@@ -42,7 +42,7 @@ the ordered path from here to a submitted listing.
 | Check                             | Result                                                                                                                                                                                                                                                                                                                                                                                                           |
 | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `npm run ci`                      | **Passes** (2026-08-11): typecheck, coverage thresholds and production build.                                                                                                                                                                                                                                                                                                                                    |
-| `npx vitest run`                  | **1,142 passed, 67 skipped**. The 67 skipped cases are opt-in PostgreSQL integration tests; the explicit real-PostgreSQL run passes **67/67** after applying all 31 migrations to a fresh database.                                                                                                                                                                                                              |
+| `npx vitest run`                  | **1,156 passed, 72 skipped**. The 72 skipped cases are opt-in PostgreSQL integration tests; the explicit real-PostgreSQL run passes **72/72** after applying all 33 migrations to a fresh database.                                                                                                                                                                                                              |
 | Billing enforcement               | **Implemented and tested.** `resolvePlan` reads/caches Billing API state, the app layout redirects stores without an active plan, `planAllows` enforces paid capabilities, and `/app/plan` calls `billing.request`. A real Shopify development-store test charge completed its approval and return flow without moving money.                                                                                    |
 | `npx shopify app config validate` | **Passes.** On CLI 4.x, `app config` has `link`, `pull`, `use`, and `validate`; **there is no `config push`**. Config is published by `shopify app deploy` because `include_config_on_deploy = true`.                                                                                                                                                                                                            |
 | Docker / flyctl                   | **Installed.** Docker CLI 29.7.1 and flyctl 0.4.79 are present. The image was previously built and booted locally (§11); the Docker daemon was stopped during this verification. flyctl is not authenticated (`fly auth whoami` returns `no access token available`).                                                                                                                                            |
@@ -77,38 +77,38 @@ a host exists.
 
 ## 3. Hosting decision — Fly.io
 
-Carried forward from v1, and re-verified. The deciding constraint is not
-framework preference, it is that **this app owns long-running workers inside
-the web process**:
+Carried forward from v1, and re-verified after the durable-work migration. The
+deciding constraint is not framework preference: **the work is now durable in
+Postgres, but this deployment still runs its worker inside the web process**:
 
-- `afterAuth` awaits only `startBackfill`'s atomic database claim; the claimed
-  import then runs in-process after the OAuth handler returns.
+- `afterAuth` persists a deduplicated `HISTORICAL_BACKFILL` job before returning;
+  Settings and onboarding do the same for `FULL_RECOMPUTE` work.
 - The backfill walks the store's entire accessible order history with no
   implicit ceiling and
   re-acquires its admin token every 40 minutes because it expects to outlive an
   hour-long access token.
 - A five-minute lease is heartbeated every minute, progress and terminal writes
   are fenced to the current owner, and the saved cursor makes an interrupted run
-  visible and resumable. No external queue restarts it automatically.
+  visible and resumable. The worker automatically reclaims expired queued work.
 - The same always-on process runs the ten-second durable-webhook recovery worker
   and hourly privacy-retention sweep.
 
-Anything that treats the process as disposable once the response is written will
-interrupt those workers. The lease prevents a silent false completion, but a
-merchant still needs the process to remain alive for uninterrupted progress.
+Anything that provides no continuously available worker pauses those jobs. The
+request is safe and the lease makes restart recovery automatic, but a production
+worker must still be available for progress.
 
 | Option              | Fit             | Why                                                                                                                                                                                                                                                                      |
 | ------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Fly.io**          | **Recommended** | Long-lived container, managed Postgres or bring-your-own, cheap always-on small VM, `fly deploy` from a Dockerfile, custom domain and free TLS. The in-process backfill keeps working correctly with no code change.                                                     |
+| **Fly.io**          | **Recommended** | Long-lived container, managed Postgres or bring-your-own, cheap always-on small VM, `fly deploy` from a Dockerfile, custom domain and free TLS. The durable worker runs with no architecture change.                                                     |
 | Railway             | Close second    | Same long-lived-process model, easier Postgres, but usage-based pricing is less predictable. Fine as a fallback.                                                                                                                                                         |
 | Render              | Viable          | Long-lived service plus managed Postgres. The free tier spins down on idle, which would kill a backfill on a cold start — paid tier from day one or not at all.                                                                                                          |
-| Vercel              | **Not as-is**   | Serverless functions have execution limits and no guarantee the process outlives the response. Directly hostile to the current backfill. Would need a real job queue first, which is a genuine architecture change and the wrong thing to do just to unblock submission. |
+| Vercel              | **Not as-is**   | The Postgres queue is durable, but a serverless request does not provide the continuously running worker that drains it. A separate worker service would still be required. |
 | ngrok / cloudflared | **Test only**   | A tunnel is enough to exercise OAuth, webhooks and billing locally (Phase 2), but Shopify does not accept a tunnel URL as `application_url` — it is not stable and disappears with the dev session. Use it to test, never to submit.                                     |
 
 **Decision: Fly.io.** Deploy there, take the `*.fly.dev` subdomain (or attach a
 real domain if there is one), set that as `application_url`, and do not block
-submission on moving the backfill to a job queue — Fly's model tolerates it
-correctly today. Revisit post-submission (§9).
+submission on replacing the Postgres queue — Fly's model runs it correctly
+today. Revisit only if worker execution moves to another service (§9).
 
 ---
 
@@ -470,7 +470,7 @@ Assets state:
 | Support page                               | Done — `/support`, public                                                                                                                                                    |
 | Name / intro / details / features          | **Drafted and measured** under MyMeridian; re-check after any copy edit                                                                                                      |
 | Meridian domain, publisher + support email | **Owner** — §6e; must belong to Meridian, not another product                                                                                                                |
-| Feature media (1600×900 or 2–3 min video)  | **Missing**                                                                                                                                                                  |
+| Feature media (1600×900 or 2–3 min video)  | **Done locally** — `listing/feature-media-1600x900.png`; dimensions are enforced by the listing test                                                                                                 |
 | Demo store URL                             | **Missing** — §6f                                                                                                                                                            |
 | Setup screencast                           | **Missing — automatic bounce without it**                                                                                                                                    |
 
@@ -511,8 +511,8 @@ them because the work landed:
    at the last and most important step.
 2. **Test count.** v1 said 178 tests in 16 files and this section previously
    recorded intermediate milestones. The current baseline is the §1 result:
-   **1,142 passed and 67 skipped** in the default run; the explicit
-   real-PostgreSQL integration run passes **67/67** after all 31 migrations.
+   **1,156 passed and 72 skipped** in the default run; the explicit
+   real-PostgreSQL integration run passes **72/72** after all 33 migrations.
 3. **`Shop.syncCursor` is no longer write-only.** v1 listed "written but never
    read" as a fast-follow. Commit `200a350` reads it; an interrupted import now
    resumes from the cursor instead of restarting.
@@ -557,7 +557,7 @@ runtime is now memory-bounded and whole-history recompute is month-sliced; see
   Both were proved number-for-number: 15 new tests, and `verify-data.ts` output
   byte-identical against live Postgres.
 
-### Still open
+### Current supported-volume state
 
 - **Large accepted analytics windows use the materialized profit ledger.** The
   engine still refuses to truncate an order window. Above its full-hydration
@@ -565,30 +565,20 @@ runtime is now memory-bounded and whole-history recompute is month-sliced; see
   product roll-ups, validate that every order was computed, and fail visibly if
   the ledger is incomplete. This removes the former 60,000-order refusal without
   inventing partial P&L.
-- **Orders table pages a materialised array.** `PAGE_SIZE = 60` slices in
-  memory, so the database work is identical on page 1 and page 40. Same root
-  cause as above. **Partially addressed 2026-08-07:** page 2+ was previously
-  unreachable at all — there was no `page` param, so the table silently
-  dropped every order past the 60th in the current sort. That's fixed
-  (`paginateOrders` in `app/routes/app.orders.tsx`, with Previous/Next
-  controls and out-of-range clamping); a store can now actually see every
-  order in an accepted window. What's still open is the underlying cost: the
-  full accepted period is fetched from Postgres and sorted in memory on every
-  page request — reaching page 40 works, but it is not cheaper than page 1.
-  The real fix is the same SQL-side roll-up work.
-- **Backfill and recompute still execute in-process.** Backfill now has a
-  database-backed owner token, five-minute lease, heartbeat, owner-fenced
-  progress writes and cursor-preserving takeover; recompute preflights and runs
-  one merchant-local month at a time. That makes process death recoverable on
-  the selected long-lived Fly host, but moving to a serverless host would still
-  require a durable job queue.
+- **Orders paging is closed in code.** `loadOrderPage` uses PostgreSQL keyset
+  cursors for recent, best and worst sorts, binds cursors to range/channel/sort,
+  fetches at most 61 rows, and falls back to the exact live engine while the
+  materialized ledger is incomplete. Forward/backward and concurrency-safe
+  behavior is covered against real PostgreSQL.
+- **Backfill and recompute request ownership is closed.** Both are deduplicated
+  `RecalcJob` kinds persisted before the request returns, claimed with leases,
+  retried with backoff and recovered after restart. A production deployment
+  still needs an always-available worker, which Fly provides in the chosen
+  topology.
 - **Real-Shopify import coverage remains the missing proof.** Backfill has 29
   direct orchestration tests plus pagination, resume, field-access and real-
   PostgreSQL claim suites. What those cannot prove is the first historical walk
   against Shopify's live GraphQL responses; Phase 2 remains that acceptance run.
-- **Order-table paging still sorts a lean materialized period in memory.** It no
-  longer hydrates the full line-item graph, but database-side keyset paging is a
-  later efficiency improvement for exceptionally large selected windows.
 
 ---
 
@@ -643,10 +633,10 @@ blocks knowing the backfill survives real data. Phases 3 and 4 run alongside.
 
 ## Where this leaves it
 
-The local code gate is green: `npm run ci` passes, with 1,142 unit tests passing
-and 67 opt-in integration tests skipped, coverage thresholds met, and a clean
-production build. The explicit real-PostgreSQL integration run passes 67/67
-against a fresh database after all 31 migrations. Billing is enforced in code
+The local code gate is green: `npm run ci` passes, with 1,156 unit tests passing
+and 72 opt-in integration tests skipped, coverage thresholds met, and a clean
+production build. The explicit real-PostgreSQL integration run passes 72/72
+against a fresh database after all 33 migrations. Billing is enforced in code
 and its Shopify test-charge approval/return flow has been exercised.
 
 What remains before submission is infrastructure, external approval, business
@@ -670,8 +660,9 @@ decisions, assets, and real-platform proof:
    backfill, production webhook delivery and production billing remain unproven.
 3. **Owner/Partner decisions remain:** expanded Protected Customer Data Level 2
    coverage, MyMeridian domain/support identity, App Store
-   registration attestations and payment, emergency contact, refreshed
-   screenshots, feature media, demo-store details, and the setup screencast.
+   registration attestations and payment, emergency contact, demo-store
+   details, and the setup screencast. Screenshots and 1600×900 feature media are
+   ready locally.
 
 ---
 
@@ -802,14 +793,13 @@ Three things drove it, in order of weight.
    nothing backed the database up at all. Managed Postgres gives automated
    backups and point-in-time recovery as a property of the service.
 
-3. **Nothing here needs a BaaS.** The app is plain Postgres — no extensions,
-   and the eleven raw-SQL sites use only standard features (`AT TIME ZONE`,
-   `date_trunc`, casts), so it is portable to any provider. Tenant isolation is
-   done in application code and every query is shop-scoped, so row-level
-   security would be redundant machinery to maintain. Supabase and Neon were
-   both considered and would both work; Neon's branching is the one feature
-   with real pull here, because it would give the integration tests a database
-   to run against. Revisit if leaving Fly.
+3. **Nothing here needs a BaaS.** The app is plain Postgres and its raw SQL uses
+   portable PostgreSQL features. Tenant isolation is defense in depth: every
+   merchant query is shop-scoped in application code, while forced RLS runs
+   merchant routes through a separate `NOBYPASSRLS` login and transaction-local
+   shop/user context. The privileged migration/worker/operator identity is not
+   exposed to merchant routes. Supabase and Neon would both work, but neither is
+   required; see `docs/DATABASE_SECURITY.md` for provisioning and verification.
 
 ### Provisioning
 
@@ -892,6 +882,11 @@ State them honestly, because half the data is not reconstructible.
    a configured diagnostic `MERIDIAN_MAX_BACKFILL_ORDERS` limit must be removed
    or raised before the run can complete.
 
-**Untested.** This procedure is written from the product's behaviour, not from
-a rehearsal. Do a restore drill on a throwaway cluster before relying on it;
-an unrehearsed restore procedure is a hypothesis, not a plan.
+**Locally rehearsed 2026-08-12.** A custom-format `pg_dump` restored into an
+isolated disposable PostgreSQL database; counts matched for migrations, shops,
+cost rules, price history, connectors, privacy requests/erasures, webhook
+events, orders and queued jobs, and Prisma reported no schema difference. The
+temporary database was dropped and the dump moved to Trash. This proves the
+repository/local PostgreSQL procedure, not Fly Managed Postgres point-in-time
+recovery, provider retention or production-key recovery; those remain mandatory
+production acceptance evidence.

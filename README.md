@@ -25,9 +25,9 @@ they deliberately exclude customer/order detail, merchant contact data, tokens,
 payloads and raw provider errors, and provide no arbitrary database editor. See
 [`docs/OPERATOR_SECURITY.md`](docs/OPERATOR_SECURITY.md).
 
-**Release status (verified 2026-08-11):** `npm run ci` passes type checking,
-coverage thresholds, 1,142 unit tests and the production build. The 67 opt-in
-database integration cases pass against a fresh PostgreSQL database after all 31
+**Release status (verified 2026-08-12):** `npm run ci` passes type checking,
+coverage thresholds, 1,156 unit tests and the production build. The 72 opt-in
+database integration cases pass against a fresh PostgreSQL database after all 33
 migrations apply from empty. The production bundle scan checks 29 server-only
 configuration fields across every public text asset, and the dependency audit
 reports no high-severity vulnerabilities. A real Shopify development store has passed embedded install,
@@ -431,11 +431,11 @@ backoff, a resumable cursor, and a capability probe for
 `customerJourneySummary`, which is not readable on every store and degrades to
 referrer-based attribution instead of failing the run.
 
-`afterAuth` waits only for an atomic database claim, then the import continues in
-the background because Shopify's OAuth redirect cannot wait for store history.
-A five-minute lease is renewed every minute; owner-fenced progress and terminal
-writes, plus a saved cursor, make interruption visible and safely resumable.
-There is still no external queue that restarts an abandoned run automatically.
+`afterAuth` persists a deduplicated `HISTORICAL_BACKFILL` job before returning,
+then wakes the durable worker because Shopify's OAuth redirect cannot wait for
+store history. A five-minute lease is renewed every minute; owner-fenced
+progress and terminal writes, plus a saved cursor, make interruption visible and
+safely resumable after a process restart.
 
 ### Cost history and restatement
 
@@ -509,7 +509,8 @@ action. Restating a quarter rewrites line items across months and then recompute
 the shop — minutes on a large store, and an in-process promise would leave half a
 quarter rewritten if a deploy landed mid-run.
 
-The claim/lease/backoff shape is lifted from the webhook outbox rather than
+Historical backfills, full-store recomputes, restatements and bundle rollups all
+use this queue. The claim/lease/backoff shape is lifted from the webhook outbox rather than
 invented again: same fencing token, same compare-and-set on the lease, same
 exponential retry, so there is one durable-work pattern in this codebase to
 reason about instead of two that drift apart. Finished rows are pruned after 30
@@ -564,6 +565,7 @@ and fought with over mark geometry.
   approval screen, return redirect and active subscription lookup have been
   exercised on the development store without moving money. Production charging
   and webhook delivery remain deployment acceptance tests.
-- The backfill and recompute both run in-process. That is correct on a
-  long-lived server and wrong on a serverless platform, where the process may
-  not outlive the response — both belong in a job queue before deploying there.
+- Backfill and recompute execution still needs a running worker, but requests no
+  longer own the work: both are durable, deduplicated Postgres jobs with leased
+  claims, retries and restart recovery. A production host must keep at least one
+  worker available or run the same worker as a separate process.

@@ -27,7 +27,7 @@ import {
   disconnectConnector,
 } from "~/lib/connector-oauth.server";
 import { planAllows, requireActivePlan } from "~/lib/plan.server";
-import { recomputeShopProfitability } from "~/lib/recompute.server";
+import { enqueueShopRecompute } from "~/lib/recompute-queue.server";
 import { scopeReport } from "~/lib/scopes";
 import { PLANS } from "~/lib/plans";
 import { publicAppOrigin } from "~/lib/public-origin.server";
@@ -390,8 +390,8 @@ async function updateSettings(request: Request, ctx: ShopContext) {
       };
     }
 
-    const { startBackfill } = await import("~/lib/backfill.server");
-    const started = await startBackfill(shop.id, admin);
+    const { requestBackfill } = await import("~/lib/backfill-queue.server");
+    const started = await requestBackfill(shop.id);
 
     if (!started.started) {
       return {
@@ -410,9 +410,12 @@ async function updateSettings(request: Request, ctx: ShopContext) {
   }
 
   if (form.get("intent") === "recompute") {
-    const result = await recomputeShopProfitability(shop.id);
-    invalidateAnalyticsCache();
-    return { ok: true, message: `Recomputed ${result.ordersUpdated} orders.` };
+    await enqueueShopRecompute(shop.id, "merchant_requested");
+    return {
+      ok: true,
+      message:
+        "Profit recomputation is queued and will continue in the background.",
+    };
   }
 
   if (form.get("intent") === "retry-shopify-shipping") {
@@ -457,12 +460,12 @@ async function updateSettings(request: Request, ctx: ShopContext) {
   });
 
   // A changed cost rule invalidates every materialised profit figure.
-  const result = await recomputeShopProfitability(shop.id);
+  await enqueueShopRecompute(shop.id, "cost_rule_changed");
   invalidateAnalyticsCache();
 
   return {
     ok: true,
-    message: `Saved. Reprofiled ${result.ordersUpdated.toLocaleString()} orders.`,
+    message: "Saved. Profit recomputation is queued in the background.",
   };
 }
 

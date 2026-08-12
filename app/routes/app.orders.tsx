@@ -9,6 +9,8 @@ import { createPortal } from "react-dom";
 import type { LoaderFunctionArgs } from "react-router";
 
 import { BarChart, OrderField } from "~/design/charts";
+import { ORDER_PAGE_SIZE, type OrderSortKey } from "~/data/order-page";
+import { loadOrderPage } from "~/data/order-page.server";
 import {
   AnimatedInt,
   AnimatedMoney,
@@ -27,7 +29,8 @@ import {
 } from "~/design/components";
 import { formatMoney, formatPercent, type Cents } from "~/engine/money";
 import { CHANNEL_LABELS, type Channel } from "~/engine/types";
-import { change, loadDashboard } from "~/lib/route-data.server";
+import { withShopContext } from "~/lib/auth.server";
+import { change, loadDashboardForContext } from "~/lib/route-data.server";
 import { dailySeries } from "~/lib/series";
 
 const SORTS = {
@@ -36,9 +39,8 @@ const SORTS = {
   worst: "Least profitable",
 } as const;
 
-type SortKey = keyof typeof SORTS;
-
-const PAGE_SIZE = 60;
+type SortKey = OrderSortKey;
+const PAGE_SIZE = ORDER_PAGE_SIZE;
 
 /**
  * Sort, filter and paginate one page's worth of orders for the table.
@@ -82,155 +84,180 @@ export function paginateOrders<
 }
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { shop, analytics, previous, rangeLabel, preset, adSpendCoverage } =
-    await loadDashboard(request);
+  return withShopContext(request, async (ctx) => {
+    const {
+      shop,
+      analytics,
+      previous,
+      rangeLabel,
+      preset,
+      range,
+      adSpendCoverage,
+    } = await loadDashboardForContext(request, ctx);
 
-  const url = new URL(request.url);
-  const sort = (url.searchParams.get("sort") ?? "recent") as SortKey;
-  const channelFilter = url.searchParams.get("channel");
-  const requestedPage = Number(url.searchParams.get("page") ?? "1");
+    const url = new URL(request.url);
+    const requestedSort = url.searchParams.get("sort");
+    const sort: SortKey =
+      requestedSort && requestedSort in SORTS
+        ? (requestedSort as SortKey)
+        : "recent";
+    const channelFilter = url.searchParams.get("channel");
+    const requestedPage = Number(url.searchParams.get("page") ?? "1");
 
-  const p = analytics.period;
+    const p = analytics.period;
 
-  const {
-    rows: pageRows,
-    total,
-    page,
-    pageCount,
-  } = paginateOrders(p.orders, {
-    sort,
-    channelFilter,
-    page: requestedPage,
+    const fallbackPage = paginateOrders(p.orders, {
+      sort,
+      channelFilter,
+      page: requestedPage,
+    });
+    const databasePage = await loadOrderPage({
+      shopId: shop.id,
+      range,
+      sort,
+      channelFilter,
+      requestedPage,
+      after: url.searchParams.get("after"),
+      before: url.searchParams.get("before"),
+    });
+    const pageRows = databasePage?.rows ?? fallbackPage.rows;
+    const total = databasePage?.total ?? fallbackPage.total;
+    const page = databasePage?.page ?? fallbackPage.page;
+    const pageCount = databasePage?.pageCount ?? fallbackPage.pageCount;
+
+    const losers = p.orders.filter((order) => order.netProfitCents < 0);
+    const lossTotal = losers.reduce(
+      (sum, order) => sum + order.netProfitCents,
+      0,
+    );
+
+    const daily = dailySeries(p.orders, analytics.range, shop.timezone);
+
+    /*
+     * The order field.
+     *
+     * One entry per order in the range so the whole month can be drawn at once —
+     * the marketing page shows this and the product did not, which is backwards:
+     * the field is the argument, and the argument belongs where the merchant can
+     * act on it.
+     *
+     * Deliberately two flat arrays rather than an array of objects. At three
+     * thousand orders the object form is ~60KB of repeated keys in the HTML
+     * payload; this is a third of that and costs nothing to read.
+     */
+    const field = {
+      numbers: p.orders.map((order) => order.orderNumber),
+      profits: p.orders.map((order) => order.netProfitCents),
+    };
+
+    /*
+     * Clicking a dot asks the server for that order rather than shipping every
+     * order's full cost breakdown up front. One round trip, and the receipt is
+     * the same computed object the table uses.
+     */
+    const requestedOrder = Number(url.searchParams.get("order"));
+    const focused =
+      Number.isFinite(requestedOrder) && requestedOrder > 0
+        ? (p.orders.find((order) => order.orderNumber === requestedOrder) ??
+          null)
+        : null;
+
+    return {
+      rangeLabel,
+      preset,
+      sort,
+      channelFilter,
+      currency: shop.currency,
+      timezone: shop.timezone,
+      adSpendCoverage,
+      channels: [...new Set(p.orders.map((order) => order.channel))].sort(),
+      summary: {
+        orderCount: p.orderCount,
+        profitPerOrderCents: p.profitPerOrderCents,
+        profitPerOrderChange: change(
+          p.profitPerOrderCents,
+          previous.period.profitPerOrderCents,
+        ),
+        aovCents: p.averageOrderValueCents,
+        aovChange: change(
+          p.averageOrderValueCents,
+          previous.period.averageOrderValueCents,
+        ),
+        marginPct: p.netMarginPct,
+        lossMakingCount: losers.length,
+        lossMakingShare: p.orderCount ? losers.length / p.orderCount : 0,
+        lossTotalCents: lossTotal,
+        missingCogsOrders: p.orders.filter((order) => order.hasMissingCogs)
+          .length,
+        modeledCostOrders: p.orders.filter((order) => order.usesModeledCosts)
+          .length,
+      },
+      // Rendered here, on the server, so the zone has to be stated. Without it
+      // the label came out in whatever zone the server runs in while the bucket
+      // itself was keyed in the shop's, which is how a day's profit ends up
+      // captioned with the day before's date.
+      daily: daily.map((day) => ({
+        label: day.date.toLocaleDateString("en-US", {
+          timeZone: shop.timezone,
+          month: "short",
+          day: "numeric",
+        }),
+        value: day.netProfitCents,
+      })),
+      spark: daily.map((day) =>
+        day.orders ? Math.round(day.netProfitCents / day.orders) : 0,
+      ),
+      total,
+      page,
+      pageCount,
+      previousCursor: databasePage?.previousCursor ?? null,
+      nextCursor: databasePage?.nextCursor ?? null,
+      field,
+      focusedOrder: focused
+        ? {
+            orderNumber: focused.orderNumber,
+            processedAt: focused.processedAt,
+            channel: focused.channel,
+            units: focused.units,
+            grossRevenueCents: focused.grossRevenueCents,
+            discountCents: focused.discountCents,
+            refundCents: focused.refundCents,
+            shippingRevenueCents: focused.shippingRevenueCents,
+            netRevenueCents: focused.netRevenueCents,
+            cogsCents: focused.cogsCents,
+            shippingCostCents: focused.shippingCostCents,
+            paymentFeeCents: focused.paymentFeeCents,
+            pickPackCents: focused.pickPackCents,
+            adCostCents: focused.adCostCents,
+            overheadCents: focused.overheadCents,
+            contributionProfitCents: focused.contributionProfitCents,
+            netProfitCents: focused.netProfitCents,
+            marginPct: focused.netMarginPct,
+            hasMissingCogs: focused.hasMissingCogs,
+            usesModeledCosts: focused.usesModeledCosts,
+          }
+        : null,
+      orders: pageRows.map((order) => ({
+        orderId: order.orderId,
+        orderNumber: order.orderNumber,
+        processedAt: order.processedAt,
+        channel: order.channel,
+        isFirstOrder: order.isFirstOrder,
+        netRevenueCents: order.netRevenueCents,
+        cogsCents: order.cogsCents,
+        shippingCostCents: order.shippingCostCents,
+        feesCents: order.paymentFeeCents + order.pickPackCents,
+        adCostCents: order.adCostCents,
+        overheadCents: order.overheadCents,
+        netProfitCents: order.netProfitCents,
+        marginPct: order.netMarginPct,
+        units: order.units,
+        hasMissingCogs: order.hasMissingCogs,
+        usesModeledCosts: order.usesModeledCosts,
+        usesEstimatedCosts: order.usesEstimatedCosts,
+      })),
+    };
   });
-
-  const losers = p.orders.filter((order) => order.netProfitCents < 0);
-  const lossTotal = losers.reduce(
-    (sum, order) => sum + order.netProfitCents,
-    0,
-  );
-
-  const daily = dailySeries(p.orders, analytics.range, shop.timezone);
-
-  /*
-   * The order field.
-   *
-   * One entry per order in the range so the whole month can be drawn at once —
-   * the marketing page shows this and the product did not, which is backwards:
-   * the field is the argument, and the argument belongs where the merchant can
-   * act on it.
-   *
-   * Deliberately two flat arrays rather than an array of objects. At three
-   * thousand orders the object form is ~60KB of repeated keys in the HTML
-   * payload; this is a third of that and costs nothing to read.
-   */
-  const field = {
-    numbers: p.orders.map((order) => order.orderNumber),
-    profits: p.orders.map((order) => order.netProfitCents),
-  };
-
-  /*
-   * Clicking a dot asks the server for that order rather than shipping every
-   * order's full cost breakdown up front. One round trip, and the receipt is
-   * the same computed object the table uses.
-   */
-  const requestedOrder = Number(url.searchParams.get("order"));
-  const focused = Number.isFinite(requestedOrder) && requestedOrder > 0
-    ? (p.orders.find((order) => order.orderNumber === requestedOrder) ?? null)
-    : null;
-
-  return {
-    rangeLabel,
-    preset,
-    sort,
-    channelFilter,
-    currency: shop.currency,
-    timezone: shop.timezone,
-    adSpendCoverage,
-    channels: [...new Set(p.orders.map((order) => order.channel))].sort(),
-    summary: {
-      orderCount: p.orderCount,
-      profitPerOrderCents: p.profitPerOrderCents,
-      profitPerOrderChange: change(
-        p.profitPerOrderCents,
-        previous.period.profitPerOrderCents,
-      ),
-      aovCents: p.averageOrderValueCents,
-      aovChange: change(
-        p.averageOrderValueCents,
-        previous.period.averageOrderValueCents,
-      ),
-      marginPct: p.netMarginPct,
-      lossMakingCount: losers.length,
-      lossMakingShare: p.orderCount ? losers.length / p.orderCount : 0,
-      lossTotalCents: lossTotal,
-      missingCogsOrders: p.orders.filter((order) => order.hasMissingCogs)
-        .length,
-      modeledCostOrders: p.orders.filter((order) => order.usesModeledCosts)
-        .length,
-    },
-    // Rendered here, on the server, so the zone has to be stated. Without it
-    // the label came out in whatever zone the server runs in while the bucket
-    // itself was keyed in the shop's, which is how a day's profit ends up
-    // captioned with the day before's date.
-    daily: daily.map((day) => ({
-      label: day.date.toLocaleDateString("en-US", {
-        timeZone: shop.timezone,
-        month: "short",
-        day: "numeric",
-      }),
-      value: day.netProfitCents,
-    })),
-    spark: daily.map((day) =>
-      day.orders ? Math.round(day.netProfitCents / day.orders) : 0,
-    ),
-    total,
-    page,
-    pageCount,
-    field,
-    focusedOrder: focused
-      ? {
-          orderNumber: focused.orderNumber,
-          processedAt: focused.processedAt,
-          channel: focused.channel,
-          units: focused.units,
-          grossRevenueCents: focused.grossRevenueCents,
-          discountCents: focused.discountCents,
-          refundCents: focused.refundCents,
-          shippingRevenueCents: focused.shippingRevenueCents,
-          netRevenueCents: focused.netRevenueCents,
-          cogsCents: focused.cogsCents,
-          shippingCostCents: focused.shippingCostCents,
-          paymentFeeCents: focused.paymentFeeCents,
-          pickPackCents: focused.pickPackCents,
-          adCostCents: focused.adCostCents,
-          overheadCents: focused.overheadCents,
-          contributionProfitCents: focused.contributionProfitCents,
-          netProfitCents: focused.netProfitCents,
-          marginPct: focused.netMarginPct,
-          hasMissingCogs: focused.hasMissingCogs,
-          usesModeledCosts: focused.usesModeledCosts,
-        }
-      : null,
-    orders: pageRows.map((order) => ({
-      orderId: order.orderId,
-      orderNumber: order.orderNumber,
-      processedAt: order.processedAt,
-      channel: order.channel,
-      isFirstOrder: order.isFirstOrder,
-      netRevenueCents: order.netRevenueCents,
-      cogsCents: order.cogsCents,
-      shippingCostCents: order.shippingCostCents,
-      feesCents: order.paymentFeeCents + order.pickPackCents,
-      adCostCents: order.adCostCents,
-      overheadCents: order.overheadCents,
-      netProfitCents: order.netProfitCents,
-      marginPct: order.netMarginPct,
-      units: order.units,
-      hasMissingCogs: order.hasMissingCogs,
-      usesModeledCosts: order.usesModeledCosts,
-      usesEstimatedCosts: order.usesEstimatedCosts,
-    })),
-  };
 }
 
 const CHANNEL_ORDER: Channel[] = [
@@ -326,7 +353,11 @@ export function ProfitBreakdownDrawer({
               {CHANNEL_LABELS[order.channel as Channel] ?? order.channel}
             </p>
           </div>
-          <Link className="profit-drawer-close" to={closeTo} aria-label="Close profit breakdown">
+          <Link
+            className="profit-drawer-close"
+            to={closeTo}
+            aria-label="Close profit breakdown"
+          >
             Close
           </Link>
         </header>
@@ -338,11 +369,16 @@ export function ProfitBreakdownDrawer({
             the tax authority.
           </p>
 
-          <section className="profit-drawer-section" aria-labelledby="profit-revenue-title">
+          <section
+            className="profit-drawer-section"
+            aria-labelledby="profit-revenue-title"
+          >
             <h3 id="profit-revenue-title">1. Revenue kept</h3>
             <dl className="profit-drawer-lines">
               {formulaRow("Merchandise subtotal", order.grossRevenueCents)}
-              {formulaRow("Discounts", order.discountCents, { tone: "subtract" })}
+              {formulaRow("Discounts", order.discountCents, {
+                tone: "subtract",
+              })}
               {formulaRow("Shipping charged", order.shippingRevenueCents)}
               {formulaRow("Refunds (excluding tax)", order.refundCents, {
                 tone: "subtract",
@@ -354,10 +390,15 @@ export function ProfitBreakdownDrawer({
             </dl>
           </section>
 
-          <section className="profit-drawer-section" aria-labelledby="profit-costs-title">
+          <section
+            className="profit-drawer-section"
+            aria-labelledby="profit-costs-title"
+          >
             <h3 id="profit-costs-title">2. Costs applied</h3>
             <dl className="profit-drawer-lines">
-              {formulaRow("Cost of goods", order.cogsCents, { tone: "subtract" })}
+              {formulaRow("Cost of goods", order.cogsCents, {
+                tone: "subtract",
+              })}
               {formulaRow("Shipping cost", order.shippingCostCents, {
                 tone: "subtract",
               })}
@@ -397,7 +438,10 @@ export function ProfitBreakdownDrawer({
           </section>
 
           {(order.hasMissingCogs || order.usesModeledCosts) && (
-            <aside className="profit-drawer-caveat" aria-label="Cost confidence">
+            <aside
+              className="profit-drawer-caveat"
+              aria-label="Cost confidence"
+            >
               <strong>Cost confidence</strong>
               {order.hasMissingCogs && (
                 <span>
@@ -563,8 +607,8 @@ export function OrdersView({ data }: { data: OrdersData }) {
               }}
             />
             <p className="order-receipt-empty">
-              Pick an order from the field to open its step-by-step profit
-              math — revenue, each cost, and what the order kept.
+              Pick an order from the field to open its step-by-step profit math
+              — revenue, each cost, and what the order kept.
             </p>
           </div>
         </Card>
@@ -587,7 +631,12 @@ export function OrdersView({ data }: { data: OrdersData }) {
               {(Object.keys(SORTS) as SortKey[]).map((key) => (
                 <Link
                   key={key}
-                  to={linkWith({ sort: key, page: null })}
+                  to={linkWith({
+                    sort: key,
+                    page: null,
+                    after: null,
+                    before: null,
+                  })}
                   aria-current={key === data.sort ? "true" : undefined}
                   preventScrollReset
                 >
@@ -602,7 +651,12 @@ export function OrdersView({ data }: { data: OrdersData }) {
         <div className="legend" style={{ paddingBottom: 10 }}>
           <span className="legend-item muted">Channel:</span>
           <Link
-            to={linkWith({ channel: null, page: null })}
+            to={linkWith({
+              channel: null,
+              page: null,
+              after: null,
+              before: null,
+            })}
             style={{
               fontWeight: data.channelFilter ? 400 : 700,
               color: data.channelFilter ? undefined : "var(--ink-primary)",
@@ -613,7 +667,12 @@ export function OrdersView({ data }: { data: OrdersData }) {
           {data.channels.map((channel) => (
             <Link
               key={channel}
-              to={linkWith({ channel, page: null })}
+              to={linkWith({
+                channel,
+                page: null,
+                after: null,
+                before: null,
+              })}
               className="legend-item"
               style={{
                 fontWeight: data.channelFilter === channel ? 700 : 400,
@@ -801,7 +860,11 @@ export function OrdersView({ data }: { data: OrdersData }) {
             {data.page > 1 ? (
               <Link
                 className="btn sm"
-                to={linkWith({ page: String(data.page - 1) })}
+                to={linkWith({
+                  page: String(data.page - 1),
+                  before: data.previousCursor,
+                  after: null,
+                })}
                 preventScrollReset
               >
                 Previous
@@ -821,7 +884,11 @@ export function OrdersView({ data }: { data: OrdersData }) {
             {data.page < data.pageCount ? (
               <Link
                 className="btn sm"
-                to={linkWith({ page: String(data.page + 1) })}
+                to={linkWith({
+                  page: String(data.page + 1),
+                  after: data.nextCursor,
+                  before: null,
+                })}
                 preventScrollReset
               >
                 Next

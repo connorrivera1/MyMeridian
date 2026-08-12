@@ -5,6 +5,17 @@ privacy-erasure guards, webhook receipts and connector ciphertext. Re-importing
 Shopify orders does not recreate those records, so a tested database restore is
 required.
 
+## Verification record
+
+On 2026-08-12, a local custom-format PostgreSQL backup was restored into an
+isolated disposable database. Ten critical table/migration counts matched the
+source, Prisma reported no schema drift, and the restored database contained all
+source migration records. The temporary database was dropped and its dump moved
+to Trash. This is code-path evidence only; the first production launch still
+requires a Fly Managed Postgres point-in-time restore drill with retained
+encryption keys and a recorded provider receipt, elapsed RPO/RTO and `/readyz`
+result.
+
 ## Preconditions
 
 - Fly Managed Postgres backups and point-in-time recovery are enabled and their

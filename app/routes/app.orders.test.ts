@@ -204,6 +204,8 @@ function orderViewData(mode: "connected" | "unavailable") {
     total: 1,
     page: 1,
     pageCount: 1,
+    previousCursor: null,
+    nextCursor: null,
     orders: [
       {
         orderId: "order_1",

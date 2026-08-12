@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
   reconcileConnectedCarriersForShop: vi.fn(),
   shopUpdate: vi.fn(),
   synchroniseShopifyShippingConnector: vi.fn(),
-  startBackfill: vi.fn(),
+  requestBackfill: vi.fn(),
 }));
 
 vi.mock("~/db.server", () => ({
@@ -29,8 +29,8 @@ vi.mock("~/lib/provision.server", () => ({
     mocks.synchroniseShopifyShippingConnector,
 }));
 
-vi.mock("~/lib/backfill.server", () => ({
-  startBackfill: mocks.startBackfill,
+vi.mock("~/lib/backfill-queue.server", () => ({
+  requestBackfill: mocks.requestBackfill,
 }));
 
 vi.mock("~/lib/shopify-catalog.server", () => ({
@@ -113,10 +113,13 @@ beforeEach(() => {
     status: "under_limit",
     crossedSoftLimit: false,
   });
-  mocks.billSoftOrderOverage.mockResolvedValue({ billedUnits: 0, skipped: true });
+  mocks.billSoftOrderOverage.mockResolvedValue({
+    billedUnits: 0,
+    skipped: true,
+  });
   mocks.shopUpdate.mockResolvedValue({});
   mocks.synchroniseShopifyShippingConnector.mockResolvedValue({});
-  mocks.startBackfill.mockResolvedValue({ started: true, resumed: false });
+  mocks.requestBackfill.mockResolvedValue({ started: true, resumed: false });
 });
 
 describe("economic webhook processors", () => {
@@ -126,9 +129,6 @@ describe("economic webhook processors", () => {
       domain: "economic-processors.myshopify.com",
       grantedScopes: "read_orders,read_products",
     });
-    const admin = { graphql: vi.fn() };
-    mocks.adminClientForShop.mockResolvedValueOnce(admin);
-
     await processAppScopesUpdateWebhook(
       context("APP_SCOPES_UPDATE", {
         current: ["read_orders", "read_products", "read_all_orders"],
@@ -143,16 +143,23 @@ describe("economic webhook processors", () => {
         hasAllOrdersScope: false,
       }),
     });
-    expect(mocks.startBackfill).toHaveBeenCalledWith("shop_1", admin);
+    expect(mocks.requestBackfill).toHaveBeenCalledWith("shop_1");
   });
 
   it("uses a Shopify fulfillment signal to reconcile connected carriers immediately", async () => {
     const payload = { id: 9001, order_id: 1001, status: "success" };
     await processFulfillmentsWebhook(context("FULFILLMENTS_UPDATE", payload));
 
-    expect(mocks.syncFulfillmentFromShopify).toHaveBeenCalledWith("shop_1", payload);
-    expect(mocks.reconcileConnectedCarriersForShop).toHaveBeenCalledWith("shop_1");
-    expect(mocks.syncFulfillmentFromShopify.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(mocks.syncFulfillmentFromShopify).toHaveBeenCalledWith(
+      "shop_1",
+      payload,
+    );
+    expect(mocks.reconcileConnectedCarriersForShop).toHaveBeenCalledWith(
+      "shop_1",
+    );
+    expect(
+      mocks.syncFulfillmentFromShopify.mock.invocationCallOrder[0],
+    ).toBeLessThan(
       mocks.reconcileConnectedCarriersForShop.mock.invocationCallOrder[0]!,
     );
   });

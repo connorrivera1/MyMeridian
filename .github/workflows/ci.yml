@@ -69,6 +69,7 @@ jobs:
         run: >-
           npx vitest run
           app/integrations/ad-health.integration.test.ts
+          app/data/order-page.integration.test.ts
           app/lib/backfill-claim.integration.test.ts
           app/lib/checkout-usage.integration.test.ts
           app/lib/cost-restatement.integration.test.ts

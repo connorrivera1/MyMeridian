@@ -254,7 +254,7 @@ vi.mock("~/shopify.server", () => ({
   },
 }));
 
-const { backfillIsStale, parseBackfillOrderLimit, runBackfill, startBackfill } =
+const { backfillIsStale, parseBackfillOrderLimit, runBackfill } =
   await import("./backfill.server");
 const { claimBackfill } = await import("./backfill-claim.server");
 
@@ -472,7 +472,10 @@ describe("backfill order limit configuration", () => {
 
 describe("runBackfill: a completed import", () => {
   it("records lifetime-history access even when a new store has no old orders", async () => {
-    await runBackfill("shop_1", scriptedAdmin({ orders: [orderPage([], null)] }));
+    await runBackfill(
+      "shop_1",
+      scriptedAdmin({ orders: [orderPage([], null)] }),
+    );
 
     expect(finalUpdate()).toMatchObject({
       syncStatus: SyncStatus.COMPLETE,
@@ -483,14 +486,17 @@ describe("runBackfill: a completed import", () => {
 
   it("does not infer lifetime-history access merely from an old order", async () => {
     shopRow.grantedScopes = ALL_SCOPES.replace("read_all_orders,", "");
-    await runBackfill("shop_1", scriptedAdmin({
-      orders: [
-        orderPage(
-          [orderNode("1001", { processedAt: "2023-04-02T08:00:00Z" })],
-          null,
-        ),
-      ],
-    }));
+    await runBackfill(
+      "shop_1",
+      scriptedAdmin({
+        orders: [
+          orderPage(
+            [orderNode("1001", { processedAt: "2023-04-02T08:00:00Z" })],
+            null,
+          ),
+        ],
+      }),
+    );
 
     expect(finalUpdate()).toMatchObject({ hasAllOrdersScope: false });
   });
@@ -593,7 +599,7 @@ describe("runBackfill: a completed import", () => {
   });
 });
 
-describe("startBackfill: same-process deduplication", () => {
+describe("runBackfill: same-process deduplication", () => {
   it("does not schedule a second Shopify walk while this process owns one", async () => {
     let release!: () => void;
     const held = new Promise<void>((resolve) => {
@@ -608,20 +614,15 @@ describe("startBackfill: same-process deduplication", () => {
       }),
     };
 
-    await expect(startBackfill("shop_1", admin)).resolves.toEqual({
-      started: true,
-      resumed: false,
-    });
-    await expect(startBackfill("shop_1", admin)).resolves.toEqual({
-      started: false,
-      reason: "active",
-    });
-    expect(admin.graphql).toHaveBeenCalledTimes(1);
+    const first = runBackfill("shop_1", admin);
+    await vi.waitFor(() => expect(admin.graphql).toHaveBeenCalledTimes(1));
+    await expect(runBackfill("shop_1", admin)).rejects.toThrow(
+      "already active",
+    );
 
     release();
-    await vi.waitFor(() => {
-      expect(shopRow.syncStatus).toBe(SyncStatus.COMPLETE);
-    });
+    await expect(first).resolves.toBeTruthy();
+    expect(shopRow.syncStatus).toBe(SyncStatus.COMPLETE);
   });
 
   it("renews its lease while a long profitability recompute is awaiting", async () => {
@@ -631,9 +632,7 @@ describe("startBackfill: same-process deduplication", () => {
     });
     recomputeShopProfitability.mockImplementationOnce(() => recomputeHeld);
 
-    await expect(
-      startBackfill("shop_1", scriptedAdmin()),
-    ).resolves.toMatchObject({ started: true });
+    const task = runBackfill("shop_1", scriptedAdmin());
     await vi.waitFor(() => {
       expect(recomputeShopProfitability).toHaveBeenCalledWith("shop_1");
     });
@@ -646,11 +645,10 @@ describe("startBackfill: same-process deduplication", () => {
     });
 
     releaseRecompute();
-    await vi.waitFor(() => {
-      expect(shopRow.syncStatus).toBe(SyncStatus.COMPLETE);
-      expect(shopRow.syncRunToken).toBeNull();
-      expect(shopRow.syncLeaseExpiresAt).toBeNull();
-    });
+    await expect(task).resolves.toBeTruthy();
+    expect(shopRow.syncStatus).toBe(SyncStatus.COMPLETE);
+    expect(shopRow.syncRunToken).toBeNull();
+    expect(shopRow.syncLeaseExpiresAt).toBeNull();
   });
 
   it("cannot publish terminal state after another owner takes its lease", async () => {
@@ -659,11 +657,7 @@ describe("startBackfill: same-process deduplication", () => {
       releaseRecompute = resolve;
     });
     recomputeShopProfitability.mockImplementationOnce(() => recomputeHeld);
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
-
-    await startBackfill("shop_1", scriptedAdmin());
+    const task = runBackfill("shop_1", scriptedAdmin());
     await vi.waitFor(() => {
       expect(recomputeShopProfitability).toHaveBeenCalledWith("shop_1");
     });
@@ -680,13 +674,8 @@ describe("startBackfill: same-process deduplication", () => {
     });
     await vi.advanceTimersByTimeAsync(60 * 1000);
     releaseRecompute();
-
-    await vi.waitFor(() => {
-      expect(consoleError).toHaveBeenCalledWith(
-        "[backfill] %s failed",
-        "shop_1",
-        expect.objectContaining({ name: "BackfillLeaseLostError" }),
-      );
+    await expect(task).rejects.toMatchObject({
+      name: "BackfillLeaseLostError",
     });
     expect(shopRow).toMatchObject({
       syncStatus: SyncStatus.RUNNING,
@@ -695,7 +684,6 @@ describe("startBackfill: same-process deduplication", () => {
       syncCursor: "replacement-cursor",
       syncedOrders: 777,
     });
-    consoleError.mockRestore();
   });
 });
 

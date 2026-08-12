@@ -138,29 +138,41 @@ export async function processCheckoutsWebhook({
     create: {
       shopId: shop.id,
       token,
-      cartToken: typeof payload.cart_token === "string" ? payload.cart_token : null,
-      currency: typeof payload.currency === "string" ? payload.currency : shop.currency,
-      total: typeof payload.total_price === "string" || typeof payload.total_price === "number"
-        ? String(payload.total_price)
-        : "0",
+      cartToken:
+        typeof payload.cart_token === "string" ? payload.cart_token : null,
+      currency:
+        typeof payload.currency === "string" ? payload.currency : shop.currency,
+      total:
+        typeof payload.total_price === "string" ||
+        typeof payload.total_price === "number"
+          ? String(payload.total_price)
+          : "0",
       lineCount: lineItems.length,
       totalQuantity,
       status: payload.completed_at ? "completed" : "open",
       createdAt: dateOrNow(payload.created_at),
       shopifyUpdatedAt,
-      completedAt: payload.completed_at ? dateOrNow(payload.completed_at) : null,
+      completedAt: payload.completed_at
+        ? dateOrNow(payload.completed_at)
+        : null,
     },
     update: {
-      cartToken: typeof payload.cart_token === "string" ? payload.cart_token : null,
-      currency: typeof payload.currency === "string" ? payload.currency : shop.currency,
-      total: typeof payload.total_price === "string" || typeof payload.total_price === "number"
-        ? String(payload.total_price)
-        : "0",
+      cartToken:
+        typeof payload.cart_token === "string" ? payload.cart_token : null,
+      currency:
+        typeof payload.currency === "string" ? payload.currency : shop.currency,
+      total:
+        typeof payload.total_price === "string" ||
+        typeof payload.total_price === "number"
+          ? String(payload.total_price)
+          : "0",
       lineCount: lineItems.length,
       totalQuantity,
       status: payload.completed_at ? "completed" : "open",
       shopifyUpdatedAt,
-      completedAt: payload.completed_at ? dateOrNow(payload.completed_at) : null,
+      completedAt: payload.completed_at
+        ? dateOrNow(payload.completed_at)
+        : null,
     },
   });
 }
@@ -367,9 +379,8 @@ export async function processAppScopesUpdateWebhook({
     // Managed installation grants this scope without reinstalling. Claim the
     // new import from the webhook so a merchant does not need to discover and
     // press Re-import before lifetime history becomes truthful.
-    const { startBackfill } = await import("~/lib/backfill.server");
-    const admin = await adminClientForShop(shopDomain);
-    await startBackfill(shop.id, admin);
+    const { requestBackfill } = await import("~/lib/backfill-queue.server");
+    await requestBackfill(shop.id);
   }
   // Scope changes alter whether protected customer cohorts may be loaded, so
   // a warm analytics entry cannot survive the capability change.

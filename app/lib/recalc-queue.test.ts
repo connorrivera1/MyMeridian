@@ -166,6 +166,7 @@ vi.mock("~/db.server", () => ({
 const {
   completeRecalcJob,
   drainRecalcQueue,
+  enqueueExclusiveRecalcJob,
   enqueueRecalcJob,
   failRecalcJob,
   leaseNextRecalcJob,
@@ -256,6 +257,41 @@ describe("enqueueRecalcJob", () => {
   });
 });
 
+describe("enqueueExclusiveRecalcJob", () => {
+  const enqueueExclusive = () =>
+    enqueueExclusiveRecalcJob({
+      shopId: "shop_1",
+      kind: "BUNDLE_ROLLUP" as any,
+      payload: {},
+      dedupeKey: "exclusive",
+    });
+
+  it("creates the first request and collapses every outstanding duplicate", async () => {
+    const first = await enqueueExclusive();
+    const second = await enqueueExclusive();
+    rows[0]!.status = "RUNNING";
+    const third = await enqueueExclusive();
+
+    expect(first.created).toBe(true);
+    expect(second).toMatchObject({ created: false, job: { id: first.job.id } });
+    expect(third).toMatchObject({ created: false, job: { id: first.job.id } });
+    expect(rows).toHaveLength(1);
+  });
+
+  it("releases a terminal residue before creating a new request", async () => {
+    const first = await enqueueExclusive();
+    rows[0]!.status = "FAILED";
+
+    const second = await enqueueExclusive();
+
+    expect(second.created).toBe(true);
+    expect(second.job.id).not.toBe(first.job.id);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.dedupeKey).toBeNull();
+    expect(rows[1]!.dedupeKey).toBe("exclusive");
+  });
+});
+
 describe("leaseNextRecalcJob", () => {
   it("claims a due job and stamps the first attempt", async () => {
     await enqueue();
@@ -330,9 +366,9 @@ describe("completeRecalcJob", () => {
     const leased = await leaseNextRecalcJob();
     rows[0]!.leaseToken = "someone-else";
 
-    expect(await completeRecalcJob(leased!.job.id, leased!.leaseToken, {})).toBe(
-      false,
-    );
+    expect(
+      await completeRecalcJob(leased!.job.id, leased!.leaseToken, {}),
+    ).toBe(false);
     expect(rows[0]!.status).toBe("RUNNING");
   });
 });

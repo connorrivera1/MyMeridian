@@ -1,7 +1,12 @@
 import { RecalcJobKind } from "@prisma/client";
 
-import { runBundleDetectionJob, runBundleRollupJob } from "~/lib/bundles.server";
+import {
+  runBundleDetectionJob,
+  runBundleRollupJob,
+} from "~/lib/bundles.server";
+import { runHistoricalBackfillJob } from "~/lib/backfill-queue.server";
 import { registerRecalcHandler } from "~/lib/recalc-queue.server";
+import { runFullRecomputeJob } from "~/lib/recompute-queue.server";
 import { runCostRestatementJob } from "~/lib/restatement.server";
 
 /**
@@ -18,4 +23,9 @@ export function registerRecalcHandlers(): void {
   registerRecalcHandler(RecalcJobKind.COST_RESTATEMENT, runCostRestatementJob);
   registerRecalcHandler(RecalcJobKind.BUNDLE_ROLLUP, runBundleRollupJob);
   registerRecalcHandler(RecalcJobKind.BUNDLE_DETECTION, runBundleDetectionJob);
+  registerRecalcHandler(
+    RecalcJobKind.HISTORICAL_BACKFILL,
+    runHistoricalBackfillJob,
+  );
+  registerRecalcHandler(RecalcJobKind.FULL_RECOMPUTE, runFullRecomputeJob);
 }

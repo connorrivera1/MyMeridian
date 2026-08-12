@@ -6,8 +6,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const requireShopContext = vi.fn();
 const requireActivePlan = vi.fn();
 const planAllows = vi.fn(() => true);
-const startBackfill = vi.fn();
-const recomputeShopProfitability = vi.fn();
+const requestBackfill = vi.fn();
+const enqueueShopRecompute = vi.fn();
 const retryShopifyShippingConnector = vi.fn();
 const prismaMock = {
   costRule: {
@@ -32,12 +32,11 @@ vi.mock("~/lib/plan.server", () => ({
   requireActivePlan: (...args: unknown[]) => requireActivePlan(...args),
   planAllows,
 }));
-vi.mock("~/lib/backfill.server", () => ({
-  startBackfill: (...args: unknown[]) => startBackfill(...args),
+vi.mock("~/lib/backfill-queue.server", () => ({
+  requestBackfill: (...args: unknown[]) => requestBackfill(...args),
 }));
-vi.mock("~/lib/recompute.server", () => ({
-  recomputeShopProfitability: (...args: unknown[]) =>
-    recomputeShopProfitability(...args),
+vi.mock("~/lib/recompute-queue.server", () => ({
+  enqueueShopRecompute: (...args: unknown[]) => enqueueShopRecompute(...args),
 }));
 vi.mock("~/data/analytics.server", () => ({
   invalidateAnalyticsCache: vi.fn(),
@@ -80,7 +79,7 @@ beforeEach(() => {
 
 describe("Settings historical-import action", () => {
   it("reports a cursor resume after the server wins the stale claim", async () => {
-    startBackfill.mockResolvedValue({ started: true, resumed: true });
+    requestBackfill.mockResolvedValue({ started: true, resumed: true });
 
     await expect(
       action({ request: resyncRequest() } as never),
@@ -89,11 +88,11 @@ describe("Settings historical-import action", () => {
       message:
         "Interrupted import resumed from its saved order-history checkpoint.",
     });
-    expect(startBackfill).toHaveBeenCalledWith("shop_1", admin);
+    expect(requestBackfill).toHaveBeenCalledWith("shop_1");
   });
 
   it("rejects a duplicate start on the server even if a stale page submitted", async () => {
-    startBackfill.mockResolvedValue({ started: false, reason: "active" });
+    requestBackfill.mockResolvedValue({ started: false, reason: "active" });
 
     await expect(
       action({ request: resyncRequest() } as never),
@@ -313,7 +312,7 @@ describe("Settings cost confirmation", () => {
       kind: CostRuleKind.SHIPPING_DEFAULT,
     });
     prismaMock.costRule.update.mockResolvedValue({ id: "shipping_rule" });
-    recomputeShopProfitability.mockResolvedValue({ ordersUpdated: 12 });
+    enqueueShopRecompute.mockResolvedValue({ jobId: "job_1" });
     const request = new Request("https://meridian.example/app/settings", {
       method: "POST",
       body: new URLSearchParams({
@@ -324,7 +323,7 @@ describe("Settings cost confirmation", () => {
 
     await expect(action({ request } as never)).resolves.toEqual({
       ok: true,
-      message: "Saved. Reprofiled 12 orders.",
+      message: "Saved. Profit recomputation is queued in the background.",
     });
 
     expect(prismaMock.costRule.findFirst).toHaveBeenCalledWith({
@@ -338,7 +337,28 @@ describe("Settings cost confirmation", () => {
     expect(update.data.fixedPerOrder).toBe("9.2500");
     expect(update.data.confirmedAt).toBeInstanceOf(Date);
     expect(update.data).not.toHaveProperty("origin");
-    expect(recomputeShopProfitability).toHaveBeenCalledWith("shop_1");
+    expect(enqueueShopRecompute).toHaveBeenCalledWith(
+      "shop_1",
+      "cost_rule_changed",
+    );
+  });
+
+  it("queues a whole-store recompute instead of holding the request open", async () => {
+    enqueueShopRecompute.mockResolvedValue({ jobId: "job_2" });
+    const request = new Request("https://meridian.example/app/settings", {
+      method: "POST",
+      body: new URLSearchParams({ intent: "recompute" }),
+    });
+
+    await expect(action({ request } as never)).resolves.toEqual({
+      ok: true,
+      message:
+        "Profit recomputation is queued and will continue in the background.",
+    });
+    expect(enqueueShopRecompute).toHaveBeenCalledWith(
+      "shop_1",
+      "merchant_requested",
+    );
   });
 
   it("does not treat a bare rule id as confirmation", async () => {

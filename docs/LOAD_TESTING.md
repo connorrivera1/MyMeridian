@@ -44,6 +44,16 @@ test cannot: concurrent rate-limit saturation, cross-tenant RLS reads/writes,
 one-use MFA replay prevention, webhook idempotency, job claims and transaction
 rollback. Run both on the release candidate.
 
+## Local verification record
+
+On 2026-08-12, the refreshed single-origin development server handled 375
+measured requests at concurrency 10 across `/healthz`, `/readyz`, `/`,
+`/app.data` and `/app/orders.data` with zero HTTP/network failures. The final
+mixed run recorded p95 values of 18 ms, 59 ms, 14 ms, 1,369 ms and 1,879 ms
+respectively, below the 2,500 ms local gate. The Orders path also passed an
+independent 75-request run at p95 2,249 ms. These results do not replace the
+production-equivalent staging soak required below.
+
 Local results prove application behavior and catch gross regressions. They do
 not establish production capacity. The local development server transforms and
 server-renders modules on demand, so its full-document throughput is not a

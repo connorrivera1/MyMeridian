@@ -126,7 +126,9 @@ describe("listing media and the demo store it is captured from", () => {
     const shipped = readdirSync(shippedDir).filter((f) => f.endsWith(".png"));
 
     const digest = (dir: string, file: string) =>
-      createHash("sha256").update(readFileSync(join(dir, file))).digest("hex");
+      createHash("sha256")
+        .update(readFileSync(join(dir, file)))
+        .digest("hex");
 
     const heldDigests = new Map(
       readdirSync(heldDir)
@@ -160,7 +162,9 @@ describe("listing media and the demo store it is captured from", () => {
       .toLowerCase();
 
     expect(publicCopy).not.toMatch(/loss[- ]leader/);
-    expect(publicCopy).not.toMatch(/multi[- ]location|per[- ]location capacity/);
+    expect(publicCopy).not.toMatch(
+      /multi[- ]location|per[- ]location capacity/,
+    );
     expect(publicCopy).not.toMatch(/priced by (your )?volume/);
     expect(publicCopy).not.toMatch(/up to [\d,]+ orders|unlimited orders/);
     expect(publicCopy).not.toContain("true net profit");
@@ -223,9 +227,9 @@ describe("listing media and the demo store it is captured from", () => {
   it("the listing keeps at least Shopify's three desktop screenshots", () => {
     // Shopify requires three to six. Holding one back must not quietly take the
     // listing under the floor.
-    const shipped = readdirSync(join(REPO_ROOT, "listing", "screenshots")).filter((f) =>
-      f.endsWith(".png"),
-    );
+    const shipped = readdirSync(
+      join(REPO_ROOT, "listing", "screenshots"),
+    ).filter((f) => f.endsWith(".png"));
     expect(
       shipped.length,
       "the listing needs at least three desktop screenshots and is now below that",
@@ -234,6 +238,18 @@ describe("listing media and the demo store it is captured from", () => {
       shipped.length,
       "Shopify accepts at most six desktop screenshots",
     ).toBeLessThanOrEqual(6);
+  });
+
+  it("ships feature media at the exact App Store dimensions", () => {
+    const relative = "listing/feature-media-1600x900.png";
+    const file = join(REPO_ROOT, relative);
+    expect(existsSync(file), `${relative} is required before submission`).toBe(
+      true,
+    );
+    const png = readFileSync(file);
+    expect(png.subarray(1, 4).toString("ascii")).toBe("PNG");
+    expect(png.readUInt32BE(16)).toBe(1600);
+    expect(png.readUInt32BE(20)).toBe(900);
   });
 
   it("SUBMISSION.md does not record the ad-accuracy flag as closed while it is open", () => {

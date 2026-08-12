@@ -102,7 +102,7 @@ credentials the reviewer needs to exercise the app, and that those credentials
 must grant the **full** feature set. Nothing in this file, `SUBMISSION.md` or
 `DEPLOY_PLAN.md` drafted this field before now, which is how it stayed invisible:
 it is a form field with no asset attached to it, so it does not show up as a
-missing file the way the screencast and the feature media do.
+missing file the way the screencast does.
 
 The embedded installation path requires no second signup or login. MyMeridian
 also offers an optional web account so a Scale merchant can switch stores
@@ -304,9 +304,10 @@ store install and first dashboard view now work. Record the final version after
 the public identity and populated reviewer store are ready; it cannot use the
 demo bypass because that is exactly the path the recording must prove is absent.
 
-### 3. Still missing from the listing, unrelated to copy
+### 3. Remaining listing evidence, unrelated to copy
 
-- **Feature media** — one 1600×900 image or a 2–3 minute video.
+- **Feature media is ready locally** — `listing/feature-media-1600x900.png` is
+  exactly 1600×900 and its dimensions are enforced by the listing test.
 - **Demo store URL** for the reviewer to click through. The store behind it is the
   same one the screenshots come from, and its invented `AdSpend` rows were cleared
   on 2026-08-06 — the local database now holds none.

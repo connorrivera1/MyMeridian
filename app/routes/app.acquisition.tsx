@@ -163,7 +163,7 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
           <Tile
             tone="var(--viz-pink)"
             icon={<IconOrders />}
-            label="Paid spend"
+            label="Paid Spend"
             value={
               <AnimatedMoney
                 cents={data.blended.totalSpendCents}
@@ -182,7 +182,7 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
               : "neutral"
           }
             icon={<IconOverview />}
-            label="Marketing efficiency"
+            label="Marketing Efficiency"
             value={
               data.blended.merRatio === null
                 ? "—"
@@ -194,7 +194,7 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
           tone="var(--viz-amber)"
           valueTone={data.blended.overclaimCents > 0 ? "negative" : "neutral"}
             icon={<IconAlert />}
-            label="Platform over-claim"
+            label="Platform Over-Claim"
             value={
               <AnimatedMoney
                 cents={data.blended.overclaimCents}
@@ -294,7 +294,7 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
       )}
 
       <Card
-        title="Revenue and profit by channel"
+        title="Revenue and Profit by Channel"
         hint="Net revenue comes from stored orders. Channel uses UTM and referring signals when Shopify supplied them; otherwise the order is classified as Direct. Contribution uses available COGS plus recorded or modeled fulfilment, payment-fee and ad-spend inputs, before overhead."
         flush
       >
@@ -307,8 +307,8 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
                 <tr>
                   <th>Channel</th>
                   <th className="right">Orders</th>
-                  <th className="right">Net revenue</th>
-                  <th className="right">Contribution profit</th>
+                  <th className="right">Net Revenue</th>
+                  <th className="right">Contribution Profit</th>
                   {hasSpend && <th className="right">Spend</th>}
                 </tr>
               </thead>
@@ -385,7 +385,7 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
 
       {hasSpend && data.hasCustomerData && (
         <Card
-          title="Paid acquisition detail"
+          title="Paid Acquisition Detail"
           hint="CAC is spend divided by the customers a channel actually acquired. Lifetime value is measured before marketing cost, so comparing it with CAC does not charge the same ad twice."
           flush
         >
@@ -396,10 +396,10 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
                   <th>Channel</th>
                   <th className="right">New</th>
                   <th className="right">CAC</th>
-                  <th className="right">90-day value</th>
+                  <th className="right">90-Day Value</th>
                   <th className="right">LTV : CAC</th>
                   <th className="right">Payback</th>
-                  <th className="right">ROAS · claimed</th>
+                  <th className="right">ROAS · Claimed</th>
                   <th>Verdict</th>
                 </tr>
               </thead>
@@ -558,7 +558,7 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
                     <th>Campaign</th>
                     <th className="right">Spend</th>
                     <th className="right">Orders</th>
-                    <th className="right">New customers</th>
+                    <th className="right">New Customers</th>
                     <th className="right">CAC</th>
                     <th className="right">ROAS</th>
                     <th className="right">Contribution</th>

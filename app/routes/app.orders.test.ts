@@ -256,9 +256,9 @@ describe("Orders ad-spend honesty", () => {
   it("renders unavailable live-store Ads cells as a dash and qualifies profit and margin", () => {
     const html = renderOrders("unavailable");
 
-    expect(html).toContain("Profit per order before paid marketing");
-    expect(html).toContain("Margin before paid marketing");
-    expect(html).toContain("Daily profit before paid marketing");
+    expect(html).toContain("Profit Per Order Before Paid Marketing");
+    expect(html).toContain("Margin Before Paid Marketing");
+    expect(html).toContain("Daily Profit Before Paid Marketing");
     expect(html).toContain("Profit and margin are before paid marketing");
     expect(html).toMatch(
       /<th class="right">Ads<\/th>[\s\S]*<td class="right muted">—<\/td>/,
@@ -269,9 +269,9 @@ describe("Orders ad-spend honesty", () => {
   it("labels synced live-store figures as after available costs", () => {
     const html = renderOrders("connected");
 
-    expect(html).toContain("Profit per order after available costs");
-    expect(html).toContain("Margin after available costs");
-    expect(html).toContain("Recorded ads");
+    expect(html).toContain("Profit Per Order After Available Costs");
+    expect(html).toContain("Margin After Available Costs");
+    expect(html).toContain("Recorded Ads");
     expect(html).toContain("-$7.77");
     expect(html).toContain("unconnected paid-marketing spend are excluded");
   });

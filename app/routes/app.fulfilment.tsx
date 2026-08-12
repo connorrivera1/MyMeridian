@@ -104,7 +104,7 @@ export function FulfilmentView({ data }: { data: FulfilmentData }) {
 
   if (!data.hasData) {
     return (
-      <Card title="Fulfilment capacity">
+      <Card title="Fulfilment Capacity">
         <Empty>
           No fulfilment history yet. Once orders start shipping, MyMeridian
           learns your warehouse&rsquo;s real throughput and warns you before it
@@ -125,7 +125,7 @@ export function FulfilmentView({ data }: { data: FulfilmentData }) {
           tone="var(--viz-rose)"
           valueTone={breached && m.currentBacklog > 0 ? "negative" : "neutral"}
           icon={<IconFulfilment />}
-          label="Orders waiting"
+          label="Orders Waiting"
           value={<AnimatedInt value={m.currentBacklog} />}
           spark={data.backlogSpark}
           meta={
@@ -139,7 +139,7 @@ export function FulfilmentView({ data }: { data: FulfilmentData }) {
         <Tile
           tone="var(--viz-blue)"
           icon={<IconOrders />}
-          label="Shipping now"
+          label="Shipping Now"
           value={<AnimatedInt value={Math.round(m.throughputPerDay)} />}
           spark={data.shippedSpark}
           meta={<span>orders a day, 14-day average</span>}
@@ -147,7 +147,7 @@ export function FulfilmentView({ data }: { data: FulfilmentData }) {
         <Tile
           tone="var(--viz-amber)"
           icon={<IconOverview />}
-          label="Capacity used"
+          label="Capacity Used"
           value={
             m.utilisationPct === null ? "—" : formatPercent(m.utilisationPct, 0)
           }
@@ -161,7 +161,7 @@ export function FulfilmentView({ data }: { data: FulfilmentData }) {
         <Tile
           tone="var(--viz-teal)"
           icon={<IconChannels />}
-          label="Demand trend"
+          label="Demand Trend"
           value={
             m.demandTrendPct === null ? "—" : formatPercent(m.demandTrendPct, 0)
           }
@@ -190,7 +190,7 @@ export function FulfilmentView({ data }: { data: FulfilmentData }) {
       )}
 
       <Card
-        title="Demand against capacity"
+        title="Demand Against Capacity"
         hint="Solid region is history; shaded region is the next 14 days, projected from trailing demand with your weekday pattern applied."
         flush
       >
@@ -220,7 +220,7 @@ export function FulfilmentView({ data }: { data: FulfilmentData }) {
       </Card>
 
       <Card
-        title="Next 14 days"
+        title="Next 14 Days"
         hint="Overflow rolls into the following day rather than disappearing, which is why a single busy week can put shipping times out for a fortnight."
         flush
       >
@@ -229,9 +229,9 @@ export function FulfilmentView({ data }: { data: FulfilmentData }) {
             <thead>
               <tr>
                 <th>Day</th>
-                <th className="right">Orders expected</th>
-                <th className="right">Backlog at close</th>
-                <th className="right">Ship delay</th>
+                <th className="right">Orders Expected</th>
+                <th className="right">Backlog at Close</th>
+                <th className="right">Ship Delay</th>
                 <th>Status</th>
               </tr>
             </thead>

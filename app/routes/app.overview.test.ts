@@ -143,7 +143,7 @@ describe("Overview ad-spend honesty", () => {
       "Ad spend is shown as a dash rather than a false zero",
     );
     expect(html).toMatch(
-      /tile-label">Ad spend<\/span><\/div><div class="tile-value">—<\/div>/,
+      /tile-label">Ad Spend<\/span><\/div><div class="tile-value">—<\/div>/,
     );
     expect(html).not.toContain("net profit kept");
     expect(html).toContain(
@@ -165,7 +165,7 @@ describe("Overview ad-spend honesty", () => {
     expect(html).toContain("Unconnected paid-marketing spend is excluded");
     expect(html).toContain("1 paid marketing source has completed a sync");
     expect(html).toContain("profit after available costs");
-    expect(html).toContain("Recorded ad spend");
+    expect(html).toContain("Recorded Ad Spend");
     expect(html).toContain("$50");
   });
 

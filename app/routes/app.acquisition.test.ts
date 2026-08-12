@@ -81,9 +81,9 @@ describe("Acquisition", () => {
   it("keeps order-derived channel revenue and profit visible with the requested scopes", async () => {
     const html = await render();
 
-    expect(html).toContain("Revenue and profit by channel");
-    expect(html).toContain("Net revenue");
-    expect(html).toContain("Contribution profit");
+    expect(html).toContain("Revenue and Profit by Channel");
+    expect(html).toContain("Net Revenue");
+    expect(html).toContain("Contribution Profit");
     expect(html).toContain("Direct");
     expect(html).toContain("$1,250");
     expect(html).toContain("$430");
@@ -138,7 +138,7 @@ describe("Acquisition", () => {
 
     const html = await render();
 
-    expect(html).toContain("Paid acquisition detail");
+    expect(html).toContain("Paid Acquisition Detail");
     expect(html).toContain("Payback — Facebook Ads");
     expect(html).not.toContain("part of Scale");
     expect(html).not.toContain("See plans");

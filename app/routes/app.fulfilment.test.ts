@@ -115,7 +115,7 @@ describe("Fulfilment", () => {
     const html = renderToStaticMarkup(createElement(FulfilmentView, { data }));
 
     expect(html).toContain("No fulfilment history yet");
-    expect(html).not.toContain("Orders waiting");
+    expect(html).not.toContain("Orders Waiting");
   });
 
   it("renders measured capacity, alerts, and a forecast status", async () => {
@@ -130,7 +130,7 @@ describe("Fulfilment", () => {
 
     const html = renderToStaticMarkup(createElement(FulfilmentView, { data }));
 
-    expect(html).toContain("Orders waiting");
+    expect(html).toContain("Orders Waiting");
     expect(html).toContain("2.4 days to clear");
     expect(html).toContain("Shipping promise at risk");
     expect(html).toContain("Wed, Aug 12");

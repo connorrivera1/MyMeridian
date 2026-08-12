@@ -50,7 +50,7 @@ export default function PrivacyRequests() {
 
   return (
     <Card
-      title="Customer data requests"
+      title="Customer Data Requests"
       hint={`When a shopper asks what your store holds on them, Shopify sends the request here and Meridian assembles the export for you to hand over. You are the controller and reply to the shopper; Meridian never contacts them. Exports expire ${data.retentionDays} days after the request and are removed by the hourly privacy sweep. This page remains available even without an active subscription.`}
       flush
     >
@@ -76,7 +76,7 @@ export default function PrivacyRequests() {
         <>
           {outstanding.length > 0 && (
             <RequestTable
-              label="Awaiting collection"
+              label="Awaiting Collection"
               requests={outstanding}
               timeZone={data.timezone}
             />
@@ -84,7 +84,7 @@ export default function PrivacyRequests() {
           {data.requests.collectedTotal > 0 && (
             <>
               <RequestTable
-                label="Collected history"
+                label="Collected History"
                 requests={history}
                 timeZone={data.timezone}
               />

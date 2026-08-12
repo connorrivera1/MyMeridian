@@ -55,7 +55,7 @@ describe("Products ad-spend honesty", () => {
       "Product contribution and margin are before paid marketing",
     );
     expect(html).toContain(
-      "Contribution profit before paid marketing by product",
+      "Contribution Profit Before Paid Marketing by Product",
     );
     expect(html).toContain(
       "contribution, margin and per-unit profit exclude that unavailable cost",
@@ -74,9 +74,9 @@ describe("Products ad-spend honesty", () => {
       "Product contribution and margin are after available costs",
     );
     expect(html).toContain(
-      "Contribution profit after available costs by product",
+      "Contribution Profit After Available Costs by Product",
     );
-    expect(html).toContain("Recorded ads");
+    expect(html).toContain("Recorded Ads");
     expect(html).toContain("-$8");
     expect(html).toContain(
       "Reviewing those assumptions records acknowledgement",

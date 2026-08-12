@@ -672,21 +672,21 @@ export default function Settings() {
 
       <div className="grid cols-2">
         <Card
-          title="Payment processing"
+          title="Payment Processing"
           hint="Charged on the full captured amount including tax and shipping. Processors do not refund their fee when you refund an order, and Meridian models it that way."
           actions={<CostRuleState rule={payment} />}
         >
           <Form method="post" className="stack">
             <input type="hidden" name="id" value={payment?.id} />
             <Field
-              label="Percentage rate"
+              label="Percentage Rate"
               name="percentRate"
               defaultValue={payment?.percentRate ?? 0.029}
               step="0.00001"
               suffix={`= ${((payment?.percentRate ?? 0) * 100).toFixed(2)}%`}
             />
             <Field
-              label="Fixed per order"
+              label="Fixed Per Order"
               name="fixedPerOrder"
               defaultValue={payment?.fixedPerOrder ?? 0.3}
               step="0.01"
@@ -706,7 +706,7 @@ export default function Settings() {
           <Form method="post" className="stack">
             <input type="hidden" name="id" value={shipping?.id} />
             <Field
-              label="Estimated cost per order"
+              label="Estimated Cost Per Order"
               name="fixedPerOrder"
               defaultValue={shipping?.fixedPerOrder ?? 8.5}
               step="0.01"
@@ -719,20 +719,20 @@ export default function Settings() {
         </Card>
 
         <Card
-          title="Pick, pack and materials"
+          title="Pick, Pack and Materials"
           actions={<CostRuleState rule={pickPack} />}
         >
           <Form method="post" className="stack">
             <input type="hidden" name="id" value={pickPack?.id} />
             <Field
-              label="Per order"
+              label="Per Order"
               name="fixedPerOrder"
               defaultValue={pickPack?.fixedPerOrder ?? 1.75}
               step="0.01"
               prefix="$"
             />
             <Field
-              label="Per item"
+              label="Per Item"
               name="fixedPerItem"
               defaultValue={pickPack?.fixedPerItem ?? 0.35}
               step="0.01"
@@ -745,14 +745,14 @@ export default function Settings() {
         </Card>
 
         <Card
-          title="Fixed monthly overhead"
+          title="Fixed Monthly Overhead"
           hint="Rent, salaries, software — anything you pay whether or not you sell. Amortised evenly across each month's orders, to the cent."
           actions={<CostRuleState rule={overhead} />}
         >
           <Form method="post" className="stack">
             <input type="hidden" name="id" value={overhead?.id} />
             <Field
-              label="Monthly amount"
+              label="Monthly Amount"
               name="monthlyAmount"
               defaultValue={overhead?.monthlyAmount ?? 0}
               step="0.01"
@@ -766,7 +766,7 @@ export default function Settings() {
       </div>
 
       <Card
-        title="Shopify data"
+        title="Shopify Data"
         hint={
           data.isDemo
             ? "This is the seeded demo store. Install Meridian on a real store to import live data."
@@ -783,7 +783,7 @@ export default function Settings() {
         <div className="grid cols-4">
           <Stat
             small
-            label="Import status"
+            label="Import Status"
             value={
               <span className="secondary">
                 {data.isDemo ? "Seeded" : backfillControl.statusLabel}
@@ -793,21 +793,21 @@ export default function Settings() {
           />
           <Stat
             small
-            label="Orders held"
+            label="Orders Held"
             value={
               <span className="num">{data.sync.orders.toLocaleString()}</span>
             }
           />
           <Stat
             small
-            label="Products held"
+            label="Products Held"
             value={
               <span className="num">{data.sync.products.toLocaleString()}</span>
             }
           />
           <Stat
             small
-            label="History reaches"
+            label="History Reaches"
             value={
               <span className="secondary">
                 {data.sync.earliestOrderAt
@@ -844,7 +844,7 @@ export default function Settings() {
 
       {data.scopes.length > 0 && (
         <Card
-          title="Data access"
+        title="Data Access"
           hint="What this store authorised at install. Meridian only requests fields it is allowed to read — a missing permission removes a feature, it does not produce a wrong number."
           flush
         >
@@ -853,7 +853,7 @@ export default function Settings() {
               <thead>
                 <tr>
                   <th>Permission</th>
-                  <th>What it provides</th>
+                  <th>What It Provides</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -918,9 +918,9 @@ export default function Settings() {
             <thead>
               <tr>
                 <th>Source</th>
-                <th>What it provides</th>
+                <th>What It Provides</th>
                 <th>Status</th>
-                <th>Last sync</th>
+                <th>Last Sync</th>
                 <th>Action</th>
               </tr>
             </thead>
@@ -1094,7 +1094,7 @@ export default function Settings() {
       </Card>
 
       <Card
-        title="Reports and alerts"
+        title="Reports and Alerts"
         hint="MyMeridian monitors qualified profit inputs daily. Scale can also send a weekly summary and export order-level figures for an accountant."
         actions={
           data.reporting.canExport ? (
@@ -1239,7 +1239,7 @@ export default function Settings() {
           />
           <Stat
             small
-            label="Last computed"
+            label="Last Computed"
             value={
               <span className="tiny">
                 {data.lastComputedAt

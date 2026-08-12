@@ -355,7 +355,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
 
       {data.alerts.length > 0 && (
         <Card
-          title="Needs attention"
+          title="Needs Attention"
           actions={
             <Link
               className="btn sm"
@@ -392,7 +392,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
                 : "neutral"
           }
           icon={<IconOrders />}
-          label="Net revenue"
+          label="Net Revenue"
           value={
             <AnimatedMoney
               cents={kpi.netRevenueCents}
@@ -414,7 +414,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
                 : "neutral"
           }
           icon={<IconPricing />}
-          label="Profit per order"
+          label="Profit Per Order"
           value={
             <AnimatedMoney
               cents={kpi.profitPerOrderCents}
@@ -434,7 +434,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
                 : "neutral"
           }
           icon={<IconProducts />}
-          label="Contribution profit"
+          label="Contribution Profit"
           value={
             <AnimatedMoney
               cents={kpi.contributionProfitCents}
@@ -449,7 +449,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
         <Tile
           tone="var(--series-3)"
           icon={<IconChannels />}
-          label={adSpendMeasured ? "Recorded ad spend" : "Ad spend"}
+          label={adSpendMeasured ? "Recorded Ad Spend" : "Ad Spend"}
           value={
             adSpendMeasured ? (
               <AnimatedMoney
@@ -482,7 +482,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
         <Tile
           tone="var(--series-6)"
           icon={<IconFulfilment />}
-          label="Average order value"
+          label="Average Order Value"
           value={
             <AnimatedMoney cents={kpi.aovCents} currency={data.currency} />
           }
@@ -493,7 +493,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
 
       <Card
         id="bridge"
-        title="Where the money went"
+        title="Where the Money Went"
         hint="Available recorded and modeled costs between booked revenue and the profit shown above. Missing inputs and unconnected paid-marketing spend are excluded."
       >
         <ProfitBridge steps={data.bridge} />
@@ -526,7 +526,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
         )}
       </Card>
 
-      <Card title="Profit and revenue over time" flush>
+      <Card title="Profit and Revenue Over Time" flush>
         <Legend
           items={[
             {
@@ -560,7 +560,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
 
       <div className="grid cols-2">
         <Card
-          title="Carrying the business"
+          title="Carrying the Business"
           hint="Highest non-negative contribution after available product-level costs. Overhead and unconnected spend are excluded."
           flush
         >
@@ -568,7 +568,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
         </Card>
 
         <Card
-          title="Losing money"
+          title="Losing Money"
           hint="Negative contribution after available product-level costs; overhead is excluded. Products with missing COGS receive no verdict."
           flush
         >
@@ -581,7 +581,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
       </div>
 
       <Card
-        title="Customer acquisition metrics"
+        title="Customer Acquisition Metrics"
         hint={
           data.capabilities.customers
             ? "Customer value is evaluated only at cohort ages old enough to answer."
@@ -589,7 +589,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
         }
         actions={
           <Link className="btn sm" to={`/app/acquisition?range=${data.preset}`}>
-            Full breakdown
+            Full Breakdown
           </Link>
         }
         flush
@@ -612,7 +612,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
                 <tr>
                   <th>Channel</th>
                   <th className="right">Spend</th>
-                  <th className="right">New customers</th>
+                  <th className="right">New Customers</th>
                   <th className="right">CAC</th>
                   <th
                     className="right"

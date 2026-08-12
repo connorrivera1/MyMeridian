@@ -471,9 +471,13 @@ export function OrdersView({ data }: { data: OrdersData }) {
     data.adSpendCoverage.mode === "unavailable"
       ? "before paid marketing"
       : "after available costs";
-  const dailyProfitLabel = `Profit ${profitBasis}`;
-  const tableProfitLabel = `Profit ${profitBasis}`;
-  const tableMarginLabel = `Margin ${profitBasis}`;
+  const profitBasisTitle =
+    data.adSpendCoverage.mode === "unavailable"
+      ? "Before Paid Marketing"
+      : "After Available Costs";
+  const dailyProfitLabel = `Profit ${profitBasisTitle}`;
+  const tableProfitLabel = `Profit ${profitBasisTitle}`;
+  const tableMarginLabel = `Margin ${profitBasisTitle}`;
 
   const navigate = useNavigate();
 
@@ -520,7 +524,7 @@ export function OrdersView({ data }: { data: OrdersData }) {
                 : "neutral"
           }
           icon={<IconPricing />}
-          label={`Profit per order ${profitBasis}`}
+          label={`Profit Per Order ${profitBasisTitle}`}
           value={
             <AnimatedMoney
               cents={data.summary.profitPerOrderCents}
@@ -538,7 +542,7 @@ export function OrdersView({ data }: { data: OrdersData }) {
         <Tile
           tone="var(--viz-blue)"
           icon={<IconOrders />}
-          label="Average order value"
+          label="Average Order Value"
           value={
             <AnimatedMoney
               cents={data.summary.aovCents}
@@ -559,7 +563,7 @@ export function OrdersView({ data }: { data: OrdersData }) {
                   : "neutral"
           }
           icon={<IconOverview />}
-          label={`Margin ${profitBasis}`}
+          label={`Margin ${profitBasisTitle}`}
           value={
             data.summary.marginPct === null
               ? "—"
@@ -577,7 +581,7 @@ export function OrdersView({ data }: { data: OrdersData }) {
           tone="var(--viz-rose)"
           valueTone={data.summary.lossMakingCount > 0 ? "negative" : "neutral"}
           icon={<IconAlert />}
-          label={`Orders losing money ${profitBasis}`}
+          label={`Orders Losing Money ${profitBasisTitle}`}
           value={<AnimatedInt value={data.summary.lossMakingCount} />}
           meta={
             <>
@@ -597,7 +601,7 @@ export function OrdersView({ data }: { data: OrdersData }) {
       </div>
 
       <Card
-        title={`Daily profit ${profitBasis}`}
+        title={`Daily Profit ${profitBasisTitle}`}
         hint={
           data.adSpendCoverage.mode === "unavailable"
             ? "Includes fixed overhead but excludes paid marketing because no spend source has completed a sync."
@@ -609,7 +613,7 @@ export function OrdersView({ data }: { data: OrdersData }) {
 
       {data.field.numbers.length > 0 && (
         <Card
-          title="Every order in the range"
+          title="Every Order in the Range"
           hint="One mark per order; the solid marks lost money. Point at any mark to read it, click to open its receipt. The same engine and the same window as the table below."
         >
           <div className="order-field-layout">
@@ -706,7 +710,7 @@ export function OrdersView({ data }: { data: OrdersData }) {
                   <th className="right">Fees</th>
                   <th className="right">
                     {data.adSpendCoverage.mode === "connected"
-                      ? "Recorded ads"
+                      ? "Recorded Ads"
                       : "Ads"}
                   </th>
                   <th className="right">Overhead</th>
@@ -719,11 +723,11 @@ export function OrdersView({ data }: { data: OrdersData }) {
                       elsewhere for what the number excludes. */}
                   <th className="right">
                     Profit
-                    <span className="th-sub">{profitBasis}</span>
+                    <span className="th-sub">{profitBasisTitle}</span>
                   </th>
                   <th className="right">
                     Margin
-                    <span className="th-sub">{profitBasis}</span>
+                    <span className="th-sub">{profitBasisTitle}</span>
                   </th>
                 </tr>
               </thead>

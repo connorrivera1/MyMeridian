@@ -110,6 +110,10 @@ export function ProductsView({ data }: { data: ProductsData }) {
     data.adSpendCoverage.mode === "unavailable"
       ? "before paid marketing"
       : "after available costs";
+  const profitBasisTitle =
+    data.adSpendCoverage.mode === "unavailable"
+      ? "Before Paid Marketing"
+      : "After Available Costs";
 
   const chartData = data.products
     .slice()
@@ -176,7 +180,7 @@ export function ProductsView({ data }: { data: ProductsData }) {
         <Tile
           tone="var(--viz-amber)"
           icon={<IconPricing />}
-          label="Thin margin"
+          label="Thin Margin"
           value={<AnimatedInt value={data.counts.thin} />}
           meta={
             <>
@@ -206,7 +210,7 @@ export function ProductsView({ data }: { data: ProductsData }) {
       </div>
 
       <Card
-        title={`Contribution profit ${profitBasis} by product`}
+        title={`Contribution Profit ${profitBasisTitle} by Product`}
         hint={
           data.adSpendCoverage.mode === "unavailable"
             ? "After available shipping, payment-fee and pick-and-pack inputs. Those inputs can be modeled, missing COGS is flagged, and paid-marketing spend is unavailable and excluded."
@@ -221,7 +225,7 @@ export function ProductsView({ data }: { data: ProductsData }) {
       </Card>
 
       <Card
-        title="Full breakdown"
+        title="Full Breakdown"
         hint={
           data.adSpendCoverage.mode === "unavailable"
             ? "Sorted by contribution before paid marketing. Ads shows a dash; contribution, margin and per-unit profit exclude that unavailable cost."
@@ -236,23 +240,23 @@ export function ProductsView({ data }: { data: ProductsData }) {
                 <th>Product</th>
                 <th></th>
                 <th className="right">Units</th>
-                <th className="right">Attach rate</th>
+                <th className="right">Attach Rate</th>
                 <th className="right">Revenue</th>
                 <th className="right">COGS</th>
-                <th className="right">Fulfilment &amp; fees</th>
+                <th className="right">Fulfilment &amp; Fees</th>
                 <th className="right">
                   {data.adSpendCoverage.mode === "connected"
-                    ? "Recorded ads"
+                    ? "Recorded Ads"
                     : "Ads"}
                 </th>
                 <th className="right">
-                  {`Contribution ${profitBasis}`}
+                  {`Contribution ${profitBasisTitle}`}
                 </th>
                 <th className="right">
-                  {`Margin ${profitBasis}`}
+                  {`Margin ${profitBasisTitle}`}
                 </th>
                 <th className="right">
-                  {`Per unit ${profitBasis}`}
+                  {`Per Unit ${profitBasisTitle}`}
                 </th>
               </tr>
             </thead>

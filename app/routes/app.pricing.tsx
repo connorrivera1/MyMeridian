@@ -269,7 +269,7 @@ export default function Pricing() {
           tone="var(--viz-mint)"
           valueTone={data.upsideCents > 0 ? "positive" : "neutral"}
           icon={<IconPricing />}
-          label="Modelled monthly upside"
+          label="Modelled Monthly Upside"
           value={
             <AnimatedMoney
               cents={data.upsideCents}
@@ -288,14 +288,14 @@ export default function Pricing() {
           tone="var(--viz-teal)"
           valueTone={data.actionableCount > 0 ? "positive" : "neutral"}
           icon={<IconCheck />}
-          label="Ready to act on"
+          label="Ready to Act On"
           value={<AnimatedInt value={data.actionableCount} />}
           meta={<span>backed by post-install observed history</span>}
         />
         <Tile
           tone="var(--viz-violet)"
           icon={<IconInfo />}
-          label="Need a price test"
+          label="Need a Price Test"
           value={<AnimatedInt value={data.testableCount} />}
           meta={<span>never changed price, so demand is unknown</span>}
         />
@@ -339,8 +339,8 @@ export default function Pricing() {
                   <th>Product</th>
                   <th className="right">Now</th>
                   <th className="right">Suggested</th>
-                  <th className="right">Units impact</th>
-                  <th className="right">Monthly profit</th>
+                  <th className="right">Units Impact</th>
+                  <th className="right">Monthly Profit</th>
                   <th>Basis</th>
                   <th>Confidence</th>
                   <th></th>

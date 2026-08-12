@@ -219,7 +219,7 @@ export function ErrorBoundary() {
 
 const NAV = [
   { to: "/app", label: "Overview", Icon: IconOverview, end: true },
-  { to: "/app/orders", label: "Profit per order", Icon: IconOrders },
+  { to: "/app/orders", label: "Profit Per Order", Icon: IconOrders },
   { to: "/app/products", label: "Products", Icon: IconProducts },
   { to: "/app/costs", label: "Costs & Bundles", Icon: IconCosts },
   { to: "/app/acquisition", label: "Acquisition", Icon: IconChannels },
@@ -378,19 +378,19 @@ export default function AppLayout() {
           {plan.id && (
             <NavLink to={`/app/settings?range=${preset}`} className="nav-link">
               <IconSettings />
-              Costs &amp; connections
+              Costs &amp; Connections
             </NavLink>
           )}
           <NavLink to="/app/privacy-requests" className="nav-link">
             <IconPrivacy />
-            Privacy requests
+            Privacy Requests
           </NavLink>
           {/* An in-app route rather than a link out to the Shopify admin.
               Requirement 1.2.3 is that a merchant can change plans in both
               directions without leaving the app or contacting support. */}
           <NavLink to="/app/plan" className="nav-link">
             <IconPlan />
-            {plan.name ? `Plan · ${plan.name}` : "Choose a plan"}
+            {plan.name ? `Plan · ${plan.name}` : "Choose a Plan"}
           </NavLink>
         </nav>
 

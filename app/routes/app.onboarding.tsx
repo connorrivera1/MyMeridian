@@ -168,65 +168,65 @@ export default function Onboarding() {
       <div className="grid cols-4">
         <Stat
           small
-          label="Orders found · 30d"
+          label="Orders Found · 30d"
           value={data.orders.toLocaleString()}
         />
         <Stat
           small
-          label="Revenue found · 30d"
+          label="Revenue Found · 30d"
           value={<Money cents={data.revenueCents} currency={data.currency} />}
         />
         <Stat
           small
-          label="Qualified profit · 30d"
+          label="Qualified Profit · 30d"
           value={<Money cents={data.profitCents} currency={data.currency} />}
         />
         <Stat
           small
-          label="Lines missing COGS"
+          label="Lines Missing COGS"
           value={data.missingCostLines.toLocaleString()}
         />
       </div>
       <Card
-        title="Confirm the costs behind your profit"
+        title="Confirm the Costs Behind Your Profit"
         hint="These install defaults prevent fake 100% margins. Replace them with your real figures now; every imported order is recomputed before you choose a plan."
       >
         {result?.error && <Banner tone="warn">{result.error}</Banner>}
         <Form method="post" className="stack">
           <div className="grid cols-2">
             <OnboardingField
-              label="Payment rate"
+              label="Payment Rate"
               name="paymentPercent"
               defaultValue={data.defaults.paymentPercent}
               suffix="%"
               step="0.01"
             />
             <OnboardingField
-              label="Payment fee per order"
+              label="Payment Fee Per Order"
               name="paymentFixed"
               defaultValue={data.defaults.paymentFixed}
               prefix="$"
             />
             <OnboardingField
-              label="Shipping per order"
+              label="Shipping Per Order"
               name="shipping"
               defaultValue={data.defaults.shipping}
               prefix="$"
             />
             <OnboardingField
-              label="Pick and pack per order"
+              label="Pick and Pack Per Order"
               name="pickPackOrder"
               defaultValue={data.defaults.pickPackOrder}
               prefix="$"
             />
             <OnboardingField
-              label="Materials per item"
+              label="Materials Per Item"
               name="pickPackItem"
               defaultValue={data.defaults.pickPackItem}
               prefix="$"
             />
             <OnboardingField
-              label="Fixed monthly overhead"
+              label="Fixed Monthly Overhead"
               name="overhead"
               defaultValue={data.defaults.overhead}
               prefix="$"

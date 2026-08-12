@@ -14,7 +14,7 @@ store to the plan screen, gates paid features, and re-checks the plan before a
 protected pricing mutation.
 
 **Release status (verified 2026-08-11):** `npm run ci` passes type checking,
-coverage thresholds, 1,084 unit tests and the production build. The 57 opt-in
+coverage thresholds, 1,085 unit tests and the production build. The 57 opt-in
 database integration cases pass against a fresh PostgreSQL database after all 27
 migrations apply from empty. GitHub dependency, secret and Semgrep security
 checks are green. A real Shopify development store has passed embedded install,

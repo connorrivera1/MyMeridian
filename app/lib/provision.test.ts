@@ -91,7 +91,7 @@ beforeEach(() => {
 describe("Shopify Shipping protected-data approval", () => {
   it("does not re-enable a permission-blocked connector on every authenticated page", async () => {
     const approvalMessage =
-      "Shopify has not approved protected customer data for Shipping reports yet. Request approval in the Partner Dashboard, then retry this connection.";
+      "Shopify has not approved protected customer data for Shipping reports yet. In Partner Dashboard, request Level 2 access covering Name, Email, Phone, and Address, then retry this connection. ShopifyQL requires all four approvals; MyMeridian does not query or store shopper name, phone, or address.";
     connectorFindUnique.mockResolvedValue({
       status: ConnectorStatus.ERROR,
       lastError: approvalMessage,

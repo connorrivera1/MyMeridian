@@ -8,6 +8,7 @@ import {
   parseShipStationShipmentReferences,
   parseShopifyShippingRows,
   selectCarrierTotal,
+  SHOPIFY_SHIPPING_PROTECTED_DATA_ERROR,
 } from "./shipping.server";
 
 describe("shipping carrier reconciliation", () => {
@@ -144,6 +145,15 @@ describe("shipping carrier reconciliation", () => {
         new Error("Shopify Admin API returned HTTP 503"),
       ),
     ).toBe(false);
+  });
+
+  it("tells merchants exactly which ShopifyQL approvals are missing without claiming those fields are collected", () => {
+    expect(SHOPIFY_SHIPPING_PROTECTED_DATA_ERROR).toContain(
+      "Name, Email, Phone, and Address",
+    );
+    expect(SHOPIFY_SHIPPING_PROTECTED_DATA_ERROR).toContain(
+      "does not query or store shopper name, phone, or address",
+    );
   });
 
   it("matches GIDs and merchant-facing order numbers", () => {

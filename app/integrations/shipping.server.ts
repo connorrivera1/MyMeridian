@@ -630,7 +630,7 @@ type CarrierReconciliationResult = Awaited<
 >;
 
 export const SHOPIFY_SHIPPING_PROTECTED_DATA_ERROR =
-  "Shopify has not approved protected customer data for Shipping reports yet. Request approval in the Partner Dashboard, then retry this connection.";
+  "Shopify has not approved protected customer data for Shipping reports yet. In Partner Dashboard, request Level 2 access covering Name, Email, Phone, and Address, then retry this connection. ShopifyQL requires all four approvals; MyMeridian does not query or store shopper name, phone, or address.";
 
 /**
  * Shopify's Admin client may attach the full HTTP response to a thrown error.

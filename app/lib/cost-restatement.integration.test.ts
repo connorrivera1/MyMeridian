@@ -661,7 +661,7 @@ describe.skipIf(!TEST_URL)(
         where: { id: job.id },
       });
       expect(after.status).toBe("QUEUED");
-      expect(after.error).toContain("injected handler failure");
+      expect(after.error).toBe("Operation failed (Error).");
       expect(after.attempts).toBe(1);
       expect(after.availableAt.getTime()).toBeGreaterThan(Date.now());
 

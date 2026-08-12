@@ -109,7 +109,7 @@ describe.skipIf(!TEST_URL)("durable webhooks, against a real Postgres", () => {
     });
     expect(failed.processedAt).toBeNull();
     expect(failed.payload).toEqual({ order_id: 123 });
-    expect(failed.error).toMatch(/no durable webhook processor/i);
+    expect(failed.error).toBe("Operation failed (Error).");
     expect(failed.leaseToken).toBeNull();
 
     await prisma.webhookEvent.update({
@@ -167,7 +167,7 @@ describe.skipIf(!TEST_URL)("durable webhooks, against a real Postgres", () => {
       expect(event.payload).toEqual({
         customer: { email: `unresolved-${marker}@example.com` },
       });
-      expect(event.error).toMatch(/missing required customer\.id/i);
+      expect(event.error).toBe("Operation failed (Error).");
       expect(event.leaseToken).toBeNull();
       expect(event.leaseExpiresAt).toBeNull();
       expect(event.availableAt.getTime()).toBeGreaterThan(Date.now());

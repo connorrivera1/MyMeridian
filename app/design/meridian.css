@@ -4422,14 +4422,25 @@ td.muted .money.neg,
  */
 .plan-card { display: flex; flex-direction: column; }
 
+/* Plan cards are self-contained panels, not flush ledger sections. The plan
+   name, price, features and action all share the same inset so none starts
+   against a card edge. */
+.plan-card .stat {
+  padding: var(--s-6) var(--ledger-gutter) 0;
+  gap: var(--s-3);
+}
+
+.plan-card .stat-label { margin: 0; }
+.plan-card .stat-meta { min-height: 2.8em; }
+
 .plan-card-body {
   display: flex;
   flex-direction: column;
   flex: 1;
-  padding: 0 var(--ledger-gutter) var(--ledger-gutter);
+  padding: var(--s-5) var(--ledger-gutter) var(--ledger-gutter);
 }
 
-.plan-features { margin: var(--s-2) 0 var(--s-4); }
+.plan-features { margin: 0 0 var(--s-5); }
 
 /* Pushed to the floor, but sized to its own content: a flex column stretches
    its children, which turned the "Current plan" badge into a full-width bar

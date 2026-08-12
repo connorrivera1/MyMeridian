@@ -49,10 +49,10 @@ rollback. Run both on the release candidate.
 On 2026-08-12, the refreshed single-origin development server handled 375
 measured requests at concurrency 10 across `/healthz`, `/readyz`, `/`,
 `/app.data` and `/app/orders.data` with zero HTTP/network failures. The final
-mixed run recorded p95 values of 18 ms, 59 ms, 14 ms, 1,369 ms and 1,879 ms
-respectively, below the 2,500 ms local gate. The Orders path also passed an
-independent 75-request run at p95 2,249 ms. These results do not replace the
-production-equivalent staging soak required below.
+mixed run recorded p95 values of 39 ms, 34 ms, 7 ms, 808 ms and 2,064 ms
+respectively, below the 2,500 ms local gate. These results do not replace the
+production-equivalent staging soak required below; the exact production-like
+gate is in [`DEPLOYMENT_RUNBOOK.md`](DEPLOYMENT_RUNBOOK.md).
 
 Local results prove application behavior and catch gross regressions. They do
 not establish production capacity. The local development server transforms and

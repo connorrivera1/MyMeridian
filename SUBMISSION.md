@@ -1,13 +1,15 @@
 # Shopify App Store submission checklist
 
-Status of every requirement Shopify checks. The long audit trail below records
-what was run on 2026-08-05/06; this current snapshot was reconciled and verified
-again on 2026-08-11.
+Status of every requirement Shopify checks. The dated audit trail below records
+historical verification. [`docs/LAUNCH_READINESS.md`](docs/LAUNCH_READINESS.md)
+is the only current release-status source; use
+[`docs/SHOPIFY_SUBMISSION_PACKET.md`](docs/SHOPIFY_SUBMISSION_PACKET.md) for the
+current submission handoff.
 
 Current implementation branch: `feature/mymeridian-web-accounts`. The GitHub
 remote is `connorrivera1/MyMeridian`; nothing has been deployed or submitted.
 
-**Read this first:** the development app has now been installed on a real Shopify
+**Historical evidence, not a current release claim:** the development app has now been installed on a real Shopify
 development store and rendered embedded in Admin. Onboarding persisted, a
 zero-order full-history import completed with `read_all_orders`, and Shopify's
 test-charge approval returned with Starter active without moving money. This
@@ -16,8 +18,8 @@ representative order-volume backfill. Where a claim below says "verified", the
 level is named. See _What has not been tested_ at the end.
 
 **Current local gate:** `npm run ci` passes — typecheck, coverage thresholds,
-1,156 unit tests and production build. The explicit real-PostgreSQL run passes
-all 72 opt-in integration cases after all 34 migrations apply from empty.
+1,173 unit tests and production build. The explicit real-PostgreSQL run passes
+all 74 opt-in integration cases after all 34 migrations apply from empty.
 Billing is no longer merely declared:
 `resolvePlan`, the layout subscription redirect, the `planAllows`
 capability gates, the pricing-action re-check, and `billing.request` implement
@@ -1133,7 +1135,7 @@ the bug, and why the third row of that table matches.
 | GraphQL Admin API only                     | Done      | No REST calls anywhere; new public apps may not use REST                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | Webhook API version                        | Done      | `2026-07`, matching `@shopify/shopify-api` 13.1.0                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | Production build                           | Done      | `npm run ci` production build clean on 2026-08-11                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| Test suite                                 | Done      | **1,156 unit tests passed and 72 opt-in PostgreSQL integration tests skipped; explicit real-PostgreSQL suite 72/72 after all 34 migrations** (verified 2026-08-12)                                                                                                                                                                                                                                                                                                                                                    |
+| Test suite                                 | Done      | **1,173 unit tests passed and 74 opt-in PostgreSQL integration tests skipped; explicit real-PostgreSQL suite 74/74 after all 34 migrations** (verified 2026-08-12)                                                                                                                                                                                                                                                                                                                                                    |
 | Engine output unchanged by the query work  | Done      | `npx tsx scripts/verify-data.ts` against live Postgres, diffed byte-for-byte against its output before the change                                                                                                                                                                                                                                                                                                                                                                                                     |
 | Typecheck                                  | Done      | Clean in `npm run ci` on 2026-08-11                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | Config validity                            | Done      | `shopify app config validate` passes on 2026-08-10; CLI 4.x publishes config through `shopify app deploy`, not the removed `config push` command                                                                                                                                                                                                                                                                                                                                                                      |

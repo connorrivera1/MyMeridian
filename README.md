@@ -25,19 +25,11 @@ they deliberately exclude customer/order detail, merchant contact data, tokens,
 payloads and raw provider errors, and provide no arbitrary database editor. See
 [`docs/OPERATOR_SECURITY.md`](docs/OPERATOR_SECURITY.md).
 
-**Release status (verified 2026-08-12):** `npm run ci` passes type checking,
-coverage thresholds, 1,156 unit tests and the production build. The 72 opt-in
-database integration cases pass against a fresh PostgreSQL database after all 34
-migrations apply from empty. The production bundle scan checks 29 server-only
-configuration fields across every public text asset, and the dependency audit
-reports no high-severity vulnerabilities. A real Shopify development store has passed embedded install,
-onboarding, zero-order full-history completion and the test-billing approval and
-return flow. `read_all_orders` is approved. Submission is still waiting on a
-Fly production origin and database, ShopifyQL's broader Level 2 approval,
-MyMeridian's final publisher/domain/support identity, App Store registration and
-reviewer assets. Production webhooks, production billing and a representative
-order-volume import remain unproved. See `DEPLOY_PLAN.md` and `SUBMISSION.md` for
-the ordered checklist.
+**Release status:** [`docs/LAUNCH_READINESS.md`](docs/LAUNCH_READINESS.md) is
+the sole current release record. It names verified local evidence separately
+from production, legal, payment, provider-approval and Shopify-review gates.
+The dated deployment and submission files are implementation history and
+runbooks, not a substitute for that matrix.
 
 ---
 

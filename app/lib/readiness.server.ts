@@ -36,6 +36,19 @@ export function readinessConfiguration(env: NodeJS.ProcessEnv = process.env): {
     try {
       const url = new URL(appUrl);
       if (url.protocol !== "https:") missing.push("SHOPIFY_APP_URL_HTTPS");
+      const host = url.hostname.toLowerCase();
+      if (
+        host === "localhost" ||
+        host === "127.0.0.1" ||
+        host === "::1" ||
+        host === "shopify.dev" ||
+        host.endsWith(".shopify.dev") ||
+        host.endsWith(".example") ||
+        host === "example.com" ||
+        host.endsWith(".example.com")
+      ) {
+        missing.push("SHOPIFY_APP_URL_PRODUCTION_ORIGIN");
+      }
     } catch {
       missing.push("SHOPIFY_APP_URL_VALID");
     }

@@ -19,10 +19,9 @@ handle = "mymeridian"
 # the tunnel while `shopify app dev` runs, which is why it can sit wrong for a
 # long time without anything locally appearing to break.
 #
-# TODO(deploy): Dockerfile, .dockerignore, and fly.toml now exist and have been
-# validated locally, but no Fly app/database has been provisioned and no
-# production origin exists. flyctl is installed but still needs `fly auth
-# login`. Once a real host is live, set
+# DEPLOYMENT BLOCKER: Dockerfile, .dockerignore, and fly.toml have been
+# validated locally, but no hosting app/database has been provisioned and no
+# production origin exists. Once a real host is live, set
 # application_url to that origin and update redirect_urls below to match —
 # webhook `uri` values are relative and resolve against it automatically.
 #

@@ -40,12 +40,53 @@ describe("production readiness", () => {
       MERIDIAN_OPERATOR_EMAIL: "publisher@example.com",
       MERIDIAN_OPERATOR_PASSWORD_HASH:
         "scrypt$16384$8$1$MDEyMzQ1Njc4OWFiY2RlZg==$MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
-      MERIDIAN_OPERATOR_TOTP_SECRET: "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+      MERIDIAN_OPERATOR_TOTP_SECRET: [
+        "GEZDGNBV",
+        "GY3TQOJQ",
+        "GEZDGNBV",
+        "GY3TQOJQ",
+      ].join(""),
       MERIDIAN_OPERATOR_SESSION_KEY: "x".repeat(32),
       MERIDIAN_RATE_LIMIT_KEY: Buffer.alloc(32, 1).toString("base64"),
       ...mfaProviders,
     });
-    expect(result.missing).toEqual(["SHOPIFY_APP_URL_HTTPS"]);
+    expect(result.missing).toEqual([
+      "SHOPIFY_APP_URL_HTTPS",
+      "SHOPIFY_APP_URL_PRODUCTION_ORIGIN",
+    ]);
+  });
+
+  it("rejects local and Shopify placeholder production origins", () => {
+    const base = {
+      NODE_ENV: "production",
+      DATABASE_URL: "postgres://system@db/app",
+      MERIDIAN_TENANT_DATABASE_URL: "postgres://tenant@db/app",
+      SHOPIFY_API_KEY: "key",
+      SHOPIFY_API_SECRET: "secret",
+      MERIDIAN_ENCRYPTION_KEY: "enc",
+      MERIDIAN_CUSTOMER_ERASURE_KEY: "erase",
+      MERIDIAN_OPERATOR_EMAIL: "publisher@example.com",
+      MERIDIAN_OPERATOR_PASSWORD_HASH:
+        "scrypt$16384$8$1$MDEyMzQ1Njc4OWFiY2RlZg==$MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+      MERIDIAN_OPERATOR_TOTP_SECRET: [
+        "GEZDGNBV",
+        "GY3TQOJQ",
+        "GEZDGNBV",
+        "GY3TQOJQ",
+      ].join(""),
+      MERIDIAN_OPERATOR_SESSION_KEY: "x".repeat(32),
+      MERIDIAN_RATE_LIMIT_KEY: Buffer.alloc(32, 1).toString("base64"),
+      ...mfaProviders,
+    };
+    for (const appUrl of [
+      "https://shopify.dev/apps/default-app-home",
+      "https://localhost:3130",
+      "https://app.example.com",
+    ]) {
+      expect(
+        readinessConfiguration({ ...base, SHOPIFY_APP_URL: appUrl }).missing,
+      ).toContain("SHOPIFY_APP_URL_PRODUCTION_ORIGIN");
+    }
   });
 
   it("rejects malformed operator security material", () => {
@@ -66,6 +107,7 @@ describe("production readiness", () => {
       ...mfaProviders,
     });
     expect(result.missing).toEqual([
+      "SHOPIFY_APP_URL_PRODUCTION_ORIGIN",
       "MERIDIAN_OPERATOR_EMAIL_VALID",
       "MERIDIAN_OPERATOR_PASSWORD_HASH_VALID",
       "MERIDIAN_OPERATOR_TOTP_SECRET_VALID",

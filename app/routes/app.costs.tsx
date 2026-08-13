@@ -600,7 +600,7 @@ function VariantPicker({
         required
         style={{ width: 260 }}
       >
-        <option value="">Choose a variant…</option>
+        <option value="">Choose A Variant…</option>
         {variants.map((variant) => (
           <option key={variant.id} value={variant.id}>
             {variant.label}
@@ -711,7 +711,7 @@ export function CostsView({
         flush
       >
         {data.variants.length === 0 ? (
-          <Empty>No variants have been imported yet.</Empty>
+          <Empty>No Variants Have Been Imported Yet.</Empty>
         ) : (
           <div className="table-wrap">
             <table className="data">
@@ -744,7 +744,7 @@ export function CostsView({
                     </td>
                     <td>
                       {variant.history.length === 0 ? (
-                        <span className="cell-sub">no history</span>
+                        <span className="cell-sub">No History</span>
                       ) : (
                         <div className="cell-sub">
                           {variant.history.slice(0, 4).map((version) => (
@@ -780,7 +780,7 @@ export function CostsView({
                           min="0"
                           required
                           style={{ width: 96 }}
-                          aria-label={`New unit cost for ${variant.label}`}
+                          aria-label={`New Unit Cost For ${variant.label}`}
                         />
                         <input
                           className="field-input"
@@ -789,7 +789,7 @@ export function CostsView({
                           defaultValue={today}
                           required
                           style={{ width: 140 }}
-                          aria-label={`Effective from, for ${variant.label}`}
+                          aria-label={`Effective From, For ${variant.label}`}
                         />
                         <input
                           className="field-input"
@@ -886,7 +886,7 @@ export function CostsView({
               {data.mappings.length === 0 ? (
                 <tr>
                   <td colSpan={5}>
-                    <Empty>No confirmed bundle mappings yet.</Empty>
+                    <Empty>No Confirmed Bundle Mappings Yet.</Empty>
                   </td>
                 </tr>
               ) : (
@@ -1038,7 +1038,7 @@ export function CostsView({
         flush
       >
         {data.restatements.length === 0 ? (
-          <Empty>No history has been restated.</Empty>
+          <Empty>No History Has Been Restated.</Empty>
         ) : (
           <div className="table-wrap">
             <table className="data">

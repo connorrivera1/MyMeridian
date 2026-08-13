@@ -49,8 +49,8 @@ export default function OperatorOverview() {
     <main className="operator-main">
       <div className="operator-title-row">
         <div>
-          <p className="operator-kicker">Internal control plane</p>
-          <h1>Business and system health</h1>
+          <p className="operator-kicker">Internal Control Plane</p>
+          <h1>Business And System Health</h1>
           <p className="operator-muted">
             Aggregate operating data only. Customer identities, order details,
             tokens, payloads and merchant contact information are excluded.
@@ -64,12 +64,12 @@ export default function OperatorOverview() {
       <section aria-labelledby="revenue-heading">
         <h2 id="revenue-heading">Revenue</h2>
         <div className="operator-metric-grid">
-          <Metric label="Active paying stores" value={revenue.activePayingStores} />
-          <Metric label="Active trials" value={revenue.trials} />
+          <Metric label="Active Paying Stores" value={revenue.activePayingStores} />
+          <Metric label="Active Trials" value={revenue.trials} />
           <Metric label="MRR" value={money(revenue.mrrCents)} />
           <Metric label="ARR" value={money(revenue.arrCents)} />
-          <Metric label="Trial conversion" value={percent(revenue.trialConversionRate)} note={`${revenue.convertedTrials} of ${revenue.completedTrials} completed trials currently active`} />
-          <Metric label="30-day churn" value={percent(lifecycle.churnRate30d)} note={`${lifecycle.churnedStores30d} cancelled stores`} />
+          <Metric label="Trial Conversion" value={percent(revenue.trialConversionRate)} note={`${revenue.convertedTrials} Of ${revenue.completedTrials} Completed Trials Currently Active`} />
+          <Metric label="30-Day Churn" value={percent(lifecycle.churnRate30d)} note={`${lifecycle.churnedStores30d} Cancelled Stores`} />
         </div>
         <div className="operator-plan-row">
           {Object.entries(revenue.planDistribution).map(([plan, count]) => (
@@ -79,41 +79,41 @@ export default function OperatorOverview() {
       </section>
 
       <section aria-labelledby="lifecycle-heading">
-        <h2 id="lifecycle-heading">Store lifecycle and reliability</h2>
+        <h2 id="lifecycle-heading">Store Lifecycle And Reliability</h2>
         <div className="operator-metric-grid">
-          <Metric label="All installs" value={lifecycle.installTotal} note={`${lifecycle.installs30d} in 30 days`} />
-          <Metric label="All uninstalls" value={lifecycle.uninstallTotal} note={`${lifecycle.uninstalls30d} in 30 days`} />
-          <Metric label="Failed imports" value={failures.failedImports} />
-          <Metric label="Webhook failures" value={failures.webhookFailures} />
-          <Metric label="Background-job failures" value={failures.recalcFailures + failures.notificationFailures + failures.adSyncFailures} note={`${failures.recalcFailures} recalc · ${failures.notificationFailures} notification · ${failures.adSyncFailures} ad sync`} />
+          <Metric label="All Installs" value={lifecycle.installTotal} note={`${lifecycle.installs30d} In 30 Days`} />
+          <Metric label="All Uninstalls" value={lifecycle.uninstallTotal} note={`${lifecycle.uninstalls30d} In 30 Days`} />
+          <Metric label="Failed Imports" value={failures.failedImports} />
+          <Metric label="Webhook Failures" value={failures.webhookFailures} />
+          <Metric label="Background-Job Failures" value={failures.recalcFailures + failures.notificationFailures + failures.adSyncFailures} note={`${failures.recalcFailures} Recalc · ${failures.notificationFailures} Notification · ${failures.adSyncFailures} Ad Sync`} />
           <Metric label="Database" value={system.database} note={`${system.databaseLatencyMs} ms probe`} />
           <Metric label="Ad-ingestion worker" value={system.adIngestion} note="Redis queue configuration" />
           <Metric label="Email delivery" value={system.emailDelivery} note="Transactional provider configuration" />
         </div>
         <div className="operator-backlog">
-          <span>Webhook backlog <strong>{system.webhookBacklog}</strong></span>
-          <span>Recalculation backlog <strong>{system.recalcBacklog}</strong></span>
-          <span>Notification backlog <strong>{system.notificationBacklog}</strong></span>
-          <span>Ad-sync backlog <strong>{system.adSyncBacklog}</strong></span>
+          <span>Webhook Backlog <strong>{system.webhookBacklog}</strong></span>
+          <span>Recalculation Backlog <strong>{system.recalcBacklog}</strong></span>
+          <span>Notification Backlog <strong>{system.notificationBacklog}</strong></span>
+          <span>Ad-Sync Backlog <strong>{system.adSyncBacklog}</strong></span>
         </div>
       </section>
 
       <section aria-labelledby="waitlist-heading">
-        <h2 id="waitlist-heading">Pre-launch waitlist</h2>
+        <h2 id="waitlist-heading">Pre-Launch Waitlist</h2>
         <p className="operator-muted">
           Publisher-level aggregate acquisition data. Email addresses and store
           URLs are intentionally not displayed here.
         </p>
         <div className="operator-metric-grid">
-          <Metric label="Total signups" value={waitlist.total} />
-          <Metric label="Signups in 30 days" value={waitlist.signups30d} />
-          <Metric label="Store URL coverage" value={percent(waitlist.storeUrlCoverage)} />
-          <Metric label="Founding Merchant eligible" value={waitlist.foundingEligible} />
+          <Metric label="Total Signups" value={waitlist.total} />
+          <Metric label="Signups In 30 Days" value={waitlist.signups30d} />
+          <Metric label="Store URL Coverage" value={percent(waitlist.storeUrlCoverage)} />
+          <Metric label="Founding Merchant Eligible" value={waitlist.foundingEligible} />
         </div>
         <div className="grid cols-2">
           <div className="operator-table-wrap">
             <table>
-              <thead><tr><th colSpan={2}>Signup activity</th></tr></thead>
+              <thead><tr><th colSpan={2}>Signup Activity</th></tr></thead>
               <tbody>
                 {waitlist.daily.length ? waitlist.daily.map((point) => (
                   <tr key={point.day}><td>{point.day}</td><td>{point.signups}</td></tr>
@@ -123,7 +123,7 @@ export default function OperatorOverview() {
           </div>
           <div className="operator-table-wrap">
             <table>
-              <thead><tr><th>Attributed source</th><th>Signups</th></tr></thead>
+              <thead><tr><th>Attributed Source</th><th>Signups</th></tr></thead>
               <tbody>
                 {waitlist.sources.length ? waitlist.sources.map((source) => (
                   <tr key={source.source}><td>{source.source}</td><td>{source.signups}</td></tr>
@@ -135,11 +135,11 @@ export default function OperatorOverview() {
       </section>
 
       <section aria-labelledby="connectors-heading">
-        <h2 id="connectors-heading">Connector adoption</h2>
+        <h2 id="connectors-heading">Connector Adoption</h2>
         {overview.connectors.length ? (
           <div className="operator-table-wrap">
             <table>
-              <thead><tr><th>Provider</th><th>Connected stores</th><th>Adoption</th></tr></thead>
+              <thead><tr><th>Provider</th><th>Connected Stores</th><th>Adoption</th></tr></thead>
               <tbody>
                 {overview.connectors.map((connector) => (
                   <tr key={connector.provider}>
@@ -155,7 +155,7 @@ export default function OperatorOverview() {
       </section>
 
       <section aria-labelledby="alerts-heading">
-        <h2 id="alerts-heading">Recent operational alerts</h2>
+        <h2 id="alerts-heading">Recent Operational Alerts</h2>
         {overview.alerts.length ? (
           <div className="operator-alert-list">
             {overview.alerts.map((alert) => (
@@ -171,16 +171,16 @@ export default function OperatorOverview() {
 
       <section aria-labelledby="stores-heading">
         <div className="operator-section-heading">
-          <h2 id="stores-heading">Store support</h2>
+          <h2 id="stores-heading">Store Support</h2>
           <Form method="get" className="operator-search">
-            <label className="operator-sr-only" htmlFor="store-search">Search shop domain</label>
-            <input id="store-search" name="q" defaultValue={search} placeholder="Search shop domain" maxLength={253} />
+            <label className="operator-sr-only" htmlFor="store-search">Search Shop Domain</label>
+            <input id="store-search" name="q" defaultValue={search} placeholder="Search Shop Domain" maxLength={253} />
             <button type="submit">Search</button>
           </Form>
         </div>
         <div className="operator-table-wrap">
           <table>
-            <thead><tr><th>Shop domain</th><th>Plan</th><th>Subscription</th><th>Sync</th><th>Last sync</th></tr></thead>
+            <thead><tr><th>Shop Domain</th><th>Plan</th><th>Subscription</th><th>Sync</th><th>Last Sync</th></tr></thead>
             <tbody>
               {stores.map((store) => (
                 <tr key={store.id}>

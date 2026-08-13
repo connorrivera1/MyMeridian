@@ -34,7 +34,7 @@ describe("operator route UI", () => {
     loaderData = { configured: true };
     actionData = undefined;
     const html = render(operatorLogin.default);
-    expect(html).toContain("Meridian operator access");
+    expect(html).toContain("Meridian Operator Access");
     expect(html).toContain('name="email"');
     expect(html).toContain('name="password"');
     expect(html).toContain('name="totp"');
@@ -118,22 +118,22 @@ describe("operator route UI", () => {
     };
     const html = render(operatorOverview.default);
     for (const label of [
-      "Active paying stores",
-      "Active trials",
+      "Active Paying Stores",
+      "Active Trials",
       "MRR",
       "ARR",
-      "Trial conversion",
-      "30-day churn",
-      "All installs",
-      "All uninstalls",
-      "Pre-launch waitlist",
-      "Founding Merchant eligible",
-      "Failed imports",
-      "Webhook failures",
-      "Background-job failures",
-      "Connector adoption",
-      "Recent operational alerts",
-      "Store support",
+      "Trial Conversion",
+      "30-Day Churn",
+      "All Installs",
+      "All Uninstalls",
+      "Pre-Launch Waitlist",
+      "Founding Merchant Eligible",
+      "Failed Imports",
+      "Webhook Failures",
+      "Background-Job Failures",
+      "Connector Adoption",
+      "Recent Operational Alerts",
+      "Store Support",
     ]) {
       expect(html).toContain(label);
     }
@@ -203,12 +203,12 @@ describe("operator route UI", () => {
       privateMarker,
     };
     const html = render(operatorStore.default);
-    expect(html).toContain("PII-minimized support view");
+    expect(html).toContain("PII-Minimized Support View");
     expect(html).toContain("This view is read-only");
-    expect(html).toContain("Granted Shopify scopes");
-    expect(html).toContain("Connector status");
-    expect(html).toContain("Job health");
-    expect(html).toContain("Data completeness");
+    expect(html).toContain("Granted Shopify Scopes");
+    expect(html).toContain("Connector Status");
+    expect(html).toContain("Job Health");
+    expect(html).toContain("Data Completeness");
     expect(html).not.toContain(privateMarker);
   });
 });

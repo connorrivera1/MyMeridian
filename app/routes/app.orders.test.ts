@@ -249,7 +249,7 @@ describe("Orders ad-spend honesty", () => {
     const html = renderOrders("connected");
 
     expect(html).toContain('id="orders-channel-filter"');
-    expect(html).toContain("All channels");
+    expect(html).toContain("All Channels");
     expect(html).toContain("Direct");
   });
 
@@ -350,7 +350,7 @@ describe("ProfitBreakdownDrawer", () => {
           order,
           currency: "USD",
           adSpendMeasured: true,
-          profitBasis: "after available costs",
+          profitBasisTitle: "After Available Costs",
           timeZone: "America/Los_Angeles",
           closeTo: "?range=30d",
         }),
@@ -358,18 +358,18 @@ describe("ProfitBreakdownDrawer", () => {
     );
 
     expect(html).toContain('role="dialog"');
-    expect(html).toContain("Transparent math");
-    expect(html).toContain("Revenue kept");
-    expect(html).toContain("Merchandise subtotal");
+    expect(html).toContain("Transparent Math");
+    expect(html).toContain("Revenue Kept");
+    expect(html).toContain("Merchandise Subtotal");
     expect(html).toContain("Discounts");
-    expect(html).toContain("Refunds (excluding tax)");
-    expect(html).toContain("Payment processing");
-    expect(html).toContain("Pick &amp; pack");
-    expect(html).toContain("Attributed ad spend");
-    expect(html).toContain("Allocated overhead");
-    expect(html).toContain("Cost confidence");
+    expect(html).toContain("Refunds (Excluding Tax)");
+    expect(html).toContain("Payment Processing");
+    expect(html).toContain("Pick &amp; Pack");
+    expect(html).toContain("Attributed Ad Spend");
+    expect(html).toContain("Allocated Overhead");
+    expect(html).toContain("Cost Confidence");
     expect(html).toContain("Aug 10, 2026");
-    expect(html).toContain("Close profit breakdown");
+    expect(html).toContain("Close Profit Breakdown");
   });
 
   it("does not pretend unsynced paid marketing is zero", () => {
@@ -405,15 +405,15 @@ describe("ProfitBreakdownDrawer", () => {
           order,
           currency: "USD",
           adSpendMeasured: false,
-          profitBasis: "before paid marketing",
+          profitBasisTitle: "Before Paid Marketing",
           timeZone: "America/Los_Angeles",
           closeTo: "?range=30d",
         }),
       ),
     );
 
-    expect(html).toContain("Paid marketing");
-    expect(html).toContain("not included — no synced source");
-    expect(html).not.toContain("Attributed ad spend");
+    expect(html).toContain("Paid Marketing");
+    expect(html).toContain("Not Included — No Synced Source");
+    expect(html).not.toContain("Attributed Ad Spend");
   });
 });

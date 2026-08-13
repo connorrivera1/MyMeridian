@@ -37,9 +37,9 @@ export default function OperatorStoreSupport() {
 
   return (
     <main className="operator-main">
-      <Link to="/operator" className="operator-back-link">← Business and health</Link>
+      <Link to="/operator" className="operator-back-link">← Business And Health</Link>
       <div className="operator-title-row">
-        <div><p className="operator-kicker">PII-minimized support view</p><h1>{store.domain}</h1></div>
+        <div><p className="operator-kicker">PII-Minimized Support View</p><h1>{store.domain}</h1></div>
         <div className={`operator-status operator-status-${store.dataCompleteness.status === "complete" ? "healthy" : "degraded"}`}>
           <span aria-hidden="true" /> Data {store.dataCompleteness.status}
         </div>
@@ -50,48 +50,48 @@ export default function OperatorStoreSupport() {
         webhook payloads, connector credentials and raw failure messages are intentionally excluded.
       </div>
 
-      <section><h2>Installation and subscription</h2><dl className="operator-detail-grid">
-        <Detail label="Shop domain" value={store.domain} />
+      <section><h2>Installation And Subscription</h2><dl className="operator-detail-grid">
+        <Detail label="Shop Domain" value={store.domain} />
         <Detail label="Installed" value={dateTime(store.installedAt)} />
         <Detail label="Uninstalled" value={dateTime(store.uninstalledAt)} />
         <Detail label="Plan" value={store.subscription?.plan ?? "none"} />
         <Detail label="Interval" value={store.subscription?.interval ?? "—"} />
         <Detail label="Subscription state" value={store.subscription?.status ?? "none"} />
-        <Detail label="Trial ends" value={dateTime(store.subscription?.trialEndsAt ?? null)} />
-        <Detail label="Current period ends" value={dateTime(store.subscription?.currentPeriodEnd ?? null)} />
+        <Detail label="Trial Ends" value={dateTime(store.subscription?.trialEndsAt ?? null)} />
+        <Detail label="Current Period Ends" value={dateTime(store.subscription?.currentPeriodEnd ?? null)} />
       </dl></section>
 
-      <section><h2>Sync and scope status</h2><dl className="operator-detail-grid">
+      <section><h2>Sync And Scope Status</h2><dl className="operator-detail-grid">
         <Detail label="Sync status" value={store.syncStatus.toLowerCase()} />
         <Detail label="Sync stage" value={store.syncStage ?? "—"} />
-        <Detail label="Last sync" value={dateTime(store.lastSyncedAt)} />
-        <Detail label="Last computation" value={dateTime(store.lastComputedAt)} />
-        <Detail label="Imported orders" value={store.syncedOrders.toLocaleString()} />
-        <Detail label="Imported products" value={store.syncedProducts.toLocaleString()} />
-        <Detail label="History access" value={store.hasAllOrdersScope ? "All authorized order history" : "Shopify 60-day window"} />
-        <Detail label="Earliest visible order" value={dateTime(store.earliestOrderAt)} />
+        <Detail label="Last Sync" value={dateTime(store.lastSyncedAt)} />
+        <Detail label="Last Computation" value={dateTime(store.lastComputedAt)} />
+        <Detail label="Imported Orders" value={store.syncedOrders.toLocaleString()} />
+        <Detail label="Imported Products" value={store.syncedProducts.toLocaleString()} />
+        <Detail label="History Access" value={store.hasAllOrdersScope ? "All Authorized Order History" : "Shopify 60-Day Window"} />
+        <Detail label="Earliest Visible Order" value={dateTime(store.earliestOrderAt)} />
       </dl>
-      <div className="operator-scope-list" aria-label="Granted Shopify scopes">
-        {scopes.length ? scopes.map((scope) => <code key={scope}>{scope}</code>) : <span>No granted scopes recorded</span>}
+      <div className="operator-scope-list" aria-label="Granted Shopify Scopes">
+        {scopes.length ? scopes.map((scope) => <code key={scope}>{scope}</code>) : <span>No Granted Scopes Recorded</span>}
       </div></section>
 
-      <section><h2>Connector status</h2>
-        <div className="operator-table-wrap"><table><thead><tr><th>Provider</th><th>Connection</th><th>Health</th><th>Last sync</th><th>Failures</th></tr></thead><tbody>
+      <section><h2>Connector Status</h2>
+        <div className="operator-table-wrap"><table><thead><tr><th>Provider</th><th>Connection</th><th>Health</th><th>Last Sync</th><th>Failures</th></tr></thead><tbody>
           {store.connectors.map((connector) => <tr key={connector.provider}><td>{formatOperatorProvider(connector.provider)}</td><td>{connector.status.toLowerCase()}</td><td>{connector.healthStatus.toLowerCase()}</td><td>{dateTime(connector.lastSyncedAt)}</td><td>{connector.consecutiveFailures}</td></tr>)}
         </tbody></table></div>
       </section>
 
-      <section><h2>Job health</h2><div className="operator-metric-grid">
+      <section><h2>Job Health</h2><div className="operator-metric-grid">
         {Object.entries(store.jobHealth).map(([key, value]) => <Metric key={key} label={key.replace(/([A-Z])/g, " $1").toLowerCase()} value={value} />)}
       </div></section>
 
-      <section><h2>Data completeness</h2><div className="operator-metric-grid">
-        <Metric label="Total orders" value={store.dataCompleteness.totalOrders} />
-        <Metric label="Computed orders" value={store.dataCompleteness.computedOrders} />
-        <Metric label="Orders missing COGS" value={store.dataCompleteness.missingCogsOrders} />
-        <Metric label="Total variants" value={store.dataCompleteness.totalVariants} />
-        <Metric label="Variants missing cost" value={store.dataCompleteness.missingCostVariants} />
-        <Metric label="History coverage" value={store.dataCompleteness.historyCoverage === "all_orders" ? "All authorized history" : "60-day limit"} />
+      <section><h2>Data Completeness</h2><div className="operator-metric-grid">
+        <Metric label="Total Orders" value={store.dataCompleteness.totalOrders} />
+        <Metric label="Computed Orders" value={store.dataCompleteness.computedOrders} />
+        <Metric label="Orders Missing COGS" value={store.dataCompleteness.missingCogsOrders} />
+        <Metric label="Total Variants" value={store.dataCompleteness.totalVariants} />
+        <Metric label="Variants Missing Cost" value={store.dataCompleteness.missingCostVariants} />
+        <Metric label="History Coverage" value={store.dataCompleteness.historyCoverage === "all_orders" ? "All Authorized History" : "60-Day Limit"} />
       </div></section>
     </main>
   );

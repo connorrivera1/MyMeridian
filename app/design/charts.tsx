@@ -170,7 +170,7 @@ export function TimeSeriesChart({
   const drawKey = `${data.length}-${data[0]?.date.getTime() ?? 0}-${data.at(-1)?.date.getTime() ?? 0}`;
 
   if (data.length === 0) {
-    return <div className="empty">No data in this range.</div>;
+    return <div className="empty">No Data In This Range.</div>;
   }
 
   // Right padding leaves room for the end-labels rather than clipping them.
@@ -460,7 +460,7 @@ export function BarChart({
   const [ref, width] = useMeasuredWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
 
-  if (data.length === 0) return <div className="empty">No data in this range.</div>;
+  if (data.length === 0) return <div className="empty">No Data In This Range.</div>;
 
   const pad = { top: 12, right: 14, bottom: 28, left: 52 };
   const plotW = Math.max(1, width - pad.left - pad.right);
@@ -584,7 +584,7 @@ export function ProfitBridge({
   const [hover, setHover] = useState<number | null>(null);
   const gradId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
 
-  if (steps.length === 0) return <div className="empty">No data in this range.</div>;
+  if (steps.length === 0) return <div className="empty">No Data In This Range.</div>;
 
   /*
    * Category labels wrap to their own column.
@@ -687,7 +687,7 @@ export function ProfitBridge({
         width={width}
         height={height}
         role="img"
-        aria-label="Revenue to profit bridge"
+        aria-label="Revenue To Profit Bridge"
       >
         {ticks.map((tick) => (
           <g key={tick}>
@@ -822,7 +822,7 @@ export function ProfitBridge({
                   ...(bars[hover]!.step.kind === "cost"
                     ? [
                         {
-                          label: "Running total",
+                          label: "Running Total",
                           value: formatMoney(bars[hover]!.to),
                         },
                       ]
@@ -848,7 +848,7 @@ export function HorizontalBars({
   maxRows?: number;
 }) {
   const rows = data.slice(0, maxRows);
-  if (rows.length === 0) return <div className="empty">Nothing to show.</div>;
+  if (rows.length === 0) return <div className="empty">Nothing To Show.</div>;
 
   const extent = Math.max(...rows.map((r) => Math.abs(r.value)), 1);
   const hasNegative = rows.some((r) => r.value < 0);
@@ -1016,7 +1016,7 @@ export function CapacityChart({
     })),
   ];
 
-  if (combined.length === 0) return <div className="empty">No fulfilment data yet.</div>;
+  if (combined.length === 0) return <div className="empty">No Fulfilment Data Yet.</div>;
 
   const pad = { top: 14, right: 14, bottom: 26, left: 46 };
   const plotW = Math.max(1, width - pad.left - pad.right);
@@ -1054,7 +1054,7 @@ export function CapacityChart({
         onMouseMove={onMove}
         onMouseLeave={() => setHover(null)}
         role="img"
-        aria-label="Orders received and backlog against warehouse capacity"
+        aria-label="Orders Received And Backlog Against Warehouse Capacity"
       >
         {ticks.map((tick) => (
           <g key={tick}>
@@ -1236,7 +1236,7 @@ export function CapacityChart({
                 })}${combined[hover]!.projected ? " · projected" : ""}`,
                 rows: [
                   {
-                    label: "Orders in",
+                    label: "Orders In",
                     value: String(Math.round(combined[hover]!.inbound)),
                     color: "var(--series-1)",
                   },
@@ -1285,7 +1285,7 @@ export function PaybackChart({
   }));
 
   if (visible.every((s) => s.points.length === 0)) {
-    return <div className="empty">Not enough customer history yet.</div>;
+    return <div className="empty">Not Enough Customer History Yet.</div>;
   }
 
   // Right gutter carries the cohort labels rather than clipping them.
@@ -1311,7 +1311,7 @@ export function PaybackChart({
         width={width}
         height={height}
         role="img"
-        aria-label="Cumulative value per acquired customer against acquisition cost"
+        aria-label="Cumulative Value Per Acquired Customer Against Acquisition Cost"
       >
         {ticks.map((tick) => (
           <g key={tick}>
@@ -1490,7 +1490,7 @@ export function ThemeToggle() {
       className="theme-switch"
       type="button"
       onClick={toggle}
-      aria-label="Switch between light and dark"
+      aria-label="Switch Between Light And Dark"
       aria-pressed={theme === "dark"}
     >
       <span className="theme-switch-track" aria-hidden="true">

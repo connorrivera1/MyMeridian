@@ -170,7 +170,7 @@ describe("Settings historical-import controls", () => {
         hasResumeCursor: true,
       }),
     ).toEqual({
-      buttonLabel: "Resume import",
+      buttonLabel: "Resume Import",
       statusLabel: "Interrupted",
       disabled: false,
       recoveryCopy:
@@ -212,7 +212,7 @@ describe("Settings historical-import controls", () => {
       createElement(BackfillButton, { control: active, busy: false }),
     );
 
-    expect(staleHtml).toContain(">Resume import</button>");
+    expect(staleHtml).toContain(">Resume Import</button>");
     expect(staleHtml).not.toContain("disabled");
     expect(activeHtml).toContain(">Importing…</button>");
     expect(activeHtml).toContain("disabled");

@@ -260,7 +260,7 @@ describe("Costs page", () => {
   it("offers an empty state rather than a bare table", () => {
     const html = render({ periods: [], restatements: [], variants: [] });
     expect(html).toContain("No month has been frozen yet");
-    expect(html).toContain("No history has been restated");
+    expect(html).toContain("No History Has Been Restated");
   });
 
   it("renders every control in the app's own chrome", () => {

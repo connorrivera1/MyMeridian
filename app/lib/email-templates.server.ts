@@ -147,7 +147,7 @@ export function renderWaitlistWelcome(
     text,
     html: emailShell({
       eyebrow: "Founding Merchant",
-      title: "You're early.",
+      title: "You're Early.",
       preheader: "Your MyMeridian early-access place is reserved.",
       bodyHtml: [
         ...[
@@ -185,7 +185,7 @@ export function renderProductLaunchAnnouncement(input: {
     ].join("\n"),
     html: emailShell({
       eyebrow: "Early access",
-      title: "Meridian is ready when you are.",
+      title: "Meridian Is Ready When You Are.",
       preheader: "Early access is now open.",
       bodyHtml: paragraphs([
         "You joined early. You can now connect your Shopify store and see what your business actually keeps.",
@@ -225,7 +225,7 @@ export function renderWeeklyEeveeSummary(input: {
     ].join("\n"),
     html: emailShell({
       eyebrow: "E.E.V.E.E. summary",
-      title: `${input.shopName}, this week in Meridian.`,
+      title: `${input.shopName}, This Week In Meridian.`,
       preheader: `${input.periodLabel} business summary.`,
       bodyHtml: `<p style="margin:0 0 16px;color:#c9c9c9;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.65;">${escapeHtml(input.periodLabel)}</p><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">${table}</table>`,
       cta: { label: "Open MyMeridian", href: input.dashboardUrl },
@@ -259,7 +259,7 @@ export function renderSecurityAccountNotification(input: {
         input.detail,
         "If this was not you, change your password and contact support.",
       ]),
-      cta: { label: "Review account security", href: input.accountUrl },
+      cta: { label: "Review Account Security", href: input.accountUrl },
       env: input.env,
     }),
   };
@@ -289,7 +289,7 @@ export function renderNewsletterProductUpdate(input: {
       title: input.title,
       preheader: input.summary,
       bodyHtml: paragraphs([input.summary]),
-      cta: { label: "Read the update", href: input.articleUrl },
+      cta: { label: "Read The Update", href: input.articleUrl },
       footerHtml: `<p style="margin:0;color:#8b8b8b;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.55;">You are receiving this because you opted in to MyMeridian product updates.<br /><a href="${unsubscribe}" style="color:#f5f5f5;text-decoration:underline;">Unsubscribe</a> from marketing updates. Transactional account and service notices may still be sent when needed.</p>`,
       env: input.env,
     }),
@@ -301,5 +301,5 @@ export function renderHumanEmailSignature(input: {
   env?: NodeJS.ProcessEnv;
 }): string {
   const logo = `${publicOrigin(input.env)}/assets/mymeridian-email-logo.png`;
-  return `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;"><tr><td style="padding:0 0 12px;"><img src="${escapeHtml(logo)}" width="174" height="47" alt="MyMeridian" style="border:0;display:block;height:auto;max-width:174px;" /></td></tr><tr><td style="border-left:2px solid #b68a33;color:#383838;font-size:13px;line-height:1.55;padding:0 0 0 11px;"><strong style="color:#111111;font-size:14px;">MyMeridian</strong><br /><a href="mailto:${escapeHtml(input.address)}" style="color:#383838;text-decoration:none;">${escapeHtml(input.address)}</a><br /><span style="color:#666666;">Know what you kept. Know what to fix.</span><br /><a href="https://mymeridian.io" style="color:#666666;text-decoration:none;">mymeridian.io</a></td></tr></table>`;
+  return `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;"><tr><td style="padding:0 0 12px;"><img src="${escapeHtml(logo)}" width="174" height="47" alt="MyMeridian" style="border:0;display:block;height:auto;max-width:174px;" /></td></tr><tr><td style="border-left:2px solid #b68a33;color:#383838;font-size:13px;line-height:1.55;padding:0 0 0 11px;"><strong style="color:#111111;font-size:14px;">MyMeridian</strong><br /><a href="mailto:${escapeHtml(input.address)}" style="color:#383838;text-decoration:none;">${escapeHtml(input.address)}</a><br /><span style="color:#666666;">Know What You Kept. Know What To Fix.</span><br /><a href="https://mymeridian.io" style="color:#666666;text-decoration:none;">mymeridian.io</a></td></tr></table>`;
 }

@@ -28,7 +28,7 @@ import {
 import { safeReturnPath } from "~/lib/web-oauth.server";
 import { requestOriginIsSelf } from "~/lib/web-session.server";
 
-export const meta = () => [{ title: `Secure your ${APP_NAME} account` }];
+export const meta = () => [{ title: `Secure Your ${APP_NAME} Account` }];
 
 function maskEmail(email: string): string {
   const at = email.lastIndexOf("@");
@@ -156,7 +156,7 @@ export default function Mfa() {
 
   return (
     <AccountShell
-      title="Protect your account"
+      title="Protect Your Account"
       tagline="Standalone access requires verified email and phone recovery channels plus a fresh sign-in code."
     >
       <div className="account-form">
@@ -175,7 +175,7 @@ export default function Mfa() {
               {challenge.channel === "sms" ? "text message" : "email"}.
             </p>
             <Field
-              label="Authentication code"
+              label="Authentication Code"
               name="code"
               type="text"
               autoComplete="one-time-code"
@@ -183,7 +183,7 @@ export default function Mfa() {
             />
             <FormError message={actionData?.error ?? null} />
             <button type="submit" className="account-submit">
-              Verify code
+              Verify Code
             </button>
           </Form>
         ) : phase === "email" ? (
@@ -192,14 +192,14 @@ export default function Mfa() {
             <p className="account-fineprint">First verify {email}.</p>
             <FormError message={actionData?.error ?? null} />
             <button type="submit" className="account-submit">
-              Email my code
+              Email My Code
             </button>
           </Form>
         ) : phase === "phone" ? (
           <Form method="post" className="account-form">
             <input type="hidden" name="intent" value="send-sms" />
             <Field
-              label="Mobile phone"
+              label="Mobile Phone"
               name="phone"
               type="tel"
               autoComplete="tel"
@@ -207,7 +207,7 @@ export default function Mfa() {
             />
             <FormError message={actionData?.error ?? null} />
             <button type="submit" className="account-submit">
-              Text my code
+              Text My Code
             </button>
           </Form>
         ) : (
@@ -219,13 +219,13 @@ export default function Mfa() {
             <Form method="post">
               <input type="hidden" name="intent" value="send-email" />
               <button type="submit" className="account-submit">
-                Email my code
+                Email My Code
               </button>
             </Form>
             <Form method="post">
               <input type="hidden" name="intent" value="send-sms" />
               <button type="submit" className="account-submit secondary">
-                Text my code
+                Text My Code
               </button>
             </Form>
             <FormError message={actionData?.error ?? null} />

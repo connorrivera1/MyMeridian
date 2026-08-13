@@ -268,7 +268,7 @@ const METHOD_LABEL: Record<string, string> = {
   ELASTICITY_REGRESSION: "Fitted demand curve",
   MARGIN_TARGET: "Margin target",
   BELOW_COST: "Priced below cost",
-  INSUFFICIENT_DATA: "Needs a price test",
+  INSUFFICIENT_DATA: "Needs A Price Test",
 };
 
 export default function Pricing() {
@@ -322,16 +322,16 @@ export default function Pricing() {
           tone="var(--viz-teal)"
           valueTone={data.actionableCount > 0 ? "positive" : "neutral"}
           icon={<IconCheck />}
-          label="Ready to Act On"
+          label="Ready To Act On"
           value={<AnimatedInt value={data.actionableCount} />}
-          meta={<span>backed by post-install observed history</span>}
+          meta={<span>Backed by Post-Install Observed History</span>}
         />
         <Tile
           tone="var(--viz-violet)"
           icon={<IconInfo />}
-          label="Need a Price Test"
+          label="Need A Price Test"
           value={<AnimatedInt value={data.testableCount} />}
-          meta={<span>never changed price, so demand is unknown</span>}
+          meta={<span>Never Changed Price, So Demand Is Unknown</span>}
         />
       </div>
 
@@ -420,12 +420,12 @@ export default function Pricing() {
                             </div>
                           </>
                         ) : (
-                          <span className="muted">no change</span>
+                          <span className="muted">No Change</span>
                         )}
                       </td>
                       <td className="right num">
                         {rec.expectedUnitsDeltaPct === 0 ? (
-                          <span className="muted">unknown</span>
+                          <span className="muted">Unknown</span>
                         ) : (
                           formatPercent(rec.expectedUnitsDeltaPct, 0)
                         )}

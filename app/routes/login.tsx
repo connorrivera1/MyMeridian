@@ -37,7 +37,7 @@ import {
   normalizeEmail,
 } from "~/lib/webauth.server";
 
-export const meta = () => [{ title: `Sign in to ${APP_NAME}` }];
+export const meta = () => [{ title: `Sign In To ${APP_NAME}` }];
 
 export async function loader({ request }: LoaderFunctionArgs) {
   if (await resolveWebUser(request)) throw redirect("/app");
@@ -124,17 +124,17 @@ export default function Login() {
 
   return (
     <AccountShell
-      title={`Sign in to ${APP_NAME}`}
+      title={`Sign In to ${APP_NAME}`}
       tagline="Your dashboard, outside the Shopify admin."
       footer={
         <AccountFooterLink
-          prompt="No account yet?"
+          prompt="No Account Yet?"
           to="/signup"
-          label="Create one"
+          label="Create One"
         />
       }
     >
-      <ProviderButtons returnTo={returnTo} verb="Sign in" from="/login" />
+      <ProviderButtons returnTo={returnTo} verb="Sign In" from="/login" />
       <FormError message={notice} />
 
       <Form method="post" className="account-form">
@@ -147,11 +147,11 @@ export default function Login() {
           autoComplete="current-password"
         />
         <p className="account-forgot">
-          <Link to="/forgot">Forgot your password?</Link>
+          <Link to="/forgot">Forgot Your Password?</Link>
         </p>
         <FormError message={actionData?.error ?? null} />
         <button type="submit" className="account-submit">
-          Sign in
+          Sign In
         </button>
       </Form>
     </AccountShell>

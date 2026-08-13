@@ -114,7 +114,7 @@ describe("Fulfilment", () => {
 
     const html = renderToStaticMarkup(createElement(FulfilmentView, { data }));
 
-    expect(html).toContain("No fulfilment history yet");
+    expect(html).toContain("No Fulfilment History Yet");
     expect(html).not.toContain("Orders Waiting");
   });
 
@@ -131,9 +131,9 @@ describe("Fulfilment", () => {
     const html = renderToStaticMarkup(createElement(FulfilmentView, { data }));
 
     expect(html).toContain("Orders Waiting");
-    expect(html).toContain("2.4 days to clear");
+    expect(html).toContain("2.4 Days to Clear");
     expect(html).toContain("Shipping promise at risk");
     expect(html).toContain("Wed, Aug 12");
-    expect(html).toContain("Past promise");
+    expect(html).toContain("Past Promise");
   });
 });

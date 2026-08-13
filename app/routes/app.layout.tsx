@@ -344,7 +344,7 @@ export default function AppLayout() {
       {/* Eight nav items render before the content on every page; without this
           a keyboard user tabs the whole sidebar on each navigation. */}
       <a className="skip-link" href="#content">
-        Skip to content
+        Skip to Content
       </a>
       <aside className="sidebar">
         <div className="brand">
@@ -398,7 +398,7 @@ export default function AppLayout() {
           <div className="sidebar-footer">
             <div className="tiny muted" style={{ lineHeight: 1.5 }}>
               <strong style={{ color: "var(--ink-secondary)" }}>
-                Demo data.
+                Demo Data.
               </strong>{" "}
               A seeded store, computed by the same engine that runs on live
               Shopify data.
@@ -415,7 +415,7 @@ export default function AppLayout() {
             <div
               className="segmented"
               role="group"
-              aria-label="Date range"
+              aria-label="Date Range"
               ref={rangeRef}
             >
               {(Object.keys(RANGE_PRESETS) as RangePreset[]).map((key) => (
@@ -616,43 +616,43 @@ function AppBridgeNavigation() {
 const TITLES: Record<string, { title: string; subtitle: string }> = {
   "/app": {
     title: "Overview",
-    subtitle: "Profit from the inputs available",
+    subtitle: "Profit From The Inputs Available",
   },
   "/app/orders": {
-    title: "Profit per order",
-    subtitle: "Available and missing costs, order by order",
+    title: "Profit Per Order",
+    subtitle: "Available And Missing Costs, Order By Order",
   },
   "/app/products": {
     title: "Products",
-    subtitle: "Qualified contribution by product",
+    subtitle: "Qualified Contribution By Product",
   },
   "/app/acquisition": {
     title: "Acquisition",
-    subtitle: "Revenue and qualified contribution by channel",
+    subtitle: "Revenue And Qualified Contribution By Channel",
   },
   "/app/pricing": {
     title: "Pricing",
-    subtitle: "Modelled from price history observed after install",
+    subtitle: "Modelled From Price History Observed After Install",
   },
   "/app/fulfilment": {
-    title: "Fulfilment capacity",
-    subtitle: "Bottlenecks before they become problems",
+    title: "Fulfilment Capacity",
+    subtitle: "Bottlenecks Before They Become Problems",
   },
   "/app/costs": {
     title: "Costs & Bundles",
-    subtitle: "What things cost, when they cost it, and what a pack is made of",
+    subtitle: "What Things Cost, When They Cost It, And What A Pack Is Made Of",
   },
   "/app/settings": {
-    title: "Costs & connections",
-    subtitle: "Cost assumptions and data availability",
+    title: "Costs & Connections",
+    subtitle: "Cost Assumptions And Data Availability",
   },
   "/app/privacy-requests": {
-    title: "Privacy requests",
-    subtitle: "Shopper exports, available regardless of subscription",
+    title: "Privacy Requests",
+    subtitle: "Shopper Exports, Available Regardless Of Subscription",
   },
   "/app/plan": {
     title: "Plan",
-    subtitle: "Billed by Shopify, changeable at any time",
+    subtitle: "Billed By Shopify, Changeable At Any Time",
   },
 };
 

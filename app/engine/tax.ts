@@ -216,7 +216,7 @@ export function splitOrderTax(input: OrderTaxInput): OrderTaxComponentResult[] {
       sourceKey: "unallocated",
       regime: TaxRegime.UNALLOCATED,
       jurisdictionType: TaxJurisdictionType.UNALLOCATED,
-      title: "Unallocated Shopify tax",
+      title: "Unallocated Shopify Tax",
       source: null,
       countryCode,
       regionCode,

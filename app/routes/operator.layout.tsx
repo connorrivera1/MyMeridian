@@ -25,14 +25,14 @@ export default function OperatorLayout() {
         <Link to="/operator" className="operator-brand">
           <span className="operator-brand-mark" aria-hidden="true">M</span>
           <span>
-            <strong>Meridian operations</strong>
-            <small>Publisher only</small>
+            <strong>Meridian Operations</strong>
+            <small>Publisher Only</small>
           </span>
         </Link>
-        <nav aria-label="Operator navigation">
-          <Link to="/operator">Business &amp; health</Link>
+        <nav aria-label="Operator Navigation">
+          <Link to="/operator">Business &amp; Health</Link>
           <Form method="post" action="/operator/logout">
-            <button type="submit" className="operator-link-button">Sign out</button>
+            <button type="submit" className="operator-link-button">Sign Out</button>
           </Form>
         </nav>
       </header>

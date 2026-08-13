@@ -33,7 +33,7 @@ import {
 import { emailLooksValid, normalizeEmail } from "~/lib/webauth.server";
 import { requestIsSecure, requestOriginIsSelf } from "~/lib/web-session.server";
 
-export const meta = () => [{ title: `Reset your ${APP_NAME} password` }];
+export const meta = () => [{ title: `Reset Your ${APP_NAME} Password` }];
 
 type Phase = "email" | "code" | "done";
 
@@ -189,11 +189,11 @@ function AskForEmail() {
 
   return (
     <AccountShell
-      title="Reset your password"
+      title="Reset Your Password"
       tagline="Enter the email on your account and we'll send a one-time code."
       footer={
         <p className="account-alt">
-          Remembered it? <Link to="/login">Sign in</Link>
+          Remembered It? <Link to="/login">Sign In</Link>
         </p>
       }
     >
@@ -202,7 +202,7 @@ function AskForEmail() {
         <Field label="Email" name="email" type="email" autoComplete="email" />
         <FormError message={actionData?.error ?? null} />
         <button type="submit" className="account-submit">
-          Send code
+          Send Code
         </button>
       </Form>
     </AccountShell>
@@ -230,9 +230,9 @@ function EnterCode({ masked }: { masked: string }) {
         </div>
 
         <h1 className="welcome-word reset-word">
-          <span style={{ animationDelay: "0.34s" }}>Your one-time</span>
-          <span style={{ animationDelay: "0.45s" }}>authorization code</span>
-          <span style={{ animationDelay: "0.56s" }}>has been sent</span>
+          <span style={{ animationDelay: "0.34s" }}>Your One-Time</span>
+          <span style={{ animationDelay: "0.45s" }}>Authorization Code</span>
+          <span style={{ animationDelay: "0.56s" }}>Has Been Sent</span>
         </h1>
 
         <p className="welcome-sub">
@@ -258,24 +258,24 @@ function EnterCode({ masked }: { masked: string }) {
           </label>
 
           <Field
-            label="New password"
+            label="New Password"
             name="password"
             type="password"
             autoComplete="new-password"
-            hint="At least 10 characters."
+            hint="At Least 10 Characters."
           />
 
           <FormError message={actionData?.error ?? null} />
 
           <button type="submit" className="account-submit">
-            Reset password
+            Reset Password
           </button>
         </Form>
 
         <Form method="post" className="reset-restart">
           <input type="hidden" name="intent" value="restart" />
           <button type="submit" className="welcome-skip">
-            Use a different email
+            Use a Different Email
           </button>
         </Form>
       </div>
@@ -319,7 +319,7 @@ function ResetDone() {
         </div>
 
         <h1 className="welcome-word">
-          {["Your", "password", "has", "been", "reset!"].map((word, i) => (
+          {["Your", "Password", "Has", "Been", "Reset!"].map((word, i) => (
             <span key={word} style={{ animationDelay: `${0.34 + i * 0.08}s` }}>
               {word}
             </span>
@@ -341,7 +341,7 @@ function ResetDone() {
           className="welcome-skip"
           onClick={() => navigate("/login", { replace: true })}
         >
-          Sign in
+          Sign In
         </button>
       </div>
     </div>

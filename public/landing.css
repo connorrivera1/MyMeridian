@@ -1637,7 +1637,7 @@ strong[data-count],
 .receipt-line .dash { color: var(--ink-4); }
 
 .receipt-line-dash dt::after {
-  content: "no synced source";
+  content: "No Synced Source";
   display: block;
   margin-top: 1px;
   color: var(--ink-4);

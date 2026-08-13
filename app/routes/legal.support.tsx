@@ -74,7 +74,7 @@ export default function Support() {
         </li>
       </ul>
 
-      <h2>What to Include in a Support Request</h2>
+      <h2>What To Include In A Support Request</h2>
       <p>
         Your <code>.myshopify.com</code> domain, the screen you were on, the
         date range selected, and what you expected the number to be. If a figure
@@ -82,10 +82,10 @@ export default function Support() {
         description of the whole dashboard.
       </p>
 
-      <h2>Data and Deletion</h2>
+      <h2>Data And Deletion</h2>
       <p>
         Uninstalling {APP_NAME} from your Shopify admin ends all data collection
-        immediately. See the <a href="/privacy">privacy policy</a> for what is
+        immediately. See the <a href="/privacy">Privacy Policy</a> for what is
         held, for how long, and how to request erasure.
       </p>
     </LegalPage>

@@ -159,7 +159,7 @@ function ShopCampaignsCard({ data }: { data: AcquisitionData }) {
 
   if (state === "needs_reports") {
     return (
-      <Card title={title} hint={hint} actions={<Badge tone="warning">Reports access needed</Badge>}>
+      <Card title={title} hint={hint} actions={<Badge tone="warning">Reports Access Needed</Badge>}>
         <p className="card-hint">
           <code>read_reports</code> is not available for this installation. Shop Campaign spend is unavailable, not $0.
         </p>
@@ -169,7 +169,7 @@ function ShopCampaignsCard({ data }: { data: AcquisitionData }) {
 
   if (state === "needs_approval") {
     return (
-      <Card title={title} hint={hint} actions={<Badge tone="warning">Shopify approval needed</Badge>}>
+      <Card title={title} hint={hint} actions={<Badge tone="warning">Shopify Approval Needed</Badge>}>
         <p className="card-hint">
           ShopifyQL also requires MyMeridian to hold Shopify Level 2 protected-customer-data approval. Shop Campaign spend is unavailable, not $0. Meridian does not query or store shopper identity here. Retry the source from Settings only after Shopify approves that access.
         </p>
@@ -179,7 +179,7 @@ function ShopCampaignsCard({ data }: { data: AcquisitionData }) {
 
   if (state === "syncing") {
     return (
-      <Card title={title} hint={hint} actions={<Badge tone="neutral">Awaiting first sync</Badge>}>
+      <Card title={title} hint={hint} actions={<Badge tone="neutral">Awaiting First Sync</Badge>}>
         <p className="card-hint">
           Shopify reports access is connected, but no Shop Campaign report has completed yet. Spend is unavailable, not $0.
         </p>
@@ -213,7 +213,7 @@ function ShopCampaignsCard({ data }: { data: AcquisitionData }) {
       hint={hint}
       actions={
         <Badge tone="good">
-          {state === "zero" ? "Measured zero" : "Measured by Shopify"}
+          {state === "zero" ? "Measured Zero" : "Measured By Shopify"}
         </Badge>
       }
     >
@@ -229,7 +229,7 @@ function ShopCampaignsCard({ data }: { data: AcquisitionData }) {
               decimals={false}
             />
           }
-          meta={<span>Shopify-reported</span>}
+          meta={<span>Shopify-Reported</span>}
         />
         <Tile
           tone="var(--viz-blue)"
@@ -242,13 +242,13 @@ function ShopCampaignsCard({ data }: { data: AcquisitionData }) {
               decimals={false}
             />
           }
-          meta={<span>refunds excluded by Shopify</span>}
+          meta={<span>Refunds Excluded by Shopify</span>}
         />
         <Tile
           tone="var(--viz-purple)"
           label="Shopify-Reported Customers"
           value={(row?.platformConversions ?? 0).toLocaleString()}
-          meta={<span>not Meridian new-customer count</span>}
+          meta={<span>Not Meridian New-Customer Count</span>}
         />
         <Tile
           tone="var(--viz-amber)"
@@ -258,7 +258,7 @@ function ShopCampaignsCard({ data }: { data: AcquisitionData }) {
               ? "—"
               : `${row.platformRoas.toFixed(2)}×`
           }
-          meta={<span>Shopify-reported sales ÷ spend</span>}
+          meta={<span>Shopify-Reported Sales ÷ Spend</span>}
         />
       </div>
       <p className="card-hint" style={{ marginTop: 12 }}>
@@ -335,7 +335,7 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
                 decimals={false}
               />
             }
-            meta={<span>last {data.rangeLabel}</span>}
+            meta={<span>Last {data.rangeLabel}</span>}
           />
           <Tile
           tone="var(--viz-mint)"
@@ -351,7 +351,7 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
                 ? "—"
                 : `${data.blended.merRatio.toFixed(2)}×`
             }
-            meta={<span>store revenue ÷ paid spend</span>}
+            meta={<span>Store Revenue ÷ Paid Spend</span>}
           />
           <Tile
           tone="var(--viz-amber)"
@@ -370,7 +370,7 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
               <span>
                 {data.blended.overclaimPct === null
                   ? "—"
-                  : `${formatPercent(data.blended.overclaimPct, 0)} more than measured`}
+                  : `${formatPercent(data.blended.overclaimPct, 0)} More Than Measured`}
               </span>
             }
           />
@@ -470,12 +470,12 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
       )}
 
       <Card
-        title="Revenue and Profit by Channel"
+        title="Revenue And Profit By Channel"
         hint="Net revenue comes from stored orders. Channel uses UTM and referring signals when Shopify supplied them; otherwise the order is classified as Direct. Contribution uses available COGS plus measured or configured fulfilment, payment-fee and ad-spend inputs, before overhead."
         flush
       >
         {data.channels.length === 0 ? (
-          <Empty>No orders in this period.</Empty>
+          <Empty>No Orders In This Period.</Empty>
         ) : (
           <div className="table-wrap">
             <table className="data">
@@ -515,8 +515,8 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
                       {(row.hasMissingCogs || row.usesModeledCosts) && (
                         <div className="cell-sub">
                           {[
-                            row.hasMissingCogs ? "missing COGS" : null,
-                            row.usesModeledCosts ? "configured estimates" : null,
+                            row.hasMissingCogs ? "Missing COGS" : null,
+                            row.usesModeledCosts ? "Configured Estimates" : null,
                           ]
                             .filter(Boolean)
                             .join(" · ")}
@@ -622,7 +622,7 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
                           className="muted"
                           title="No cohort has reached 90 days yet."
                         >
-                          not yet
+                          Not Yet
                         </span>
                       )}
                     </td>
@@ -636,14 +636,14 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
                     <td className="right num">
                       {row.paybackDays === null ? (
                         row.ltvCurve.some((point) => !point.measurable) ? (
-                          <span className="muted">not yet</span>
+                          <span className="muted">Not Yet</span>
                         ) : (
                           <Badge tone="critical">Never</Badge>
                         )
                       ) : row.paybackDays === 0 ? (
-                        "first order"
+                        "First Order"
                       ) : (
-                        `${row.paybackDays} days`
+                        `${row.paybackDays} Days`
                       )}
                     </td>
                     <td className="right num">
@@ -685,7 +685,7 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
           <Legend
             items={[
               {
-                label: `${CHANNEL_LABELS[selected.channel as Channel]} cohort value`,
+                label: `${CHANNEL_LABELS[selected.channel as Channel]} Cohort Value`,
                 color: seriesColor(selected.channel, CHANNEL_ORDER),
               },
             ]}
@@ -695,7 +695,7 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
               cacCents={selected.cacCents}
               series={[
                 {
-                  label: "Cumulative value per customer",
+                  label: "Cumulative Value Per Customer",
                   color: seriesColor(selected.channel, CHANNEL_ORDER),
                   points: selected.ltvCurve.map((point) => ({
                     day: point.day,
@@ -725,7 +725,7 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
           flush
         >
           {data.campaigns.length === 0 ? (
-            <Empty>No campaign-level spend in this period.</Empty>
+            <Empty>No Campaign-Level Spend In This Period.</Empty>
           ) : (
             <div className="table-wrap">
               <table className="data">

@@ -213,7 +213,7 @@ export function computeProductProfitability(
   for (const [productId, t] of totals) {
     const meta = products.get(productId) ?? {
       productId,
-      title: "Unknown product",
+      title: "Unknown Product",
     };
 
     const contributionProfitCents =

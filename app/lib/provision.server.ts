@@ -24,7 +24,7 @@ import {
 const DEFAULT_COST_RULES = [
   {
     kind: CostRuleKind.PAYMENT_FEE,
-    label: "Shopify Payments (US online rate)",
+    label: "Shopify Payments (US Online Rate)",
     percentRate: "0.029",
     fixedPerOrder: "0.30",
     fixedPerItem: null,
@@ -32,7 +32,7 @@ const DEFAULT_COST_RULES = [
   },
   {
     kind: CostRuleKind.SHIPPING_DEFAULT,
-    label: "Estimated outbound shipping",
+    label: "Estimated Outbound Shipping",
     percentRate: null,
     fixedPerOrder: "8.50",
     fixedPerItem: null,
@@ -40,7 +40,7 @@ const DEFAULT_COST_RULES = [
   },
   {
     kind: CostRuleKind.PICK_PACK,
-    label: "Pick, pack and materials",
+    label: "Pick, Pack And Materials",
     percentRate: null,
     fixedPerOrder: "1.75",
     fixedPerItem: "0.35",
@@ -48,7 +48,7 @@ const DEFAULT_COST_RULES = [
   },
   {
     kind: CostRuleKind.OVERHEAD_MONTHLY,
-    label: "Fixed monthly overhead",
+    label: "Fixed Monthly Overhead",
     percentRate: null,
     fixedPerOrder: null,
     fixedPerItem: null,

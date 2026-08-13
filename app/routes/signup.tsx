@@ -37,7 +37,7 @@ import {
   normalizeEmail,
 } from "~/lib/webauth.server";
 
-export const meta = () => [{ title: `Create your ${APP_NAME} account` }];
+export const meta = () => [{ title: `Create Your ${APP_NAME} Account` }];
 
 export async function loader({ request }: LoaderFunctionArgs) {
   // Already signed in: nothing to sign up for.
@@ -139,17 +139,17 @@ export default function Signup() {
 
   return (
     <AccountShell
-      title={`Create your ${APP_NAME} account`}
+      title={`Create Your ${APP_NAME} Account`}
       tagline="See what your store keeps, from the browser or from inside Shopify."
       footer={
         <AccountFooterLink
-          prompt="Already have an account?"
+          prompt="Already Have an Account?"
           to="/login"
-          label="Sign in"
+          label="Sign In"
         />
       }
     >
-      <ProviderButtons returnTo={returnTo} verb="Sign up" from="/signup" />
+      <ProviderButtons returnTo={returnTo} verb="Sign Up" from="/signup" />
       <FormError message={notice} />
 
       <Form method="post" className="account-form">
@@ -167,11 +167,11 @@ export default function Signup() {
           name="password"
           type="password"
           autoComplete="new-password"
-          hint="At least 10 characters."
+          hint="At Least 10 Characters."
         />
         <FormError message={actionData?.error ?? null} />
         <button type="submit" className="account-submit">
-          Create account
+          Create Account
         </button>
       </Form>
 

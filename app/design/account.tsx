@@ -69,14 +69,14 @@ export function ProviderButtons({
             <button type="submit" className="account-provider">
               <Mark />
               <span>
-                {verb} with {label}
+                {verb} With {label}
               </span>
             </button>
           </Form>
         ))}
       </div>
       <div className="account-divider">
-        <span>or</span>
+        <span>Or</span>
       </div>
     </>
   );

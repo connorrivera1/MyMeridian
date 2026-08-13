@@ -105,8 +105,8 @@ export default function OperatorLogin() {
         className="operator-login-card"
         aria-labelledby="operator-login-title"
       >
-        <p className="operator-kicker">Publisher operations</p>
-        <h1 id="operator-login-title">Meridian operator access</h1>
+        <p className="operator-kicker">Publisher Operations</p>
+        <h1 id="operator-login-title">Meridian Operator Access</h1>
         <p className="operator-muted">
           Separate credentials and a current authenticator code are required.
           Merchant Shopify and MyMeridian sessions are never accepted here.
@@ -120,7 +120,7 @@ export default function OperatorLogin() {
         ) : (
           <Form method="post" className="operator-form">
             <label>
-              Publisher email
+              Publisher Email
               <input
                 name="email"
                 type="email"
@@ -140,7 +140,7 @@ export default function OperatorLogin() {
               />
             </label>
             <label>
-              Authenticator code
+              Authenticator Code
               <input
                 name="totp"
                 inputMode="numeric"
@@ -159,7 +159,7 @@ export default function OperatorLogin() {
               </div>
             )}
             <button type="submit" className="operator-primary-button">
-              Sign in securely
+              Sign In Securely
             </button>
           </Form>
         )}

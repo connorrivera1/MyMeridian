@@ -124,26 +124,26 @@ export function assessProfitConfidence(
     source: keyof CostRuleSet["provenance"];
   }> = [
     {
-      label: "Payment processing",
+      label: "Payment Processing",
       value:
         hasConfiguredValue(rules, "paymentPercentRate") ||
         hasConfiguredValue(rules, "paymentFixedPerOrderCents"),
       source: "paymentFee",
     },
     {
-      label: "Shipping fallback",
+      label: "Shipping Fallback",
       value: hasConfiguredValue(rules, "shippingDefaultPerOrderCents"),
       source: "shippingDefault",
     },
     {
-      label: "Pick & pack",
+      label: "Pick & Pack",
       value:
         hasConfiguredValue(rules, "pickPackPerOrderCents") ||
         hasConfiguredValue(rules, "pickPackPerItemCents"),
       source: "pickPack",
     },
     {
-      label: "Overhead allocation",
+      label: "Overhead Allocation",
       value: hasConfiguredValue(rules, "monthlyOverheadCents"),
       source: "monthlyOverhead",
     },

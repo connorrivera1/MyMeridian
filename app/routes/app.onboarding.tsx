@@ -168,17 +168,17 @@ export default function Onboarding() {
       <div className="grid cols-4">
         <Stat
           small
-          label="Orders Found · 30d"
+          label="Orders Found · 30D"
           value={data.orders.toLocaleString()}
         />
         <Stat
           small
-          label="Revenue Found · 30d"
+          label="Revenue Found · 30D"
           value={<Money cents={data.revenueCents} currency={data.currency} />}
         />
         <Stat
           small
-          label="Qualified Profit · 30d"
+          label="Qualified Profit · 30D"
           value={<Money cents={data.profitCents} currency={data.currency} />}
         />
         <Stat
@@ -188,7 +188,7 @@ export default function Onboarding() {
         />
       </div>
       <Card
-        title="Confirm the Costs Behind Your Profit"
+        title="Confirm The Costs Behind Your Profit"
         hint="These are configured estimates, not measured costs. Set them now to avoid false 100% margins; later, connect a carrier or ad source only when you want Meridian to replace an estimate or include that spend."
       >
         {result?.error && <Banner tone="warn">{result.error}</Banner>}
@@ -214,7 +214,7 @@ export default function Onboarding() {
               prefix="$"
             />
             <OnboardingField
-              label="Pick and Pack Per Order"
+              label="Pick And Pack Per Order"
               name="pickPackOrder"
               defaultValue={data.defaults.pickPackOrder}
               prefix="$"
@@ -233,7 +233,7 @@ export default function Onboarding() {
             />
           </div>
           <button className="btn primary" disabled={busy}>
-            {busy ? "Recomputing your store…" : "Save costs and choose a plan"}
+            {busy ? "Recomputing Your Store…" : "Save Costs And Choose A Plan"}
           </button>
         </Form>
       </Card>

@@ -27,7 +27,7 @@ import {
 } from "~/lib/store-link.server";
 import { requestIsSecure, requestOriginIsSelf } from "~/lib/web-session.server";
 
-export const meta = () => [{ title: `Connect your store — ${APP_NAME}` }];
+export const meta = () => [{ title: `Connect Your Store — ${APP_NAME}` }];
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const user = await resolveWebUser(request);
@@ -108,7 +108,7 @@ export default function Connect() {
 
   return (
     <AccountShell
-      title="Connect your Shopify store"
+      title="Connect Your Shopify Store"
       tagline={
         alreadyConnected
           ? "Add another store to this account."
@@ -117,7 +117,7 @@ export default function Connect() {
     >
       <Form method="post" className="account-form">
         <Field
-          label="Store address"
+          label="Store Address"
           name="shop"
           type="text"
           autoComplete="off"

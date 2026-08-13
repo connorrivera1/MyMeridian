@@ -106,7 +106,7 @@ export function FulfilmentView({ data }: { data: FulfilmentData }) {
     return (
       <Card title="Fulfilment Capacity">
         <Empty>
-          No fulfilment history yet. Once orders start shipping, MyMeridian
+          No Fulfilment History Yet. Once orders start shipping, MyMeridian
           learns your warehouse&rsquo;s real throughput and warns you before it
           falls behind.
         </Empty>
@@ -132,7 +132,7 @@ export function FulfilmentView({ data }: { data: FulfilmentData }) {
             <span>
               {m.daysToClearBacklog === null
                 ? "—"
-                : `${m.daysToClearBacklog.toFixed(1)} days to clear`}
+                : `${m.daysToClearBacklog.toFixed(1)} Days to Clear`}
             </span>
           }
         />
@@ -142,7 +142,7 @@ export function FulfilmentView({ data }: { data: FulfilmentData }) {
           label="Shipping Now"
           value={<AnimatedInt value={Math.round(m.throughputPerDay)} />}
           spark={data.shippedSpark}
-          meta={<span>orders a day, 14-day average</span>}
+          meta={<span>Orders A Day, 14-Day Average</span>}
         />
         <Tile
           tone="var(--viz-amber)"
@@ -153,7 +153,7 @@ export function FulfilmentView({ data }: { data: FulfilmentData }) {
           }
           meta={
             <span>
-              ceiling {Math.round(m.effectiveCapacityPerDay).toLocaleString()}
+              Ceiling {Math.round(m.effectiveCapacityPerDay).toLocaleString()}
               /day
             </span>
           }
@@ -172,7 +172,7 @@ export function FulfilmentView({ data }: { data: FulfilmentData }) {
 
       {data.alerts.length > 0 && (
         <Card
-          title={breached ? "You are behind" : "Watch list"}
+          title={breached ? "You Are Behind" : "Watch List"}
           hint={`Measured against your ${data.slaDays}-day shipping promise, using the throughput your team has actually demonstrated rather than a configured number.`}
           flush
         >
@@ -197,9 +197,9 @@ export function FulfilmentView({ data }: { data: FulfilmentData }) {
         <div className="chart-legend-inset">
           <Legend
             items={[
-              { label: "Orders received", color: "var(--mark-structure)" },
+              { label: "Orders Received", color: "var(--mark-structure)" },
               { label: "Backlog", color: "var(--delta-down)" },
-              { label: "Capacity ceiling", color: "var(--status-warning)" },
+              { label: "Capacity Ceiling", color: "var(--status-warning)" },
             ]}
           />
         </div>
@@ -232,7 +232,7 @@ export function FulfilmentView({ data }: { data: FulfilmentData }) {
               <tr>
                 <th>Day</th>
                 <th className="right">Orders Expected</th>
-                <th className="right">Backlog at Close</th>
+                <th className="right">Backlog At Close</th>
                 <th className="right">Ship Delay</th>
                 <th>Status</th>
               </tr>
@@ -269,11 +269,11 @@ export function FulfilmentView({ data }: { data: FulfilmentData }) {
                           three were the only badges in the app bypassing it,
                           and they were also the only ones in lower case. */}
                       {late ? (
-                        <Badge tone="critical">Past promise</Badge>
+                        <Badge tone="critical">Past Promise</Badge>
                       ) : day.overCapacity ? (
-                        <Badge tone="warning">Over capacity</Badge>
+                        <Badge tone="warning">Over Capacity</Badge>
                       ) : (
-                        <Badge tone="neutral">On track</Badge>
+                        <Badge tone="neutral">On Track</Badge>
                       )}
                     </td>
                   </tr>

@@ -84,8 +84,8 @@ const CLASS_META: Record<
   }
 > = {
   PROFITABLE: { label: "Profitable", tone: "good" },
-  THIN_MARGIN: { label: "Thin margin", tone: "warning" },
-  STRATEGIC_LOSS_LEADER: { label: "Negative margin", tone: "critical" },
+  THIN_MARGIN: { label: "Thin Margin", tone: "warning" },
+  STRATEGIC_LOSS_LEADER: { label: "Negative Margin", tone: "critical" },
   BLEEDING: { label: "Bleeding", tone: "critical" },
   MISSING_COGS: { label: "Needs COGS", tone: "warning" },
 };
@@ -184,7 +184,7 @@ export function ProductsView({ data }: { data: ProductsData }) {
           value={<AnimatedInt value={data.counts.thin} />}
           meta={
             <>
-              <span>under 10% contribution</span>
+              <span>Under 10% Contribution</span>
               {profitBasis && <span>{profitBasis}</span>}
             </>
           }
@@ -202,7 +202,7 @@ export function ProductsView({ data }: { data: ProductsData }) {
                 currency={data.currency}
                 decimals={false}
               />
-              <span>over the period</span>
+              <span>Over The Period</span>
               {profitBasis && <span>{profitBasis}</span>}
             </>
           }
@@ -210,7 +210,7 @@ export function ProductsView({ data }: { data: ProductsData }) {
       </div>
 
       <Card
-        title={`Contribution Profit ${profitBasisTitle} by Product`}
+        title={`Contribution Profit ${profitBasisTitle} By Product`}
         hint={
           data.adSpendCoverage.mode === "unavailable"
             ? "After available shipping, payment-fee and pick-and-pack inputs. Those inputs can be configured estimates, missing COGS is flagged, and paid-marketing spend is unavailable and excluded."
@@ -218,7 +218,7 @@ export function ProductsView({ data }: { data: ProductsData }) {
         }
       >
         {chartData.length === 0 ? (
-          <Empty>No product sales in this period.</Empty>
+          <Empty>No Product Sales In This Period.</Empty>
         ) : (
           <HorizontalBars data={chartData} maxRows={20} />
         )}
@@ -271,8 +271,8 @@ export function ProductsView({ data }: { data: ProductsData }) {
                       {(product.hasMissingCogs || product.usesModeledCosts) && (
                         <div className="cell-sub">
                           {[
-                            product.hasMissingCogs ? "missing COGS" : null,
-                            product.usesModeledCosts ? "configured estimates" : null,
+                            product.hasMissingCogs ? "Missing COGS" : null,
+                            product.usesModeledCosts ? "Configured Estimates" : null,
                           ]
                             .filter(Boolean)
                             .join(" · ")}

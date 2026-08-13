@@ -108,7 +108,7 @@ export const SCOPE_IMPACTS: ScopeImpact[] = [
   },
   {
     scope: "read_inventory",
-    label: "Inventory cost",
+    label: "Inventory Cost",
     unlocks:
       "Cost per item, which is the COGS in every margin. Without it gross margin reads as 100% and every profit figure is overstated.",
     protectedData: false,
@@ -131,7 +131,7 @@ export const SCOPE_IMPACTS: ScopeImpact[] = [
   },
   {
     scope: "read_reports",
-    label: "Shopify reports",
+    label: "Shopify Reports",
     unlocks:
       "Shopify Shipping label costs by order, carrier and service for measured fulfilment profit.",
     protectedData: true,

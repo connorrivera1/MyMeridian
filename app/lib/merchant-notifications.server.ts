@@ -133,7 +133,7 @@ export function renderWeeklySummary(payload: WeeklySummaryPayload): {
     "",
     "Open MyMeridian for the qualified detail behind these figures.",
   ].join("\n");
-  const html = `<h1>${escapeHtml(payload.shopName)} weekly profit summary</h1><p>${payload.periodStart.slice(0, 10)} to ${payload.periodEnd.slice(0, 10)}</p><table>${rows
+  const html = `<h1>${escapeHtml(payload.shopName)} Weekly Profit Summary</h1><p>${payload.periodStart.slice(0, 10)} To ${payload.periodEnd.slice(0, 10)}</p><table>${rows
     .map(
       ([label, value, change]) =>
         `<tr><th align="left">${escapeHtml(label)}</th><td>${escapeHtml(value)}</td><td>${escapeHtml(change)}</td></tr>`,
@@ -159,7 +159,7 @@ export function renderAnomalyAlert(payload: AnomalyPayload): {
     "",
     "Open MyMeridian to inspect the affected inputs before acting.",
   ].join("\n");
-  const html = `<h1>${escapeHtml(payload.shopName)} profit anomaly detected</h1><ul>${payload.findings
+  const html = `<h1>${escapeHtml(payload.shopName)} Profit Anomaly Detected</h1><ul>${payload.findings
     .map((finding) => `<li>${escapeHtml(finding)}</li>`)
     .join("")}</ul><p>Open MyMeridian to inspect the affected inputs before acting.</p>`;
   return { subject, text, html };

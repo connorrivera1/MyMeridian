@@ -39,6 +39,6 @@ describe("MyMeridian email templates", () => {
     });
     expect(signature).toContain("mymeridian-email-logo.png");
     expect(signature).toContain("support@mymeridian.io");
-    expect(signature).toContain("Know what you kept. Know what to fix.");
+    expect(signature).toContain("Know What You Kept. Know What To Fix.");
   });
 });

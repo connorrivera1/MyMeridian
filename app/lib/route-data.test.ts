@@ -118,7 +118,7 @@ describe("loadDashboard", () => {
     const result = await loadDashboard(request);
 
     expect(result.preset).toBe("30d");
-    expect(result.rangeLabel).toBe("30 days");
+    expect(result.rangeLabel).toBe("30 Days");
   });
 
   it("defaults to the 30-day preset when ?range= is not a known preset", async () => {
@@ -133,7 +133,7 @@ describe("loadDashboard", () => {
     const result = await loadDashboard(request);
 
     expect(result.preset).toBe("180d");
-    expect(result.rangeLabel).toBe("6 months");
+    expect(result.rangeLabel).toBe("6 Months");
   });
 
   it("passes each loader the range it owns: current to loadShopAnalytics, previous to loadPeriodProfit", async () => {

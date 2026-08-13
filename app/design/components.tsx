@@ -588,7 +588,7 @@ export function Delta({
   }
 
   const rounded = Math.abs(value) < 0.0005 ? 0 : value;
-  if (rounded === 0) return <span className="delta flat">no change</span>;
+  if (rounded === 0) return <span className="delta flat">No Change</span>;
 
   const rising = rounded > 0;
   const good = invert ? !rising : rising;
@@ -804,7 +804,7 @@ export function UpgradeNotice({
   return (
     <div className="card">
       <div style={{ padding: "26px 24px", maxWidth: "68ch" }}>
-        <Badge tone="neutral">{planName} plan</Badge>
+        <Badge tone="neutral">{planName} Plan</Badge>
         <h2
           className="card-title"
           style={{ fontSize: 17, margin: "12px 0 8px" }}

@@ -19,7 +19,7 @@ export function loader() {
 }
 
 export const meta = () => [
-  { title: `${APP_NAME} — Privacy policy` },
+  { title: `${APP_NAME} — Privacy Policy` },
   {
     name: "description",
     content: `How ${APP_NAME} collects, uses, stores and deletes Shopify store data.`,
@@ -82,7 +82,7 @@ export default function Privacy() {
         remains the controller of it.
       </p>
 
-      <h2>What We Read from Shopify</h2>
+      <h2>What We Read From Shopify</h2>
       <p>
         {APP_NAME} requests these access scopes at install, and no others. Each
         is requested because a specific figure cannot be computed without it.
@@ -196,7 +196,7 @@ export default function Privacy() {
         and least-privilege limits described in this policy.
       </p>
 
-      <h2>What the Merchant Gives Us Directly</h2>
+      <h2>What The Merchant Gives Us Directly</h2>
       <p>
         Cost assumptions shown in <em>Costs &amp; Connections</em> — payment
         processing rates, shipping and pick-and-pack estimates, and fixed
@@ -212,7 +212,7 @@ export default function Privacy() {
         verification.
       </p>
 
-      <h2>How Data Is Stored and Secured</h2>
+      <h2>How Data Is Stored And Secured</h2>
       <ul>
         <li>
           Data is held in a PostgreSQL database, isolated per store, and reached
@@ -287,7 +287,7 @@ export default function Privacy() {
         <code>shop/redact</code>.
       </p>
 
-      <h2>Requests to Access or Erase Data</h2>
+      <h2>Requests To Access Or Erase Data</h2>
       <p>
         {APP_NAME} implements all three of Shopify&rsquo;s mandatory compliance
         webhooks, and acts on each automatically:
@@ -339,7 +339,7 @@ export default function Privacy() {
         details below, without going through Shopify.
       </p>
 
-      <h2>International Transfers and Legal Basis</h2>
+      <h2>International Transfers And Legal Basis</h2>
       <p>
         Data is processed on infrastructure that may be located outside the
         merchant&rsquo;s country. Processing is carried out to perform the

@@ -86,7 +86,7 @@ export default function Login() {
             style={{ gap: 10, textAlign: "left" }}
           >
             <label className="stack" style={{ gap: 5 }}>
-              <span className="tiny muted">Store domain</span>
+              <span className="tiny muted">Store Domain</span>
               <input
                 className="field-input"
                 type="text"
@@ -109,7 +109,7 @@ export default function Login() {
               type="submit"
               style={{ justifyContent: "center" }}
             >
-              Continue to Shopify
+              Continue To Shopify
             </button>
           </Form>
         ) : (
@@ -125,7 +125,7 @@ export default function Login() {
           <p className="tiny muted" style={{ marginTop: 24, lineHeight: 1.6 }}>
             Or{" "}
             <a href="/app" style={{ color: "var(--accent)", fontWeight: 600 }}>
-              explore the demo store
+              Explore The Demo Store
             </a>{" "}
             — six months of generated orders, computed by the same engine.
           </p>

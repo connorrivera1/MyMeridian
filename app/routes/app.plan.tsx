@@ -225,7 +225,7 @@ export default function Plan() {
       <div
         className="interval-toggle"
         role="group"
-        aria-label="Billing interval"
+        aria-label="Billing Interval"
       >
         <button
           type="button"
@@ -233,7 +233,7 @@ export default function Plan() {
           aria-pressed={!yearly}
           onClick={() => setYearly(false)}
         >
-          Billed monthly
+          Billed Monthly
         </button>
         <button
           type="button"
@@ -241,7 +241,7 @@ export default function Plan() {
           aria-pressed={yearly}
           onClick={() => setYearly(true)}
         >
-          Billed yearly · two months free
+          Billed Yearly · Two Months Free
         </button>
       </div>
 
@@ -329,7 +329,7 @@ export default function Plan() {
                     turns the adapter's 401 handoff into a stranded React
                     Router error boundary instead. */}
                 {current ? (
-                  <Badge tone="good">Current plan</Badge>
+                  <Badge tone="good">Current Plan</Badge>
                 ) : (
                   <Form method="post" reloadDocument>
                     <input
@@ -343,13 +343,13 @@ export default function Plan() {
                     >
                       {!data.currentPlan
                         ? founding
-                          ? `Claim Founding Merchant price`
-                          : `Start 14-day trial`
+                          ? `Claim Founding Merchant Price`
+                          : `Start 14-Day Trial`
                         : isDowngrade
-                          ? `Downgrade to ${plan.name}`
+                          ? `Downgrade To ${plan.name}`
                           : plan.price > (PLANS[data.currentPlan].price ?? 0)
-                          ? `Upgrade to ${plan.name}`
-                          : `Switch to ${plan.name}`}
+                          ? `Upgrade To ${plan.name}`
+                          : `Switch To ${plan.name}`}
                     </button>
                     {isDowngrade && (
                       <p className="tiny muted plan-change-note">

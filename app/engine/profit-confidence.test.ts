@@ -51,7 +51,7 @@ describe("assessProfitConfidence", () => {
     expect(confidence).toMatchObject({ level: "STRONG" });
     expect(confidence.configured).toContainEqual({
       state: "CONFIGURED",
-      label: "Payment processing",
+      label: "Payment Processing",
       detail: "Merchant-confirmed estimate",
     });
   });

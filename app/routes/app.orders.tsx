@@ -34,9 +34,9 @@ import { change, loadDashboardForContext } from "~/lib/route-data.server";
 import { dailySeries } from "~/lib/series";
 
 const SORTS = {
-  recent: "Most recent",
-  best: "Most profitable",
-  worst: "Least profitable",
+  recent: "Most Recent",
+  best: "Most Profitable",
+  worst: "Least Profitable",
 } as const;
 
 type SortKey = OrderSortKey;
@@ -291,14 +291,14 @@ export function ProfitBreakdownDrawer({
   order,
   currency,
   adSpendMeasured,
-  profitBasis,
+  profitBasisTitle,
   timeZone,
   closeTo,
 }: {
   order: NonNullable<OrdersData["focusedOrder"]>;
   currency: string;
   adSpendMeasured: boolean;
-  profitBasis: string;
+  profitBasisTitle: string;
   timeZone: string;
   closeTo: string;
 }) {
@@ -341,7 +341,7 @@ export function ProfitBreakdownDrawer({
       >
         <header className="profit-drawer-head">
           <div>
-            <p className="profit-drawer-eyebrow">Transparent math</p>
+            <p className="profit-drawer-eyebrow">Transparent Math</p>
             <h2 id="profit-drawer-title">Order #{order.orderNumber}</h2>
             <p id="profit-drawer-description" className="profit-drawer-meta">
               {new Date(order.processedAt).toLocaleDateString(undefined, {
@@ -357,7 +357,7 @@ export function ProfitBreakdownDrawer({
           <Link
             className="profit-drawer-close"
             to={closeTo}
-            aria-label="Close profit breakdown"
+            aria-label="Close Profit Breakdown"
           >
             Close
           </Link>
@@ -374,18 +374,18 @@ export function ProfitBreakdownDrawer({
             className="profit-drawer-section"
             aria-labelledby="profit-revenue-title"
           >
-            <h3 id="profit-revenue-title">1. Revenue kept</h3>
+            <h3 id="profit-revenue-title">1. Revenue Kept</h3>
             <dl className="profit-drawer-lines">
-              {formulaRow("Merchandise subtotal", order.grossRevenueCents)}
+              {formulaRow("Merchandise Subtotal", order.grossRevenueCents)}
               {formulaRow("Discounts", order.discountCents, {
                 tone: "subtract",
               })}
-              {formulaRow("Shipping charged", order.shippingRevenueCents)}
-              {formulaRow("Refunds (excluding tax)", order.refundCents, {
+              {formulaRow("Shipping Charged", order.shippingRevenueCents)}
+              {formulaRow("Refunds (Excluding Tax)", order.refundCents, {
                 tone: "subtract",
               })}
               <div className="profit-drawer-total">
-                <dt>Net revenue</dt>
+                <dt>Net Revenue</dt>
                 <dd>{money(order.netRevenueCents)}</dd>
               </div>
             </dl>
@@ -395,38 +395,38 @@ export function ProfitBreakdownDrawer({
             className="profit-drawer-section"
             aria-labelledby="profit-costs-title"
           >
-            <h3 id="profit-costs-title">2. Costs applied</h3>
+            <h3 id="profit-costs-title">2. Costs Applied</h3>
             <dl className="profit-drawer-lines">
-              {formulaRow("Cost of goods", order.cogsCents, {
+              {formulaRow("Cost of Goods", order.cogsCents, {
                 tone: "subtract",
               })}
-              {formulaRow("Shipping cost", order.shippingCostCents, {
+              {formulaRow("Shipping Cost", order.shippingCostCents, {
                 tone: "subtract",
               })}
-              {formulaRow("Payment processing", order.paymentFeeCents, {
+              {formulaRow("Payment Processing", order.paymentFeeCents, {
                 tone: "subtract",
               })}
-              {formulaRow("Pick & pack", order.pickPackCents, {
+              {formulaRow("Pick & Pack", order.pickPackCents, {
                 tone: "subtract",
               })}
               {adSpendMeasured
-                ? formulaRow("Attributed ad spend", order.adCostCents, {
+                ? formulaRow("Attributed Ad Spend", order.adCostCents, {
                     tone: "subtract",
-                    note: "recorded source",
+                    note: "Recorded Source",
                   })
-                : formulaRow("Paid marketing", 0, {
-                    note: "not included — no synced source",
+                : formulaRow("Paid Marketing", 0, {
+                    note: "Not Included — No Synced Source",
                   })}
               <div className="profit-drawer-total">
-                <dt>Contribution profit</dt>
+                <dt>Contribution Profit</dt>
                 <dd>{money(order.contributionProfitCents)}</dd>
               </div>
-              {formulaRow("Allocated overhead", order.overheadCents, {
+              {formulaRow("Allocated Overhead", order.overheadCents, {
                 tone: "subtract",
               })}
               <div className="profit-drawer-result">
                 <dt>
-                  <span>3. Profit {profitBasis}</span>
+                  <span>3. Profit {profitBasisTitle}</span>
                   <small>
                     {order.marginPct === null
                       ? "No margin where revenue is zero"
@@ -441,9 +441,9 @@ export function ProfitBreakdownDrawer({
           {(order.hasMissingCogs || order.usesModeledCosts) && (
             <aside
               className="profit-drawer-caveat"
-              aria-label="Cost confidence"
+              aria-label="Cost Confidence"
             >
-              <strong>Cost confidence</strong>
+              <strong>Cost Confidence</strong>
               {order.hasMissingCogs && (
                 <span>
                   Shopify COGS is missing, so this profit can be overstated.
@@ -468,10 +468,6 @@ export function ProfitBreakdownDrawer({
 export function OrdersView({ data }: { data: OrdersData }) {
   const [params] = useSearchParams();
   const adSpendMeasured = data.adSpendCoverage.mode !== "unavailable";
-  const profitBasis =
-    data.adSpendCoverage.mode === "unavailable"
-      ? "before paid marketing"
-      : "after available costs";
   const profitBasisTitle =
     data.adSpendCoverage.mode === "unavailable"
       ? "Before Paid Marketing"
@@ -536,7 +532,7 @@ export function OrdersView({ data }: { data: OrdersData }) {
           meta={
             <>
               <Delta value={data.summary.profitPerOrderChange} />
-              <span>{profitBasis}</span>
+              <span>{profitBasisTitle}</span>
             </>
           }
         />
@@ -595,7 +591,7 @@ export function OrdersView({ data }: { data: OrdersData }) {
                 currency={data.currency}
                 decimals={false}
               />
-              <span>{profitBasis}</span>
+              <span>{profitBasisTitle}</span>
             </>
           }
         />
@@ -687,7 +683,7 @@ export function OrdersView({ data }: { data: OrdersData }) {
               );
             }}
           >
-            <option value="">All channels</option>
+            <option value="">All Channels</option>
             {data.channels.map((channel) => (
               <option key={channel} value={channel}>
                 {CHANNEL_LABELS[channel as Channel]}
@@ -697,7 +693,7 @@ export function OrdersView({ data }: { data: OrdersData }) {
         </div>
 
         {data.orders.length === 0 ? (
-          <Empty>No orders match this filter.</Empty>
+          <Empty>No Orders Match This Filter.</Empty>
         ) : (
           <div className="table-wrap">
             <table className="data">
@@ -916,7 +912,7 @@ export function OrdersView({ data }: { data: OrdersData }) {
           order={data.focusedOrder}
           currency={data.currency}
           adSpendMeasured={adSpendMeasured}
-          profitBasis={profitBasis}
+          profitBasisTitle={profitBasisTitle}
           timeZone={data.timezone}
           closeTo={linkWith({ order: null })}
         />

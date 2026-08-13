@@ -12,7 +12,7 @@ import { APP_NAME } from "~/lib/brand";
 import { safeReturnPath } from "~/lib/web-oauth.server";
 import { claimWelcome } from "~/lib/webauth.server";
 
-export const meta = () => [{ title: `Welcome to ${APP_NAME}` }];
+export const meta = () => [{ title: `Welcome To ${APP_NAME}` }];
 
 /** Long enough to read two lines without becoming a wait. */
 const HOLD_MS = 2600;
@@ -74,14 +74,14 @@ export default function Welcome() {
         </div>
 
         <h1 className="welcome-word">
-          {["Welcome", "to", APP_NAME].map((word, i) => (
+          {["Welcome", "To", APP_NAME].map((word, i) => (
             <span key={word} style={{ animationDelay: `${0.34 + i * 0.11}s` }}>
               {word}
             </span>
           ))}
         </h1>
 
-        <p className="welcome-sub">You will receive your confirmation shortly</p>
+        <p className="welcome-sub">You Will Receive Your Confirmation Shortly</p>
 
         {/* Never a jail: the auto-advance is a courtesy, not the only exit. */}
         <button

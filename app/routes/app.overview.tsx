@@ -95,16 +95,16 @@ export async function loader({ request }: LoaderFunctionArgs) {
   };
 
   const bridge: BridgeStep[] = [
-    { label: "Net revenue", value: p.netRevenueCents, kind: "start" },
+    { label: "Net Revenue", value: p.netRevenueCents, kind: "start" },
     { label: "COGS", value: -p.cogsCents, kind: "cost" },
     { label: "Shipping", value: -p.shippingCostCents, kind: "cost" },
-    { label: "Pick & pack", value: -p.pickPackCents, kind: "cost" },
-    { label: "Payment fees", value: -p.paymentFeeCents, kind: "cost" },
+    { label: "Pick & Pack", value: -p.pickPackCents, kind: "cost" },
+    { label: "Payment Fees", value: -p.paymentFeeCents, kind: "cost" },
     ...(adSpendCoverage.mode === "unavailable" && p.totalAdCostCents === 0
       ? []
       : ([
           {
-            label: "Recorded ad spend",
+            label: "Recorded Ad Spend",
             value: -p.totalAdCostCents,
             kind: "cost",
           },
@@ -271,9 +271,9 @@ type OverviewData = Awaited<ReturnType<typeof loader>>;
 export function OverviewView({ data }: { data: OverviewData }) {
   const { kpi } = data;
   const adSpendMeasured = data.adSpendCoverage.mode !== "unavailable";
-  const profitBasis = adSpendMeasured
-    ? "after available costs"
-    : "before paid marketing";
+  const profitBasisTitle = adSpendMeasured
+    ? "After Available Costs"
+    : "Before Paid Marketing";
 
   const seriesPoints = data.series.map((point) => ({
     date: new Date(point.date),
@@ -286,10 +286,10 @@ export function OverviewView({ data }: { data: OverviewData }) {
           name, and the number they came for stands under it in sunlight. */}
       <section
         className="greet sky-text"
-        aria-label={`Profit ${profitBasis} summary`}
+        aria-label={`Profit ${profitBasisTitle} Summary`}
       >
         <p className="greet-kicker">
-          {data.kickerDate} · last {data.rangeLabel}
+          {data.kickerDate} · Last {data.rangeLabel}
         </p>
         {/* The overview suppresses RouteTitle's h1 in favour of the greeting,
             so the greeting has to BE the h1 — otherwise this page starts at h2
@@ -307,24 +307,23 @@ export function OverviewView({ data }: { data: OverviewData }) {
           </div>
           <Delta value={kpi.netProfitChange} />
           <span className="greet-caption">
-            profit {profitBasis}
-            , vs previous {data.rangeLabel}
+            Profit {profitBasisTitle}, vs. Previous {data.rangeLabel}
           </span>
         </div>
         <div className="greet-meta">
           <span className="chip">
             {kpi.netMarginPct === null ? "—" : formatPercent(kpi.netMarginPct)}{" "}
-            margin {profitBasis}
+            Margin {profitBasisTitle}
           </span>
           <span className="chip">
-            <AnimatedInt value={kpi.orderCount} /> orders
+            <AnimatedInt value={kpi.orderCount} /> Orders
           </span>
           <span className="chip">
-            <Money cents={kpi.aovCents} currency={data.currency} /> average
-            order
+            <Money cents={kpi.aovCents} currency={data.currency} /> Average
+            Order
           </span>
           <a className="chip solid" href="#bridge">
-            Where the money went
+            Where The Money Went
           </a>
         </div>
       </section>
@@ -410,7 +409,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
                     }
                   >
                     {item.severity === "DATA"
-                      ? "Data quality"
+                      ? "Data Quality"
                       : item.severity[0] + item.severity.slice(1).toLowerCase()}
                   </Badge>
                   <h3>{item.title}</h3>
@@ -429,12 +428,12 @@ export function OverviewView({ data }: { data: OverviewData }) {
                 </div>
                 <dl className="action-center-copy">
                   <div>
-                    <dt>Observed fact</dt>
+                    <dt>Observed Fact</dt>
                     <dd>{item.observedFact}</dd>
                   </div>
                   {item.likelyExplanation && (
                     <div>
-                      <dt>Likely explanation</dt>
+                      <dt>Likely Explanation</dt>
                       <dd>{item.likelyExplanation}</dd>
                     </div>
                   )}
@@ -446,7 +445,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
                 <div className="action-center-footer">
                   <span>Confidence: {item.confidence}</span>
                   <details>
-                    <summary>Why am I seeing this?</summary>
+                    <summary>Why Am I Seeing This?</summary>
                     <ul>
                       {item.evidence.map((evidence) => (
                         <li key={evidence}>{evidence}</li>
@@ -476,12 +475,12 @@ export function OverviewView({ data }: { data: OverviewData }) {
       >
         <div className="confidence-grid">
           <ConfidenceColumn title="Measured" items={data.profitConfidence.measured} />
-          <ConfidenceColumn title="Configured estimate" items={data.profitConfidence.configured} />
+          <ConfidenceColumn title="Configured Estimate" items={data.profitConfidence.configured} />
           <ConfidenceColumn title="Missing" items={data.profitConfidence.missing} />
         </div>
         {data.profitConfidence.nextStep && (
           <p className="confidence-next-step">
-            <strong>Suggested next step:</strong> {data.profitConfidence.nextStep}
+            <strong>Suggested Next Step:</strong> {data.profitConfidence.nextStep}
           </p>
         )}
       </Card>
@@ -574,7 +573,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
             adSpendMeasured ? (
               <Delta value={kpi.adCostChange} invert />
             ) : (
-              <span>no synced source</span>
+              <span>No Synced Source</span>
             )
           }
         />
@@ -594,13 +593,13 @@ export function OverviewView({ data }: { data: OverviewData }) {
             <AnimatedMoney cents={kpi.aovCents} currency={data.currency} />
           }
           spark={data.spark.aov}
-          meta={<span>net of discounts and refunds</span>}
+          meta={<span>Net of Discounts and Refunds</span>}
         />
       </div>
 
       <Card
         id="bridge"
-        title="Where the Money Went"
+        title="Where The Money Went"
         hint="Available measured costs and configured estimates between booked revenue and the profit shown above. Missing inputs and unconnected paid-marketing spend are excluded."
       >
         <ProfitBridge steps={data.bridge} />
@@ -633,11 +632,11 @@ export function OverviewView({ data }: { data: OverviewData }) {
         )}
       </Card>
 
-      <Card title="Profit and Revenue Over Time" flush>
+      <Card title="Profit And Revenue Over Time" flush>
         <Legend
           items={[
             {
-              label: `Profit ${profitBasis}`,
+              label: `Profit ${profitBasisTitle}`,
               color: "var(--mark-result)",
             },
             { label: "Net revenue", color: "var(--mark-structure)" },
@@ -651,7 +650,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
             series={[
               {
                 key: "profit",
-                label: `Profit ${profitBasis}`,
+                label: `Profit ${profitBasisTitle}`,
                 color: "var(--mark-result)",
                 area: true,
               },
@@ -667,7 +666,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
 
       <div className="grid cols-2">
         <Card
-          title="Carrying the Business"
+          title="Carrying The Business"
           hint="Highest non-negative contribution after available product-level costs. Overhead and unconnected spend are excluded."
           flush
         >
@@ -680,7 +679,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
           flush
         >
           {data.losers.length === 0 ? (
-            <Empty>No product is losing money in this period.</Empty>
+            <Empty>No Product Is Losing Money In This Period.</Empty>
           ) : (
             <ProductList items={data.losers} currency={data.currency} />
           )}
@@ -856,8 +855,8 @@ export function VerdictBadge({ verdict }: { verdict: string }) {
     case "MARGINAL":
       return <Badge tone="warning">Marginal</Badge>;
     case "UNPROFITABLE":
-      return <Badge tone="critical">Losing money</Badge>;
+      return <Badge tone="critical">Losing Money</Badge>;
     default:
-      return <Badge tone="neutral">No spend</Badge>;
+      return <Badge tone="neutral">No Spend</Badge>;
   }
 }

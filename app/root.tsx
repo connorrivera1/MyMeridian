@@ -43,7 +43,7 @@ export const links = () => [
 ];
 
 export const meta = () => [
-  { title: "MyMeridian — qualified profit from available inputs" },
+  { title: "MyMeridian — Qualified Profit From Available Inputs" },
   { name: "viewport", content: "width=device-width, initial-scale=1" },
   // Media-scoped so the browser chrome follows the sky. The toggle also
   // rewrites these at runtime, since data-theme can override the OS setting.

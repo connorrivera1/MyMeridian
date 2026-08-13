@@ -55,7 +55,7 @@ describe("Products ad-spend honesty", () => {
       "Product contribution and margin are before paid marketing",
     );
     expect(html).toContain(
-      "Contribution Profit Before Paid Marketing by Product",
+      "Contribution Profit Before Paid Marketing By Product",
     );
     expect(html).toContain(
       "contribution, margin and per-unit profit exclude that unavailable cost",
@@ -74,7 +74,7 @@ describe("Products ad-spend honesty", () => {
       "Product contribution and margin are after available costs",
     );
     expect(html).toContain(
-      "Contribution Profit After Available Costs by Product",
+      "Contribution Profit After Available Costs By Product",
     );
     expect(html).toContain("Recorded Ads");
     expect(html).toContain("-$8");
@@ -97,6 +97,6 @@ describe("Products ad-spend honesty", () => {
       "labelled Needs COGS instead of profitable or bleeding",
     );
     expect(html).toContain("Needs COGS");
-    expect(html).toContain("missing COGS · configured estimates");
+    expect(html).toContain("Missing COGS · Configured Estimates");
   });
 });

@@ -28,7 +28,7 @@ export default function WaitlistUnsubscribe() {
   return (
     <main className="legal-page" style={{ maxWidth: 560, margin: "72px auto", padding: 24 }}>
       <p className="eyebrow">MyMeridian</p>
-      <h1>Unsubscribe from product updates</h1>
+      <h1>Unsubscribe From Product Updates</h1>
       <p>You will stop receiving marketing and newsletter updates. Necessary account and service notices may still be sent when relevant.</p>
       <Form method="post">
         <input type="hidden" name="t" value={token} />

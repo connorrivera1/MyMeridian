@@ -7,7 +7,7 @@ describe("assessPricingOutcome", () => {
 
   it("does not invent an outcome before Shopify shows a price change", () => {
     expect(assessPricingOutcome({ acceptedAt, observedPriceChangeAt: null, observedDays: 0, observedMonthlyProfitDeltaCents: null })).toMatchObject({
-      status: "AWAITING_PRICE_CHANGE", label: "Waiting for price change",
+      status: "AWAITING_PRICE_CHANGE", label: "Waiting For Price Change",
     });
   });
 
@@ -19,7 +19,7 @@ describe("assessPricingOutcome", () => {
 
   it("uses non-causal observed-after-change language", () => {
     const outcome = assessPricingOutcome({ acceptedAt, observedPriceChangeAt: acceptedAt, observedDays: 28, observedMonthlyProfitDeltaCents: 12_000 });
-    expect(outcome).toMatchObject({ status: "OBSERVED_AFTER_CHANGE", label: "Observed after change" });
+    expect(outcome).toMatchObject({ status: "OBSERVED_AFTER_CHANGE", label: "Observed After Change" });
     expect(outcome.detail).toContain("not a causal claim");
   });
 });

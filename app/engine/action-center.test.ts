@@ -23,9 +23,9 @@ describe("buildActionCenter", () => {
   it("prioritizes measured order losses above product and channel follow-ups", () => {
     const actions = buildActionCenter(base());
     expect(actions.map((action) => action.title)).toEqual([
-      "1 orders lost contribution",
-      "Water Bottle is losing money",
-      "Facebook Ads has negative contribution",
+      "1 Orders Lost Contribution",
+      "Water Bottle Is Losing Money",
+      "Facebook Ads Has Negative Contribution",
     ]);
     expect(actions[0]).toMatchObject({ severity: "CRITICAL", confidence: "High" });
   });

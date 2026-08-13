@@ -539,14 +539,14 @@ export function ruleNeedsConfirmation(
 function CostRuleState({ rule }: { rule: DisplayCostRule | undefined }) {
   if (!rule?.active) return <Badge tone="critical">Missing</Badge>;
   if (!ruleHasNonZeroValue(rule))
-    return <Badge tone="neutral">No cost applied</Badge>;
-  if (rule.confirmedAt) return <Badge tone="good">Merchant-confirmed estimate</Badge>;
+    return <Badge tone="neutral">No Cost Applied</Badge>;
+  if (rule.confirmedAt) return <Badge tone="good">Merchant-Confirmed Estimate</Badge>;
 
   return (
     <Badge tone="warning" dot>
       {rule.origin === CostRuleOrigin.INSTALL_DEFAULT
-        ? "Unconfirmed install default"
-        : "Configured estimate"}
+        ? "Unconfirmed Install Default"
+        : "Configured Estimate"}
     </Badge>
   );
 }
@@ -567,7 +567,7 @@ export function backfillControlFor(sync: {
 
   if (sync.status === SyncStatus.RUNNING && sync.isStale) {
     return {
-      buttonLabel: sync.hasResumeCursor ? "Resume import" : "Restart import",
+      buttonLabel: sync.hasResumeCursor ? "Resume Import" : "Restart Import",
       statusLabel: "Interrupted",
       disabled: false,
       recoveryCopy: sync.hasResumeCursor
@@ -578,8 +578,8 @@ export function backfillControlFor(sync: {
 
   if (sync.status === SyncStatus.FAILED) {
     return {
-      buttonLabel: sync.hasResumeCursor ? "Resume import" : "Retry import",
-      statusLabel: "Stopped early",
+      buttonLabel: sync.hasResumeCursor ? "Resume Import" : "Retry Import",
+      statusLabel: "Stopped Early",
       disabled: false,
       recoveryCopy: sync.hasResumeCursor
         ? "A saved order-history checkpoint is ready. Resume without re-reading completed pages."
@@ -589,16 +589,16 @@ export function backfillControlFor(sync: {
 
   if (sync.status === SyncStatus.COMPLETE) {
     return {
-      buttonLabel: "Re-import",
-      statusLabel: "Up to date",
+      buttonLabel: "Re-Import",
+      statusLabel: "Up to Date",
       disabled: false,
       recoveryCopy: null,
     };
   }
 
   return {
-    buttonLabel: "Start import",
-    statusLabel: "Not started",
+    buttonLabel: "Start Import",
+    statusLabel: "Not Started",
     disabled: false,
     recoveryCopy: null,
   };
@@ -701,7 +701,7 @@ export default function Settings() {
               prefix="$"
             />
             <button className="btn primary" disabled={busy}>
-              Save and reprofile
+              Save and Reprofile
             </button>
           </Form>
         </Card>
@@ -721,13 +721,13 @@ export default function Settings() {
               prefix="$"
             />
             <button className="btn primary" disabled={busy}>
-              Save and reprofile
+              Save and Reprofile
             </button>
           </Form>
         </Card>
 
         <Card
-          title="Pick, Pack and Materials"
+          title="Pick, Pack And Materials"
           actions={<CostRuleState rule={pickPack} />}
         >
           <Form method="post" className="stack">
@@ -747,7 +747,7 @@ export default function Settings() {
               prefix="$"
             />
             <button className="btn primary" disabled={busy}>
-              Save and reprofile
+              Save and Reprofile
             </button>
           </Form>
         </Card>
@@ -767,7 +767,7 @@ export default function Settings() {
               prefix="$"
             />
             <button className="btn primary" disabled={busy}>
-              Save and reprofile
+              Save and Reprofile
             </button>
           </Form>
         </Card>
@@ -833,7 +833,7 @@ export default function Settings() {
             }
             meta={
               !data.isDemo && !data.sync.hasAllOrdersScope ? (
-                <span>capped at 60 days without read_all_orders</span>
+                <span>Capped at 60 Days Without read_all_orders</span>
               ) : undefined
             }
           />
@@ -884,7 +884,7 @@ export default function Settings() {
                       ) : entry.essential ? (
                         <Badge tone="critical">Missing</Badge>
                       ) : (
-                        <Badge tone="warning">Not granted</Badge>
+                        <Badge tone="warning">Not Granted</Badge>
                       )}
                     </td>
                   </tr>
@@ -895,7 +895,7 @@ export default function Settings() {
           {data.scopes.some((s) => !s.granted) && (
             <p className="card-hint" style={{ padding: "12px 16px 14px" }}>
               A missing permission cannot be enabled from this screen. Contact{" "}
-              <a href="/support">support</a>; Shopify will ask you to
+              <a href="/support">Support</a>; Shopify will ask you to
               re-authorise only when an approved app update adds the required
               access. Protected customer-data permissions, including order
               access, also require approval obtained by the app publisher.
@@ -915,7 +915,7 @@ export default function Settings() {
               value="recompute"
               disabled={busy}
             >
-              {busy ? "Recomputing…" : "Recompute all"}
+              {busy ? "Recomputing…" : "Recompute All"}
             </button>
           </Form>
         }
@@ -950,9 +950,9 @@ export default function Settings() {
                     ) : connector.status === ConnectorStatus.DISCONNECTED ? (
                       <Badge tone="critical">Disconnected</Badge>
                     ) : connector.status === ConnectorStatus.ERROR ? (
-                      <Badge tone="critical">Needs attention</Badge>
+                      <Badge tone="critical">Needs Attention</Badge>
                     ) : (
-                      <Badge tone="neutral">Not connected</Badge>
+                      <Badge tone="neutral">Not Connected</Badge>
                     )}
                     {connector.lastError && (
                       <div className="cell-sub">{connector.lastError}</div>
@@ -1044,7 +1044,7 @@ export default function Settings() {
                         </Form>
                       ) : (
                         <span className="tiny muted">
-                          Awaiting provider app approval
+                          Awaiting Provider App Approval
                         </span>
                       )
                     ) : connector.provider ===
@@ -1070,12 +1070,12 @@ export default function Settings() {
                           value="retry-shop-campaigns"
                         />
                         <button className="btn sm" disabled={busy}>
-                          Retry after Shopify approval
+                          Retry After Shopify Approval
                         </button>
                       </Form>
                     ) : connector.provider === ConnectorProvider.SHIPSTATION ? (
                       <span className="tiny muted">
-                        Use the secure key form below
+                        Use the Secure Key Form Below
                       </span>
                     ) : (
                       <span className="tiny muted">—</span>
@@ -1094,13 +1094,13 @@ export default function Settings() {
           >
             <input type="hidden" name="intent" value="shipstation-connect" />
             <label className="stack" style={{ gap: 4, flex: "1 1 260px" }}>
-              <span className="tiny muted">ShipStation API key</span>
+              <span className="tiny muted">ShipStation API Key</span>
               <input
                 className="field-input"
                 type="password"
                 name="apiKey"
                 autoComplete="off"
-                placeholder="Not stored in the browser"
+                placeholder="Not Stored in the Browser"
                 disabled={!data.reporting.canUseCarrierConnections}
               />
             </label>
@@ -1115,16 +1115,16 @@ export default function Settings() {
       </Card>
 
       <Card
-        title="Reports and Alerts"
+        title="Reports And Alerts"
         hint="MyMeridian monitors qualified profit inputs daily. Scale can also send a weekly summary and export order-level figures for an accountant."
         actions={
           data.reporting.canExport ? (
             <a className="btn sm" href="/app/export/profit.csv">
-              Export profit CSV
+              Export Profit CSV
             </a>
           ) : (
             <a className="btn sm" href="/app/plan">
-              Scale features
+              Scale Features
             </a>
           )
         }
@@ -1146,7 +1146,7 @@ export default function Settings() {
               disabled={!data.reporting.canUseAlerts}
             />
             <span>
-              <strong>Profit anomaly alerts</strong>
+              <strong>Profit Anomaly Alerts</strong>
               <span className="cell-sub">
                 Margin drops, refund spikes, carrier-cost drift, missing COGS
                 and unhealthy data sources. Growth or Scale.
@@ -1161,7 +1161,7 @@ export default function Settings() {
               disabled={!data.reporting.canUseWeekly}
             />
             <span>
-              <strong>Weekly profit summary</strong>
+              <strong>Weekly Profit Summary</strong>
               <span className="cell-sub">
                 Current week, prior-week change and missing-cost disclosure.
                 Scale.
@@ -1170,7 +1170,7 @@ export default function Settings() {
           </label>
           <div className="row" style={{ gap: 16, flexWrap: "wrap" }}>
             <label className="stack" style={{ gap: 4, flex: "1 1 240px" }}>
-              <span className="tiny muted">Report email</span>
+              <span className="tiny muted">Report Email</span>
               <input
                 className="field-input"
                 type="email"
@@ -1180,7 +1180,7 @@ export default function Settings() {
               />
             </label>
             <label className="stack" style={{ gap: 4 }}>
-              <span className="tiny muted">Send day</span>
+              <span className="tiny muted">Send Day</span>
               <select
                 className="field-input"
                 name="weeklySummaryDay"
@@ -1215,7 +1215,7 @@ export default function Settings() {
             </p>
           )}
           <button className="btn primary" disabled={busy}>
-            Save reporting preferences
+            Save Reporting Preferences
           </button>
         </Form>
       </Card>
@@ -1225,7 +1225,7 @@ export default function Settings() {
         hint="Billed by Shopify and shown on your Shopify invoice. Meridian never sees a card number."
         actions={
           <a className="btn sm" href="/app/plan">
-            {data.plan ? "Change plan" : "Choose a plan"}
+            {data.plan ? "Change Plan" : "Choose a Plan"}
           </a>
         }
       >

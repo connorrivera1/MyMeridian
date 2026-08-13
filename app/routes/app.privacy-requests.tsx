@@ -157,7 +157,7 @@ function HistoryPagination({
 
   return (
     <nav
-      aria-label="Collected request history"
+      aria-label="Collected Request History"
       style={{
         alignItems: "center",
         display: "flex",
@@ -172,8 +172,8 @@ function HistoryPagination({
         </Link>
       )}
       <span className="tiny muted">
-        Page {page.toLocaleString()} of {pageCount.toLocaleString()} ·{" "}
-        {total.toLocaleString()} collected
+        Page {page.toLocaleString()} Of {pageCount.toLocaleString()} ·{" "}
+        {total.toLocaleString()} Collected
       </span>
       {page < pageCount && (
         <Link className="btn sm" to={`?historyPage=${page + 1}`}>
@@ -281,7 +281,7 @@ function DataRequestRow({
         {request.collectedAt ? (
           <Badge tone="good">Collected</Badge>
         ) : (
-          <Badge tone="warning">Awaiting collection</Badge>
+          <Badge tone="warning">Awaiting Collection</Badge>
         )}
         {error && <div className="cell-sub">{error}</div>}
       </td>

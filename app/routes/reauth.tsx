@@ -33,7 +33,7 @@ import { safeReturnPath } from "~/lib/web-oauth.server";
 import { requestOriginIsSelf } from "~/lib/web-session.server";
 import { verifyPassword } from "~/lib/webauth.server";
 
-export const meta = () => [{ title: `Confirm your identity — ${APP_NAME}` }];
+export const meta = () => [{ title: `Confirm Your Identity — ${APP_NAME}` }];
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const pending = await resolvePendingWebSession(request);
@@ -142,7 +142,7 @@ export default function Reauthenticate() {
 
   return (
     <AccountShell
-      title="Confirm it is you"
+      title="Confirm It Is You"
       tagline="Sensitive changes require a fresh primary sign-in and a second factor."
     >
       {challenge ? (
@@ -150,7 +150,7 @@ export default function Reauthenticate() {
           <input type="hidden" name="intent" value="verify" />
           <input type="hidden" name="challengeId" value={challenge.id} />
           <Field
-            label="Authentication code"
+            label="Authentication Code"
             name="code"
             type="text"
             autoComplete="one-time-code"
@@ -173,7 +173,7 @@ export default function Reauthenticate() {
                 autoComplete="current-password"
               />
               <label className="account-field">
-                <span className="account-label">Send the second factor by</span>
+                <span className="account-label">Send the Second Factor By</span>
                 <select
                   className="account-input"
                   name="channel"

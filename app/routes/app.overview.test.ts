@@ -173,7 +173,7 @@ describe("Overview ad-spend honesty", () => {
 
     expect(html).toContain("Unconnected paid-marketing spend is excluded");
     expect(html).toContain("1 paid marketing source has completed a sync");
-    expect(html).toContain("profit after available costs");
+    expect(html).toContain("Profit After Available Costs");
     expect(html).toContain("Recorded Ad Spend");
     expect(html).toContain("$50");
   });

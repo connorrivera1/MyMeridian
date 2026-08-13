@@ -87,7 +87,7 @@ describe("Acquisition", () => {
   it("keeps order-derived channel revenue and profit visible with the requested scopes", async () => {
     const html = await render();
 
-    expect(html).toContain("Revenue and Profit by Channel");
+    expect(html).toContain("Revenue And Profit By Channel");
     expect(html).toContain("Net Revenue");
     expect(html).toContain("Contribution Profit");
     expect(html).toContain("Direct");
@@ -170,7 +170,7 @@ describe("Acquisition", () => {
     const html = await render();
 
     expect(html).toContain("Channel profit contains non-measured cost inputs");
-    expect(html).toContain("missing COGS · configured estimates");
+    expect(html).toContain("Missing COGS · Configured Estimates");
     expect(html).toContain("Needs COGS");
     expect(html).not.toContain(">Profitable</span>");
   });
@@ -207,10 +207,10 @@ describe("Acquisition", () => {
 
     const html = await render();
 
-    expect(html).toContain("Measured by Shopify");
+    expect(html).toContain("Measured By Shopify");
     expect(html).toContain("Shopify-Reported Sales");
     expect(html).toContain("Shopify-Reported Customers");
-    expect(html).toContain("not Meridian new-customer count");
+    expect(html).toContain("Not Meridian New-Customer Count");
     expect(html).toContain("cannot double-count an order already attributed");
     expect(html).toContain("does not combine that aggregate spend with order-derived CAC");
     expect(html).not.toContain("Blended CAC");
@@ -219,7 +219,7 @@ describe("Acquisition", () => {
   it("shows approval and completed-zero states distinctly", async () => {
     loadShopCampaignsSource.mockResolvedValueOnce("needs_approval");
     const blocked = await render();
-    expect(blocked).toContain("Shopify approval needed");
+    expect(blocked).toContain("Shopify Approval Needed");
     expect(blocked).toContain("Shop Campaign spend is unavailable");
 
     loadShopCampaignsSource.mockResolvedValueOnce("zero");
@@ -239,7 +239,7 @@ describe("Acquisition", () => {
       }),
     );
     const zero = await render();
-    expect(zero).toContain("Measured zero");
+    expect(zero).toContain("Measured Zero");
     expect(zero).toContain("$0");
   });
 });

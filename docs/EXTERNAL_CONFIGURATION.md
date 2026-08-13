@@ -76,6 +76,19 @@ browser bundle, issue tracker, screenshots or chat.
 | **Operational/security alerts** | Initial recipient: `support@mymeridian.io` after its mailbox is live | Provider monitoring may be free/paid depending on selected service | Provider notification target; current connector code additionally supports `CONNECTOR_ALERT_WEBHOOK_URL` + `CONNECTOR_ALERT_WEBHOOK_SECRET` | Configure Fly/Upstash/provider alerts to the monitored support mailbox. The application connector-alert path requires a signed HTTPS webhook, not a bare email address; select an email-capable alert receiver/bridge before enabling it | Recipient decision: resolved. Mailbox/receiver: after domain. End-to-end test: staging. |
 | **ShipStation test account** | Controlled ShipStation account and API credential for connector acceptance | Provider plan/access is external | Encrypted merchant-provided credential; no publisher-wide runtime secret | Configure test webhook if the controlled account supports it | Account: yes. Test after staging deploy. |
 
+## Merchant-side Shopify Shop Campaigns
+
+MyMeridian's Shop Campaigns source is distinct from any advertising used to
+promote MyMeridian itself in the Shopify App Store. It reads only a merchant
+store's aggregate ShopifyQL report through the existing Shopify installation;
+it creates no ad account, OAuth callback, billing action, or paid charge.
+
+- Query: `FROM shop_campaign_insights SHOW shop_campaign_ad_spend, shop_campaign_sales, shop_campaign_customers GROUP BY shop_campaign_name TIMESERIES day` with a bounded daily `SINCE` / `UNTIL` window, submitted through the Admin GraphQL `shopifyqlQuery` field.
+- Shopify requirement: `read_reports` **and** Shopify Level 2 protected-customer-data approval covering name, address, phone, and email. `read_reports` alone is insufficient.
+- Current external gate: Level 2 approval remains pending. The connector pauses with a merchant-visible needs-approval state after Shopify denies the query; it can be retried only after approval changes.
+- Reporting contract: Shopify-reported sales, customers, ROAS and CAC-equivalent evidence remain aggregate/source-reported. They never overwrite or add to MyMeridian's order-attributed revenue, order count, new-customer count or CAC. Shopify documents Shop Campaign sales as excluding refunds; MyMeridian's order-derived revenue continues to process refunds separately.
+- Required staging proof after approval: use a controlled store to verify no campaigns, active campaigns, an observed zero-spend campaign, denied/revoked reports access, a later ShopifyQL restatement, and tenant isolation. No production claim is authorized before those checks pass.
+
 ## Required production secret inventory
 
 Set each value separately for staging and production. The first group is

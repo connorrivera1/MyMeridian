@@ -28,8 +28,11 @@ vi.mock("~/db.server", () => ({
   },
 }));
 
-const { ensureShopProvisioned, synchroniseShopifyShippingConnector } =
-  await import("./provision.server");
+const {
+  ensureShopProvisioned,
+  synchroniseShopifyShippingConnector,
+  synchroniseShopifyShopCampaignsConnector,
+} = await import("./provision.server");
 
 /**
  * What a store is given at install.
@@ -123,6 +126,44 @@ describe("Shopify Shipping protected-data approval", () => {
         update: expect.objectContaining({
           status: ConnectorStatus.CONNECTED,
           lastError: null,
+        }),
+      }),
+    );
+  });
+});
+
+describe("Shop Campaigns ShopifyQL approval", () => {
+  it("leaves Shop Campaigns paused after Shopify denies Level 2 access", async () => {
+    const approvalMessage =
+      "Shopify has not approved Level 2 protected customer data for ShopifyQL yet. In Partner Dashboard, request Level 2 access covering Name, Email, Phone, and Address, then retry Shop Campaigns. MyMeridian queries only aggregate Shop Campaign metrics and does not query or store shopper name, email, phone, or address.";
+    connectorFindUnique.mockResolvedValue({
+      status: ConnectorStatus.ERROR,
+      lastError: approvalMessage,
+    });
+
+    await synchroniseShopifyShopCampaignsConnector(
+      "shop_1",
+      "read_orders,read_reports",
+    );
+
+    expect(connectorUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          status: ConnectorStatus.ERROR,
+          lastError: approvalMessage,
+        }),
+      }),
+    );
+  });
+
+  it("does not call read_reports sufficient when scope is absent", async () => {
+    await synchroniseShopifyShopCampaignsConnector("shop_1", "read_orders");
+
+    expect(connectorUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          status: ConnectorStatus.DISCONNECTED,
+          lastError: expect.stringContaining("read_reports was revoked"),
         }),
       }),
     );

@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   reconcileConnectedCarriersForShop: vi.fn(),
   shopUpdate: vi.fn(),
   synchroniseShopifyShippingConnector: vi.fn(),
+  synchroniseShopifyShopCampaignsConnector: vi.fn(),
   requestBackfill: vi.fn(),
 }));
 
@@ -27,6 +28,8 @@ vi.mock("~/db.server", () => ({
 vi.mock("~/lib/provision.server", () => ({
   synchroniseShopifyShippingConnector:
     mocks.synchroniseShopifyShippingConnector,
+  synchroniseShopifyShopCampaignsConnector:
+    mocks.synchroniseShopifyShopCampaignsConnector,
 }));
 
 vi.mock("~/lib/backfill-queue.server", () => ({
@@ -119,6 +122,7 @@ beforeEach(() => {
   });
   mocks.shopUpdate.mockResolvedValue({});
   mocks.synchroniseShopifyShippingConnector.mockResolvedValue({});
+  mocks.synchroniseShopifyShopCampaignsConnector.mockResolvedValue({});
   mocks.requestBackfill.mockResolvedValue({ started: true, resumed: false });
 });
 

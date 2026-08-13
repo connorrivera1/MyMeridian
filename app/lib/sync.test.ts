@@ -85,8 +85,34 @@ vi.mock("~/db.server", () => {
   return { default: client };
 });
 
-const { syncOrderFromShopify, syncFulfillmentFromShopify } =
+const { deriveChannel, syncOrderFromShopify, syncFulfillmentFromShopify } =
   await import("./sync.server");
+
+describe("Shop Campaigns order attribution", () => {
+  it("requires an explicit paid Shop Campaign UTM and leaves other channels alone", () => {
+    expect(
+      deriveChannel({
+        utmSource: "shop_campaign",
+        utmMedium: "cpc",
+        utmCampaign: "autumn",
+      }).channel,
+    ).toBe("SHOP_CAMPAIGNS");
+    expect(
+      deriveChannel({
+        utmSource: "shop",
+        utmMedium: "organic",
+        utmCampaign: "catalog",
+      }).channel,
+    ).toBe("DIRECT");
+    expect(
+      deriveChannel({
+        utmSource: "facebook",
+        utmMedium: "cpc",
+        utmCampaign: "shop_campaign",
+      }).channel,
+    ).toBe("FACEBOOK");
+  });
+});
 
 const SHOP_ID = "shop_1";
 const PROCESSED_AT = "2026-07-01T10:00:00Z";

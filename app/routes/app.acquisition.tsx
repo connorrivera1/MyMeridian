@@ -20,6 +20,7 @@ import {
 import { formatPercent } from "~/engine/money";
 import { CHANNEL_LABELS, type Channel } from "~/engine/types";
 import { loadDashboard } from "~/lib/route-data.server";
+import { loadShopCampaignsSource } from "~/lib/shop-campaigns-status.server";
 
 import { VerdictBadge } from "./app.overview";
 
@@ -27,6 +28,7 @@ const CHANNEL_ORDER: Channel[] = [
   "FACEBOOK",
   "GOOGLE",
   "TIKTOK",
+  "SHOP_CAMPAIGNS",
   "EMAIL",
   "ORGANIC_SEARCH",
   "DIRECT",
@@ -39,18 +41,39 @@ export async function loader({ request }: LoaderFunctionArgs) {
     await loadDashboard(request);
 
   const paid = analytics.channels.filter((channel) => channel.spendCents > 0);
+  // The ShopifyQL dataset is aggregate reporting. Its spend belongs in the
+  // source card and in the P&L, but it cannot enter an order-derived blended
+  // CAC denominator until Meridian has a real Shop Campaign-attributed order.
+  const cohortPaid = paid.filter(
+    (channel) =>
+      channel.channel !== "SHOP_CAMPAIGNS" || channel.orders > 0,
+  );
+  const shopCampaignChannel = analytics.channels.find(
+    (channel) => channel.channel === "SHOP_CAMPAIGNS",
+  );
+  const shopCampaigns = await loadShopCampaignsSource(
+    shop.id,
+    capabilities.reports,
+    (shopCampaignChannel?.spendCents ?? 0) > 0,
+    shopCampaignChannel !== undefined,
+  );
 
-  const totalSpend = paid.reduce((sum, c) => sum + c.spendCents, 0);
-  const totalNewCustomers = paid.reduce((sum, c) => sum + c.newCustomers, 0);
-  const platformClaimed = paid.reduce(
+  const totalSpend = cohortPaid.reduce((sum, c) => sum + c.spendCents, 0);
+  const totalNewCustomers = cohortPaid.reduce(
+    (sum, c) => sum + c.newCustomers,
+    0,
+  );
+  const platformClaimed = cohortPaid.reduce(
     (sum, c) => sum + (c.platformRoas ?? 0) * c.spendCents,
     0,
   );
-  const measured = paid.reduce((sum, c) => sum + c.netRevenueCents, 0);
+  const measured = cohortPaid.reduce((sum, c) => sum + c.netRevenueCents, 0);
   const channels = analytics.channels.map((channel) => ({
     channel: channel.channel,
     spendCents: channel.spendCents,
     orders: channel.orders,
+    platformConversions: channel.platformConversions,
+    platformRevenueCents: channel.platformRevenueCents,
     newCustomers: channel.newCustomers,
     cacCents: channel.cacCents,
     firstOrderProfitPerCustomerCents: channel.firstOrderProfitPerCustomerCents,
@@ -68,21 +91,26 @@ export async function loader({ request }: LoaderFunctionArgs) {
     verdict: channel.verdict,
     ltvCurve: channel.ltvCurve,
   }));
-  const campaigns = analytics.campaigns.map((campaign) => ({
-    campaignId: campaign.campaignId,
-    campaignName: campaign.campaignName,
-    channel: campaign.channel,
-    spendCents: campaign.spendCents,
-    orders: campaign.orders,
-    newCustomers: campaign.newCustomers,
-    cacCents: campaign.cacCents,
-    measuredRoas: campaign.measuredRoas,
-    contributionProfitCents: campaign.contributionProfitCents,
-    profitPerCustomerCents: campaign.profitPerCustomerCents,
-    hasMissingCogs: campaign.hasMissingCogs,
-    usesModeledCosts: campaign.usesModeledCosts,
-    verdict: campaign.verdict,
-  }));
+  const campaigns = analytics.campaigns
+    .filter(
+      (campaign) =>
+        campaign.channel !== "SHOP_CAMPAIGNS" || campaign.orders > 0,
+    )
+    .map((campaign) => ({
+      campaignId: campaign.campaignId,
+      campaignName: campaign.campaignName,
+      channel: campaign.channel,
+      spendCents: campaign.spendCents,
+      orders: campaign.orders,
+      newCustomers: campaign.newCustomers,
+      cacCents: campaign.cacCents,
+      measuredRoas: campaign.measuredRoas,
+      contributionProfitCents: campaign.contributionProfitCents,
+      profitPerCustomerCents: campaign.profitPerCustomerCents,
+      hasMissingCogs: campaign.hasMissingCogs,
+      usesModeledCosts: campaign.usesModeledCosts,
+      verdict: campaign.verdict,
+    }));
 
   return {
     rangeLabel,
@@ -107,6 +135,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
         (channel) => channel.usesModeledCosts,
       ).length,
     },
+    hasAnyPaidSpend: paid.length > 0,
+    shopCampaigns,
     channels,
     campaigns,
   };
@@ -120,6 +150,124 @@ export default function Acquisition() {
 
 type AcquisitionData = Awaited<ReturnType<typeof loader>>;
 
+function ShopCampaignsCard({ data }: { data: AcquisitionData }) {
+  const row = data.channels.find((channel) => channel.channel === "SHOP_CAMPAIGNS");
+  const state = data.shopCampaigns;
+  const title = "Shop Campaigns";
+  const hint =
+    "Measured through ShopifyQL when approved. Shopify-reported campaign sales and customers remain separate from Meridian order attribution, so aggregate reporting cannot double-count an order already attributed to Meta, Google, TikTok, or another channel.";
+
+  if (state === "needs_reports") {
+    return (
+      <Card title={title} hint={hint} actions={<Badge tone="warning">Reports access needed</Badge>}>
+        <p className="card-hint">
+          <code>read_reports</code> is not available for this installation. Shop Campaign spend is unavailable, not $0.
+        </p>
+      </Card>
+    );
+  }
+
+  if (state === "needs_approval") {
+    return (
+      <Card title={title} hint={hint} actions={<Badge tone="warning">Shopify approval needed</Badge>}>
+        <p className="card-hint">
+          ShopifyQL also requires MyMeridian to hold Shopify Level 2 protected-customer-data approval. Shop Campaign spend is unavailable, not $0. Meridian does not query or store shopper identity here. Retry the source from Settings only after Shopify approves that access.
+        </p>
+      </Card>
+    );
+  }
+
+  if (state === "syncing") {
+    return (
+      <Card title={title} hint={hint} actions={<Badge tone="neutral">Awaiting first sync</Badge>}>
+        <p className="card-hint">
+          Shopify reports access is connected, but no Shop Campaign report has completed yet. Spend is unavailable, not $0.
+        </p>
+      </Card>
+    );
+  }
+
+  if (state === "unavailable") {
+    return (
+      <Card title={title} hint={hint} actions={<Badge tone="neutral">Unavailable</Badge>}>
+        <p className="card-hint">
+          This store has no Shop Campaigns source yet. Meridian does not use MyMeridian&rsquo;s own Shopify App Store advertising as merchant spend.
+        </p>
+      </Card>
+    );
+  }
+
+  if (state === "empty") {
+    return (
+      <Card title={title} hint={hint} actions={<Badge tone="good">Synced</Badge>}>
+        <p className="card-hint">
+          ShopifyQL completed a sync, but returned no Shop Campaign rows for this period. This is distinct from missing access.
+        </p>
+      </Card>
+    );
+  }
+
+  return (
+    <Card
+      title={title}
+      hint={hint}
+      actions={
+        <Badge tone="good">
+          {state === "zero" ? "Measured zero" : "Measured by Shopify"}
+        </Badge>
+      }
+    >
+      <div className="grid cols-4">
+        <Tile
+          tone="var(--viz-teal)"
+          label="Shop Campaign Spend"
+          value={
+            <AnimatedMoney
+              cents={row?.spendCents ?? 0}
+              currency={data.currency}
+              compact
+              decimals={false}
+            />
+          }
+          meta={<span>Shopify-reported</span>}
+        />
+        <Tile
+          tone="var(--viz-blue)"
+          label="Shopify-Reported Sales"
+          value={
+            <AnimatedMoney
+              cents={row?.platformRevenueCents ?? 0}
+              currency={data.currency}
+              compact
+              decimals={false}
+            />
+          }
+          meta={<span>refunds excluded by Shopify</span>}
+        />
+        <Tile
+          tone="var(--viz-purple)"
+          label="Shopify-Reported Customers"
+          value={(row?.platformConversions ?? 0).toLocaleString()}
+          meta={<span>not Meridian new-customer count</span>}
+        />
+        <Tile
+          tone="var(--viz-amber)"
+          label="Shopify ROAS"
+          value={
+            row?.platformRoas === null || row?.platformRoas === undefined
+              ? "—"
+              : `${row.platformRoas.toFixed(2)}×`
+          }
+          meta={<span>Shopify-reported sales ÷ spend</span>}
+        />
+      </div>
+      <p className="card-hint" style={{ marginTop: 12 }}>
+        Meridian does not add Shopify&rsquo;s aggregate campaign sales or customers to order-derived revenue, orders, or CAC. When an order has an explicit paid Shop Campaign UTM, it can be shown under this channel; otherwise the aggregate stays source-reported only.
+      </p>
+    </Card>
+  );
+}
+
 /**
  * The order-derived channel roll-up is useful without either an ad platform or
  * customer identity, so neither missing capability may blank this screen.
@@ -130,7 +278,22 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
   const [params, setParams] = useSearchParams();
 
   const hasSpend = data.blended.totalSpendCents > 0;
-  const paidChannels = data.channels.filter((c) => c.spendCents > 0);
+  const hasSourceOnlyShopCampaignSpend =
+    data.shopCampaigns === "measured" &&
+    data.channels.some(
+      (channel) =>
+        channel.channel === "SHOP_CAMPAIGNS" &&
+        channel.spendCents > 0 &&
+        channel.orders === 0,
+    );
+  const paidChannels = data.channels.filter(
+    (channel) =>
+      channel.spendCents > 0 &&
+      // ShopifyQL is aggregate reporting, not an order-level attribution
+      // feed. A source-only Shop Campaign appears in its own card instead of
+      // pretending there is a Meridian cohort to judge.
+      !(channel.channel === "SHOP_CAMPAIGNS" && channel.orders === 0),
+  );
   const selectedKey = params.get("channel") ?? paidChannels[0]?.channel;
   const selected = paidChannels.find((c) => c.channel === selectedKey);
 
@@ -155,7 +318,7 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
             meta={
               <span>
                 {data.hasCustomerData
-                  ? `all paid spend ÷ ${data.blended.newCustomers.toLocaleString()} new customers`
+                  ? `order-attributable paid spend ÷ ${data.blended.newCustomers.toLocaleString()} new customers`
                   : "customer access required"}
               </span>
             }
@@ -163,7 +326,7 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
           <Tile
             tone="var(--viz-pink)"
             icon={<IconOrders />}
-            label="Paid Spend"
+            label="Attributed Paid Spend"
             value={
               <AnimatedMoney
                 cents={data.blended.totalSpendCents}
@@ -232,7 +395,7 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
         </Banner>
       )}
 
-      {!hasSpend && (
+      {!hasSpend && !hasSourceOnlyShopCampaignSpend && (
         <Banner>
           <strong style={{ color: "var(--ink-primary)" }}>
             No ad-spend source has completed a sync.
@@ -309,7 +472,7 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
                   <th className="right">Orders</th>
                   <th className="right">Net Revenue</th>
                   <th className="right">Contribution Profit</th>
-                  {hasSpend && <th className="right">Spend</th>}
+                  {data.hasAnyPaidSpend && <th className="right">Spend</th>}
                 </tr>
               </thead>
               <tbody>
@@ -362,7 +525,7 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
                         decimals={false}
                       />
                     </td>
-                    {hasSpend && (
+                    {data.hasAnyPaidSpend && (
                       <td className="right">
                         {row.spendCents > 0 ? (
                           <Money
@@ -383,7 +546,7 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
         )}
       </Card>
 
-      {hasSpend && data.hasCustomerData && (
+      {paidChannels.length > 0 && data.hasCustomerData && (
         <Card
           title="Paid Acquisition Detail"
           hint="CAC is spend divided by the customers a channel actually acquired. Lifetime value is measured before marketing cost, so comparing it with CAC does not charge the same ad twice."
@@ -542,7 +705,7 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
         </Card>
       )}
 
-      {hasSpend && data.hasCustomerData && (
+      {data.campaigns.length > 0 && data.hasCustomerData && (
         <Card
           title="Campaigns"
           hint="Judged on the orders they produced against what they cost. A campaign can be profitable inside an unprofitable channel, and is usually where the budget decision actually lives."

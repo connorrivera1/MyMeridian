@@ -28,6 +28,7 @@ import {
 } from "~/lib/connector-oauth.server";
 import { planAllows, requireActivePlan } from "~/lib/plan.server";
 import { enqueueShopRecompute } from "~/lib/recompute-queue.server";
+import { retryShopCampaignsConnector } from "~/lib/ad-ingestion.server";
 import { scopeReport } from "~/lib/scopes";
 import { PLANS } from "~/lib/plans";
 import { publicAppOrigin } from "~/lib/public-origin.server";
@@ -422,6 +423,10 @@ async function updateSettings(request: Request, ctx: ShopContext) {
     return retryShopifyShippingConnector(shop.id);
   }
 
+  if (form.get("intent") === "retry-shop-campaigns") {
+    return retryShopCampaignsConnector(shop.id);
+  }
+
   const parsed = CostRuleUpdate.safeParse({
     id: form.get("id"),
     percentRate: form.get("percentRate") || undefined,
@@ -474,6 +479,7 @@ const CONNECTOR_LABEL: Record<string, string> = {
   FACEBOOK_ADS: "Meta Ads",
   GOOGLE_ADS: "Google Ads",
   TIKTOK_ADS: "TikTok Ads",
+  SHOPIFY_SHOP_CAMPAIGNS: "Shop Campaigns",
   STRIPE: "Stripe",
   WAREHOUSE_3PL: "3PL / warehouse",
   SHIPSTATION: "ShipStation",
@@ -532,13 +538,13 @@ function CostRuleState({ rule }: { rule: DisplayCostRule | undefined }) {
   if (!rule?.active) return <Badge tone="critical">Missing</Badge>;
   if (!ruleHasNonZeroValue(rule))
     return <Badge tone="neutral">No cost applied</Badge>;
-  if (rule.confirmedAt) return <Badge tone="good">Reviewed assumption</Badge>;
+  if (rule.confirmedAt) return <Badge tone="good">Merchant-confirmed estimate</Badge>;
 
   return (
     <Badge tone="warning" dot>
       {rule.origin === CostRuleOrigin.INSTALL_DEFAULT
         ? "Unconfirmed install default"
-        : "Unconfirmed assumption"}
+        : "Configured estimate"}
     </Badge>
   );
 }
@@ -898,7 +904,7 @@ export default function Settings() {
 
       <Card
         title="Connections"
-        hint="Connect measured ad spend and carrier label costs without sending credentials to support. Tokens are encrypted at rest and removed on disconnect; Stripe and 3PL sources remain unavailable."
+        hint="Connect measured ad spend and carrier label costs without sending credentials to support. Shop Campaigns uses Shopify reports when the app has the required approval. Tokens are encrypted at rest and removed on disconnect; Stripe and 3PL sources remain unavailable."
         actions={
           <Form method="post">
             <button
@@ -1050,6 +1056,19 @@ export default function Settings() {
                         />
                         <button className="btn sm" disabled={busy}>
                           Retry
+                        </button>
+                      </Form>
+                    ) : connector.provider ===
+                        ConnectorProvider.SHOPIFY_SHOP_CAMPAIGNS &&
+                      connector.status === ConnectorStatus.ERROR ? (
+                      <Form method="post">
+                        <input
+                          type="hidden"
+                          name="intent"
+                          value="retry-shop-campaigns"
+                        />
+                        <button className="btn sm" disabled={busy}>
+                          Retry after Shopify approval
                         </button>
                       </Form>
                     ) : connector.provider === ConnectorProvider.SHIPSTATION ? (

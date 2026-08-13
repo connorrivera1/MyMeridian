@@ -8,6 +8,10 @@ import {
 
 import prisma from "~/db.server";
 import { parseScopes } from "~/lib/scopes";
+import {
+  SHOP_CAMPAIGNS_PROTECTED_DATA_ERROR,
+  SHOP_CAMPAIGNS_REPORT_ACCESS_ERROR,
+} from "~/lib/shop-campaigns.server";
 
 /**
  * Default cost assumptions applied at install time.
@@ -88,6 +92,10 @@ function initialConnectors(domain: string) {
       status: ConnectorStatus.NOT_CONFIGURED,
     },
     {
+      provider: ConnectorProvider.SHOPIFY_SHOP_CAMPAIGNS,
+      status: ConnectorStatus.NOT_CONFIGURED,
+    },
+    {
       provider: ConnectorProvider.STRIPE,
       status: ConnectorStatus.NOT_CONFIGURED,
     },
@@ -151,6 +159,69 @@ export async function synchroniseShopifyShippingConnector(
         : connected
           ? null
           : "read_reports was revoked; shipping-label cost reconciliation is paused.",
+    },
+  });
+}
+
+/**
+ * Shop Campaigns reads ShopifyQL with the existing Shopify installation, not a
+ * merchant-provided ad credential. `read_reports` starts the connection; the
+ * first ShopifyQL call proves whether Shopify has also approved Level 2 data.
+ */
+export async function synchroniseShopifyShopCampaignsConnector(
+  shopId: string,
+  grantedScopes: string | null | undefined,
+) {
+  const connected = parseScopes(grantedScopes).has("read_reports");
+  const current = await prisma.connector.findUnique({
+    where: {
+      shopId_provider: {
+        shopId,
+        provider: ConnectorProvider.SHOPIFY_SHOP_CAMPAIGNS,
+      },
+    },
+    select: { status: true, lastError: true },
+  });
+  const approvalBlocked =
+    connected &&
+    current?.status === ConnectorStatus.ERROR &&
+    current.lastError?.startsWith(SHOP_CAMPAIGNS_PROTECTED_DATA_ERROR);
+  const reportsBlocked =
+    current?.status === ConnectorStatus.ERROR &&
+    current.lastError?.startsWith(SHOP_CAMPAIGNS_REPORT_ACCESS_ERROR);
+
+  return prisma.connector.upsert({
+    where: {
+      shopId_provider: {
+        shopId,
+        provider: ConnectorProvider.SHOPIFY_SHOP_CAMPAIGNS,
+      },
+    },
+    create: {
+      shopId,
+      provider: ConnectorProvider.SHOPIFY_SHOP_CAMPAIGNS,
+      status: connected
+        ? ConnectorStatus.CONNECTED
+        : ConnectorStatus.NOT_CONFIGURED,
+      displayName: "Shop Campaigns",
+      lastError: connected
+        ? null
+        : "read_reports is not granted; Shop Campaigns reporting is unavailable.",
+    },
+    update: {
+      status:
+        approvalBlocked || reportsBlocked
+          ? ConnectorStatus.ERROR
+          : connected
+            ? ConnectorStatus.CONNECTED
+            : ConnectorStatus.DISCONNECTED,
+      displayName: "Shop Campaigns",
+      lastError:
+        approvalBlocked || reportsBlocked
+          ? current?.lastError
+          : connected
+            ? null
+            : "read_reports was revoked; Shop Campaigns reporting is paused.",
     },
   });
 }

@@ -143,7 +143,7 @@ fails the _entire_ query rather than returning null for that field.
 | `read_inventory`    | **No COGS.** Margins read as ~100% and every profit figure is overstated. Requested by default; not protected data.                                                                                                                                                                                                                                                                |
 | `read_customers`    | No CAC, LTV, payback or customer-lifecycle product classification. **Protected customer data** — needs an approved request in the Partner Dashboard, not just the scope.                                                                                                                                                                                                           |
 | `read_fulfillments` | No capacity forecasting. MyMeridian writes no capacity data at all rather than inferring a backlog that only ever grows.                                                                                                                                                                                                                                                           |
-| `read_reports`      | No Shopify Shipping label-cost reconciliation. Shopify also requires Level 2 Protected Customer Data approval covering name, address, phone and email before it exposes the `shipping_labels` ShopifyQL schema. MyMeridian does not query or persist shopper name, address or phone; those additional approvals are a ShopifyQL access gate, not additional collection by the app. |
+| `read_reports`      | No Shopify Shipping label-cost reconciliation or Shop Campaigns reporting. ShopifyQL also requires Level 2 Protected Customer Data approval covering name, address, phone and email before it exposes either aggregate schema. MyMeridian does not query or persist shopper identity for these reports; that approval is a ShopifyQL platform gate, not additional collection by the app. |
 
 Missing permissions surface in _Costs & connections → Data access_, and the
 affected screens explain what is unavailable instead of rendering a zero.
@@ -363,11 +363,20 @@ or bleeding verdict; modeled inputs stay visibly qualified.
 
 The current release attributes order-derived revenue and qualified contribution
 to channels from UTM and referring signals and can import spend from a
-merchant-selected Meta, Google or TikTok account. Until a connector is healthy
-and synced, spend, CAC, ROAS and marketing efficiency remain unavailable rather
-than becoming zero. The dormant cohort engine is also hidden because the requested
-scope set does not include `read_customers`; unmeasurable cohort checkpoints
-remain represented as “not yet”, never `0.00×`.
+merchant-selected Meta, Google or TikTok account. It also ingests a merchant's
+Shop Campaigns through ShopifyQL's `shop_campaign_insights` dataset when
+`read_reports` and Shopify Level 2 protected-customer-data approval are both
+available. Shopify's campaign sales/customers are source-reported aggregates:
+they are never added to Meridian order-derived revenue, orders, or CAC, and an
+order moves to Shop Campaigns only when Shopify supplied an explicit paid Shop
+Campaign UTM. This prevents a Shopify campaign aggregate from double-counting a
+sale already attributed to another channel. Shopify reports that campaign sales
+exclude refunds; Meridian's own stored-order revenue remains refund-aware.
+Until a connector is healthy and synced, spend, CAC, ROAS and marketing
+efficiency remain unavailable rather than becoming zero. The dormant cohort
+engine is also hidden because the requested scope set does not include
+`read_customers`; unmeasurable cohort checkpoints remain represented as “not
+yet”, never `0.00×`.
 
 ### Pricing
 
@@ -480,8 +489,10 @@ a profit tool must not make quietly.
 
 ### Ad-spend ingestion
 
-Meta, Google, and TikTok spend polling is optional and uses BullMQ/Redis only
-as a scheduler. The `AdSyncWindow` Postgres ledger is the source of truth: a
+Meta, Google, TikTok, and Shopify Shop Campaign spend polling is optional and
+uses BullMQ/Redis only as a scheduler. Shop Campaigns uses the store's existing
+Shopify session — it does not use a publisher ad account or MyMeridian's own
+Shopify App Store advertising. The `AdSyncWindow` Postgres ledger is the source of truth: a
 flushed queue, stopped worker, or delayed platform restatement is reconciled on
 the next polling cycle. Foreign-currency spend is converted against immutable
 daily `ExchangeRate` rows, and workers may run in the web process or through

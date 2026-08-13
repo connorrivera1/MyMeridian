@@ -192,12 +192,15 @@ function applyWindowUpdate(row: WindowRow, data: Record<string, unknown>) {
   }
 }
 
-const { ingestConnectorDay } = await import("./ad-ingestion.server");
+const { ingestConnectorDay, retryShopCampaignsConnector } = await import(
+  "./ad-ingestion.server"
+);
 const {
   AdProviderAuthError,
   AdProviderRateLimitError,
   AdProviderTransientError,
 } = await import("./ad-platforms/types.server");
+const { ShopCampaignsAccessError } = await import("./shop-campaigns.server");
 const { contentHashFor } = await import("./ad-ingestion-plan");
 
 const DAY = "2026-08-10";
@@ -251,7 +254,12 @@ beforeEach(() => {
     lastSyncedAt: null,
     lastError: "previous transient noise",
     lastDeepSyncAt: null,
-    shop: { id: "shop_1", currency: "USD", isDemo: false },
+    shop: {
+      id: "shop_1",
+      domain: "merchant.myshopify.com",
+      currency: "USD",
+      isDemo: false,
+    },
   };
   windowRows = [];
   adSpendRows = [];
@@ -408,5 +416,209 @@ describe("ingestConnectorDay", () => {
     const outcome = await ingestConnectorDay("conn_1", DAY, deps(fakeAdapter()));
     expect(outcome.kind).toBe("skipped");
     expect(connectorUpdates).toHaveLength(0);
+  });
+
+  it("writes active Shop Campaigns in store currency and keeps their provider sales separate", async () => {
+    connectorRow.provider = "SHOPIFY_SHOP_CAMPAIGNS";
+    connectorRow.externalAccountId = null;
+    connectorRow.accessTokenEnc = null;
+    const fetchShopCampaigns = vi.fn(async () => [
+      {
+        campaignId: "shop-campaign:Autumn prospecting",
+        campaignName: "Autumn prospecting",
+        spend: "23.45",
+        impressions: 0,
+        clicks: 0,
+        conversions: 4,
+        revenue: "167.00",
+      },
+    ]);
+
+    const outcome = await ingestConnectorDay("conn_1", DAY, {
+      shopCampaignsFetcher: fetchShopCampaigns,
+    });
+
+    expect(outcome).toEqual({ kind: "synced", changed: true, rowsWritten: 1 });
+    expect(fetchShopCampaigns).toHaveBeenCalledWith("merchant.myshopify.com", DAY);
+    expect(adSpendRows).toEqual([
+      expect.objectContaining({
+        shopId: "shop_1",
+        channel: "SHOP_CAMPAIGNS",
+        campaignId: "shop-campaign:Autumn prospecting",
+        platformConversions: 4,
+      }),
+    ]);
+    expect(String(adSpendRows[0]!.spend)).toBe("23.45");
+    expect(String(adSpendRows[0]!.platformRevenue)).toBe("167");
+  });
+
+  it("records no Shop Campaigns as a completed empty source, not a missing sync", async () => {
+    connectorRow.provider = "SHOPIFY_SHOP_CAMPAIGNS";
+    const outcome = await ingestConnectorDay("conn_1", DAY, {
+      shopCampaignsFetcher: vi.fn(async () => []),
+    });
+
+    expect(outcome).toEqual({ kind: "synced", changed: true, rowsWritten: 0 });
+    expect(adSpendRows).toHaveLength(0);
+    expect(windowFor("conn_1", DATE)).toMatchObject({
+      status: "SYNCED",
+      rowsWritten: 0,
+    });
+    expect(connectorRow.lastSyncedAt).toBeInstanceOf(Date);
+  });
+
+  it("persists an observed zero-spend Shop Campaign row rather than treating it as absent", async () => {
+    connectorRow.provider = "SHOPIFY_SHOP_CAMPAIGNS";
+    await ingestConnectorDay("conn_1", DAY, {
+      shopCampaignsFetcher: vi.fn(async () => [
+        {
+          campaignId: "shop-campaign:Paused",
+          campaignName: "Paused",
+          spend: "0.00",
+          impressions: 0,
+          clicks: 0,
+          conversions: 0,
+          revenue: "0.00",
+        },
+      ]),
+    });
+
+    expect(adSpendRows).toHaveLength(1);
+    expect(String(adSpendRows[0]!.spend)).toBe("0");
+    expect(windowFor("conn_1", DATE)?.rowsWritten).toBe(1);
+  });
+
+  it("replaces a late ShopifyQL restatement without touching another tenant's spend", async () => {
+    connectorRow.provider = "SHOPIFY_SHOP_CAMPAIGNS";
+    adSpendRows.push({
+      shopId: "shop_other",
+      channel: "SHOP_CAMPAIGNS",
+      date: DATE,
+      campaignId: "other-store",
+      spend: "99.00",
+    });
+    const fetchShopCampaigns = vi
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          campaignId: "shop-campaign:Autumn",
+          campaignName: "Autumn",
+          spend: "10.00",
+          impressions: 0,
+          clicks: 0,
+          conversions: 1,
+          revenue: "40.00",
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          campaignId: "shop-campaign:Autumn",
+          campaignName: "Autumn",
+          spend: "12.00",
+          impressions: 0,
+          clicks: 0,
+          conversions: 1,
+          revenue: "40.00",
+        },
+      ]);
+
+    await ingestConnectorDay("conn_1", DAY, { shopCampaignsFetcher: fetchShopCampaigns });
+    const changedAt = windowFor("conn_1", DATE)!.lastChangedAt;
+    await ingestConnectorDay("conn_1", DAY, {
+      shopCampaignsFetcher: fetchShopCampaigns,
+      now: () => new Date("2026-08-11T00:00:00Z"),
+    });
+
+    expect(String(adSpendRows.find((row) => row.shopId === "shop_1")!.spend)).toBe("12");
+    expect(adSpendRows.find((row) => row.shopId === "shop_other")).toMatchObject({
+      campaignId: "other-store",
+      spend: "99.00",
+    });
+    expect(windowFor("conn_1", DATE)!.lastChangedAt).not.toBe(changedAt);
+  });
+
+  it("re-polls a stale Shop Campaigns window without rewriting unchanged data", async () => {
+    connectorRow.provider = "SHOPIFY_SHOP_CAMPAIGNS";
+    const fetchShopCampaigns = vi.fn(async () => [
+      {
+        campaignId: "shop-campaign:Autumn",
+        campaignName: "Autumn",
+        spend: "10.00",
+        impressions: 0,
+        clicks: 0,
+        conversions: 1,
+        revenue: "40.00",
+      },
+    ]);
+
+    await ingestConnectorDay("conn_1", DAY, { shopCampaignsFetcher: fetchShopCampaigns });
+    const changedAt = windowFor("conn_1", DATE)!.lastChangedAt;
+    invalidateAnalyticsCache.mockClear();
+
+    const outcome = await ingestConnectorDay("conn_1", DAY, {
+      shopCampaignsFetcher: fetchShopCampaigns,
+      now: () => new Date("2026-08-11T00:00:00Z"),
+    });
+
+    expect(outcome).toEqual({ kind: "synced", changed: false, rowsWritten: 0 });
+    expect(windowFor("conn_1", DATE)).toMatchObject({
+      attempts: 2,
+      lastChangedAt: changedAt,
+    });
+    expect(invalidateAnalyticsCache).not.toHaveBeenCalled();
+  });
+
+  it("records a temporary ShopifyQL failure for the scheduler to retry", async () => {
+    connectorRow.provider = "SHOPIFY_SHOP_CAMPAIGNS";
+    await expect(
+      ingestConnectorDay("conn_1", DAY, {
+        shopCampaignsFetcher: vi.fn(async () => {
+          throw new Error("ShopifyQL temporarily unavailable");
+        }),
+      }),
+    ).rejects.toThrow("temporarily unavailable");
+
+    expect(connectorRow).toMatchObject({ status: "CONNECTED" });
+    expect(windowFor("conn_1", DATE)).toMatchObject({ status: "FAILED" });
+  });
+
+  it("pauses on missing ShopifyQL approval, then supports an explicit retry", async () => {
+    connectorRow.provider = "SHOPIFY_SHOP_CAMPAIGNS";
+    const blocked = new Error(
+      "Level 2 protected customer data is not approved; request access",
+    );
+    await expect(
+      ingestConnectorDay("conn_1", DAY, {
+        shopCampaignsFetcher: vi.fn(async () => {
+          throw blocked;
+        }),
+      }),
+    ).rejects.toBeInstanceOf(ShopCampaignsAccessError);
+    expect(connectorRow.status).toBe("ERROR");
+    expect(windowFor("conn_1", DATE)).toMatchObject({ status: "FAILED" });
+
+    connectorRow.status = "ERROR";
+    const retry = await retryShopCampaignsConnector(
+      "shop_1",
+      new Date("2026-08-10T12:00:00Z"),
+      { shopCampaignsFetcher: vi.fn(async () => []) },
+    );
+    expect(connectorRow.status).toBe("CONNECTED");
+    expect(retry).toMatchObject({ ok: true });
+  });
+
+  it("pauses rather than retrying a report-access denial as a financial zero", async () => {
+    connectorRow.provider = "SHOPIFY_SHOP_CAMPAIGNS";
+    await expect(
+      ingestConnectorDay("conn_1", DAY, {
+        shopCampaignsFetcher: vi.fn(async () => {
+          throw new Error("read_reports access scope is required");
+        }),
+      }),
+    ).rejects.toBeInstanceOf(ShopCampaignsAccessError);
+
+    expect(connectorRow).toMatchObject({ status: "ERROR" });
+    expect(String(connectorRow.lastError)).toContain("reports access");
+    expect(windowFor("conn_1", DATE)).toMatchObject({ status: "FAILED" });
   });
 });

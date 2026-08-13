@@ -4,6 +4,7 @@ export type Channel =
   | "FACEBOOK"
   | "GOOGLE"
   | "TIKTOK"
+  | "SHOP_CAMPAIGNS"
   | "EMAIL"
   | "ORGANIC_SEARCH"
   | "DIRECT"
@@ -15,12 +16,14 @@ export const PAID_CHANNELS: readonly Channel[] = [
   "FACEBOOK",
   "GOOGLE",
   "TIKTOK",
+  "SHOP_CAMPAIGNS",
 ];
 
 export const CHANNEL_LABELS: Record<Channel, string> = {
   FACEBOOK: "Facebook Ads",
   GOOGLE: "Google Ads",
   TIKTOK: "TikTok Ads",
+  SHOP_CAMPAIGNS: "Shop Campaigns",
   EMAIL: "Email",
   ORGANIC_SEARCH: "Organic Search",
   DIRECT: "Direct",

@@ -10,7 +10,10 @@ import {
 import { redactCustomerEverywhere } from "~/lib/customer-erasure.server";
 import { billingKeyIsAnnual } from "~/lib/plans";
 import { capabilitiesForShop, parseScopes } from "~/lib/scopes";
-import { synchroniseShopifyShippingConnector } from "~/lib/provision.server";
+import {
+  synchroniseShopifyShippingConnector,
+  synchroniseShopifyShopCampaignsConnector,
+} from "~/lib/provision.server";
 import {
   adminClientForShop,
   hydrateInventoryItemProducts,
@@ -375,6 +378,7 @@ export async function processAppScopesUpdateWebhook({
     },
   });
   await synchroniseShopifyShippingConnector(shop.id, granted);
+  await synchroniseShopifyShopCampaignsConnector(shop.id, granted);
   if (orderHistoryAccessChanged) {
     // Managed installation grants this scope without reinstalling. Claim the
     // new import from the webhook so a merchant does not need to discover and

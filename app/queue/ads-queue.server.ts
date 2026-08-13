@@ -26,6 +26,7 @@ import {
   AdProviderAuthError,
   AdProviderRateLimitError,
 } from "~/lib/ad-platforms/types.server";
+import { ShopCampaignsAccessError } from "~/lib/shop-campaigns.server";
 import { recomputeShopProfitability } from "~/lib/recompute.server";
 import {
   closeQueueRedis,
@@ -36,7 +37,7 @@ import {
 /**
  * The BullMQ topology for continuous ad-account polling.
  *
- * Three ingestion queues — one per platform, because rate limits are a
+ * Four ingestion queues — one per source, because rate limits are a
  * per-platform fact and BullMQ's limiter is per-queue. One scheduler queue
  * whose single repeatable job re-plans every connector each cycle from the
  * Postgres ledger; the plan, not the queue, is the source of truth, so Redis
@@ -61,12 +62,14 @@ const PROVIDER_QUEUES: Record<
   [ConnectorProvider.FACEBOOK_ADS]: "ads-meta",
   [ConnectorProvider.GOOGLE_ADS]: "ads-google",
   [ConnectorProvider.TIKTOK_ADS]: "ads-tiktok",
+  [ConnectorProvider.SHOPIFY_SHOP_CAMPAIGNS]: "ads-shopify-campaigns",
 };
 
 const PROVIDERS = [
   ConnectorProvider.FACEBOOK_ADS,
   ConnectorProvider.GOOGLE_ADS,
   ConnectorProvider.TIKTOK_ADS,
+  ConnectorProvider.SHOPIFY_SHOP_CAMPAIGNS,
 ] as const;
 
 /**
@@ -79,6 +82,7 @@ const PROVIDER_LIMITERS: Record<string, { max: number; duration: number }> = {
   "ads-meta": { max: 20, duration: 60_000 },
   "ads-google": { max: 15, duration: 60_000 },
   "ads-tiktok": { max: 20, duration: 60_000 },
+  "ads-shopify-campaigns": { max: 10, duration: 60_000 },
 };
 
 const WORKER_CONCURRENCY = 3;
@@ -258,6 +262,11 @@ function ingestProcessor(
         // Retrying an expired token six times cannot un-expire it. The
         // connector is already marked ERROR; the ledger row stays unsynced
         // and will re-enqueue automatically once the merchant reconnects.
+        throw new UnrecoverableError(error.message);
+      }
+      if (error instanceof ShopCampaignsAccessError) {
+        // The connector is marked ERROR and deliberately stays paused until a
+        // merchant retries after Shopify grants the required app approval.
         throw new UnrecoverableError(error.message);
       }
       throw error;

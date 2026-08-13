@@ -264,6 +264,7 @@ const CHANNEL_ORDER: Channel[] = [
   "FACEBOOK",
   "GOOGLE",
   "TIKTOK",
+  "SHOP_CAMPAIGNS",
   "EMAIL",
   "ORGANIC_SEARCH",
   "DIRECT",

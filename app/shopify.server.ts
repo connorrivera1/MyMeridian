@@ -287,8 +287,11 @@ function buildShopify() {
 
         // Every install needs a Shop row and a starting set of cost rules,
         // otherwise the first dashboard load has nothing to reason about.
-        const { ensureShopProvisioned, synchroniseShopifyShippingConnector } =
-          await import("./lib/provision.server");
+        const {
+          ensureShopProvisioned,
+          synchroniseShopifyShippingConnector,
+          synchroniseShopifyShopCampaignsConnector,
+        } = await import("./lib/provision.server");
         const shop = await ensureShopProvisioned(session.shop);
 
         const hadAllOrders = parseScopes(shop.grantedScopes).has(
@@ -320,6 +323,7 @@ function buildShopify() {
           },
         });
         await synchroniseShopifyShippingConnector(shop.id, session.scope);
+        await synchroniseShopifyShopCampaignsConnector(shop.id, session.scope);
 
         // Webhooks only describe what happens next, so without a historical
         // import the merchant's first view of Meridian is a wall of zeroes.

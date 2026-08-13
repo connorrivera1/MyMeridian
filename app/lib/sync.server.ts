@@ -105,6 +105,17 @@ export function deriveChannel(signals: AttributionSignals): {
     };
   }
   if (/tiktok/.test(source)) return { channel: Channel.TIKTOK, utm };
+  // `shop_campaign_insights` is an aggregate report: it does not expose
+  // order ids, so it must never rewrite an otherwise attributed order to make
+  // the aggregate line up. Only an explicit paid Shop Campaign UTM is enough
+  // to place an order in this channel. Plain `shop` traffic remains governed
+  // by the normal referral/direct logic below.
+  if (
+    /shop[-_ ]?campaign/.test(source) ||
+    (source === "shop" && /^(cpc|paid|ads?)$/.test(medium))
+  ) {
+    return { channel: Channel.SHOP_CAMPAIGNS, utm };
+  }
   if (/klaviyo|mailchimp|email|newsletter/.test(source) || medium === "email") {
     return { channel: Channel.EMAIL, utm };
   }

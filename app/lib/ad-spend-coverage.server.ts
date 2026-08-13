@@ -10,6 +10,7 @@ const PAID_MARKETING_PROVIDERS = [
   ConnectorProvider.FACEBOOK_ADS,
   ConnectorProvider.GOOGLE_ADS,
   ConnectorProvider.TIKTOK_ADS,
+  ConnectorProvider.SHOPIFY_SHOP_CAMPAIGNS,
 ] as const;
 
 type PaidConnectorState = Pick<Connector, "status" | "lastSyncedAt">;

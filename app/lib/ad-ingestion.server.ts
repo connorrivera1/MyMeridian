@@ -1,5 +1,6 @@
 import {
   AdSyncWindowState,
+  Channel,
   ConnectorProvider,
   ConnectorStatus,
   Prisma,
@@ -14,6 +15,14 @@ import { convertCents, fxRate } from "~/lib/fx.server";
 import { googleAdsAdapter, refreshGoogleAccessToken } from "~/lib/ad-platforms/google.server";
 import { metaAdapter } from "~/lib/ad-platforms/meta.server";
 import { tiktokAdapter } from "~/lib/ad-platforms/tiktok.server";
+import {
+  fetchShopCampaignDailySpend,
+  isShopCampaignsProtectedDataError,
+  isShopCampaignsReportsAccessError,
+  ShopCampaignsAccessError,
+  SHOP_CAMPAIGNS_PROTECTED_DATA_ERROR,
+  SHOP_CAMPAIGNS_REPORT_ACCESS_ERROR,
+} from "~/lib/shop-campaigns.server";
 import {
   AdProviderAuthError,
   AdProviderRateLimitError,
@@ -53,12 +62,17 @@ export const PAID_AD_PROVIDERS = [
   ConnectorProvider.FACEBOOK_ADS,
   ConnectorProvider.GOOGLE_ADS,
   ConnectorProvider.TIKTOK_ADS,
+  ConnectorProvider.SHOPIFY_SHOP_CAMPAIGNS,
 ] as const;
 
 export interface IngestDeps {
   adapters?: Partial<Record<ConnectorProvider, AdPlatformAdapter>>;
   fetcher?: typeof fetch;
   now?: () => Date;
+  shopCampaignsFetcher?: (
+    shopDomain: string,
+    day: string,
+  ) => Promise<ProviderDailySpend[]>;
 }
 
 export type IngestOutcome =
@@ -70,6 +84,11 @@ function truncateError(error: unknown): string {
     0,
     MAX_ERROR_LENGTH,
   );
+}
+
+function decimal(value: string): string {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed.toFixed(2) : "0.00";
 }
 
 /**
@@ -146,6 +165,32 @@ function toAdSpendRows(
   }));
 }
 
+function toShopCampaignSpendRows(
+  shopId: string,
+  day: string,
+  rows: readonly ProviderDailySpend[],
+) {
+  const date = new Date(`${day}T00:00:00.000Z`);
+  return rows.map((row) => ({
+    shopId,
+    date,
+    channel: Channel.SHOP_CAMPAIGNS,
+    campaignId: row.campaignId,
+    campaignName: row.campaignName,
+    // ShopifyQL documents every Shop Campaign money metric in the store's
+    // currency, so unlike an external ad account no FX conversion is applied.
+    spend: new Prisma.Decimal(decimal(row.spend)),
+    impressions: 0,
+    clicks: 0,
+    // This is Shopify's campaign-attributed customer count, not a Meridian
+    // order count. It remains separate from CAC's first-order cohort.
+    platformConversions: row.conversions,
+    // Shopify calls this campaign sales. It is a platform claim and stays
+    // separate from Meridian's order-derived, refund-aware revenue.
+    platformRevenue: new Prisma.Decimal(decimal(row.revenue)),
+  }));
+}
+
 async function markWindowFailed(
   connector: Connector,
   day: string,
@@ -186,7 +231,9 @@ export async function ingestConnectorDay(
 
   const connector = await prisma.connector.findUnique({
     where: { id: connectorId },
-    include: { shop: { select: { id: true, currency: true, isDemo: true } } },
+    include: {
+      shop: { select: { id: true, domain: true, currency: true, isDemo: true } },
+    },
   });
   if (!connector) return { kind: "skipped", reason: "connector missing" };
   if (connector.shop.isDemo) {
@@ -194,6 +241,9 @@ export async function ingestConnectorDay(
   }
   if (connector.status === ConnectorStatus.DISCONNECTED) {
     return { kind: "skipped", reason: "connector disconnected" };
+  }
+  if (connector.provider === ConnectorProvider.SHOPIFY_SHOP_CAMPAIGNS) {
+    return ingestShopCampaignsDay(connector, day, now, deps);
   }
   if (!connector.externalAccountId) {
     return { kind: "skipped", reason: "no ad account selected" };
@@ -338,6 +388,119 @@ export async function ingestConnectorDay(
 }
 
 /**
+ * Ingest the ShopifyQL Shop Campaigns source without an additional OAuth
+ * credential. Its daily replacement semantics are intentionally identical to
+ * the other spend connectors: a late Shopify restatement replaces one complete
+ * channel-day and updates the durable sync ledger in the same transaction.
+ */
+async function ingestShopCampaignsDay(
+  connector: Connector & {
+    shop: { id: string; currency: string; isDemo: boolean; domain?: string };
+  },
+  day: string,
+  now: Date,
+  deps: IngestDeps,
+): Promise<IngestOutcome> {
+  const domain = connector.shop.domain;
+  if (!domain) {
+    const error = new Error("Shop Campaigns connector has no Shopify domain");
+    await markWindowFailed(connector, day, error);
+    throw error;
+  }
+
+  try {
+    const fetched = await (deps.shopCampaignsFetcher ?? fetchShopCampaignDailySpend)(
+      domain,
+      day,
+    );
+    const hash = contentHashFor(fetched);
+    const date = new Date(`${day}T00:00:00.000Z`);
+    const existing = await prisma.adSyncWindow.findUnique({
+      where: { connectorId_day: { connectorId: connector.id, day: date } },
+    });
+
+    if (
+      existing?.status === AdSyncWindowState.SYNCED &&
+      existing.contentHash === hash
+    ) {
+      await prisma.adSyncWindow.update({
+        where: { id: existing.id },
+        data: { syncedAt: now, attempts: { increment: 1 }, lastError: null },
+      });
+      await prisma.connector.update({
+        where: { id: connector.id },
+        data: { lastSyncedAt: now, lastError: null },
+      });
+      return { kind: "synced", changed: false, rowsWritten: 0 };
+    }
+
+    const rows = toShopCampaignSpendRows(connector.shopId, day, fetched);
+    await prisma.$transaction(async (tx) => {
+      await tx.adSpend.deleteMany({
+        where: {
+          shopId: connector.shopId,
+          channel: Channel.SHOP_CAMPAIGNS,
+          date,
+        },
+      });
+      if (rows.length > 0) await tx.adSpend.createMany({ data: rows });
+      await tx.adSyncWindow.upsert({
+        where: { connectorId_day: { connectorId: connector.id, day: date } },
+        create: {
+          shopId: connector.shopId,
+          connectorId: connector.id,
+          day: date,
+          status: AdSyncWindowState.SYNCED,
+          attempts: 1,
+          rowsWritten: rows.length,
+          contentHash: hash,
+          syncedAt: now,
+          lastChangedAt: now,
+        },
+        update: {
+          status: AdSyncWindowState.SYNCED,
+          attempts: { increment: 1 },
+          rowsWritten: rows.length,
+          contentHash: hash,
+          syncedAt: now,
+          lastChangedAt: now,
+          lastError: null,
+        },
+      });
+      await tx.connector.update({
+        where: { id: connector.id },
+        data: {
+          status: ConnectorStatus.CONNECTED,
+          lastSyncedAt: now,
+          lastError: null,
+        },
+      });
+    });
+    invalidateAnalyticsCache();
+    return { kind: "synced", changed: true, rowsWritten: rows.length };
+  } catch (error) {
+    const protectedDataBlocked = isShopCampaignsProtectedDataError(error);
+    const reportsAccessBlocked = isShopCampaignsReportsAccessError(error);
+    const message = protectedDataBlocked
+      ? SHOP_CAMPAIGNS_PROTECTED_DATA_ERROR
+      : reportsAccessBlocked
+        ? SHOP_CAMPAIGNS_REPORT_ACCESS_ERROR
+        : truncateError(error);
+    await markWindowFailed(connector, day, new Error(message));
+    if (protectedDataBlocked || reportsAccessBlocked) {
+      // Approval does not alter an OAuth scope. Stop background retries until
+      // a merchant retries after the publisher's Shopify approval changes.
+      await prisma.connector.update({
+        where: { id: connector.id },
+        data: { status: ConnectorStatus.ERROR, lastError: message },
+      });
+      throw new ShopCampaignsAccessError(message);
+    }
+    throw error;
+  }
+}
+
+/**
  * Ledger rows for every day the horizon says this connector owes. Idempotent;
  * the scheduler calls it each cycle so brand-new days and freshly connected
  * accounts both materialise as visible PENDING work.
@@ -421,12 +584,77 @@ export async function listPollableConnectors(): Promise<
 > {
   return prisma.connector.findMany({
     where: {
-      provider: { in: [...PAID_AD_PROVIDERS] },
-      status: { in: [ConnectorStatus.CONNECTED, ConnectorStatus.ERROR] },
-      externalAccountId: { not: null },
-      accessTokenEnc: { not: null },
       shop: { isDemo: false, uninstalledAt: null },
+      OR: [
+        {
+          provider: {
+            in: [
+              ConnectorProvider.FACEBOOK_ADS,
+              ConnectorProvider.GOOGLE_ADS,
+              ConnectorProvider.TIKTOK_ADS,
+            ],
+          },
+          status: { in: [ConnectorStatus.CONNECTED, ConnectorStatus.ERROR] },
+          externalAccountId: { not: null },
+          accessTokenEnc: { not: null },
+        },
+        {
+          provider: ConnectorProvider.SHOPIFY_SHOP_CAMPAIGNS,
+          status: ConnectorStatus.CONNECTED,
+        },
+      ],
     },
     select: { id: true, shopId: true, provider: true },
   });
+}
+
+/** Retry the ShopifyQL source after the publisher's Level 2 approval changes. */
+export async function retryShopCampaignsConnector(
+  shopId: string,
+  now = new Date(),
+  deps: IngestDeps = {},
+) {
+  const connector = await prisma.connector.findUnique({
+    where: {
+      shopId_provider: {
+        shopId,
+        provider: ConnectorProvider.SHOPIFY_SHOP_CAMPAIGNS,
+      },
+    },
+    select: { id: true },
+  });
+  if (!connector) {
+    return {
+      ok: false as const,
+      message: "Shop Campaigns is not configured for this store.",
+    };
+  }
+
+  await prisma.connector.update({
+    where: { id: connector.id },
+    data: { status: ConnectorStatus.CONNECTED, lastError: null },
+  });
+  try {
+    const result = await ingestConnectorDay(
+      connector.id,
+      now.toISOString().slice(0, 10),
+      { ...deps, now: () => now },
+    );
+    return result.kind === "synced"
+      ? {
+          ok: true as const,
+          message: "Shop Campaigns reporting is active.",
+        }
+      : { ok: false as const, message: result.reason };
+  } catch {
+    const refreshed = await prisma.connector.findUnique({
+      where: { id: connector.id },
+      select: { lastError: true },
+    });
+    return {
+      ok: false as const,
+      message:
+        refreshed?.lastError ?? "Shop Campaigns could not be reconnected.",
+    };
+  }
 }

@@ -68,7 +68,14 @@ describe("ad-spend coverage", () => {
     expect(findMany).toHaveBeenCalledWith({
       where: {
         shopId: "shop_1",
-        provider: { in: ["FACEBOOK_ADS", "GOOGLE_ADS", "TIKTOK_ADS"] },
+        provider: {
+          in: [
+            "FACEBOOK_ADS",
+            "GOOGLE_ADS",
+            "TIKTOK_ADS",
+            "SHOPIFY_SHOP_CAMPAIGNS",
+          ],
+        },
       },
       select: { status: true, lastSyncedAt: true },
     });

@@ -40,10 +40,10 @@ the ordered path from here to a submitted listing.
 | `npm run ci`                      | **Passes** (2026-08-11): typecheck, coverage thresholds and production build.                                                                                                                                                                                                                                                                                                                                    |
 | `npx vitest run`                  | **1,173 passed, 74 skipped**. The 74 skipped cases are opt-in PostgreSQL integration tests; the explicit real-PostgreSQL run passes **74/74** after applying all 34 migrations to a fresh database.                                                                                                                                                                                                              |
 | Billing enforcement               | **Implemented and tested.** `resolvePlan` reads/caches Billing API state, the app layout redirects stores without an active plan, `planAllows` enforces paid capabilities, and `/app/plan` calls `billing.request`. A real Shopify development-store test charge completed its approval and return flow without moving money.                                                                                    |
-| `npx shopify app config validate` | **Passes.** On CLI 4.x, `app config` has `link`, `pull`, `use`, and `validate`; **there is no `config push`**. Config is published by `shopify app deploy` because `include_config_on_deploy = true`.                                                                                                                                                                                                            |
-| Docker / flyctl                   | **Installed.** Docker CLI 29.7.1 and flyctl 0.4.79 are present. The image was previously built and booted locally (§11); the Docker daemon was stopped during this verification. flyctl is not authenticated (`fly auth whoami` returns `no access token available`).                                                                                                                                            |
+| `npx shopify app config validate --config production` | A production-only config now pins `https://mymeridian.io`, `/auth/callback`, relative webhooks and `automatically_update_urls_on_dev = false`. On CLI 4.x, config is published only by an explicitly authorized `shopify app deploy --config production`; there is no `config push`. |
+| Docker / flyctl                   | **Installed and authenticated.** Docker CLI 29.7.1 and flyctl 0.4.79 are present. Both Fly configuration files validate. The image was previously built and booted locally (§11); the Docker daemon was stopped during this verification.                                                                                                                                                                           |
 | Shopify development acceptance    | **Passed for the currently testable core path.** The app installed and rendered embedded in Shopify Admin; onboarding persisted; all six monthly/annual prices rendered; Starter test billing returned active; and a zero-order store completed a full-history import with `read_all_orders`. Shopify Shipping correctly paused with an actionable error because the remaining ShopifyQL PCD approval is absent. |
-| Production state                  | `Dockerfile`, `.dockerignore`, and `fly.toml` exist, but there is no Fly app, managed Postgres cluster, production origin, or deployment.                                                                                                                                                                                                                                                                        |
+| Production state                  | Empty `mymeridian-prod` and `mymeridian-staging` Fly app records, included ingress IPs and three pending hostname certificates exist. There is no Machine, Managed Postgres cluster, Redis database, deployed origin or paid Fly resource. GoDaddy routing remains unchanged.                                                                                                                                       |
 
 The code is in good shape. Nothing here blocks starting deployment work.
 
@@ -51,19 +51,18 @@ The code is in good shape. Nothing here blocks starting deployment work.
 
 ## 2. External blocker — production origin
 
-Still true: `shopify.app.toml` has
-`application_url = "https://shopify.dev/apps/default-app-home"`, `redirect_urls`
-points at the same placeholder host, and every webhook `uri` is relative and
-resolves against it. So the three mandatory compliance webhooks and every other
-relative webhook subscription currently resolve to a host Shopify cannot
-deliver to. Shopify separately rejects an `application_url`
-containing the word "Shopify", so this exact string fails twice over.
+The default `shopify.app.toml` remains the development/tunnel configuration and
+still contains Shopify CLI's placeholder. It must never be deployed to the
+production app. `shopify.app.production.toml` is the production configuration:
+it pins `https://mymeridian.io`, the real `/auth/callback`, relative webhook
+paths and disabled dev URL rewriting.
 
-The deployment files now exist, but their current Fly slug is provisional and
-there is still no deployed origin. Do not replace the placeholder until the app
-name is decided and the first Fly deployment returns the real stable HTTPS
-origin. `SHOPIFY_APP_URL` in the local `.env` remains
-`http://localhost:3000`; `.shopify/` contains only the CLI project link.
+The domain is controlled and currently serves GoDaddy's temporary page. The
+two empty Fly app records and hostname certificates are reserved, but there is
+still no Machine, managed Postgres cluster, Redis database or deployed
+MyMeridian origin, so the production config must not be released yet. Local
+`.env` remains a development concern and is never a production configuration
+source.
 
 This blocks production OAuth callbacks and webhook delivery. It is not the only
 critical path: Shopify access and App Store registration work can proceed before
@@ -289,9 +288,10 @@ fi
 fly logs --app "$MERIDIAN_FLY_APP"          # expect no boot error
 
 # 6. Point the app config at it. This writes to the Partner Dashboard.
-#    Edit shopify.app.toml first (see below), validate, inspect the diff, then:
-npx shopify app config validate
-npx shopify app deploy --message "Real production origin"
+#    Validate the dedicated production config, inspect it, then only after the
+#    explicit Shopify-config authorization:
+npx shopify app config validate --config production
+npx shopify app deploy --config production --message "Real production origin"
 ```
 
 Charge mode has no operator override. Every production charge queries
@@ -308,13 +308,13 @@ PgBouncer `DATABASE_URL` used by the running app. Copy the separate
 to `DATABASE_URL` for `prisma migrate deploy`. Migrations and their advisory
 locks must not run through the pooled endpoint.
 
-### The `shopify.app.toml` edit in step 6
+### The production Shopify configuration in step 6
 
 ```toml
-application_url = "<production-origin>"
+application_url = "https://mymeridian.io"
 
 [auth]
-redirect_urls = [ "<production-origin>/auth/callback" ]
+redirect_urls = [ "https://mymeridian.io/auth/callback" ]
 ```
 
 `/auth/callback` and not `/api/auth` — `authPathPrefix` is `/auth`, and the
@@ -325,12 +325,11 @@ The webhook `uri` values are relative and need no edit at all. That is the whole
 point of them being relative, and it is why fixing `application_url` fixes all
 relative webhook destinations at once.
 
-**Change one more line in the production config at the same time, or this will
-come undone:**
+The production config also locks URL rewriting off:
 
 ```toml
 [build]
-automatically_update_urls_on_dev = false   # keep true until a production origin exists
+automatically_update_urls_on_dev = false
 ```
 
 While it is `true`, `shopify app dev` rewrites `application_url` and
@@ -341,11 +340,10 @@ Phase 2, is a second linked config — `shopify app config link` writes
 `shopify.app.<name>.toml` and `shopify app config use` switches between them —
 so the dev tunnel never touches the production file.
 
-For now the canonical config deliberately remains `true`: changing it while the
-URL is still the placeholder would break the convenient tunnel rewrite used by
-`shopify app dev` without protecting any real production URL. Once production
-exists, either turn it off in the production config or keep a separate linked
-development config.
+This split is now implemented: `shopify.app.toml` remains the development
+configuration with tunnel rewriting, and `shopify.app.production.toml` has the
+stable origin with rewriting disabled. Every production command must pass
+`--config production`; local development continues to use the default config.
 
 `include_config_on_deploy = true` is already set, which is what makes
 `shopify app deploy` publish `application_url` and the webhook subscriptions

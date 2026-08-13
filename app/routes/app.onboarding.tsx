@@ -162,7 +162,7 @@ export default function Onboarding() {
       <Banner>
         <strong>{data.shopName} is connected.</strong>{" "}
         {data.syncStatus === "COMPLETE"
-          ? "Your first figures are ready."
+          ? `Your first figures are ready. ${data.missingCostLines > 0 ? "Start with the orders and products already visible, then improve the result by filling the missing cost inputs below." : "You can review what is making and losing money before connecting any optional source."}`
           : `The Shopify import is ${data.syncStage ?? "still running"}; figures will keep filling in.`}
       </Banner>
       <div className="grid cols-4">
@@ -189,7 +189,7 @@ export default function Onboarding() {
       </div>
       <Card
         title="Confirm the Costs Behind Your Profit"
-        hint="These install defaults prevent fake 100% margins. Replace them with your real figures now; every imported order is recomputed before you choose a plan."
+        hint="These are configured estimates, not measured costs. Set them now to avoid false 100% margins; later, connect a carrier or ad source only when you want Meridian to replace an estimate or include that spend."
       >
         {result?.error && <Banner tone="warn">{result.error}</Banner>}
         <Form method="post" className="stack">

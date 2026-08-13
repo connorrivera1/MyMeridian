@@ -1,4 +1,6 @@
-app = "meridian-profit"
+# Internal production app slug. The shorter global Fly slug was unavailable;
+# the public origin remains https://mymeridian.io.
+app = "mymeridian-prod"
 primary_region = "iad"
 
 [build]
@@ -6,14 +8,17 @@ primary_region = "iad"
 [env]
   NODE_ENV = "production"
   PORT = "8080"
+  SHOPIFY_APP_URL = "https://mymeridian.io"
+  MERIDIAN_SUPPORT_EMAIL = "support@mymeridian.io"
+  MERIDIAN_SUPPORT_URL = "https://mymeridian.io/support"
   # app/lib/auth.server.ts throws at boot if this is "true" while
   # NODE_ENV=production. That is deliberate — the demo path bypasses Shopify
   # session authentication — so this is not an optional line.
   MERIDIAN_DEMO_MODE = "false"
 
 [deploy]
-  # Runs on a temporary machine before the new version takes traffic. There are
-  # The complete checked-in migration set is applied to a production database.
+  # Runs on a temporary machine before the new version takes traffic. The
+  # complete checked-in migration set is applied to a production database.
   # fly mpg attach gives runtime DATABASE_URL the pooled PgBouncer endpoint.
   # Prisma Migrate needs a direct session, so only this release process swaps
   # the separately configured direct URL into the name Prisma reads.
@@ -42,5 +47,7 @@ primary_region = "iad"
 
 [[vm]]
   cpu_kind = "shared"
-  cpus = 1
-  memory_mb = 1024
+  # Initial measured baseline selected in DEPLOYMENT_RUNBOOK.md. Deploying it
+  # is a paid action and still requires Connor's explicit authorization.
+  cpus = 2
+  memory_mb = 2048

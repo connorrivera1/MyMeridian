@@ -170,7 +170,7 @@ describe("listing media and the demo store it is captured from", () => {
     expect(publicCopy).not.toContain("true net profit");
   });
 
-  it("does not distribute the Fontshare binary whose license forbids font serving", () => {
+  it("uses Fontshare-hosted Satoshi without distributing its font binary", () => {
     const forbidden = [
       "app/fonts/satoshi/Satoshi-Variable.woff2",
       "public/fonts/Satoshi-Variable.woff2",
@@ -178,8 +178,8 @@ describe("listing media and the demo store it is captured from", () => {
     for (const relative of forbidden) {
       expect(
         existsSync(join(REPO_ROOT, relative)),
-        `${relative} is governed by the Fontshare FFL, which forbids uploading ` +
-          "or serving the font file without prior written consent",
+        `${relative} must stay out of the repository; Satoshi is served only ` +
+          "from Fontshare's licensed web-font delivery.",
       ).toBe(false);
     }
 
@@ -192,6 +192,7 @@ describe("listing media and the demo store it is captured from", () => {
       .map(read)
       .join("\n");
     expect(servedSource).not.toMatch(/Satoshi-Variable|fonts\/satoshi/i);
+    expect(read("public/landing.css")).toContain("api.fontshare.com/v2/css?f[]=satoshi");
   });
 
   it("reviewer instructions unlock the shipped gates without claiming dormant features", () => {

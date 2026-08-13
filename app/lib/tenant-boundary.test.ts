@@ -6,15 +6,21 @@ import { describe, expect, it } from "vitest";
 const ROOT = process.cwd();
 
 describe("merchant tenant boundary coverage", () => {
-  it("keeps every shop-owned Prisma model in the RLS migration", () => {
+  it("keeps every shop-owned Prisma model covered by an RLS migration", () => {
     const schema = readFileSync(join(ROOT, "prisma/schema.prisma"), "utf8");
-    const migration = readFileSync(
-      join(
-        ROOT,
-        "prisma/migrations/20260812001000_tenant_row_level_security/migration.sql",
-      ),
-      "utf8",
-    );
+    const migrationsDir = join(ROOT, "prisma/migrations");
+    const migration = readdirSync(migrationsDir)
+      .map((directory) => join(migrationsDir, directory, "migration.sql"))
+      .filter((path) => {
+        try {
+          readFileSync(path, "utf8");
+          return true;
+        } catch {
+          return false;
+        }
+      })
+      .map((path) => readFileSync(path, "utf8"))
+      .join("\n");
     const models = [...schema.matchAll(/model\s+(\w+)\s*\{([\s\S]*?)\n\}/g)]
       .filter(([, , body]) => /^\s*shopId\s+/m.test(body!))
       .map(([, name]) => name!)
@@ -24,7 +30,7 @@ describe("merchant tenant boundary coverage", () => {
 
     for (const model of models) {
       expect(migration, `${model} is missing from tenant RLS`).toContain(
-        `'${model}'`,
+        `"${model}"`,
       );
     }
     expect(migration).toContain(

@@ -276,7 +276,7 @@ describe("Orders ad-spend honesty", () => {
     expect(html).toContain("unconnected paid-marketing spend are excluded");
   });
 
-  it("separates missing COGS from reviewed cost models", () => {
+  it("separates missing COGS from configured estimates", () => {
     const data = orderViewData("connected");
     data.summary.missingCogsOrders = 1;
     data.summary.modeledCostOrders = 1;
@@ -293,7 +293,7 @@ describe("Orders ad-spend honesty", () => {
     );
 
     expect(html).toContain("missing Shopify COGS");
-    expect(html).toContain("acknowledgement but does not make them measured");
+    expect(html).toContain("confirming an estimate does not make it measured");
     expect(html).toContain(
       'title="Shopify COGS is missing; configured cost models are used"',
     );

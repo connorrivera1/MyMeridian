@@ -97,6 +97,6 @@ describe("Products ad-spend honesty", () => {
       "labelled Needs COGS instead of profitable or bleeding",
     );
     expect(html).toContain("Needs COGS");
-    expect(html).toContain("missing COGS · modeled costs");
+    expect(html).toContain("missing COGS · configured estimates");
   });
 });

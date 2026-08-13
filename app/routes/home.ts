@@ -2,6 +2,7 @@ import { redirect, type LoaderFunctionArgs } from "react-router";
 
 import landingHtml from "../../site/index.html?raw";
 import { looksLikeShopifyRequest, resolveWebUser } from "~/lib/auth.server";
+import { canonicalDeploymentRedirect } from "~/lib/public-origin.server";
 import { hasShopifyCredentials } from "~/shopify.server";
 
 /**
@@ -32,6 +33,9 @@ const LANDING = new Response(landingHtml, {
 });
 
 export async function loader({ request }: LoaderFunctionArgs) {
+  const canonicalRedirect = canonicalDeploymentRedirect(request);
+  if (canonicalRedirect) return canonicalRedirect;
+
   const url = new URL(request.url);
 
   /*

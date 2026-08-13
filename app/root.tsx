@@ -9,6 +9,7 @@ import {
 import type { LoaderFunctionArgs } from "react-router";
 
 import styles from "./design/meridian.css?url";
+import { canonicalDeploymentRedirect } from "./lib/public-origin.server";
 
 /**
  * App Bridge has to be resolved here rather than in the embedded layout.
@@ -19,6 +20,9 @@ import styles from "./design/meridian.css?url";
  * from an unauthenticated loader discloses nothing.
  */
 export async function loader({ request }: LoaderFunctionArgs) {
+  const canonicalRedirect = canonicalDeploymentRedirect(request);
+  if (canonicalRedirect) return canonicalRedirect;
+
   const { shouldLoadAppBridge } = await import("./lib/auth.server");
 
   return {
@@ -30,7 +34,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
 export const links = () => [
   { rel: "stylesheet", href: styles },
-  { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
+  {
+    rel: "icon",
+    href: "/favicon-globe.svg?v=20260812",
+    type: "image/svg+xml",
+  },
   { rel: "preconnect", href: "https://cdn.shopify.com" },
 ];
 
@@ -90,9 +98,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const appBridgeApiKey = data ? data.appBridgeApiKey : errorDocumentApiKey();
 
   return (
-    <html lang="en" data-theme="dark">
+    <html lang="en" data-theme="dark" suppressHydrationWarning>
       <head>
         <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
         {/* App Bridge, first script in the head as Shopify's embedded app
             requirements state. The meta tag must precede the script — App
             Bridge reads the client id from it at load, and without it session

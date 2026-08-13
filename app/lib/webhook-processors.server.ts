@@ -2,13 +2,14 @@ import prisma from "~/db.server";
 import { invalidateAnalyticsCache } from "~/data/analytics.server";
 import { reconcileConnectedCarriersForShop } from "~/integrations/shipping.server";
 import { planIdForSubscriptionName } from "~/lib/billing.server";
+import { billingKeyInfo, billingKeyIsAnnual } from "~/lib/plans";
+import { redeemFoundingMerchantEntitlement } from "~/lib/waitlist.server";
 import {
   buildCustomerExport,
   findPendingWebhookPersonalData,
   recordDataRequest,
 } from "~/lib/data-request.server";
 import { redactCustomerEverywhere } from "~/lib/customer-erasure.server";
-import { billingKeyIsAnnual } from "~/lib/plans";
 import { capabilitiesForShop, parseScopes } from "~/lib/scopes";
 import {
   synchroniseShopifyShippingConnector,
@@ -344,6 +345,17 @@ export async function processAppSubscriptionsWebhook({
     // already upserted above; immutable history must not append or mutate.
     update: {},
   });
+  const billingKey = billingKeyInfo((sub.name ?? "").trim().toLowerCase());
+  if (isActive && billingKey?.founding) {
+    // The benefit is not consumed when a request is made or a merchant opens
+    // Shopify's approval page. It becomes redeemed only on this durable,
+    // authenticated subscription event.
+    await redeemFoundingMerchantEntitlement({
+      shopId: shop.id,
+      billingKey: sub.name ?? "",
+      subscriptionId: sub.admin_graphql_api_id ?? null,
+    });
+  }
   console.info(
     `[billing] ${shopDomain}: subscription "${sub.name}" -> plan=${data.plan} status=${data.status}`,
   );

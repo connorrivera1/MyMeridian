@@ -213,8 +213,8 @@ export function ProductsView({ data }: { data: ProductsData }) {
         title={`Contribution Profit ${profitBasisTitle} by Product`}
         hint={
           data.adSpendCoverage.mode === "unavailable"
-            ? "After available shipping, payment-fee and pick-and-pack inputs. Those inputs can be modeled, missing COGS is flagged, and paid-marketing spend is unavailable and excluded."
-            : "After available recorded and modeled costs plus recorded ad spend. Missing COGS is flagged; spend from unconnected sources is excluded."
+            ? "After available shipping, payment-fee and pick-and-pack inputs. Those inputs can be configured estimates, missing COGS is flagged, and paid-marketing spend is unavailable and excluded."
+            : "After available measured costs and configured estimates plus recorded ad spend. Missing COGS is flagged; spend from unconnected sources is excluded."
         }
       >
         {chartData.length === 0 ? (
@@ -229,7 +229,7 @@ export function ProductsView({ data }: { data: ProductsData }) {
         hint={
           data.adSpendCoverage.mode === "unavailable"
             ? "Sorted by contribution before paid marketing. Ads shows a dash; contribution, margin and per-unit profit exclude that unavailable cost."
-            : "Sorted by contribution after available costs. Modeled costs and missing COGS are flagged; Ads includes synced-source spend only and unconnected paid-marketing spend is excluded."
+            : "Sorted by contribution after available costs. Configured estimates and missing COGS are flagged; Ads includes synced-source spend only and unconnected paid-marketing spend is excluded."
         }
         flush
       >
@@ -272,7 +272,7 @@ export function ProductsView({ data }: { data: ProductsData }) {
                         <div className="cell-sub">
                           {[
                             product.hasMissingCogs ? "missing COGS" : null,
-                            product.usesModeledCosts ? "modeled costs" : null,
+                            product.usesModeledCosts ? "configured estimates" : null,
                           ]
                             .filter(Boolean)
                             .join(" · ")}

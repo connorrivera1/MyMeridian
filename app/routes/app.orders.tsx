@@ -452,7 +452,7 @@ export function ProfitBreakdownDrawer({
               {order.usesModeledCosts && (
                 <span>
                   At least one fee, fulfilment cost, or overhead value is a
-                  configured model rather than a measured order cost.
+                  configured estimate rather than a measured order cost.
                 </span>
               )}
             </aside>
@@ -508,8 +508,8 @@ export function OrdersView({ data }: { data: OrdersData }) {
             <>
               {data.summary.modeledCostOrders.toLocaleString()} order
               {data.summary.modeledCostOrders === 1 ? " uses" : "s use"}{" "}
-              configured fee, fulfilment or overhead models; review records
-              acknowledgement but does not make them measured.
+              configured fee, fulfilment or overhead estimates; confirming an
+              estimate does not make it measured.
             </>
           )}
         </Banner>
@@ -645,7 +645,7 @@ export function OrdersView({ data }: { data: OrdersData }) {
         }.${
           data.adSpendCoverage.mode === "unavailable"
             ? " Profit and margin are before paid marketing; unavailable Ads cells show a dash."
-            : " Profit and margin are after available recorded and modeled costs; missing inputs and unconnected paid-marketing spend are excluded."
+            : " Profit and margin are after available measured costs and configured estimates; missing inputs and unconnected paid-marketing spend are excluded."
         }`}
         actions={
           <>

@@ -15,6 +15,7 @@ import {
   TRIAL_DAYS,
   ANNUAL_SUFFIX,
   CHANGE_SUFFIX,
+  FOUNDING_SUFFIX,
   NEXT_CYCLE_SUFFIX,
   USAGE_CAP_AMOUNT,
   USAGE_TERMS,
@@ -37,6 +38,7 @@ export {
   billingKeyInfo,
   changeKey,
   nextCycleKey,
+  foundingKey,
 } from "./lib/plans";
 
 /**
@@ -121,6 +123,33 @@ function buildShopify() {
                 amount: plan.annualPrice,
                 currencyCode: "USD",
                 interval: BillingInterval.Annual,
+              },
+              {
+                amount: USAGE_CAP_AMOUNT,
+                currencyCode: "USD",
+                interval: BillingInterval.Usage,
+                terms: USAGE_TERMS,
+              },
+            ],
+            trialDays: TRIAL_DAYS,
+          },
+        ],
+        // The only discounted Billing API plan. The action route selects this
+        // key only when an email-bound Founding Merchant entitlement has been
+        // reserved for the authenticated owner and shop. Shopify enforces the
+        // exact 15% / 12 monthly-interval limit on the subscription itself.
+        [
+          `${plan.id}${FOUNDING_SUFFIX}`,
+          {
+            lineItems: [
+              {
+                amount: plan.price,
+                currencyCode: "USD",
+                interval: BillingInterval.Every30Days,
+                discount: {
+                  value: { percentage: 0.15 },
+                  durationLimitInIntervals: 12,
+                },
               },
               {
                 amount: USAGE_CAP_AMOUNT,

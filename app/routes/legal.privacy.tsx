@@ -30,16 +30,51 @@ export default function Privacy() {
   const { contact } = useLoaderData<typeof loader>();
 
   return (
-    <LegalPage title="Privacy policy" updated={PRIVACY_UPDATED}>
+    <LegalPage title="Privacy Policy" updated={PRIVACY_UPDATED}>
       <p>
-        {APP_NAME} is a profitability dashboard for Shopify stores. It reads a
-        store&rsquo;s order, product, inventory and fulfilment records, combines
-        them with recorded costs and clearly identified configured assumptions,
-        and estimates the profit of each order and product. This policy
-        describes every category of data it touches and what happens to it.
+        {APP_NAME} is a pre-launch profitability dashboard for Shopify stores.
+        It reads a store&rsquo;s order, product, inventory and fulfilment records,
+        combines them with recorded costs and clearly identified configured
+        assumptions, and estimates the profit of each order and product. This
+        policy describes every category of data it touches and what happens to
+        it. The pre-launch waitlist portions apply when that public flow is
+        available; merchant-store data portions apply when the production
+        service launches.
       </p>
 
-      <h2>Who this policy is for</h2>
+      <h2>Pre-Launch Status</h2>
+      <p>
+        The planned production address is <strong>mymeridian.io</strong> and
+        staging is kept separately at <strong>staging.mymeridian.io</strong>.
+        The production domain is controlled but still serves a temporary page;
+        the MyMeridian service and staging hostname are not deployed there yet.
+        MyMeridian is intended to be published by its founder as an individual.
+        The planned support address is <strong>support@mymeridian.io</strong>;
+        controlled delivery, the final legal publisher identity and a monitored
+        contact will be confirmed before public distribution.
+      </p>
+
+      <h2>Pre-Launch Waitlist</h2>
+      <p>
+        A visitor may join the MyMeridian waitlist with an email address and,
+        optionally, a Shopify store URL. We also retain campaign attribution
+        supplied in the link they used (such as UTM source, medium and
+        campaign), solely to understand which marketing generated interest.
+        We do not collect names, passwords, Shopify access tokens, customer
+        data or other unnecessary personal information in this flow.
+      </p>
+      <p>
+        A successful signup creates an email-bound Founding Merchant eligibility
+        record. It records the 15% benefit for the first 12 months of an
+        eligible monthly plan if the offer is activated at launch; it is not a
+        public reusable coupon. We send the transactional waitlist confirmation
+        regardless of marketing consent once the configured sender is verified.
+        Product/newsletter mail is sent only to people who separately opt in,
+        includes an unsubscribe link, and does not suppress necessary account
+        or service notices.
+      </p>
+
+      <h2>Who This Policy Is For</h2>
       <p>
         The merchant who installs {APP_NAME} is our customer. Their
         store&rsquo;s shoppers are not — we hold shopper data only as a
@@ -47,7 +82,7 @@ export default function Privacy() {
         remains the controller of it.
       </p>
 
-      <h2>What we read from Shopify</h2>
+      <h2>What We Read from Shopify</h2>
       <p>
         {APP_NAME} requests these access scopes at install, and no others. Each
         is requested because a specific figure cannot be computed without it.
@@ -64,7 +99,8 @@ export default function Privacy() {
         <li>
           <code>read_all_orders</code> — extends that read-only order history
           beyond Shopify&rsquo;s default 60-day window so lifetime profitability,
-          repeat-customer cohorts and seasonal trends are complete.
+          repeat-customer cohorts and seasonal trends are complete. This
+          permission is already approved and does not add any write access.
         </li>
         <li>
           <code>read_products</code> — products and variants, so line items can
@@ -85,7 +121,10 @@ export default function Privacy() {
           behind Level 2 protected-customer-data approval covering name,
           address, phone and email. This is a ShopifyQL access gate: {APP_NAME}
           does not query or persist shopper name, address or phone, and the
-          connection stays paused until Shopify grants the approval.
+          connection stays paused until Shopify grants the approval. The
+          expanded request has not been submitted yet, and {APP_NAME} will not
+          query, retain or use those fields merely because approval is
+          available.
         </li>
       </ul>
       <p>
@@ -100,7 +139,7 @@ export default function Privacy() {
         orders, as described below.
       </p>
 
-      <h2>Personal data specifically</h2>
+      <h2>Personal Data Specifically</h2>
       <p>
         Shopper personal data does reach {APP_NAME}, through{" "}
         <code>read_orders</code>. Exactly two fields are selected from
@@ -150,15 +189,16 @@ export default function Privacy() {
       </p>
       <p>
         Because a shopper email address is among the fields read and stored,
-        {APP_NAME}&rsquo;s access to orders falls under Shopify&rsquo;s
-        protected customer data requirements at the level that covers customer
-        email, and is subject to the approval and the data-handling undertakings
-        that go with it.
+        {APP_NAME}&rsquo;s access to orders falls under Shopify&rsquo;s protected
+        customer data requirements at the level that covers customer email. The
+        approved <code>read_all_orders</code> permission remains read-only, and
+        {APP_NAME} continues to apply the applicable data-handling undertakings
+        and least-privilege limits described in this policy.
       </p>
 
-      <h2>What the merchant gives us directly</h2>
+      <h2>What the Merchant Gives Us Directly</h2>
       <p>
-        Cost assumptions shown in <em>Costs &amp; connections</em> — payment
+        Cost assumptions shown in <em>Costs &amp; Connections</em> — payment
         processing rates, shipping and pick-and-pack estimates, and fixed
         monthly overhead. MyMeridian supplies visible install defaults until the
         merchant reviews or replaces them; reviewing a fallback does not turn it
@@ -167,10 +207,12 @@ export default function Privacy() {
         refresh tokens encrypted at rest, the selected account identifier and
         imported campaign-spend or carrier-cost records. Disconnecting removes
         the local tokens and requests provider revocation where the provider
-        supports it.
+        supports it. These connections are not yet production-proven and will
+        not be presented as active until their complete lifecycle passes staging
+        verification.
       </p>
 
-      <h2>How data is stored and secured</h2>
+      <h2>How Data Is Stored and Secured</h2>
       <ul>
         <li>
           Data is held in a PostgreSQL database, isolated per store, and reached
@@ -206,20 +248,31 @@ export default function Privacy() {
         </li>
       </ul>
 
-      <h2>Who else sees it</h2>
+      <h2>Who Else Sees It</h2>
       <p>
         {APP_NAME} does not sell store data, does not share it with advertisers,
-        and does not use it to train models. It is disclosed only to the
-        infrastructure providers needed to run the service — the database,
-        application host and transactional email provider — and to Shopify
-        itself. When a merchant chooses a connector, MyMeridian calls that
+        and does not use it to train models. It has no production merchant-data
+        environment yet. Its planned production architecture uses Fly.io, Fly
+        Managed Postgres and Upstash; Resend and Twilio Verify may process the
+        minimum email or phone information needed for merchant or operator
+        security communications after configuration. It is disclosed to Shopify
+        as needed to provide the app. When a merchant chooses a connector,
+        MyMeridian calls that
         provider only to read the merchant-authorized account, advertising
         report or carrier-label cost. Shopify customer emails, addresses and
         customer records are not sent to Meta, Google, TikTok or ShipStation by
         this connector flow.
       </p>
 
-      <h2>How long it is kept</h2>
+      <h2>How Long It Is Kept</h2>
+      <p>
+        Waitlist contact and eligibility data is retained only while MyMeridian
+        is preparing or operating the stated early-access program, then deleted
+        or anonymized when it is no longer needed. Transactional delivery
+        receipts are retained for up to 90 days for reliability and abuse
+        troubleshooting. A waitlist visitor can request access, correction or
+        deletion through the public contact details below.
+      </p>
       <p>
         Store data is retained while the app is installed. On uninstall the
         store&rsquo;s sessions are deleted immediately, and the remaining
@@ -234,7 +287,7 @@ export default function Privacy() {
         <code>shop/redact</code>.
       </p>
 
-      <h2>Requests to access or erase data</h2>
+      <h2>Requests to Access or Erase Data</h2>
       <p>
         {APP_NAME} implements all three of Shopify&rsquo;s mandatory compliance
         webhooks, and acts on each automatically:
@@ -286,7 +339,7 @@ export default function Privacy() {
         details below, without going through Shopify.
       </p>
 
-      <h2>International transfers and legal basis</h2>
+      <h2>International Transfers and Legal Basis</h2>
       <p>
         Data is processed on infrastructure that may be located outside the
         merchant&rsquo;s country. Processing is carried out to perform the

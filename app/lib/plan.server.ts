@@ -69,12 +69,12 @@ export const FEATURE_MIN_PLAN = {
   pricing: "growth",
   /** Fulfilment capacity modelling and backlog alerts. */
   capacity: "growth",
-  /** Daily margin, refund, missing-cost and connector-health monitoring. */
+  /** Proactive margin, refund and operational diagnosis. */
   anomalyAlerts: "growth",
   /** Merchant-managed Meta, Google Ads and TikTok Ads OAuth connections. */
-  adConnections: "growth",
+  adConnections: "starter",
   /** Merchant-managed ShipStation label-cost reconciliation. */
-  carrierConnections: "growth",
+  carrierConnections: "starter",
   /** Automated weekly profit email. */
   scheduledReports: "scale",
   /** Streamed accountant-grade order profitability export. */

@@ -139,6 +139,10 @@ export async function loadOperatorOverview(now = new Date()) {
     notificationAlerts,
     adSyncAlerts,
     connectorAlerts,
+    waitlistTotal,
+    waitlistStoreUrlCount,
+    foundingEligibleCount,
+    waitlistRecent,
   ] = await Promise.all([
     prisma.subscription.findMany({
       select: {
@@ -257,6 +261,23 @@ export async function loadOperatorOverview(now = new Date()) {
       orderBy: { createdAt: "desc" },
       take: 10,
     }),
+    // Waitlist is publisher-level data, deliberately queried as aggregates and
+    // non-identifying fields only. Operator metrics must not become a contact
+    // list or a way to browse prospect records.
+    prisma.waitlistSignup.count(),
+    prisma.waitlistSignup.count({ where: { storeUrl: { not: null } } }),
+    prisma.foundingMerchantEntitlement.count({
+      where: { status: { in: ["ELIGIBLE", "RESERVED"] } },
+    }),
+    prisma.waitlistSignup.findMany({
+      where: { createdAt: { gte: since } },
+      select: {
+        createdAt: true,
+        source: true,
+        utmSource: true,
+      },
+      orderBy: { createdAt: "asc" },
+    }),
   ]);
 
   const revenue = summarizeSubscriptions(subscriptions, now);
@@ -271,6 +292,14 @@ export async function loadOperatorOverview(now = new Date()) {
     adoptionRate:
       installedStoreCount === 0 ? null : row._count._all / installedStoreCount,
   }));
+  const dailyWaitlistSignups = new Map<string, number>();
+  const waitlistSources = new Map<string, number>();
+  for (const signup of waitlistRecent) {
+    const day = signup.createdAt.toISOString().slice(0, 10);
+    dailyWaitlistSignups.set(day, (dailyWaitlistSignups.get(day) ?? 0) + 1);
+    const source = signup.utmSource ?? signup.source ?? "Direct / unknown";
+    waitlistSources.set(source, (waitlistSources.get(source) ?? 0) + 1);
+  }
 
   const alerts: OperationalAlert[] = [
     ...importAlerts.map((row) => ({
@@ -349,6 +378,21 @@ export async function loadOperatorOverview(now = new Date()) {
       churnedStores30d: churnedShopIds.size,
       churnRate30d:
         churnDenominator === 0 ? null : churnedShopIds.size / churnDenominator,
+    },
+    waitlist: {
+      total: waitlistTotal,
+      signups30d: waitlistRecent.length,
+      storeUrlCoverage:
+        waitlistTotal === 0 ? null : waitlistStoreUrlCount / waitlistTotal,
+      foundingEligible: foundingEligibleCount,
+      daily: [...dailyWaitlistSignups.entries()].map(([day, signups]) => ({
+        day,
+        signups,
+      })),
+      sources: [...waitlistSources.entries()]
+        .map(([source, signups]) => ({ source, signups }))
+        .sort((a, b) => b.signups - a.signups || a.source.localeCompare(b.source))
+        .slice(0, 8),
     },
     connectors: connectorAdoption,
     failures: {

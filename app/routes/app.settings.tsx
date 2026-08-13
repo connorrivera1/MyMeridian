@@ -497,6 +497,8 @@ const CONNECTOR_PURPOSE: Record<string, string> = {
   FACEBOOK_ADS: "Ad spend and campaign attribution",
   GOOGLE_ADS: "Ad spend and campaign attribution",
   TIKTOK_ADS: "Ad spend and campaign attribution",
+  SHOPIFY_SHOP_CAMPAIGNS:
+    "Shopify-reported Shop Campaign spend and campaign metrics",
   STRIPE:
     "Unavailable in this release; processing uses the configured fee model",
   WAREHOUSE_3PL:

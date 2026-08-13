@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">MyMeridian banner</title>
+  <desc id="desc">The MyMeridian globe mark and wordmark in white on a dark background.</desc>
+  <defs>
+    <radialGradient id="background" cx="50%" cy="45%" r="78%">
+      <stop offset="0" stop-color="#151515"/>
+      <stop offset="1" stop-color="#050505"/>
+    </radialGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="11" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="1600" height="900" fill="url(#background)"/>
+  <g transform="translate(386 450)" fill="none" stroke="#f3f3f3" stroke-linecap="round" filter="url(#glow)">
+    <circle r="132" stroke-width="5.4" opacity=".86"/>
+    <ellipse rx="94" ry="132" stroke-width="5.4" opacity=".86"/>
+    <ellipse rx="52" ry="132" stroke-width="5.4" opacity=".86"/>
+    <path d="M0-132V132" stroke-width="5.4" opacity=".86"/>
+  </g>
+  <text x="570" y="490" fill="#f7f7f7" font-family="Arial, Helvetica, sans-serif" font-size="126" font-weight="600" letter-spacing="-5">MyMeridian</text>
+</svg>

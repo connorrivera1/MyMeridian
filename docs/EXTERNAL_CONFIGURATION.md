@@ -16,9 +16,11 @@ data.
 - Product/public identity: **MyMeridian / Meridian**, published initially by
   Connor as an individual.
 - Production origin: `https://mymeridian.io`; staging origin:
-  `https://staging.mymeridian.io`. The domain is not yet purchased. Do not
-  register production callbacks, set live Shopify configuration, or send email
-  from either address until the relevant domain is controlled and verified.
+  `https://staging.mymeridian.io`. The domain is controlled at GoDaddy and the
+  apex currently serves GoDaddy's temporary page; staging does not yet resolve.
+  Microsoft 365 and Resend-related DNS records resolve, but mailbox/domain
+  delivery has not been proven from provider dashboards. Do not register live
+  callbacks until the relevant Fly origin and TLS certificate are verified.
 - Planned general/support/emergency email: `hello@mymeridian.io` and
   `support@mymeridian.io`. They are not active yet. The owner-side emergency
   phone remains private and must not enter this repository.
@@ -61,11 +63,11 @@ browser bundle, issue tracker, screenshots or chat.
 
 | Service / exact product | Account or product Connor needs | Cost / review | MyMeridian value(s) | Register / configure | Can happen before deployment? |
 | --- | --- | --- | --- | --- | --- |
-| **Fly.io Apps** | One Fly organization and two apps: `mymeridian-staging` and final production app, both in `iad` | Compute is paid; no Shopify-style review | Hosting deployment authorization; environment-scoped secret store | Initial production VM: shared-cpu-2x / 2 GB. Attach each real custom domain and require HTTPS | Account/app names: yes. Domain attachment: after purchase. Deployment: only Gate 2/3 authorization. |
+| **Fly.io Apps** | One Fly organization and two reserved apps: `mymeridian-staging` and `mymeridian-prod`, both targeting `iad` | Empty app records and included ingress IPs are unbilled; one always-on shared-cpu-2x / 2 GB Machine is currently $11.39/month at full-month uptime | Hosting deployment authorization; environment-scoped secret store | Attach each real custom domain and require HTTPS | App names, ingress IPs and hostname attachments: complete. Deployment: only after Gate 2/3 authorization. |
 | **Fly Managed Postgres** | One **Basic** cluster per environment, same region as its app | Starting production cluster about $38/month plus storage; payment/provisioning required | `DATABASE_URL` (system pooled), `MERIDIAN_TENANT_DATABASE_URL` (tenant pooled), `DIRECT_DATABASE_URL` (migration direct) | Create `meridian_app_system` and `meridian_app_tenant` exactly as `DATABASE_SECURITY.md`; keep migration owner separate; enable encrypted daily backups/PITR and record retention | Account decision: resolved. Cluster/roles/URLs: only after provisioning. |
-| **Upstash Redis** | One isolated Redis database per environment for BullMQ | Free tier first; upgrade requires evidence that limits, durability or workload are inadequate and Connor authorization if paid | `MERIDIAN_REDIS_URL` only | Separate credentials/prefixes; TLS; no staging/production sharing; tenant-safe cache keys only | Account can be created now; database credentials after creation; no traffic until staging Gate 2. |
-| **Domain registrar + authoritative DNS** | `mymeridian.io`, with `staging.mymeridian.io` DNS record | Domain purchase is an owner/payment action | No secret; DNS records and final `SHOPIFY_APP_URL` | Add Fly and Resend verification records exactly as supplied; Fly validates TLS after DNS propagates | **Waiting for Connor to purchase/control domain.** |
-| **Resend Transactional Email** | Resend team, verified `mymeridian.io`, scoped staging/prod API keys | Free tier initially; upgrade only when actual limits require it | `RESEND_API_KEY`, `MERIDIAN_EMAIL_FROM` (`MyMeridian <hello@mymeridian.io>` or a verified support sender) | Add Resend DNS records; verify sender/domain; prove controlled email delivery in staging | Account: yes. Domain verification/sender: after purchase. |
+| **Upstash Redis** | One isolated Redis database per environment for BullMQ | Fly provisions pay-as-you-go at $0.20/100K commands; because BullMQ polls aggressively, use the predictable Fixed 250 MB plan at $10/month unless measured staging traffic proves a lower budgeted plan safe. Never enable the $200/month ProdPack or auto-upgrade without separate authorization. | `MERIDIAN_REDIS_URL` only | Separate credentials/prefixes; TLS; no staging/production sharing; tenant-safe cache keys only | No database exists. Provision only after the matching staging/production payment gate. |
+| **Domain registrar + authoritative DNS** | Controlled `mymeridian.io`, with `staging.mymeridian.io` routing still to add | Purchase complete; no hosting cutover charge authorized here | No secret; DNS records and final `SHOPIFY_APP_URL` | Exact non-routing ACME CNAMEs are live; replace only apex web A records and add Fly AAAA at production cutover; preserve all mail records | **Controlled; apex, `www` and staging Fly certificates are verified and active. Deployed routing remains.** |
+| **Resend Transactional Email** | Resend team, verified `mymeridian.io`, scoped staging/prod API keys | Free tier initially; upgrade only when actual limits require it | `RESEND_API_KEY`, `MERIDIAN_EMAIL_FROM` (`MyMeridian <hello@mymeridian.io>` or a verified support sender) | Resend DKIM plus `send` MX/SPF resolve; confirm provider dashboard status and prove controlled email delivery in staging | DNS present; dashboard verification and delivery still required. |
 | **Twilio Verify** | Twilio account, restricted API key and separate staging/production Verify Services | Trial constrained; successful verifications are usage-billed | `TWILIO_ACCOUNT_SID`, `TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET`, `TWILIO_VERIFY_SERVICE_SID` | Configure SMS only for appropriate standalone-account enrollment/recovery; Fraud Guard, rate limits and allowed geographies; no callback required by this app | Account/service: yes. Real controlled SMS test: after staging deploy. |
 | **Shopify Partner Dashboard** | Connor's only Partner account; one staging/development app and one production public app | Public distribution, registration and App Store review are external gates; $19 registration needs a separate explicit payment authorization | `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_APP_URL`, `SCOPES` | Production app: `https://mymeridian.io`, `/auth/callback`, relative GDPR/webhook routes; production deploy sets `automatically_update_urls_on_dev = false` | Staging app: yes. Production URLs/config/registration payment: after domain and explicit approval. |
 | **Meta for Developers / Marketing API** | Meta developer account and Marketing API app owned by Connor as the individual publisher | Access/review may be required for production access; Meta decision is external | `META_APP_ID`, `META_APP_SECRET` | Register separate staging/production redirects: `https://staging.mymeridian.io/connections/meta/callback` and `https://mymeridian.io/connections/meta/callback` if Meta permits both | App request: yes. Callback activation: after domain/TLS. |
@@ -102,7 +104,7 @@ and verified.
 | Shopify | `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_APP_URL`, `SCOPES` |
 | Cryptography and abuse protection | `MERIDIAN_ENCRYPTION_KEY`, `MERIDIAN_CUSTOMER_ERASURE_KEY`, `MERIDIAN_RATE_LIMIT_KEY` |
 | Publisher operator | `MERIDIAN_OPERATOR_EMAIL`, `MERIDIAN_OPERATOR_PASSWORD_HASH`, `MERIDIAN_OPERATOR_TOTP_SECRET`, `MERIDIAN_OPERATOR_SESSION_KEY` |
-| Mandatory web-account MFA | `RESEND_API_KEY`, `MERIDIAN_EMAIL_FROM`, `TWILIO_ACCOUNT_SID`, `TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET`, `TWILIO_VERIFY_SERVICE_SID` |
+| Email and standalone-account MFA | `RESEND_API_KEY`, `MERIDIAN_EMAIL_FROM=MyMeridian <hello@mymeridian.io>`, `MERIDIAN_PUBLIC_ORIGIN=https://mymeridian.io`, `MERIDIAN_WAITLIST_UNSUBSCRIBE_KEY`, `TWILIO_ACCOUNT_SID`, `TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET`, `TWILIO_VERIFY_SERVICE_SID` |
 | Background work | `MERIDIAN_REDIS_URL`, `MERIDIAN_DEMO_MODE=false`, `NODE_ENV=production` |
 | Ad connectors | `META_APP_ID`, `META_APP_SECRET`, `MERIDIAN_GOOGLE_ADS_CLIENT_ID`, `MERIDIAN_GOOGLE_ADS_CLIENT_SECRET`, `MERIDIAN_GOOGLE_ADS_DEVELOPER_TOKEN`, `TIKTOK_APP_ID`, `TIKTOK_APP_SECRET` |
 | Optional web sign-in | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` |
@@ -112,8 +114,8 @@ and verified.
 
 Connor has resolved the intended individual publisher, domains, providers,
 support recipient and infrastructure baseline. Connor must still create/own the
-accounts, purchase/control the domain, supply private legal-name/phone values at
-configuration time, make the required provider/Shopify submissions, approve each
+remaining accounts, supply private legal-name/phone values at configuration
+time, make the required provider/Shopify submissions, approve each
 paid or irreversible action, provide reviewer credentials, and authorize Gates
 1–5. This repository cannot truthfully create, attest to, pay for or approve
 any of them.
@@ -125,15 +127,21 @@ Reference requirements: [Fly Managed Postgres](https://fly.io/docs/mpg/),
 [Apple web sign-in](https://developer.apple.com/documentation/signinwithapple/configuring-your-environment-for-sign-in-with-apple),
 and [Shopify protected customer data](https://shopify.dev/docs/apps/launch/protected-customer-data).
 
-## Exact next step after domain purchase
+For waitlist activation and the server-side Founding Merchant benefit, see
+[`PRELAUNCH_WAITLIST.md`](PRELAUNCH_WAITLIST.md). The Resend key/sender and a
+controlled inbox-delivery test are mandatory before the application can send a
+waitlist welcome email; a branded queued receipt is not delivery proof.
 
-1. Connor confirms registrar/DNS control of `mymeridian.io`; no payment or
-   registration action is taken by this repository.
-2. Create `staging.mymeridian.io` DNS only. Create the Fly staging app and use
-   Fly's exact verification records; wait for HTTPS validation.
-3. Add Resend's exact verification records, then verify the sender/domain.
-   Confirm controlled delivery to a mailbox Connor owns before treating either
-   planned address as active.
+## Exact next step after Fly authorization
+
+1. Connor signs in to Fly and explicitly authorizes the selected paid staging
+   and production app/Postgres resources. No provisioning command runs before
+   that authorization.
+2. Deploy staging with `fly.staging.toml`, attach its certificate, and add only
+   the exact confirmed `staging` DNS record; wait for HTTPS validation.
+3. Confirm Resend's dashboard sees the already-resolving DKIM and `send`
+   MX/SPF records. Prove controlled delivery to a mailbox Connor owns before
+   treating either planned address as active.
 4. Create the staging-only PostgreSQL, Upstash and secret sets; do not use
    production values or data.
 5. Register the listed **staging** OAuth callbacks with each available provider.
@@ -142,3 +150,6 @@ and [Shopify protected customer data](https://shopify.dev/docs/apps/launch/prote
    relevant gate.
 6. Stop and obtain explicit Gate 1 (merge) and Gate 2 (staging deployment)
    approvals before merging PR #1 or deploying staging.
+7. After Gate 3, deploy production, attach apex and `www` certificates, and
+   perform only the DNS changes in `DOMAIN_CUTOVER.md`; do not touch any
+   Microsoft 365 or Resend record.

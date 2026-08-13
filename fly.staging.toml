@@ -1,0 +1,36 @@
+# Staging is a separate Fly app with separate secrets, database and Redis.
+# It intentionally matches production compute so load/soak results are useful.
+app = "mymeridian-staging"
+primary_region = "iad"
+
+[build]
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8080"
+  SHOPIFY_APP_URL = "https://staging.mymeridian.io"
+  MERIDIAN_SUPPORT_EMAIL = "support@mymeridian.io"
+  MERIDIAN_SUPPORT_URL = "https://staging.mymeridian.io/support"
+  MERIDIAN_DEMO_MODE = "false"
+
+[deploy]
+  release_command = "/bin/sh -lc 'DATABASE_URL=$DIRECT_DATABASE_URL npx prisma migrate deploy'"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/healthz"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 2
+  memory_mb = 2048

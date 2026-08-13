@@ -161,6 +161,8 @@ export interface OrderProfit {
   hasMissingCogs: boolean;
   /** A configured fee, fulfilment fallback or overhead allocation was used. */
   usesModeledCosts: boolean;
+  /** True when a carrier or fulfilment source supplied this order's shipping cost. */
+  shippingCostMeasured?: boolean;
   /** Compatibility summary: either missing COGS or a modeled cost was used. */
   usesEstimatedCosts: boolean;
 }

@@ -277,7 +277,7 @@ describe("action", () => {
 
     expect(update).toHaveBeenCalledWith({
       where: { id: "rec_1" },
-      data: { status: "DISMISSED", actionedAt: expect.any(Date) },
+      data: { status: "DISMISSED", actionedAt: expect.any(Date), outcomeStatus: "NOT_TRACKED" },
     });
     expect(result).toMatchObject({
       ok: true,
@@ -293,7 +293,7 @@ describe("action", () => {
 
     expect(update).toHaveBeenCalledWith({
       where: { id: "rec_1" },
-      data: { status: "PENDING", actionedAt: null },
+      data: { status: "PENDING", actionedAt: null, outcomeStatus: "NOT_TRACKED", outcomeObservedAt: null, outcomeObservedProfitDelta: null },
     });
     expect(result).toMatchObject({
       ok: true,
@@ -307,7 +307,7 @@ describe("action", () => {
 
     expect(update).toHaveBeenCalledWith({
       where: { id: "rec_1" },
-      data: { status: "APPLIED", actionedAt: expect.any(Date) },
+      data: { status: "APPLIED", actionedAt: expect.any(Date), outcomeStatus: "AWAITING_PRICE_CHANGE", outcomeObservedAt: null, outcomeObservedProfitDelta: null },
     });
     expect((result as { message: string }).message).toContain(
       "Accepted for Widget",

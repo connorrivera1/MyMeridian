@@ -26,7 +26,7 @@ describe("public legal routes", () => {
 
     const html = renderToStaticMarkup(createElement(privacy.default));
 
-    expect(html).toContain("Privacy policy");
+    expect(html).toContain("Privacy Policy");
     expect(html).toContain("read_all_orders");
     expect(html).toContain("read_reports");
     expect(html).toContain("does not query or persist shopper name");

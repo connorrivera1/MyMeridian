@@ -6,11 +6,13 @@ import {
 } from "~/data/analytics.server";
 import type { DateRange } from "~/data/queries.server";
 import { ratio } from "~/engine/money";
+import { assessProfitConfidence } from "~/engine/profit-confidence";
 import { loadAdSpendCoverage } from "~/lib/ad-spend-coverage.server";
 import { withShopContext, type ShopContext } from "~/lib/auth.server";
 import { requireActivePlan } from "~/lib/plan.server";
 import { parseRangePreset, RANGE_PRESETS } from "~/lib/ranges";
 import { capabilitiesForShop } from "~/lib/scopes";
+import prisma from "~/db.server";
 
 /**
  * Everything a dashboard route needs, including the preceding window of the
@@ -58,10 +60,19 @@ export async function loadDashboardForContext(
   // build has released its raw EngineOrder scratch data.
   const adSpendCoveragePromise = loadAdSpendCoverage(shop.id, isDemo);
   const analytics = await loadShopAnalytics(shop, range);
-  const [previousPeriod, adSpendCoverage] = await Promise.all([
+  const [previousPeriod, adSpendCoverage, dismissals] = await Promise.all([
     loadPeriodProfit(shop, previousRange),
     adSpendCoveragePromise,
+    prisma.actionDismissal.findMany({
+      where: { shopId: shop.id },
+      select: { key: true },
+    }),
   ]);
+  const profitConfidence = assessProfitConfidence({
+    orders: analytics.period.orders,
+    rules: analytics.rules,
+    adSpend: adSpendCoverage,
+  });
 
   return {
     shop,
@@ -74,6 +85,9 @@ export async function loadDashboardForContext(
     previous: { period: previousPeriod },
     /** Whether paid-marketing spend is actually measurable for this store. */
     adSpendCoverage,
+    /** Deterministic provenance summary; never turns unavailable cost into zero. */
+    profitConfidence,
+    dismissedActionKeys: dismissals.map((item) => item.key),
     /** What this store actually authorised. Screens branch on it. */
     capabilities: capabilitiesForShop(shop, process.env.SCOPES),
   };

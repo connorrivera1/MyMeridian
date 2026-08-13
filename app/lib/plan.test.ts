@@ -35,6 +35,11 @@ describe("feature gating", () => {
     expect(planAllows(on("growth"), "exports")).toBe(false);
   });
 
+  it("does not gate the data connections needed for honest profitability", () => {
+    expect(planAllows(on("starter"), "adConnections")).toBe(true);
+    expect(planAllows(on("starter"), "carrierConnections")).toBe(true);
+  });
+
   it("grants nothing without an active plan", () => {
     // The Billing API's trial belongs to a subscription rather than preceding
     // one, so "no plan" is genuinely no access — not a trial tier.
@@ -70,19 +75,19 @@ describe("gates match what the plans advertise", () => {
     expect(advertised("growth")).toContain("capacity");
     expect(FEATURE_MIN_PLAN.pricing).toBe("growth");
     expect(FEATURE_MIN_PLAN.capacity).toBe("growth");
-    expect(advertised("growth")).toContain("anomaly alerts");
+    expect(advertised("growth")).toContain("proactive alerts");
     expect(FEATURE_MIN_PLAN.anomalyAlerts).toBe("growth");
-    expect(advertised("growth")).toContain("meta");
-    expect(advertised("growth")).toContain("google");
-    expect(advertised("growth")).toContain("tiktok");
-    expect(FEATURE_MIN_PLAN.adConnections).toBe("growth");
-    expect(advertised("growth")).toContain("shipstation");
-    expect(FEATURE_MIN_PLAN.carrierConnections).toBe("growth");
+    expect(advertised("starter")).toContain("meta");
+    expect(advertised("starter")).toContain("google");
+    expect(advertised("starter")).toContain("tiktok");
+    expect(FEATURE_MIN_PLAN.adConnections).toBe("starter");
+    expect(advertised("starter")).toContain("shipstation");
+    expect(FEATURE_MIN_PLAN.carrierConnections).toBe("starter");
   });
 
   it("Scale advertises the reporting capabilities it gates", () => {
-    expect(advertised("scale")).toContain("weekly profit summaries");
-    expect(advertised("scale")).toContain("csv exports");
+    expect(advertised("scale")).toContain("weekly profitability summaries");
+    expect(advertised("scale")).toContain("advanced csv");
     expect(advertised("scale")).toContain("multi-store");
     expect(FEATURE_MIN_PLAN.scheduledReports).toBe("scale");
     expect(FEATURE_MIN_PLAN.exports).toBe("scale");
@@ -97,15 +102,12 @@ describe("gates match what the plans advertise", () => {
     expect(advertised("starter")).toContain("channel");
   });
 
-  it("no plan sells protected-customer analysis it cannot obtain", () => {
+  it("qualifies protected-customer analysis instead of promising unavailable data", () => {
     const forbidden = [
-      "cac",
-      "roas",
       "blended",
       "return on ad spend",
       "cohort",
       "ltv",
-      "payback",
       "loss leader",
       "loss-leader",
       "multi-location",
@@ -119,6 +121,7 @@ describe("gates match what the plans advertise", () => {
         ).not.toContain(claim);
       }
     }
+    expect(advertised("growth")).toContain("when authorised data is available");
   });
 
   it("gates nothing it cannot deliver", () => {

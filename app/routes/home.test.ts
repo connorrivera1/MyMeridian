@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const looksLikeShopifyRequest = vi.fn((_request: Request) => false);
 const resolveWebUser = vi.fn();
@@ -20,7 +20,25 @@ beforeEach(() => {
   resolveWebUser.mockResolvedValue(null);
 });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe("home resource route", () => {
+  it("redirects the www hostname to the canonical production origin", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("SHOPIFY_APP_URL", "https://mymeridian.io");
+
+    const response = await loader({
+      request: new Request("https://www.mymeridian.io/?campaign=launch"),
+    } as never);
+
+    expect(response.status).toBe(308);
+    expect(response.headers.get("location")).toBe(
+      "https://mymeridian.io/?campaign=launch",
+    );
+  });
+
   it("serves a fresh cache-revalidated marketing document to a visitor", async () => {
     const response = await loader({
       request: new Request("https://mymeridian.example/"),
@@ -33,9 +51,13 @@ describe("home resource route", () => {
     expect(response.headers.get("cache-control")).toBe(
       "public, max-age=0, must-revalidate",
     );
-    await expect(response.text()).resolves.toContain(
-      "MyMeridian — see what your Shopify store actually keeps",
-    );
+    const html = await response.text();
+    expect(html).toContain("MyMeridian — see what your Shopify store actually keeps");
+    expect(html).toContain("Join Waitlist");
+    expect(html).not.toContain("Get Early Access");
+    expect(html).toContain('action="/waitlist"');
+    expect(html).not.toContain('href="/login"');
+    expect(html).not.toContain('href="/signup"');
 
     const second = await loader({
       request: new Request("https://mymeridian.example/"),

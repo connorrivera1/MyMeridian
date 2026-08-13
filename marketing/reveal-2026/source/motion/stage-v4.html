@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en" class="scrub">
+<head>
+<meta charset="utf-8" />
+<title>MyMeridian — reveal stage v4</title>
+<!-- Same brand faces the landing page loads, in the same order. -->
+<link rel="preconnect" href="https://api.fontshare.com" crossorigin />
+<style>
+  @import url("https://api.fontshare.com/v2/css?f[]=satoshi@300,400,500,600,700,800,900&display=swap");
+  @font-face {
+    font-family: "Plus Jakarta Sans Variable";
+    src: url("/fonts/PlusJakartaSans-Variable.woff2") format("woff2-variations");
+    font-weight: 200 800; font-style: normal; font-display: block;
+  }
+  @font-face {
+    font-family: "Space Grotesk Variable";
+    src: url("/fonts/SpaceGrotesk-Variable.woff2") format("woff2-variations");
+    font-weight: 300 700; font-style: normal; font-display: block;
+  }
+
+  :root {
+    --ground: #0a0a0a;
+    --ink: #f5f5f5;
+    --gold: #ffffff;
+    --font: "Satoshi", "Space Grotesk Variable", ui-sans-serif, -apple-system, sans-serif;
+    --wordmark: "Plus Jakarta Sans Variable", "Satoshi", ui-sans-serif, sans-serif;
+    --figures: "Space Grotesk Variable", "Satoshi", ui-sans-serif, sans-serif;
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: #000; }
+  /* Freeze every CSS animation; film.js drives them by Animation.currentTime. */
+  .scrub *, .scrub *::before, .scrub *::after { animation-play-state: paused !important; }
+
+  #root {
+    position: fixed; inset: 0; width: 1920px; height: 1080px;
+    background: #000;
+    overflow: hidden;
+    font-family: var(--font);
+    color: var(--ink);
+    perspective: 1500px;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* ------------------------------------------------------------- shots */
+  .shot { position: absolute; inset: 0; opacity: 0; will-change: opacity, transform, filter; }
+  .cam  { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px;
+          transform-origin: 0 0; will-change: transform; }
+  .plate { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; display: block; }
+  .shade { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px;
+           background: #000; opacity: 0; will-change: opacity; }
+
+  /* Spotlight: an undimmed clipped copy of the plate riding above the shade. */
+  .spotwin { position: absolute; overflow: hidden; border-radius: 10px; opacity: 0;
+             box-shadow: 0 0 0 1px rgba(245,245,245,0.22), 0 24px 70px rgba(0,0,0,0.55),
+                         0 0 44px rgba(245,245,245,0.07);
+             will-change: opacity, transform; }
+  .spotwin > img { position: absolute; width: 1920px; height: 1080px; }
+
+  .ring { position: absolute; border: 1.6px solid rgba(245,245,245,0.92); border-radius: 50%;
+          opacity: 0; will-change: transform, opacity;
+          box-shadow: 0 0 18px rgba(245,245,245,0.35), inset 0 0 10px rgba(245,245,245,0.18); }
+
+  .uline { position: absolute; height: 2px; background: var(--gold); opacity: 0;
+           transform-origin: left center; will-change: transform, opacity;
+           box-shadow: 0 0 12px rgba(245,245,245,0.5); }
+
+  /* ------------------------------------------------------------- words */
+  .titlecard { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; }
+  .titlecard .inner { text-align: center; transform: translateY(0); }
+  .kicker { font-size: 13px; font-weight: 500; letter-spacing: 0.34em; text-transform: uppercase;
+            color: rgba(245,245,245,0.44); margin-bottom: 26px; }
+  .tline { font-size: 74px; font-weight: 500; letter-spacing: -0.045em; line-height: 1.12;
+           color: var(--ink); }
+  .tline .em { color: #fff; font-weight: 560; }
+  .tline .soft { color: rgba(245,245,245,0.66); }
+
+  .l3 { position: absolute; left: 92px; bottom: 84px; opacity: 1; }
+  .l3 .rule { width: 44px; height: 2px; background: rgba(245,245,245,0.9); margin-bottom: 18px;
+              transform-origin: left center; box-shadow: 0 0 10px rgba(245,245,245,0.35); }
+  .l3 .k { font-size: 12px; font-weight: 500; letter-spacing: 0.3em; text-transform: uppercase;
+           color: rgba(245,245,245,0.46); margin-bottom: 10px; }
+  .l3 .line { font-size: 40px; font-weight: 500; letter-spacing: -0.035em; color: var(--ink);
+              text-shadow: 0 2px 28px rgba(0,0,0,0.75); }
+
+  .cap { position: absolute; left: 0; right: 0; bottom: 34px; text-align: center;
+         font-size: 15px; font-weight: 450; letter-spacing: 0.01em;
+         color: rgba(245,245,245,0.58); opacity: 0; }
+
+  .letter { display: inline-block; will-change: transform, filter, opacity; }
+  .word { display: inline-block; white-space: pre; }
+
+  /* Triplet lines for the Action Center beat. */
+  .triplet { position: absolute; left: 92px; bottom: 84px; }
+  .triplet .t3 { font-size: 34px; font-weight: 500; letter-spacing: -0.03em; margin-top: 10px;
+                 color: var(--ink); opacity: 0; will-change: transform, opacity, filter;
+                 text-shadow: 0 2px 24px rgba(0,0,0,0.8); }
+
+  /* ------------------------------------------------------------- splash */
+  /* Exact splash from site/index.html + landing.css, dark theme values. */
+  .splash { position: absolute; inset: 0; z-index: 40; display: grid; place-items: center;
+            overflow: hidden; background: var(--ground); opacity: 0;
+            will-change: transform, opacity; }
+  .splash-inner { position: relative; z-index: 1; display: flex; align-items: center;
+                  gap: 26px; padding: 24px; }
+  .splash-globe { color: var(--ink); animation: globe-in 320ms var(--ease) both; }
+  .splash-globe svg { display: block; width: 112px; height: auto; }
+  .splash-word { display: flex; overflow: hidden; font-family: var(--font);
+                 font-size: 66px; font-weight: 560; letter-spacing: -0.05em; color: var(--ink); }
+  .splash-word span { opacity: 0; animation: letter-in 420ms var(--ease) forwards; }
+  .splash-word span:nth-child(1) { animation-delay: 210ms; }
+  .splash-word span:nth-child(2) { animation-delay: 238ms; }
+  .splash-word span:nth-child(3) { animation-delay: 266ms; }
+  .splash-word span:nth-child(4) { animation-delay: 294ms; }
+  .splash-word span:nth-child(5) { animation-delay: 322ms; }
+  .splash-word span:nth-child(6) { animation-delay: 350ms; }
+  .splash-word span:nth-child(7) { animation-delay: 378ms; }
+  .splash-word span:nth-child(8) { animation-delay: 406ms; }
+  .splash-word span:nth-child(9) { animation-delay: 434ms; }
+  .splash-word span:nth-child(10) { animation-delay: 462ms; }
+  .mark.spinning .meridian-a { animation: globe-sweep-a 720ms linear both; }
+  .mark.spinning .meridian-b { animation: globe-sweep-b 720ms linear both; }
+  .mark.spinning .meridian-c { animation: globe-sweep-c 720ms linear both; }
+
+  @keyframes globe-in { from { opacity: 0; transform: scale(0.82); } to { opacity: 1; transform: none; } }
+  @keyframes letter-in { from { opacity: 0; transform: translateY(14px); filter: blur(6px); }
+                         to { opacity: 1; transform: none; filter: blur(0); } }
+  @keyframes globe-sweep-a {
+    0% { rx: 24.5px; } 10% { rx: 20.15px; } 20% { rx: 22.65px; }
+    30% { rx: 33.18px; } 40% { rx: 17.84px; } 50% { rx: 0.65px; }
+    60% { rx: 13.32px; } 70% { rx: 20.17px; } 80% { rx: 23.28px; }
+    90% { rx: 24.35px; } 100% { rx: 24.5px; }
+  }
+  @keyframes globe-sweep-b {
+    0% { rx: 13.5px; } 10% { rx: 29.16px; } 20% { rx: 11.11px; }
+    30% { rx: 33.47px; } 40% { rx: 27.63px; } 50% { rx: 12.52px; }
+    60% { rx: 0.21px; } 70% { rx: 8.04px; } 80% { rx: 11.92px; }
+    90% { rx: 13.3px; } 100% { rx: 13.5px; }
+  }
+  @keyframes globe-sweep-c {
+    0% { rx: 0; } 10% { rx: 33.7px; } 20% { rx: 2.56px; }
+    30% { rx: 28.36px; } 40% { rx: 33.23px; } 50% { rx: 24.04px; }
+    60% { rx: 13.31px; } 70% { rx: 5.74px; } 80% { rx: 1.71px; }
+    90% { rx: 0.21px; } 100% { rx: 0; }
+  }
+
+  /* Final card additions under the lockup. */
+  .final-extra { position: absolute; left: 0; right: 0; top: calc(50% + 84px); text-align: center; }
+  .final-tag { font-size: 21px; font-weight: 450; letter-spacing: -0.01em;
+               color: rgba(245,245,245,0.82); opacity: 0; }
+  .final-soon { margin-top: 40px; font-size: 12px; font-weight: 500; letter-spacing: 0.42em;
+                text-transform: uppercase; color: rgba(245,245,245,0.5); opacity: 0; }
+  .final-url { margin-top: 14px; font-size: 15px; font-weight: 450;
+               color: rgba(245,245,245,0.62); opacity: 0; }
+
+  /* --------------------------------------------------------- atmosphere */
+  #vignette { position: absolute; inset: -2px; pointer-events: none; z-index: 60;
+              background: radial-gradient(120% 90% at 50% 46%, transparent 55%, rgba(0,0,0,0.36) 100%); }
+  #grain { position: absolute; inset: 0; width: 1920px; height: 1080px; pointer-events: none;
+           z-index: 61; opacity: 0.022; mix-blend-mode: screen; }
+  #flash { position: absolute; inset: 0; background: #000; opacity: 0; z-index: 70; }
+</style>
+</head>
+<body>
+<div id="root">
+  <div id="shots"></div>
+  <canvas id="grain" width="480" height="270"></canvas>
+  <div id="vignette"></div>
+  <div id="flash"></div>
+</div>
+<script src="/film-v4.js"></script>
+</body>
+</html>
+<style>
+  /* ---------------------------------------------------------- v4: chat */
+  .chat { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; }
+  .thread { position: relative; width: 940px; height: 700px; transform-origin: 50% 42%; }
+  .stamp { position: absolute; top: 60px; left: 0; right: 0; text-align: center;
+           font: 500 15px/1 -apple-system, "Satoshi", sans-serif; letter-spacing: 0.02em;
+           color: rgba(245,245,245,0.42); opacity: 0; }
+  .bubble { position: absolute; max-width: 640px; padding: 20px 28px; border-radius: 26px;
+            font: 500 31px/1.35 -apple-system, "Satoshi", sans-serif; letter-spacing: -0.01em;
+            opacity: 0; will-change: transform, opacity; }
+  .bub-gray { left: 40px; top: 150px; background: #262629; color: #f2f2f5;
+              border-bottom-left-radius: 8px; }
+  .bub-blue { right: 40px; top: 300px; background: #0a84ff; color: #fff;
+              border-bottom-right-radius: 8px;
+              box-shadow: 0 12px 60px rgba(10,132,255,0.25); }
+  .typing { position: absolute; left: 40px; top: 158px; background: #262629;
+            border-radius: 24px; border-bottom-left-radius: 8px; padding: 20px 24px;
+            display: flex; gap: 9px; opacity: 0; }
+  .typing i { width: 11px; height: 11px; border-radius: 50%; background: #8e8e93; display: block; }
+  .delivered { position: absolute; right: 52px; top: 386px;
+               font: 500 15px/1 -apple-system, "Satoshi", sans-serif;
+               color: rgba(245,245,245,0.5); opacity: 0; }
+  .inputbar { position: absolute; left: 40px; right: 40px; bottom: 60px; height: 74px;
+              border: 1.5px solid rgba(245,245,245,0.22); border-radius: 37px;
+              display: flex; align-items: center; padding: 0 12px 0 30px; opacity: 0; }
+  .inputtext { flex: 1; font: 500 29px/1 -apple-system, "Satoshi", sans-serif; color: #fff;
+               white-space: nowrap; overflow: hidden; }
+  .caret { display: inline-block; width: 2.5px; height: 34px; background: #0a84ff;
+           vertical-align: -6px; margin-left: 2px; }
+  .sendbtn { width: 52px; height: 52px; border-radius: 50%; background: #0a84ff;
+             display: grid; place-items: center; will-change: transform; }
+  .sendbtn::after { content: ""; width: 16px; height: 16px;
+                    border-left: 4px solid #fff; border-top: 4px solid #fff;
+                    transform: rotate(45deg) translate(3px, 3px); border-radius: 2px; }
+  .bluewash { position: absolute; inset: 0; opacity: 0; z-index: 30; pointer-events: none;
+              background: radial-gradient(60% 60% at 50% 46%, rgba(10,132,255,0.5), rgba(0,0,0,0.9) 78%); }
+
+  /* ------------------------------------------------------ v4: components */
+  .scene { position: absolute; inset: 0; opacity: 0; perspective: 1500px; }
+  .group { position: absolute; left: 50%; top: 50%; transform-style: preserve-3d;
+           will-change: transform; }
+  .piece { position: absolute; overflow: hidden; border-radius: 12px;
+           background: #0d0d0d;
+           box-shadow: 0 1px 0 rgba(245,245,245,0.07) inset, 0 30px 80px rgba(0,0,0,0.6),
+                       0 8px 28px rgba(0,0,0,0.5);
+           opacity: 0; will-change: transform, opacity, clip-path, filter; }
+  .piece > img { position: absolute; display: block; }
+  .piece.flat { box-shadow: none; background: transparent; border-radius: 8px; }
+  .bignum { position: absolute; font-family: var(--figures); font-weight: 500;
+            letter-spacing: -0.03em; color: var(--ink); opacity: 0;
+            font-variant-numeric: tabular-nums; will-change: transform, opacity, filter; }
+  .header-line { position: absolute; top: 92px; left: 0; right: 0; text-align: center;
+                 font: 500 46px/1.2 var(--font); letter-spacing: -0.035em; color: var(--ink);
+                 opacity: 0; }
+  .header-line .soft2 { color: rgba(245,245,245,0.55); }
+  .sidelabel { position: absolute; font: 500 15px/1.5 var(--font); letter-spacing: 0.22em;
+               text-transform: uppercase; color: rgba(245,245,245,0.45); opacity: 0; }
+  .arrowline { position: absolute; overflow: visible; opacity: 0; }
+  .arrowline path { stroke: rgba(245,245,245,0.85); stroke-width: 2.5; fill: none;
+                    stroke-linecap: round; }
+</style>

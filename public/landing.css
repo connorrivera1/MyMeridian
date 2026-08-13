@@ -15,12 +15,12 @@
 
 /* ------------------------------------------------------------------ type */
 
-/*
- * Plus Jakarta Sans Variable, SIL OFL 1.1 — a licence that permits serving
- * the file. (Satoshi, the face the product was drawn in, is under the
- * Fontshare FFL, which does not; listing.test.ts fails the build if that
- * binary ever appears in the tree.)
- */
+/* Satoshi is delivered directly from Fontshare under its web-font licence.
+   The binary stays off this repository; this external delivery is the only
+   licensed way for the public website to use its intended brand face. */
+@import url("https://api.fontshare.com/v2/css?f[]=satoshi@300,400,500,600,700,800,900&display=swap");
+
+/* Plus Jakarta remains available for places that need a resilient fallback. */
 @font-face {
   font-family: "Plus Jakarta Sans Variable";
   src: url("fonts/PlusJakartaSans-Variable.woff2") format("woff2-variations");
@@ -145,9 +145,11 @@
   --radius-sm: 12px;
 
   /* Serif for headings; the grotesque for every figure and label. */
-  --font-display: "Space Grotesk Variable", "Plus Jakarta Sans Variable",
-    ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font: "Plus Jakarta Sans Variable", ui-sans-serif, -apple-system,
+  /* The MyMeridian lockup is Satoshi. Use it across the public surface so the
+     wordmark and surrounding interface are a single visual system. */
+  --font-display: "Satoshi", "Space Grotesk Variable", ui-sans-serif, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font: "Satoshi", "Space Grotesk Variable", ui-sans-serif, -apple-system,
     BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-soft: cubic-bezier(0.32, 0.72, 0, 1);
@@ -178,6 +180,8 @@ body {
   margin: 0;
   min-width: 320px;
   overflow-x: hidden;
+  position: relative;
+  isolation: isolate;
   background: var(--ground);
   color: var(--ink);
   font-family: var(--font);
@@ -188,6 +192,50 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+}
+
+/* ---------------------------------------------------------------- line field
+   This is one full-document coordinate system, not a new ornament in every
+   band. Because it sits behind the page's transparent reading surfaces, each
+   path continues cleanly from the hero through the legal footer. */
+.contour-field {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100vh;
+  overflow: visible;
+  color: var(--ink);
+  pointer-events: none;
+}
+
+.contour-field path,
+.contour-field ellipse,
+.contour-field circle {
+  fill: none;
+  stroke: currentColor;
+  vector-effect: non-scaling-stroke;
+}
+
+.contour-field .contour-major {
+  stroke-width: 1.15;
+  opacity: 0.16;
+}
+
+.contour-field .contour-minor {
+  stroke-width: 1;
+  opacity: 0.09;
+}
+
+.contour-field .contour-axis {
+  stroke-width: 0.9;
+  opacity: 0.07;
+}
+
+main,
+footer {
+  position: relative;
+  z-index: 1;
 }
 
 a {
@@ -789,7 +837,7 @@ strong[data-count],
    * depth from the one object actually in it — the globe — and from being a
    * darker plane than the ground it sits above.
    */
-  background: var(--ground);
+  background: transparent;
 }
 
 /*
@@ -1391,7 +1439,7 @@ strong[data-count],
 
 .ground {
   position: relative;
-  background: var(--ground);
+  background: transparent;
 }
 
 .ground > section {
@@ -2483,7 +2531,10 @@ strong[data-count],
   padding: 4px 12px;
   border-radius: 999px;
   background: var(--gold);
-  color: #2a2008;
+  /* `--gold` is near-black in light mode and white in dark mode. Keeping the
+     text on the opposite surface prevents the featured-plan label from
+     disappearing when the theme changes. */
+  color: var(--ground);
   font-size: 10px;
   font-weight: 750;
   letter-spacing: 0.14em;
@@ -2981,7 +3032,7 @@ strong[data-count],
   overflow: hidden;
   text-align: center;
   padding-block: clamp(80px, 8vw, 120px) !important;
-  background: var(--ground);
+  background: transparent;
   border-top: 1px solid var(--border);
 }
 
@@ -3082,7 +3133,7 @@ strong[data-count],
 footer {
   padding-block: clamp(44px, 5vw, 64px);
   border-top: 1px solid var(--border);
-  background: var(--ground);
+  background: transparent;
 }
 
 .footer-inner {
@@ -3792,4 +3843,197 @@ html[data-theme="dark"] .theme-icon-moon { opacity: 1; }
      into the product. */
   .header-nav .theme-switch { display: none; }
   .header-nav a.header-signin { padding: 9px 8px; }
+}
+
+/* ------------------------------------------------------ pre-launch waitlist */
+
+/* The waitlist is a ledger plate rather than a newsletter box: it uses the
+   product's meridian geometry and a single dark field so the visitor's one
+   action feels like joining the product, not leaving it for a widget. */
+.waitlist-section {
+  position: relative;
+  overflow: hidden;
+  background: transparent;
+  color: var(--ink);
+  padding-block: clamp(74px, 8vw, 126px);
+}
+
+.waitlist-layout {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 510px);
+  align-items: center;
+  gap: clamp(42px, 7vw, 130px);
+}
+
+.waitlist-copy { max-width: 620px; }
+.waitlist-copy .kicker { color: var(--ink-3); }
+.waitlist-copy .kicker::before { background: var(--ink); }
+.waitlist-copy h2 {
+  margin-top: 20px;
+  color: var(--ink);
+  font-size: clamp(39px, 4.9vw, 70px);
+  letter-spacing: -0.055em;
+  line-height: 0.98;
+}
+.waitlist-copy h2 strong { color: var(--ink); }
+.waitlist-copy > p {
+  max-width: 51ch;
+  margin-top: 24px;
+  color: var(--ink-2);
+  font-size: clamp(16px, 1.25vw, 18px);
+  line-height: 1.65;
+}
+
+.waitlist-form {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  padding: clamp(28px, 3.6vw, 42px);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: var(--surface);
+  box-shadow: 0 28px 80px -46px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.waitlist-form-mark {
+  position: absolute;
+  top: 25px;
+  right: 25px;
+  width: 44px;
+  color: var(--ink-3);
+}
+.waitlist-form-mark svg { display: block; width: 100%; }
+.waitlist-form-label {
+  margin: 0 56px 15px 0;
+  color: var(--ink);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.19em;
+  text-transform: uppercase;
+}
+.waitlist-form > label:not(.waitlist-consent) {
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 650;
+}
+.waitlist-form > label:not(.waitlist-consent) span {
+  color: var(--ink-3);
+  font-weight: 500;
+}
+.waitlist-form input[type="email"],
+.waitlist-form input[type="url"] {
+  width: 100%;
+  min-height: 50px;
+  margin: 0 0 8px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  outline: none;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+.waitlist-form input[type="email"]::placeholder,
+.waitlist-form input[type="url"]::placeholder { color: var(--ink-4); }
+.waitlist-form input[type="email"]:focus,
+.waitlist-form input[type="url"]:focus {
+  border-color: var(--ink);
+  background: var(--ground);
+  box-shadow: 0 0 0 3px var(--gold-dim);
+}
+.waitlist-honeypot { display: none !important; }
+.waitlist-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 7px 0 11px;
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.waitlist-consent input { accent-color: var(--ink); margin: 2px 0 0; }
+.waitlist-submit {
+  width: 100%;
+  min-height: 52px;
+  border: 0;
+  border-radius: 11px;
+  background: var(--ink);
+  color: var(--ground);
+  cursor: pointer;
+  font-family: inherit;
+}
+.waitlist-submit:hover { background: color-mix(in srgb, var(--ink) 84%, var(--ground)); }
+.waitlist-note {
+  margin: 3px 0 0;
+  color: var(--ink-3);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.waitlist-note a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+
+.waitlist-confirmation-page { min-height: 100vh; background: var(--ground); }
+.waitlist-confirmation {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 36px 20px;
+  background:
+    radial-gradient(ellipse 86% 132% at -16% 14%, transparent 0 65.5%, var(--contour-line) 65.66% 65.82%, transparent 65.98%),
+    radial-gradient(ellipse 76% 116% at 112% 92%, transparent 0 63.5%, var(--contour-line-soft) 63.66% 63.82%, transparent 63.98%);
+}
+.waitlist-confirmation-brand {
+  position: fixed;
+  top: 28px;
+  left: clamp(20px, 4vw, 56px);
+  color: var(--ink);
+}
+.waitlist-confirmation-card {
+  width: min(100%, 620px);
+  padding: clamp(34px, 7vw, 68px);
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  background: var(--surface);
+  box-shadow: 0 34px 100px -54px rgba(0, 0, 0, 0.32);
+  text-align: center;
+}
+.waitlist-confirmation-mark { width: 70px; margin: 0 auto 30px; color: var(--ink); }
+.waitlist-confirmation-mark svg { display: block; width: 100%; }
+.waitlist-confirmation-card .kicker { color: var(--ink-3); }
+.waitlist-confirmation-card .kicker::before { background: var(--ink); }
+.waitlist-confirmation-card h1 { margin: 18px 0 24px; color: var(--ink); font-size: clamp(44px, 7vw, 67px); letter-spacing: -0.06em; line-height: 0.95; }
+.waitlist-confirmation-card > p { max-width: 47ch; margin: 0 auto 17px; color: var(--ink-2); font-size: 16px; line-height: 1.65; }
+.waitlist-confirmation-card > p strong { color: var(--ink); font-weight: 650; }
+.waitlist-confirmation-card .waitlist-confirmation-tagline { margin: 30px auto 26px; color: var(--ink); font-weight: 650; }
+.waitlist-confirmation-card .pill { background: var(--ink); color: var(--ground); }
+
+@media (max-width: 800px) {
+  .waitlist-layout { grid-template-columns: 1fr; gap: 40px; }
+  .waitlist-copy { max-width: 590px; }
+  .waitlist-form { max-width: 590px; width: 100%; }
+}
+
+@media (max-width: 520px) {
+  .waitlist-section { padding-block: 64px; }
+  .waitlist-form { padding: 27px 22px; }
+  .waitlist-confirmation-brand { position: static; align-self: start; justify-self: start; }
+  .waitlist-confirmation { align-content: start; gap: 64px; padding-top: 25px; }
+}
+
+/* Confirmation is a separate document, so it gets the same quiet line
+   vocabulary without pretending to be a continuation of a scrolled page. */
+:root {
+  --contour-line: rgba(var(--ink-rgb), 0.16);
+  --contour-line-soft: rgba(var(--ink-rgb), 0.09);
+}
+
+@media (max-width: 720px) {
+  .contour-field .contour-minor { display: none; }
+  .contour-field .contour-axis { display: none; }
+  .contour-field .contour-major { opacity: 0.12; }
 }

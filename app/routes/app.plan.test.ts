@@ -7,6 +7,7 @@ const resolveBillingChargeMode = vi.fn();
 const resolvePlan = vi.fn();
 const firstDeniedRequestLimit = vi.fn();
 const recordSensitiveAction = vi.fn();
+const reserveFoundingMerchantEntitlement = vi.fn();
 
 vi.mock("~/lib/auth.server", () => ({
   requireShopContext: (...args: unknown[]) => requireShopContext(...args),
@@ -30,6 +31,11 @@ vi.mock("~/lib/rate-limit.server", () => ({
 }));
 vi.mock("~/lib/security-audit.server", () => ({
   recordSensitiveAction: (...args: unknown[]) => recordSensitiveAction(...args),
+}));
+vi.mock("~/lib/waitlist.server", () => ({
+  findFoundingMerchantEntitlementForShop: vi.fn(),
+  reserveFoundingMerchantEntitlement: (...args: unknown[]) =>
+    reserveFoundingMerchantEntitlement(...args),
 }));
 
 const { action } = await import("./app.plan");
@@ -63,6 +69,7 @@ beforeEach(() => {
   resolvePlan.mockResolvedValue({ planId: null, isDemo: false });
   firstDeniedRequestLimit.mockResolvedValue(null);
   recordSensitiveAction.mockResolvedValue(undefined);
+  reserveFoundingMerchantEntitlement.mockResolvedValue(null);
   vi.stubEnv("APP_URL", "");
   vi.stubEnv("SHOPIFY_APP_URL", "");
 });
@@ -170,5 +177,41 @@ describe("plan charge action", () => {
     ).resolves.toEqual({ error: "That plan does not exist." });
     expect(resolveBillingChargeMode).not.toHaveBeenCalled();
     expect(billingRequest).not.toHaveBeenCalled();
+  });
+
+  it("does not create a founding charge without a server-side entitlement", async () => {
+    const { ctx, billingRequest } = context();
+    requireShopContext.mockResolvedValue(ctx);
+    resolveBillingChargeMode.mockResolvedValue(false);
+
+    await expect(
+      action({ request: request("starter-founding") } as never),
+    ).resolves.toEqual({
+      error:
+        "Founding Merchant pricing is not available for this store. " +
+        "Use an eligible verified waitlist account before choosing a plan.",
+    });
+    expect(reserveFoundingMerchantEntitlement).toHaveBeenCalledWith("shop-1");
+    expect(billingRequest).not.toHaveBeenCalled();
+  });
+
+  it("requests Shopify's bounded founding plan only after entitlement reservation", async () => {
+    const { ctx, billingRequest } = context();
+    requireShopContext.mockResolvedValue(ctx);
+    resolveBillingChargeMode.mockResolvedValue(false);
+    reserveFoundingMerchantEntitlement.mockResolvedValue({
+      id: "entitlement_1", discountPercentage: 15, durationIntervals: 12,
+    });
+    billingRequest.mockResolvedValue(new Response(null, { status: 302 }));
+
+    await action({ request: request("starter-founding") } as never);
+
+    expect(billingRequest).toHaveBeenCalledWith(expect.objectContaining({
+      plan: "starter-founding",
+      isTest: false,
+    }));
+    expect(recordSensitiveAction).toHaveBeenCalledWith(expect.objectContaining({
+      resource: "plan:starter-founding",
+    }));
   });
 });

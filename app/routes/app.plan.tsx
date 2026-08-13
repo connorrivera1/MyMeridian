@@ -19,10 +19,15 @@ import {
   annualKey,
   billingKeyInfo,
   changeKey,
+  foundingKey,
   nextCycleKey,
   PLANS,
   type BillingKey,
 } from "~/lib/plans";
+import {
+  findFoundingMerchantEntitlementForShop,
+  reserveFoundingMerchantEntitlement,
+} from "~/lib/waitlist.server";
 import { publicAppOrigin } from "~/lib/public-origin.server";
 import {
   firstDeniedRequestLimit,
@@ -47,12 +52,19 @@ export async function loader({ request }: LoaderFunctionArgs) {
   return withShopContext(request, async (ctx) => {
     const plan = await resolvePlan(ctx);
     const isTest = billingIsTestForShop(ctx.shop);
+    const foundingOffer = plan.planId
+      ? null
+      : await findFoundingMerchantEntitlementForShop(ctx.shop.id);
 
     return {
       isDemo: plan.isDemo,
       currentPlan: plan.planId,
       status: plan.status,
       plans: Object.values(PLANS),
+      // Only a verified owner whose waitlist email matches an unconsumed
+      // publisher-side entitlement can see the discounted choice. The action
+      // repeats the reservation check immediately before Shopify billing.
+      foundingOffer: Boolean(foundingOffer),
       /** Surfaced so a reviewer can see the charge is a test one, not a real bill. */
       isTest,
     };
@@ -132,6 +144,20 @@ export async function action({ request }: ActionFunctionArgs) {
           "Could not verify whether this store can accept a real charge. " +
           "No charge was created; retry in a moment.",
       };
+    }
+
+    if (requestedPlan.founding) {
+      // A founding plan key has no standalone value. It is valid only when
+      // this exact store has a time-bounded reservation from a verified owner
+      // email, made before Shopify opens its approval page.
+      const entitlement = await reserveFoundingMerchantEntitlement(ctx.shop.id);
+      if (!entitlement) {
+        return {
+          error:
+            "Founding Merchant pricing is not available for this store. " +
+            "Use an eligible verified waitlist account before choosing a plan.",
+        };
+      }
     }
 
     // Shopify sends the merchant back here after they approve or decline, so the
@@ -227,11 +253,16 @@ export default function Plan() {
               plan.price < (PLANS[data.currentPlan].price ?? 0),
           );
           const selectedKey = yearly ? annualKey(plan.id) : plan.id;
+          const founding = Boolean(
+            data.foundingOffer && !data.currentPlan && !yearly,
+          );
           const billingKey = isDowngrade
             ? nextCycleKey(selectedKey)
             : data.currentPlan
               ? changeKey(selectedKey)
-              : selectedKey;
+              : founding
+                ? foundingKey(plan.id)
+                : selectedKey;
 
           return (
             <div className="card plan-card" key={plan.id}>
@@ -240,7 +271,13 @@ export default function Plan() {
                 value={
                   <>
                     <Money
-                      cents={(yearly ? plan.annualPrice : plan.price) * 100}
+                      cents={
+                        (yearly
+                          ? plan.annualPrice
+                          : founding
+                            ? plan.price * 0.85
+                            : plan.price) * 100
+                      }
                       currency="USD"
                       decimals={false}
                     />
@@ -253,6 +290,9 @@ export default function Plan() {
                 meta={
                   <span>
                     {plan.blurb}
+                    {founding && (
+                      <> · Founding Merchant price for the first 12 months</>
+                    )}
                     {yearly && (
                       <>
                         {" "}
@@ -302,7 +342,9 @@ export default function Plan() {
                       disabled={busy}
                     >
                       {!data.currentPlan
-                        ? `Start 14-day trial`
+                        ? founding
+                          ? `Claim Founding Merchant price`
+                          : `Start 14-day trial`
                         : isDowngrade
                           ? `Downgrade to ${plan.name}`
                           : plan.price > (PLANS[data.currentPlan].price ?? 0)

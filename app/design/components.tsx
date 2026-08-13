@@ -827,6 +827,25 @@ export function UpgradeNotice({
 
 /* -------------------------------------------------------------- legal pages */
 
+function LegalContourField() {
+  return (
+    <svg
+      className="legal-contour-field"
+      viewBox="0 0 1440 1000"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <g transform="translate(1590 500)">
+        <circle className="contour-major" r="740" />
+        <ellipse className="contour-major" rx="533" ry="740" />
+        <ellipse className="contour-minor" rx="294" ry="740" />
+        <path className="contour-axis" d="M0 -740V740" />
+      </g>
+    </svg>
+  );
+}
+
 /**
  * Chrome for the public, unauthenticated documents Shopify's listing links to:
  * the privacy policy and the support page. Deliberately outside the app shell —
@@ -843,6 +862,7 @@ export function LegalPage({
 }) {
   return (
     <main className="legal">
+      <LegalContourField />
       <header className="legal-head">
         <a className="legal-brand" href="/">
           <BrandMark size={30} />

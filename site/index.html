@@ -4,14 +4,16 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>MyMeridian — see what your Shopify store actually keeps</title>
-<meta name="description" content="Shopify tells you what you sold. MyMeridian resolves orders, product costs, fulfilment, fees and overhead into what you kept — and shows every modelled or missing input instead of hiding it." />
+<meta name="description" content="Shopify tells you what you sold. MyMeridian tells you what you kept, where you are losing it, and what deserves attention next — with every configured estimate and missing input visible." />
 <meta property="og:title" content="MyMeridian — see what your Shopify store actually keeps" />
 <meta property="og:description" content="Shopify tells you what you sold. MyMeridian tells you what you kept." />
-<meta property="og:image" content="assets/overview-hero.jpg" />
+<meta property="og:url" content="https://mymeridian.io/" />
+<meta property="og:image" content="https://mymeridian.io/assets/overview-hero.jpg" />
 <meta property="og:type" content="website" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="theme-color" content="#ffffff" />
-<link rel="icon" href="favicon.svg" type="image/svg+xml" />
+<link rel="canonical" href="https://mymeridian.io/" />
+<link rel="icon" href="favicon-globe.svg?v=20260812" type="image/svg+xml" />
 <link rel="preload" as="font" type="font/woff2" href="fonts/SpaceGrotesk-Variable.woff2" crossorigin />
 <link rel="preload" as="font" type="font/woff2" href="fonts/PlusJakartaSans-Variable.woff2" crossorigin />
 <link rel="preload" as="image" href="assets/overview-hero.jpg" />
@@ -35,6 +37,17 @@ document.documentElement.classList.add("js");
 </script>
 </head>
 <body>
+
+<!-- One fixed, oversized Meridian mark. Its actual circle, longitude lines
+     and prime axis stay in the same coordinate system while content scrolls. -->
+<svg class="contour-field" viewBox="0 0 1440 1000" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+  <g transform="translate(1590 500)">
+    <circle class="contour-major" r="740" />
+    <ellipse class="contour-major" rx="533" ry="740" />
+    <ellipse class="contour-minor" rx="294" ry="740" />
+    <path class="contour-axis" d="M0 -740V740" />
+  </g>
+</svg>
 
 <!-- One four-point path, referenced by every sparkle on the page. -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -168,7 +181,7 @@ document.documentElement.classList.add("js");
       <span>MyMeridian</span>
     </a>
     <nav class="header-nav" aria-label="Primary navigation">
-      <a href="#product">The arithmetic</a>
+      <a href="#product">Arithmetic</a>
       <a href="#tour">Tour</a>
       <a href="#method">Method</a>
       <a href="#pricing">Pricing</a>
@@ -194,16 +207,7 @@ document.documentElement.classList.add("js");
           </span>
         </span>
       </button>
-      <!--
-        Both entry points to the web dashboard.
-
-        Root-relative on purpose: the app and this page are expected to be one
-        origin in production, so /login resolves to the app's own sign-in. If
-        the marketing site ends up on a separate host these two hrefs (and the
-        hero CTA below) are the three places that need the absolute app URL.
-      -->
-      <a class="header-signin" href="/login">Log in</a>
-      <a class="pill pill-small" href="/signup">Sign up</a>
+      <a class="pill pill-small" href="#waitlist">Join Waitlist</a>
     </nav>
   </div>
   <div class="header-progress" aria-hidden="true"><i></i></div>
@@ -230,12 +234,13 @@ document.documentElement.classList.add("js");
         </h1>
         <p class="hero-sub">
           Orders, product costs, fulfilment, payment fees and overhead resolved
-          into one number you can act on — with every modelled and missing input
-          still on screen. Nothing is guessed into a figure that looks certain.
+          into one number you can act on — plus the orders, products and risks
+          that deserve attention next. Every configured estimate and missing
+          input stays on screen. Nothing is guessed into a figure that looks certain.
         </p>
         <div class="hero-actions">
-          <a class="pill pill-lg" href="/signup">
-            Start free — 14-day trial
+          <a class="pill pill-lg" href="#waitlist">
+            Join Waitlist
             <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h9m0 0L8.5 4.5M12 8l-3.5 3.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </a>
           <a class="ghost-btn" href="#product">
@@ -243,9 +248,9 @@ document.documentElement.classList.add("js");
           </a>
         </div>
         <ul class="hero-assurances">
-          <li>Read-only access</li>
-          <li>Billed through Shopify</li>
-          <li>No card to start</li>
+          <li>No account required</li>
+          <li>Shopify connection at launch</li>
+          <li>Founding Merchant benefit</li>
         </ul>
       </div>
 
@@ -409,6 +414,40 @@ document.documentElement.classList.add("js");
 
   </section>
 
+  <section class="waitlist-section" id="waitlist" aria-labelledby="waitlist-title">
+    <div class="wrap waitlist-layout">
+      <div class="waitlist-copy reveal">
+        <span class="kicker">Early access</span>
+        <h2 id="waitlist-title">Be there when<br /><strong>the numbers get clear.</strong></h2>
+        <p>
+          Join the MyMeridian waitlist for early access. Founding merchants are
+          eligible for 15% off their first 12 months on a monthly plan when the
+          offer is activated at launch.
+        </p>
+      </div>
+      <form class="waitlist-form reveal" method="post" action="/waitlist" aria-describedby="waitlist-note">
+        <div class="waitlist-form-mark" aria-hidden="true">
+          <svg viewBox="0 0 96 96" fill="none"><g stroke="currentColor" stroke-width="2.6" opacity=".9" stroke-linecap="round"><circle cx="48" cy="48" r="34"/><ellipse cx="48" cy="48" rx="24.5" ry="34"/><ellipse cx="48" cy="48" rx="13.5" ry="34"/><path d="M48 14v68"/></g><path d="M48 14 A 15 34 0 0 1 48 82" stroke="var(--gold)" stroke-width="3.2" stroke-linecap="round"/></svg>
+        </div>
+        <p class="waitlist-form-label">Founding Merchant access</p>
+        <label for="waitlist-email">Email address <span aria-hidden="true">*</span></label>
+        <input id="waitlist-email" name="email" type="email" inputmode="email" autocomplete="email" maxlength="254" required placeholder="you@store.com" />
+        <label for="waitlist-store">Shopify store URL <span>optional</span></label>
+        <input id="waitlist-store" name="store_url" type="url" inputmode="url" autocomplete="url" maxlength="2048" placeholder="yourstore.com" />
+        <input class="waitlist-honeypot" name="website" type="text" tabindex="-1" autocomplete="off" aria-hidden="true" />
+        <input type="hidden" name="source" data-tracking="source" />
+        <input type="hidden" name="utm_source" data-tracking="utm_source" />
+        <input type="hidden" name="utm_medium" data-tracking="utm_medium" />
+        <input type="hidden" name="utm_campaign" data-tracking="utm_campaign" />
+        <input type="hidden" name="utm_term" data-tracking="utm_term" />
+        <input type="hidden" name="utm_content" data-tracking="utm_content" />
+        <label class="waitlist-consent" for="waitlist-consent"><input id="waitlist-consent" name="marketing_consent" type="checkbox" value="true" /> <span>Send me occasional MyMeridian product updates. You can unsubscribe anytime.</span></label>
+        <button class="pill waitlist-submit" type="submit">Join Waitlist <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h9m0 0L8.5 4.5M12 8l-3.5 3.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <p class="waitlist-note" id="waitlist-note">No Shopify connection yet. By joining, you agree to the <a href="/privacy">privacy policy</a>. Your eligibility is held securely; no public coupon is needed.</p>
+      </form>
+    </div>
+  </section>
+
   <div class="ground">
     <div class="sparkfield" aria-hidden="true">
       <svg class="spark" style="left:34.00%;top:19.01%;--s:5.0px;--dur:8.3s;--delay:2.8s;--peak:0.30" viewBox="0 0 24 24" aria-hidden="true"><use href="#spark-4" /></svg>
@@ -540,7 +579,7 @@ document.documentElement.classList.add("js");
         <h2>One number.<br /><strong>Nothing hidden behind it.</strong></h2>
         <p>
           MyMeridian starts at revenue and shows every subtraction in the order it
-          hits the P&amp;L. Modelled inputs stay marked as modelled. Missing COGS
+          hits the P&amp;L. Configured estimates stay marked as estimates. Missing COGS
           receives no verdict at all.
         </p>
       </div>
@@ -760,22 +799,22 @@ document.documentElement.classList.add("js");
     </div>
   </section>
 
-  <!-- 5 ─ Dusk → daybreak -------------------------------------------------- -->
+  <!-- 5 ─ Dark → light ----------------------------------------------------- -->
   <section class="theme-story" id="themes">
     <div class="theme-pin">
       <div class="wrap theme-copy reveal">
-        <span class="kicker">One system, two skies</span>
-        <h2>Dusk by default.<br /><strong>Daybreak on the way down.</strong></h2>
-        <p>Keep scrolling to move the same operating view from dusk to daybreak.</p>
+        <span class="kicker">One system, two modes</span>
+        <h2>Dark for focus.<br /><strong>Light for clarity.</strong></h2>
+        <p>Keep scrolling to move the same operating view from dark mode to light mode.</p>
       </div>
-      <div class="theme-frame" aria-label="MyMeridian dusk and daybreak themes">
-        <img class="theme-dark" src="assets/overview-top2.jpg" alt="MyMeridian overview in dusk theme" width="1800" height="1126" loading="lazy" />
+      <div class="theme-frame" aria-label="MyMeridian dark and light themes">
+        <img class="theme-dark" src="assets/overview-top2.jpg" alt="MyMeridian overview in dark theme" width="1800" height="1126" loading="lazy" />
         <div class="theme-light-wrap">
-          <img class="theme-light" src="assets/overview-light2.jpg" alt="MyMeridian overview in daybreak theme" width="1800" height="1126" loading="lazy" />
+          <img class="theme-light" src="assets/overview-light2.jpg" alt="MyMeridian overview in light theme" width="1800" height="1126" loading="lazy" />
         </div>
         <div class="theme-handle" aria-hidden="true"><span></span></div>
-        <span class="theme-label theme-label-dark">Dusk</span>
-        <span class="theme-label theme-label-light">Daybreak</span>
+        <span class="theme-label theme-label-dark">Dark</span>
+        <span class="theme-label theme-label-light">Light</span>
       </div>
     </div>
   </section>
@@ -805,7 +844,7 @@ document.documentElement.classList.add("js");
         <div class="reveal">
           <span class="trust-no">03</span>
           <strong>Qualified economics</strong>
-          <p>Modelled, missing and unavailable inputs stay visible on the screen that uses them.</p>
+          <p>Configured estimates, missing and unavailable inputs stay visible on the screen that uses them.</p>
         </div>
       </div>
     </div>
@@ -820,8 +859,8 @@ document.documentElement.classList.add("js");
     <div class="wrap">
       <div class="section-head reveal">
         <span class="kicker">Pricing</span>
-        <h2>Fourteen days free.<br /><strong>Then choose the right toolkit.</strong></h2>
-        <p>Billing is handled entirely by Shopify. Cancel from your Shopify admin at any time.</p>
+        <h2>Built for the moment<br /><strong>you need an honest number.</strong></h2>
+        <p>Early access is opening soon. Plan selection and Shopify billing begin at launch.</p>
       </div>
 
       <div class="billing-toggle reveal" role="group" aria-label="Billing period">
@@ -839,14 +878,14 @@ document.documentElement.classList.add("js");
                     data-annual="$490" data-annual-unit="/year">$49<small>/month</small></strong>
             <span class="plan-sub" data-monthly="Billed monthly" data-annual="$40.83 a month, billed once">Billed monthly</span>
           </div>
-          <p class="plan-for">For a store getting its costs straight for the first time.</p>
+          <p class="plan-for">Know what you actually kept.</p>
           <ul>
-            <li>Profit per order after configured costs</li>
-            <li>Product margin analysis</li>
-            <li>Revenue and profit by channel</li>
-            <li>Cost rules for fees, shipping, pick-and-pack and overhead</li>
+            <li>Order, product and channel profitability</li>
+            <li>Costs, bundles and configured estimates</li>
+            <li>Meta, Google and TikTok connection paths</li>
+            <li>Profit data quality and missing-input alerts</li>
           </ul>
-          <a class="plan-link" href="https://apps.shopify.com/meridian-profit">Start with Starter</a>
+          <a class="plan-link" href="#waitlist">Join Waitlist</a>
         </article>
 
         <article class="plan plan-featured reveal">
@@ -858,16 +897,15 @@ document.documentElement.classList.add("js");
                     data-annual="$1,290" data-annual-unit="/year">$129<small>/month</small></strong>
             <span class="plan-sub" data-monthly="Billed monthly" data-annual="$107.50 a month, billed once">Billed monthly</span>
           </div>
-          <p class="plan-for">For a store that already knows it is growing faster than it is shipping.</p>
+          <p class="plan-for">Know what deserves attention next.</p>
           <ul>
             <li>Everything in Starter</li>
-            <li>Pricing recommendations from observed history</li>
-            <li>Fulfilment capacity alerts, 14 days ahead</li>
-            <li>Profit anomaly alerts</li>
-            <li>Meta, Google and TikTok spend connections</li>
-            <li>ShipStation carrier-cost connection</li>
+            <li>Evidence-backed pricing recommendations</li>
+            <li>What Should I Do? diagnosis and proactive alerts</li>
+            <li>Fulfilment forecast and capacity warnings</li>
+            <li>Advanced acquisition economics when authorised data is available</li>
           </ul>
-          <a class="pill" href="https://apps.shopify.com/meridian-profit">Start free trial</a>
+          <a class="pill" href="#waitlist">Join Waitlist</a>
         </article>
 
         <article class="plan reveal">
@@ -878,14 +916,14 @@ document.documentElement.classList.add("js");
                     data-annual="$2,990" data-annual-unit="/year">$299<small>/month</small></strong>
             <span class="plan-sub" data-monthly="Billed monthly" data-annual="$249.17 a month, billed once">Billed monthly</span>
           </div>
-          <p class="plan-for">For a catalogue and an order book large enough that a day of backlog is expensive.</p>
+          <p class="plan-for">Operate profitability across a larger business.</p>
           <ul>
             <li>Everything in Growth</li>
-            <li>Weekly profit summaries</li>
-            <li>Advanced CSV exports</li>
-            <li>Multi-store portfolio access</li>
+            <li>Scheduled weekly profitability summaries</li>
+            <li>Advanced CSV and accountant-ready exports</li>
+            <li>Multi-store portfolio and rollup access</li>
           </ul>
-          <a class="plan-link" href="https://apps.shopify.com/meridian-profit">Start with Scale</a>
+          <a class="plan-link" href="#waitlist">Join Waitlist</a>
         </article>
       </div>
     </div>
@@ -994,10 +1032,9 @@ document.documentElement.classList.add("js");
           </summary>
           <div class="faq-answer">
             <p>
-              Through Shopify. The charge appears on your own Shopify invoice,
-              MyMeridian never sees a card number, and you cancel from the Shopify
-              admin without talking to anyone. The 14-day trial starts when you
-              install.
+              At launch, monthly and annual plans will be billed through Shopify.
+              Founding Merchant eligibility is for 15% off the first 12 months of
+              a monthly plan; it is not automatically combined with annual pricing.
             </p>
           </div>
         </details>
@@ -1009,11 +1046,11 @@ document.documentElement.classList.add("js");
   <section class="final-cta">
     <div class="final-sky" aria-hidden="true"><span class="final-sun"></span></div>
     <div class="wrap final-inner reveal">
-      <span class="kicker">Your gross sales already exist</span>
-      <h2>Now find out<br /><strong>what remains.</strong></h2>
-      <p>Fourteen days free. Read-only access. Billed through Shopify, cancelled from Shopify.</p>
-      <a class="pill pill-lg" href="https://apps.shopify.com/meridian-profit">
-        Install from the Shopify App Store
+      <span class="kicker">Coming soon</span>
+      <h2>Know what you kept.<br /><strong>Know what to fix.</strong></h2>
+      <p>Join the waitlist for early access and Founding Merchant eligibility.</p>
+      <a class="pill pill-lg" href="#waitlist">
+        Join Waitlist
         <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h9m0 0L8.5 4.5M12 8l-3.5 3.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </a>
     </div>
@@ -1037,17 +1074,30 @@ document.documentElement.classList.add("js");
         </svg>
         <span>MyMeridian</span>
       </a>
-      <p>The sun at its highest. Your numbers at their clearest.</p>
+      <p>Know what you kept. Know what to fix.</p>
     </div>
     <nav class="footer-nav" aria-label="Footer navigation">
-      <a href="#product">The arithmetic</a>
+      <a href="#product">Arithmetic</a>
       <a href="#tour">Tour</a>
       <a href="#pricing">Pricing</a>
       <a href="privacy.html">Privacy</a>
       <a href="terms.html">Terms</a>
+      <a href="/support">Support</a>
     </nav>
   </div>
 </footer>
+
+<script>
+(function () {
+  var params = new URLSearchParams(window.location.search);
+  var fields = document.querySelectorAll("[data-tracking]");
+  for (var i = 0; i < fields.length; i += 1) {
+    var field = fields[i];
+    var key = field.getAttribute("data-tracking");
+    if (key) field.value = (params.get(key) || "").slice(0, 120);
+  }
+})();
+</script>
 
 <script>
 (function () {

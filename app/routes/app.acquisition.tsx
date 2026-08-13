@@ -410,6 +410,19 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
         </Banner>
       )}
 
+      {!hasSpend && hasSourceOnlyShopCampaignSpend && (
+        <Banner>
+          <strong style={{ color: "var(--ink-primary)" }}>
+            Shop Campaign spend is available as a separate Shopify-reported source.
+          </strong>{" "}
+          Meridian has no order-level Shop Campaign attribution in this period,
+          so it does not combine that aggregate spend with order-derived CAC,
+          ROAS, or platform-overclaim totals.
+        </Banner>
+      )}
+
+      <ShopCampaignsCard data={data} />
+
       {(data.costQuality.missingCogsChannels > 0 ||
         data.costQuality.modeledCostChannels > 0) && (
         <Banner tone="warn">
@@ -432,8 +445,8 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
               {data.costQuality.modeledCostChannels === 1
                 ? " uses"
                 : "s use"}{" "}
-              configured fee or fulfilment models. Reviewing those inputs
-              acknowledges them but does not make them measured.
+              configured fee or fulfilment estimates. Confirming those inputs
+              does not make them measured.
             </>
           )}
         </Banner>
@@ -458,7 +471,7 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
 
       <Card
         title="Revenue and Profit by Channel"
-        hint="Net revenue comes from stored orders. Channel uses UTM and referring signals when Shopify supplied them; otherwise the order is classified as Direct. Contribution uses available COGS plus recorded or modeled fulfilment, payment-fee and ad-spend inputs, before overhead."
+        hint="Net revenue comes from stored orders. Channel uses UTM and referring signals when Shopify supplied them; otherwise the order is classified as Direct. Contribution uses available COGS plus measured or configured fulfilment, payment-fee and ad-spend inputs, before overhead."
         flush
       >
         {data.channels.length === 0 ? (
@@ -503,7 +516,7 @@ export function AcquisitionView({ data }: { data: AcquisitionData }) {
                         <div className="cell-sub">
                           {[
                             row.hasMissingCogs ? "missing COGS" : null,
-                            row.usesModeledCosts ? "modeled costs" : null,
+                            row.usesModeledCosts ? "configured estimates" : null,
                           ]
                             .filter(Boolean)
                             .join(" · ")}

@@ -180,6 +180,7 @@ model Shop {
   connectors            Connector[]
   connectorHealthEvents ConnectorHealthEvent[]
   pricingRecs           PricingRecommendation[]
+  actionDismissals      ActionDismissal[]
   priceChanges          PriceChange[]
   dataRequests          DataRequest[]
   customerErasures      CustomerErasure[]
@@ -196,6 +197,7 @@ model Shop {
   connectorOAuthStates  ConnectorOAuthState[]
   securityAuditEvents   SecurityAuditEvent[]
   operatorAuditEvents   OperatorAuditEvent[]
+  foundingMerchantEntitlement FoundingMerchantEntitlement? @relation("FoundingMerchantRedemptionShop")
 
   @@index([domain])
 }
@@ -1237,6 +1239,107 @@ model RateLimitBucket {
   @@index([expiresAt])
 }
 
+// ---------------------------------------------------------------------------
+// Publisher waitlist
+// ---------------------------------------------------------------------------
+//
+// Waitlist records are deliberately not Shop records. A person can express
+// interest before they install MyMeridian, and that publisher-level contact
+// data must never become readable through a merchant tenant transaction.
+// These tables are RLS-protected for the system/operator path only by the
+// migration that creates them.
+
+model WaitlistSignup {
+  id       String @id @default(cuid())
+  /// Lowercased and trimmed before write. This is the minimum contact data
+  /// needed to notify a prospective merchant and attach their early benefit.
+  email    String @unique
+  /// Normalized to an HTTPS origin; paths, credentials, query strings and
+  /// fragments are discarded before persistence.
+  storeUrl String?
+
+  /// First-touch campaign fields are bounded and optional. No raw referrer,
+  /// click id, IP address or user agent is retained here.
+  source      String?
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  utmTerm     String?
+  utmContent  String?
+
+  /// This is opt-in only and is never used to send a newsletter until a
+  /// marketing sender and unsubscribe path are configured.
+  marketingConsent   Boolean   @default(false)
+  marketingConsentAt DateTime?
+  marketingUnsubscribedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  entitlement     FoundingMerchantEntitlement?
+  emailDeliveries WaitlistEmailDelivery[]
+
+  @@index([createdAt])
+  @@index([source, createdAt])
+  @@index([utmSource, createdAt])
+  @@index([marketingConsent, createdAt])
+}
+
+/// A server-side, auditable benefit. A public code is intentionally not the
+/// authorization mechanism: launch billing checks this record against a
+/// verified owner account and the Shopify store that owner authenticated.
+model FoundingMerchantEntitlement {
+  id       String @id @default(cuid())
+  signupId String @unique
+  signup   WaitlistSignup @relation(fields: [signupId], references: [id], onDelete: Cascade)
+
+  offerVersion      String @default("founding-merchant-15-monthly-v1")
+  discountPercentage Int @default(15)
+  durationIntervals  Int @default(12)
+  status             FoundingMerchantEntitlementStatus @default(ELIGIBLE)
+
+  /// A reservation prevents two stores from using one email-bound benefit
+  /// while a merchant is on Shopify's approval screen. It becomes REDEEMED
+  /// only when Shopify confirms the discounted subscription.
+  redeemShopId          String? @unique
+  redeemShop            Shop? @relation("FoundingMerchantRedemptionShop", fields: [redeemShopId], references: [id], onDelete: SetNull)
+  reservedAt            DateTime?
+  reservationExpiresAt  DateTime?
+  redeemedAt            DateTime?
+  redeemedBillingKey    String?
+  redeemedSubscriptionId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, reservationExpiresAt])
+  @@index([redeemShopId, status])
+}
+
+/// Durable receipt of a transactional waitlist email. A provider outage does
+/// not lose the welcome message or turn a retry into duplicate mail.
+model WaitlistEmailDelivery {
+  id       String @id @default(cuid())
+  signupId String
+  signup   WaitlistSignup @relation(fields: [signupId], references: [id], onDelete: Cascade)
+
+  kind       WaitlistEmailKind   @default(WELCOME)
+  status     WaitlistEmailStatus @default(PENDING)
+  dedupeKey  String              @unique
+  providerId String?
+
+  attempts       Int       @default(0)
+  availableAt    DateTime  @default(now())
+  leaseToken     String?
+  leaseExpiresAt DateTime?
+  sentAt         DateTime?
+  error          String?
+  createdAt      DateTime  @default(now())
+
+  @@index([status, availableAt, leaseExpiresAt])
+  @@index([signupId, createdAt])
+}
+
 /// Durable per-connector/day ad sync ledger. Redis schedules work, while this
 /// table makes missing and restated days recoverable after a worker restart.
 model AdSyncWindow {
@@ -1294,9 +1397,28 @@ model PricingRecommendation {
   status      RecStatus @default(PENDING)
   generatedAt DateTime  @default(now())
   actionedAt  DateTime?
+  /// A post-acceptance observation record, never a causal outcome claim.
+  outcomeStatus               String    @default("NOT_TRACKED")
+  outcomeObservedAt           DateTime?
+  outcomeObservedProfitDelta  Decimal?  @db.Decimal(12, 2)
 
   @@index([shopId, status, generatedAt])
   @@index([variantId])
+}
+
+/// A merchant's explicit decision not to see an evidence-backed action again.
+/// The key contains only aggregated recommendation evidence, never customer
+/// data. A materially different impact bucket receives a different key and can
+/// therefore return for review without repeatedly nagging for unchanged facts.
+model ActionDismissal {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  key         String
+  dismissedAt DateTime @default(now())
+
+  @@unique([shopId, key])
+  @@index([shopId, dismissedAt])
 }
 
 // ---------------------------------------------------------------------------
@@ -1512,6 +1634,24 @@ enum AuthProvider {
 enum MembershipRole {
   OWNER
   MEMBER
+}
+
+enum FoundingMerchantEntitlementStatus {
+  ELIGIBLE
+  RESERVED
+  REDEEMED
+  VOID
+}
+
+enum WaitlistEmailKind {
+  WELCOME
+}
+
+enum WaitlistEmailStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
 }
 
 enum Channel {

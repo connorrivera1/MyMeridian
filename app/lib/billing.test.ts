@@ -6,7 +6,7 @@ process.env.SHOPIFY_APP_URL = "https://meridian-test.example.com";
 process.env.SCOPES = "read_orders,read_products";
 
 const { planIdForSubscriptionName } = await import("./billing.server");
-const { billingKeyIsAnnual } = await import("./plans");
+const { billingKeyInfo, billingKeyIsAnnual, foundingKey } = await import("./plans");
 
 /**
  * Plan selection happens on Shopify's billing screen, so the subscription name
@@ -92,5 +92,19 @@ describe("billingKeyIsAnnual", () => {
 
   it("keeps a monthly deferred downgrade on the monthly interval", () => {
     expect(billingKeyIsAnnual("starter-next-cycle")).toBe(false);
+  });
+});
+
+describe("Founding Merchant billing keys", () => {
+  it("permits only monthly initial founding configurations", () => {
+    expect(foundingKey("starter")).toBe("starter-founding");
+    expect(billingKeyInfo("starter-founding")).toEqual({
+      planId: "starter",
+      kind: "initial",
+      founding: true,
+    });
+    expect(billingKeyInfo("starter-annual-founding")).toBeNull();
+    expect(billingKeyInfo("starter-founding-change")).toBeNull();
+    expect(billingKeyIsAnnual("starter-founding")).toBe(false);
   });
 });

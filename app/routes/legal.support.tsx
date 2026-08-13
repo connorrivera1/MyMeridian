@@ -29,7 +29,7 @@ export default function Support() {
       <h2>Contact</h2>
       <LegalContact contact={contact} />
 
-      <h2>Before you write in</h2>
+      <h2>Before You Write In</h2>
       <p>
         Most questions about {APP_NAME} turn out to be one of these, and each is
         answerable from inside the app.
@@ -74,7 +74,7 @@ export default function Support() {
         </li>
       </ul>
 
-      <h2>What to include in a support request</h2>
+      <h2>What to Include in a Support Request</h2>
       <p>
         Your <code>.myshopify.com</code> domain, the screen you were on, the
         date range selected, and what you expected the number to be. If a figure
@@ -82,7 +82,7 @@ export default function Support() {
         description of the whole dashboard.
       </p>
 
-      <h2>Data and deletion</h2>
+      <h2>Data and Deletion</h2>
       <p>
         Uninstalling {APP_NAME} from your Shopify admin ends all data collection
         immediately. See the <a href="/privacy">privacy policy</a> for what is

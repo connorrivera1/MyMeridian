@@ -8,6 +8,7 @@ const purgeOldMerchantNotifications = vi.fn();
 const purgeExpiredOperatorSecurityData = vi.fn();
 const purgeExpiredRateLimitBuckets = vi.fn();
 const purgeExpiredMfaChallenges = vi.fn();
+const purgeOldWaitlistEmailDeliveries = vi.fn();
 
 vi.mock("~/lib/data-request.server", () => ({
   purgeExpiredDataRequests: (...args: unknown[]) =>
@@ -41,6 +42,10 @@ vi.mock("~/lib/mfa.server", () => ({
   purgeExpiredMfaChallenges: (...args: unknown[]) =>
     purgeExpiredMfaChallenges(...args),
 }));
+vi.mock("~/lib/waitlist.server", () => ({
+  purgeOldWaitlistEmailDeliveries: (...args: unknown[]) =>
+    purgeOldWaitlistEmailDeliveries(...args),
+}));
 
 const {
   dataRetentionSettled,
@@ -62,6 +67,7 @@ beforeEach(() => {
   });
   purgeExpiredRateLimitBuckets.mockResolvedValue(0);
   purgeExpiredMfaChallenges.mockResolvedValue(0);
+  purgeOldWaitlistEmailDeliveries.mockResolvedValue(0);
   stopDataRetentionScheduler();
 });
 
@@ -200,5 +206,13 @@ describe("MFA challenge retention", () => {
     startDataRetentionScheduler(60_000);
     await dataRetentionSettled();
     expect(purgeExpiredMfaChallenges).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("waitlist delivery retention", () => {
+  it("purges old sent and terminal email receipts without touching signups", async () => {
+    startDataRetentionScheduler(60_000);
+    await dataRetentionSettled();
+    expect(purgeOldWaitlistEmailDeliveries).toHaveBeenCalledTimes(1);
   });
 });

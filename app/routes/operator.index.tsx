@@ -43,7 +43,7 @@ function dateTime(value: string | Date | null): string {
 
 export default function OperatorOverview() {
   const { overview, stores, search } = useLoaderData<typeof loader>();
-  const { revenue, lifecycle, failures, system } = overview;
+  const { revenue, lifecycle, failures, system, waitlist } = overview;
 
   return (
     <main className="operator-main">
@@ -95,6 +95,42 @@ export default function OperatorOverview() {
           <span>Recalculation backlog <strong>{system.recalcBacklog}</strong></span>
           <span>Notification backlog <strong>{system.notificationBacklog}</strong></span>
           <span>Ad-sync backlog <strong>{system.adSyncBacklog}</strong></span>
+        </div>
+      </section>
+
+      <section aria-labelledby="waitlist-heading">
+        <h2 id="waitlist-heading">Pre-launch waitlist</h2>
+        <p className="operator-muted">
+          Publisher-level aggregate acquisition data. Email addresses and store
+          URLs are intentionally not displayed here.
+        </p>
+        <div className="operator-metric-grid">
+          <Metric label="Total signups" value={waitlist.total} />
+          <Metric label="Signups in 30 days" value={waitlist.signups30d} />
+          <Metric label="Store URL coverage" value={percent(waitlist.storeUrlCoverage)} />
+          <Metric label="Founding Merchant eligible" value={waitlist.foundingEligible} />
+        </div>
+        <div className="grid cols-2">
+          <div className="operator-table-wrap">
+            <table>
+              <thead><tr><th colSpan={2}>Signup activity</th></tr></thead>
+              <tbody>
+                {waitlist.daily.length ? waitlist.daily.map((point) => (
+                  <tr key={point.day}><td>{point.day}</td><td>{point.signups}</td></tr>
+                )) : <tr><td colSpan={2}>No signups in the last 30 days.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <div className="operator-table-wrap">
+            <table>
+              <thead><tr><th>Attributed source</th><th>Signups</th></tr></thead>
+              <tbody>
+                {waitlist.sources.length ? waitlist.sources.map((source) => (
+                  <tr key={source.source}><td>{source.source}</td><td>{source.signups}</td></tr>
+                )) : <tr><td colSpan={2}>No attributed source yet.</td></tr>}
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
 

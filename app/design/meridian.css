@@ -28,15 +28,16 @@
 /* --------------------------------------------------------------------- font */
 
 /*
- * Plus Jakarta Sans Variable, SIL OFL 1.1 — a licence that permits serving the
- * file, unlike the Fontshare FFL that governs Satoshi. `?url` imports resolve
- * these through Vite, so the woff2 is fingerprinted and cached like any other
- * asset.
+ * Satoshi is delivered directly by Fontshare under its web-font licence, so
+ * the intended brand face can be used without placing its binary in this
+ * repository. Plus Jakarta remains available as the resilient local fallback.
  *
  * `font-display: swap` on purpose: this is a dashboard whose first paint is a
  * splash screen, so a brief fallback face is invisible, and blocking the first
  * paint on a font download is not.
  */
+@import url("https://api.fontshare.com/v2/css?f[]=satoshi@300,400,500,600,700,800,900&display=swap");
+
 @font-face {
   font-family: "Plus Jakarta Sans Variable";
   src: url("../fonts/jakarta/PlusJakartaSans-Variable.woff2") format("woff2-variations");
@@ -69,10 +70,9 @@
   /*
    * Type, shared with the marketing site.
    *
-   * Space Grotesk sets the wordmark, every heading and every figure; Plus
-   * Jakarta sets running prose. A merchant clicking through from the page
-   * into the app should not be able to tell where one ends and the other
-   * begins, and type is most of what carries that.
+   * Satoshi sets the wordmark, interface, headings and figures. A merchant
+   * clicking through from the landing page into the app should not cross a
+   * type boundary.
    *
    * (These tokens were briefly missing, which is worth recording: `--font`
    * had been defined in the block this system replaced, so every rule below
@@ -80,9 +80,9 @@
    * silently fell back to the browser's default serif. An undefined custom
    * property fails at computed-value time and takes the declaration with it.)
    */
-  --font-display: "Space Grotesk Variable", ui-sans-serif, -apple-system,
+  --font-display: "Satoshi", "Space Grotesk Variable", ui-sans-serif, -apple-system,
     BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font: "Plus Jakarta Sans Variable", ui-sans-serif, -apple-system,
+  --font: "Satoshi", "Plus Jakarta Sans Variable", ui-sans-serif, -apple-system,
     BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 
   /*
@@ -907,7 +907,7 @@ code {
   font-weight: 440;
   color: var(--ink-muted);
   margin-top: 3px;
-  overflow: hidden;
+  overflow: visible;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2344,6 +2344,36 @@ table.data .primary-cell { font-weight: 510; color: var(--ink-primary); letter-s
   border: 1px solid var(--border);
   border-radius: 28px;
   box-shadow: inset 0 1px 0 var(--glass-edge), var(--shadow);
+  overflow: hidden;
+}
+
+/* The public legal route shares the same continuous line language as the
+   static Privacy and Terms documents without borrowing the dashboard chrome. */
+.legal-contour-field {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100vh;
+  color: var(--accent);
+  pointer-events: none;
+}
+
+.legal-contour-field path,
+.legal-contour-field ellipse,
+.legal-contour-field circle {
+  fill: none;
+  stroke: currentColor;
+  vector-effect: non-scaling-stroke;
+}
+
+.legal-contour-field .contour-major { stroke-width: 1.1; opacity: 0.13; }
+.legal-contour-field .contour-minor { stroke-width: 1; opacity: 0.07; }
+.legal-contour-field .contour-axis { stroke-width: 0.9; opacity: 0.055; }
+
+.legal > :not(.legal-contour-field) {
+  position: relative;
+  z-index: 1;
 }
 
 .legal-head { margin-bottom: 36px; }
@@ -3588,6 +3618,47 @@ table.data .right { font-variant-numeric: tabular-nums lining-nums; }
 }
 
 .grid { gap: var(--s-4); }
+
+/* ----------------------------------------------------- decision system */
+
+.action-center-list { display: grid; gap: var(--s-3); }
+.action-center-item {
+  padding: var(--s-4);
+  border: 1px solid var(--panel-line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.action-center-heading { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); }
+.action-center-heading h3 { margin: 0; font-size: 16px; }
+.action-center-impact { margin-left: auto; color: var(--ink-muted); font-size: 12px; }
+.action-center-copy { display: grid; gap: 8px; margin: var(--s-3) 0; }
+.action-center-copy div { display: grid; grid-template-columns: 142px minmax(0, 1fr); gap: var(--s-3); }
+.action-center-copy dt { color: var(--ink-muted); font-size: 12px; font-weight: 600; }
+.action-center-copy dd { margin: 0; font-size: 13px; line-height: 1.5; }
+.action-center-footer { display: flex; align-items: center; gap: var(--s-3); color: var(--ink-muted); font-size: 12px; }
+.action-center-footer details { margin-right: auto; }
+.action-center-footer summary { cursor: pointer; color: var(--ink-primary); }
+.action-center-footer ul { margin: 8px 0 0; padding-left: 18px; }
+.action-center-footer form { margin: 0; }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--ink-muted); }
+.btn.ghost:hover { background: var(--surface-hover); color: var(--ink-primary); }
+
+.confidence-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-4); }
+.confidence-column { min-width: 0; }
+.confidence-column h3 { margin: 0 0 var(--s-2); font-size: 13px; }
+.confidence-column p { color: var(--ink-muted); font-size: 13px; margin: 0; }
+.confidence-column ul { display: grid; gap: 8px; list-style: none; padding: 0; margin: 0; }
+.confidence-column li { display: grid; gap: 2px; font-size: 13px; }
+.confidence-column li span { color: var(--ink-muted); line-height: 1.45; }
+.confidence-next-step { margin: var(--s-4) 0 0; padding-top: var(--s-3); border-top: 1px solid var(--panel-line); font-size: 13px; }
+
+@media (max-width: 760px) {
+  .confidence-grid { grid-template-columns: 1fr; }
+  .action-center-copy div { grid-template-columns: 1fr; gap: 2px; }
+  .action-center-impact { width: 100%; margin-left: 0; }
+  .action-center-footer { align-items: flex-start; flex-wrap: wrap; }
+  .action-center-footer details { width: 100%; }
+}
 
 /* --------------------------------------------------------------- actions */
 

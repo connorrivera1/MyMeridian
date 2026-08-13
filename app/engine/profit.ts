@@ -376,6 +376,7 @@ export function computeOrderProfit(
       estimatedShippingDefault ||
       estimatedPickPack ||
       estimatedOverhead,
+    shippingCostMeasured: !usedDefaultShipping,
     usesEstimatedCosts:
       missingCost ||
       estimatedPaymentFee ||

@@ -15,9 +15,19 @@ account matrix, production secrets, encrypted daily backup/PITR retention,
 monitored alerts, and the staging acceptance record. Never use production
 customer data in staging.
 
+Use `fly.staging.toml` for staging and `fly.toml` for production. The default
+`shopify.app.toml` remains the tunnel-rewritten development configuration;
+production validation and release must explicitly use
+`shopify.app.production.toml` (`--config production`). A separate staging
+Shopify app/client must be linked before Gate 2; never reuse the production
+client id for staging. Domain cutover is governed by
+[`DOMAIN_CUTOVER.md`](DOMAIN_CUTOVER.md).
+
 ## Clean-environment procedure
 
-1. Create isolated Fly staging hosting, Fly Managed Postgres Basic and Upstash.
+1. Create isolated Fly staging hosting, Fly Managed Postgres Basic and Upstash
+   Fixed 250 MB. Do not enable Upstash auto-upgrade or ProdPack. Revisit the
+   Redis plan only from measured staging command volume.
    Create separate system, tenant and migration database roles using
    `DATABASE_SECURITY.md`. Use the initial production target shared-cpu-2x /
    2 GB only as a measured baseline, not a capacity claim.
@@ -43,9 +53,10 @@ customer data in staging.
    onboarding, start an historical import, and verify status/retry behavior.
 9. Complete the staging verification sequence below, then run the load/soak and
    backup restore drill. Resolve every failure before considering production.
-10. For production, repeat steps 1–9 using production-only accounts/values,
-    then update the production Shopify configuration with the real origin and
-    deploy it only after Connor authorizes the action. Do not submit or publish
+10. For production, repeat steps 1–9 using production-only accounts/values.
+    Validate `shopify.app.production.toml`, but release that Shopify
+    configuration only after the Fly origin, custom-domain TLS and exact OAuth
+    callback are live and Connor authorizes the action. Do not submit or publish
     from this procedure.
 
 ## Exact acceptance sequence

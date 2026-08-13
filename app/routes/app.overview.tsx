@@ -7,7 +7,6 @@ import {
   type BridgeStep,
 } from "~/design/charts";
 import {
-  Alert,
   AnimatedInt,
   AnimatedMoney,
   Badge,
@@ -26,10 +25,14 @@ import {
   seriesColor,
 } from "~/design/components";
 import { formatPercent, ratio } from "~/engine/money";
+import { buildActionCenter } from "~/engine/action-center";
 import { CHANNEL_LABELS, type Channel } from "~/engine/types";
+import { withShopContext } from "~/lib/auth.server";
+import { requireRecentReauthentication } from "~/lib/reauth.server";
 import { planAllows } from "~/lib/plan.server";
 import { change, loadDashboard } from "~/lib/route-data.server";
 import { bucketWeekly, dailySeries } from "~/lib/series";
+import prisma from "~/db.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const dashboard = await loadDashboard(request);
@@ -42,6 +45,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     capabilities,
     plan,
     adSpendCoverage,
+    profitConfidence,
   } = dashboard;
 
   const p = analytics.period;
@@ -125,6 +129,16 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   const missingCogsOrders = p.orders.filter((o) => o.hasMissingCogs).length;
   const modeledCostOrders = p.orders.filter((o) => o.usesModeledCosts).length;
+  const actionCenter = buildActionCenter({
+    period: p,
+    products: analytics.products,
+    channels: analytics.channels,
+    capacity: analytics.capacity,
+    confidence: profitConfidence,
+    includeDecisionIntelligence: planAllows(plan, "anomalyAlerts"),
+    range: preset,
+    dismissedKeys: new Set(dashboard.dismissedActionKeys),
+  });
 
   return {
     rangeLabel,
@@ -133,6 +147,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
     timezone: shop.timezone,
     capabilities,
     adSpendCoverage,
+    profitConfidence,
+    actionCenter,
     greeting,
     kickerDate,
     shopName: shop.name,
@@ -191,13 +207,27 @@ export async function loader({ request }: LoaderFunctionArgs) {
         newCustomers: channel.newCustomers,
         verdict: channel.verdict,
       })),
-    // Capacity is a Growth feature, so its alerts do not leak onto the
-    // overview of a Starter store — the "View capacity" link beside them would
-    // land on an upgrade notice.
-    alerts: planAllows(plan, "capacity")
-      ? analytics.capacity.alerts.slice(0, 2)
-      : [],
   };
+}
+
+export async function action({ request }: LoaderFunctionArgs) {
+  return withShopContext(request, async (ctx) => {
+    await requireRecentReauthentication(request, ctx.user);
+    const form = await request.formData();
+    if (form.get("intent") !== "dismiss-action") {
+      return { ok: false, message: "Unrecognised action." };
+    }
+    const key = String(form.get("key") ?? "");
+    if (!/^[-a-zA-Z0-9_:|]+$/.test(key) || key.length > 200) {
+      return { ok: false, message: "That action could not be dismissed." };
+    }
+    await prisma.actionDismissal.upsert({
+      where: { shopId_key: { shopId: ctx.shop.id, key } },
+      create: { shopId: ctx.shop.id, key },
+      update: { dismissedAt: new Date() },
+    });
+    return { ok: true, message: "Dismissed until the evidence materially changes." };
+  });
 }
 
 function compactProduct(product: {
@@ -354,31 +384,107 @@ export function OverviewView({ data }: { data: OverviewData }) {
         </Banner>
       )}
 
-      {data.alerts.length > 0 && (
-        <Card
-          title="Needs Attention"
-          actions={
-            <Link
-              className="btn sm"
-              to={`/app/fulfilment?range=${data.preset}`}
-            >
-              View capacity
-            </Link>
-          }
-          flush
-        >
-          {data.alerts.map((alert) => (
-            <Alert
-              key={alert.id}
-              severity={alert.severity}
-              title={alert.title}
-              daysUntil={alert.daysUntil}
-            >
-              {alert.detail}
-            </Alert>
-          ))}
-        </Card>
-      )}
+      <Card
+        title="What Should I Do?"
+        hint="Ranked from current aggregate evidence. Meridian separates what it observed from what it suggests you investigate."
+      >
+        {data.actionCenter.length === 0 ? (
+          <Empty>
+            No high-confidence issue or opportunity needs attention in this
+            period. Data confidence remains visible below.
+          </Empty>
+        ) : (
+          <div className="action-center-list">
+            {data.actionCenter.map((item) => (
+              <article className="action-center-item" key={item.key}>
+                <div className="action-center-heading">
+                  <Badge
+                    tone={
+                      item.severity === "CRITICAL"
+                        ? "critical"
+                        : item.severity === "OPPORTUNITY"
+                          ? "good"
+                          : item.severity === "DATA"
+                            ? "neutral"
+                            : "warning"
+                    }
+                  >
+                    {item.severity === "DATA"
+                      ? "Data quality"
+                      : item.severity[0] + item.severity.slice(1).toLowerCase()}
+                  </Badge>
+                  <h3>{item.title}</h3>
+                  {item.impactLabel && (
+                    <span className="action-center-impact">
+                      {item.impactCents !== null && (
+                        <Money
+                          cents={item.impactCents}
+                          currency={data.currency}
+                          decimals={false}
+                        />
+                      )}{" "}
+                      {item.impactLabel}
+                    </span>
+                  )}
+                </div>
+                <dl className="action-center-copy">
+                  <div>
+                    <dt>Observed fact</dt>
+                    <dd>{item.observedFact}</dd>
+                  </div>
+                  {item.likelyExplanation && (
+                    <div>
+                      <dt>Likely explanation</dt>
+                      <dd>{item.likelyExplanation}</dd>
+                    </div>
+                  )}
+                  <div>
+                    <dt>Suggested next step</dt>
+                    <dd>{item.suggestedAction}</dd>
+                  </div>
+                </dl>
+                <div className="action-center-footer">
+                  <span>Confidence: {item.confidence}</span>
+                  <details>
+                    <summary>Why am I seeing this?</summary>
+                    <ul>
+                      {item.evidence.map((evidence) => (
+                        <li key={evidence}>{evidence}</li>
+                      ))}
+                    </ul>
+                  </details>
+                  <Link className="btn sm" to={item.href}>
+                    Review
+                  </Link>
+                  <form method="post">
+                    <input type="hidden" name="intent" value="dismiss-action" />
+                    <input type="hidden" name="key" value={item.key} />
+                    <button className="btn sm ghost" type="submit">
+                      Dismiss
+                    </button>
+                  </form>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card
+        title={`Profit Data Quality: ${data.profitConfidence.label}`}
+        hint="Measured values come from an authoritative source. Configured estimates remain estimates. Missing inputs are never shown as zero."
+      >
+        <div className="confidence-grid">
+          <ConfidenceColumn title="Measured" items={data.profitConfidence.measured} />
+          <ConfidenceColumn title="Configured estimate" items={data.profitConfidence.configured} />
+          <ConfidenceColumn title="Missing" items={data.profitConfidence.missing} />
+        </div>
+        {data.profitConfidence.nextStep && (
+          <p className="confidence-next-step">
+            <strong>Suggested next step:</strong> {data.profitConfidence.nextStep}
+          </p>
+        )}
+      </Card>
 
       {/* Six instruments in glass, three to a row. The headline profit lives
           in the greeting above, so no tile has to shout over the others. */}
@@ -495,7 +601,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
       <Card
         id="bridge"
         title="Where the Money Went"
-        hint="Available recorded and modeled costs between booked revenue and the profit shown above. Missing inputs and unconnected paid-marketing spend are excluded."
+        hint="Available measured costs and configured estimates between booked revenue and the profit shown above. Missing inputs and unconnected paid-marketing spend are excluded."
       >
         <ProfitBridge steps={data.bridge} />
         {(kpi.unattributedAdCents > 0 || kpi.modeledCostOrders > 0) && (
@@ -517,9 +623,9 @@ export function OverviewView({ data }: { data: OverviewData }) {
                 {kpi.modeledCostOrders.toLocaleString()} orders use at least one
                 configured fee, fulfilment fallback or overhead allocation.{" "}
                 <Link to={`/app/settings?range=${data.preset}`}>
-                  Review modeled inputs
+                  Review configured estimates
                 </Link>{" "}
-                to acknowledge them. Review does not turn a model into measured
+                to confirm they are current. Confirmation does not turn an estimate into measured
                 order-level cost, so those orders remain marked amber.
               </>
             )}
@@ -714,6 +820,32 @@ function ProductList({
         </tbody>
       </table>
     </div>
+  );
+}
+
+function ConfidenceColumn({
+  title,
+  items,
+}: {
+  title: string;
+  items: Array<{ label: string; detail: string }>;
+}) {
+  return (
+    <section className="confidence-column">
+      <h3>{title}</h3>
+      {items.length === 0 ? (
+        <p>None in this period.</p>
+      ) : (
+        <ul>
+          {items.map((item) => (
+            <li key={`${item.label}:${item.detail}`}>
+              <strong>{item.label}</strong>
+              <span>{item.detail}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

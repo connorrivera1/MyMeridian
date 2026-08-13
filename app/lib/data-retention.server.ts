@@ -6,6 +6,7 @@ import { purgeOldMerchantNotifications } from "~/lib/merchant-notifications.serv
 import { purgeExpiredOperatorSecurityData } from "~/lib/operator-auth.server";
 import { purgeExpiredRateLimitBuckets } from "~/lib/rate-limit.server";
 import { purgeExpiredMfaChallenges } from "~/lib/mfa.server";
+import { purgeOldWaitlistEmailDeliveries } from "~/lib/waitlist.server";
 
 /**
  * The retention boundary is measured in days, but an hourly sweep keeps the
@@ -97,6 +98,15 @@ function beginSweep(): void {
     })
     .catch((error: unknown) => {
       console.error("[mfa] challenge retention purge failed", error);
+    })
+    .then(() => purgeOldWaitlistEmailDeliveries())
+    .then((count) => {
+      if (count > 0) {
+        console.info(`[waitlist] purged ${count} expired email delivery receipt(s)`);
+      }
+    })
+    .catch((error: unknown) => {
+      console.error("[waitlist] email receipt retention purge failed", error);
     })
     .then(async () => {
       const [oauth, notifications] = await Promise.all([

@@ -37,6 +37,7 @@ describe("public legal pages", () => {
     expect(html).toContain('href="/"');
     const sibling = page.includes("privacy") ? "terms.html" : "privacy.html";
     expect(html).toContain(`href="${sibling}"`);
+    expect(html).toContain('href="/support"');
   });
 
   it.each(PAGES)("%s has no drafting placeholders", (page) => {
@@ -51,12 +52,14 @@ describe("public legal pages", () => {
     expect(html).not.toContain('class="todo"');
   });
 
-  it.each(PAGES)("%s is explicit that its legal identity is still pre-launch", (page) => {
+  it.each(PAGES)("%s names current public identity while preserving remaining gates", (page) => {
     const html = read(page);
-    expect(html).toContain("Pre-launch draft");
-    expect(html).toContain("Not yet effective");
+    expect(html).toContain("Last updated 12 August 2026");
     expect(html).not.toContain("Project Kaira");
     expect(html).not.toContain("trykaira.ai");
+    expect(html).toContain("mymeridian.io");
+    expect(html).toContain("support@mymeridian.io");
+    expect(html).not.toContain("have not been selected");
   });
 
   it("does not repeat claims the code does not support", () => {
@@ -69,6 +72,7 @@ describe("public legal pages", () => {
     );
     expect(privacy).toMatch(/not<\/strong> requested/);
     expect(privacy).toContain("<code>read_all_orders</code>");
+    expect(privacy).toContain("permission is already approved");
     expect(privacy).toContain("<code>read_reports</code>");
     expect(privacy).toContain(
       "level 2 protected-customer-data approval covering name,",

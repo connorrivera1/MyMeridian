@@ -65,6 +65,14 @@ describe("operator route UI", () => {
           churnedStores30d: 1,
           churnRate30d: 1 / 13,
         },
+        waitlist: {
+          total: 42,
+          signups30d: 13,
+          storeUrlCoverage: 0.5,
+          foundingEligible: 40,
+          daily: [{ day: "2026-08-11", signups: 3 }],
+          sources: [{ source: "youtube", signups: 7 }],
+        },
         connectors: [
           { provider: "GOOGLE_ADS", connectedStores: 4, adoptionRate: 1 / 3 },
         ],
@@ -118,6 +126,8 @@ describe("operator route UI", () => {
       "30-day churn",
       "All installs",
       "All uninstalls",
+      "Pre-launch waitlist",
+      "Founding Merchant eligible",
       "Failed imports",
       "Webhook failures",
       "Background-job failures",

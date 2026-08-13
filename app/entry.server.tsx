@@ -14,6 +14,7 @@ import { startWebhookDeliveryWorker } from "./lib/webhooks.server";
 import { startIntegrationScheduler } from "./integrations/scheduler.server";
 import { startAdIngestion } from "./queue/ads-queue.server";
 import { startMerchantNotificationScheduler } from "./lib/merchant-notifications.server";
+import { startWaitlistEmailScheduler } from "./lib/waitlist.server";
 
 // This module is loaded with the server process, not when a merchant opens
 // Settings. Retention therefore advances even when the app receives no page
@@ -26,6 +27,7 @@ startDataRetentionScheduler();
 startWebhookDeliveryWorker();
 startIntegrationScheduler();
 startMerchantNotificationScheduler();
+startWaitlistEmailScheduler();
 // Optional by design: without MERIDIAN_REDIS_URL the web app remains usable;
 // only continuous ad ingestion is offline.
 void startAdIngestion().catch((error) =>

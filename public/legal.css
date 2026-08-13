@@ -10,23 +10,25 @@
  * and nothing else — a raymarched cloudscape behind a privacy policy is
  * exactly the "too much" the landing page was just cured of.
  *
- * The font stack matches the landing page's: Satoshi is licensed under the
- * Fontshare FFL, which forbids serving the file, so the site renders in the
- * reader's system UI face by design. See listing.test.ts, which fails the
- * build if the binary ever reappears in the tree.
+ * The font matches the landing page and app. It is served by Fontshare rather
+ * than copied into this repository, so legal pages use the same Satoshi face
+ * without shipping a local font binary.
  */
+
+@import url("https://api.fontshare.com/v2/css?f[]=satoshi@300,400,500,600,700,800,900&display=swap");
 
 :root {
   color-scheme: light;
   --ground: #ffffff;
   --raised: #fafafa;
   --ink: #0a0a0a;
+  --ink-rgb: 10, 10, 10;
   --ink-2: rgba(10, 10, 10, 0.7);
   --ink-3: rgba(10, 10, 10, 0.52);
   --gold: #0a0a0a;
   --gold-dim: rgba(10, 10, 10, 0.07);
   --border: rgba(10, 10, 10, 0.13);
-  --font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+  --font: "Satoshi", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
     "Helvetica Neue", Arial, sans-serif;
 }
 
@@ -62,6 +64,9 @@ html {
 }
 
 body {
+  position: relative;
+  isolation: isolate;
+  overflow-x: hidden;
   background: var(--ground);
   color: var(--ink-2);
   font-family: var(--font);
@@ -69,6 +74,39 @@ body {
   font-weight: 400;
   line-height: 1.72;
   -webkit-font-smoothing: antialiased;
+}
+
+/* One document-length field shared by Privacy and Terms. The curves are
+   continuous across the whole reading surface instead of restarting at each
+   heading or page band. */
+.legal-contour-field {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100vh;
+  overflow: visible;
+  color: var(--ink);
+  pointer-events: none;
+}
+
+.legal-contour-field path,
+.legal-contour-field ellipse,
+.legal-contour-field circle {
+  fill: none;
+  stroke: currentColor;
+  vector-effect: non-scaling-stroke;
+}
+
+.legal-contour-field .contour-major { stroke-width: 1.1; opacity: 0.14; }
+.legal-contour-field .contour-minor { stroke-width: 1; opacity: 0.075; }
+.legal-contour-field .contour-axis { stroke-width: 0.9; opacity: 0.06; }
+
+.header,
+main,
+footer {
+  position: relative;
+  z-index: 1;
 }
 
 a { color: inherit; }
@@ -116,7 +154,44 @@ a:hover { color: var(--ink); }
 
 /* -------------------------------------------------------------------- page */
 
-main { padding: 68px 0 90px; }
+/* Match the standalone legal reading surface to the support route: one quiet,
+   elevated document card rather than policy text floating directly on the
+   field. The card stays translucent enough for the Meridian geometry to read
+   as part of the product, never as a separate site shell. */
+main {
+  max-width: 76ch;
+  margin: 48px auto 72px;
+  padding: 52px clamp(26px, 5vw, 56px) 64px;
+  font-size: 14px;
+  font-weight: 440;
+  line-height: 1.75;
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  background: color-mix(in srgb, var(--ground) 88%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(var(--ink-rgb), 0.055),
+    0 38px 100px -66px rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(28px) saturate(140%);
+  -webkit-backdrop-filter: blur(28px) saturate(140%);
+  overflow: hidden;
+}
+
+.wrap { max-width: 760px; margin: 0 auto; padding: 0; }
+
+/* The same lockup that begins Support's card.  Keeping it inside the reading
+   pane makes a direct legal link feel like Meridian even without landing-page
+   navigation. */
+.legal-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+}
+
+.legal-brand-mark { flex: 0 0 auto; }
 
 .doc-kicker {
   display: inline-flex;
@@ -136,17 +211,17 @@ main { padding: 68px 0 90px; }
 }
 
 h1 {
-  margin: 18px 0 0;
-  font-size: clamp(32px, 4.4vw, 46px);
-  font-weight: 500;
+  margin: 22px 0 6px;
+  font-size: 30px;
+  font-weight: 350;
   letter-spacing: -0.028em;
   line-height: 1.1;
   color: var(--ink);
 }
 
 .doc-meta {
-  margin: 18px 0 0;
-  font-size: 13.5px;
+  margin: 0;
+  font-size: 12px;
   color: var(--ink-3);
 }
 
@@ -206,7 +281,7 @@ td:last-child, th:last-child { padding-right: 0; text-align: right; }
   margin-top: 26px;
   padding: 18px 20px;
   border-left: 2px solid var(--gold);
-  background: rgba(240, 194, 115, 0.06);
+  background: var(--gold-dim);
   font-size: 14.5px;
   color: var(--ink-2);
 }
@@ -233,7 +308,13 @@ footer {
 .foot-nav a { text-decoration: none; }
 
 @media (max-width: 700px) {
-  main { padding: 46px 0 64px; }
+  /* The document remains the focus on a phone. The footer retains every
+     legal route; keeping a four-link nav beside the mark would clip it. */
+  .header-inner { padding: 15px 20px; }
+  .header-nav { gap: 0; }
+  .header-nav a { display: none; }
+  .theme-switch { margin-left: 0; }
+
   h2 { margin-top: 42px; }
 }
 
@@ -246,6 +327,7 @@ html[data-theme="dark"] {
   --ground: #0a0a0a;
   --raised: #141414;
   --ink: #f5f5f5;
+  --ink-rgb: 245, 245, 245;
   --ink-2: rgba(245, 245, 245, 0.72);
   --ink-3: rgba(245, 245, 245, 0.54);
   --gold: #f5f5f5;
@@ -321,4 +403,10 @@ html[data-theme="dark"] .theme-icon-moon { opacity: 1; }
 
 @media (prefers-reduced-motion: reduce) {
   .theme-switch-thumb { transition: none; }
+}
+
+@media (max-width: 700px) {
+  .legal-contour-field .contour-minor { display: none; }
+  .legal-contour-field .contour-axis { display: none; }
+  .legal-contour-field .contour-major { opacity: 0.11; }
 }

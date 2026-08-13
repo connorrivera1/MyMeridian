@@ -5,6 +5,10 @@ export default [
   // A resource route: it returns the hand-written HTML document rather than
   // rendering a component. See routes/home.ts.
   index("routes/home.ts"),
+  route("waitlist", "routes/waitlist.ts"),
+  route("waitlist/confirmed", "routes/waitlist-confirmed.ts"),
+  route("waitlist/unsubscribe", "routes/waitlist-unsubscribe.tsx"),
+  route("waitlist/unsubscribed", "routes/waitlist-unsubscribed.ts"),
 
   // Public, unauthenticated documents. Shopify's listing links to the privacy
   // policy and the reviewer opens both without a session, so neither may ever

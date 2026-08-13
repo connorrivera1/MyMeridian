@@ -23,6 +23,7 @@ import {
   UpgradeNotice,
 } from "~/design/components";
 import { formatPercent, toCents } from "~/engine/money";
+import { assessPricingOutcome } from "~/engine/recommendation-outcomes";
 import { withShopContext, type ShopContext } from "~/lib/auth.server";
 import { requireRecentReauthentication } from "~/lib/reauth.server";
 import { planAllows, planFor, resolvePlan } from "~/lib/plan.server";
@@ -79,6 +80,37 @@ async function loadPricing(request: Request, ctx: ShopContext) {
       rec.method === "ELASTICITY_REGRESSION" || rec.method === "MARGIN_TARGET",
   );
 
+  const actionedWithOutcomes = await Promise.all(
+    actioned.map(async (rec) => {
+      const observedPriceChange =
+        rec.status === RecStatus.APPLIED && rec.actionedAt
+          ? await prisma.priceChange.findFirst({
+              where: {
+                shopId: shop.id,
+                variantId: rec.variantId,
+                effectiveAt: { gte: rec.actionedAt },
+              },
+              orderBy: { effectiveAt: "asc" },
+              select: { effectiveAt: true },
+            })
+          : null;
+      const observedDays = observedPriceChange
+        ? Math.max(0, Math.floor((Date.now() - observedPriceChange.effectiveAt.getTime()) / 86_400_000))
+        : 0;
+      return {
+        rec,
+        outcome: assessPricingOutcome({
+          acceptedAt: rec.status === RecStatus.APPLIED ? rec.actionedAt : null,
+          observedPriceChangeAt: observedPriceChange?.effectiveAt ?? null,
+          observedDays,
+          // A reliable observed comparison needs a controlled baseline; until
+          // one exists, the outcome stays explicitly insufficient.
+          observedMonthlyProfitDeltaCents: null,
+        }),
+      };
+    }),
+  );
+
   return {
     locked: null,
     rangeLabel,
@@ -106,14 +138,16 @@ async function loadPricing(request: Request, ctx: ShopContext) {
       method: rec.method,
       rationale: rec.rationale,
     })),
-    actioned: actioned.map((rec) => ({
+    actioned: actionedWithOutcomes.map(({ rec, outcome }) => ({
       id: rec.id,
       productTitle: rec.variant.product.title,
       variantTitle: rec.variant.title,
       status: rec.status,
       currentPriceCents: toCents(rec.currentPrice),
       suggestedPriceCents: toCents(rec.suggestedPrice),
+      expectedProfitDeltaCents: toCents(rec.expectedProfitDelta),
       actionedAt: rec.actionedAt,
+      outcome,
     })),
   };
 }
@@ -172,7 +206,7 @@ async function updatePricing(request: Request, ctx: ShopContext) {
   if (intent === "dismiss") {
     await prisma.pricingRecommendation.update({
       where: { id },
-      data: { status: RecStatus.DISMISSED, actionedAt: new Date() },
+      data: { status: RecStatus.DISMISSED, actionedAt: new Date(), outcomeStatus: "NOT_TRACKED" },
     });
 
     return { ok: true, message: `Dismissed the suggestion for ${label}.` };
@@ -184,7 +218,7 @@ async function updatePricing(request: Request, ctx: ShopContext) {
     // reconsidered.
     await prisma.pricingRecommendation.update({
       where: { id },
-      data: { status: RecStatus.PENDING, actionedAt: null },
+      data: { status: RecStatus.PENDING, actionedAt: null, outcomeStatus: "NOT_TRACKED", outcomeObservedAt: null, outcomeObservedProfitDelta: null },
     });
 
     return { ok: true, message: `Restored the suggestion for ${label}.` };
@@ -196,7 +230,7 @@ async function updatePricing(request: Request, ctx: ShopContext) {
     // an analytics app should not be able to silently change what customers pay.
     await prisma.pricingRecommendation.update({
       where: { id },
-      data: { status: RecStatus.APPLIED, actionedAt: new Date() },
+      data: { status: RecStatus.APPLIED, actionedAt: new Date(), outcomeStatus: "AWAITING_PRICE_CHANGE", outcomeObservedAt: null, outcomeObservedProfitDelta: null },
     });
 
     return {
@@ -477,6 +511,8 @@ export default function Pricing() {
                   <th className="right">Was</th>
                   <th className="right">Suggested</th>
                   <th>Decision</th>
+                  <th className="right">Expected Monthly Profit</th>
+                  <th>Outcome</th>
                   <th />
                 </tr>
               </thead>
@@ -492,6 +528,18 @@ export default function Pricing() {
                         cents={rec.currentPriceCents}
                         currency={data.currency}
                       />
+                    </td>
+                    <td className="right">
+                      {rec.expectedProfitDeltaCents === 0 ? (
+                        <span className="muted">—</span>
+                      ) : (
+                        <Money
+                          cents={rec.expectedProfitDeltaCents}
+                          currency={data.currency}
+                          decimals={false}
+                          signed
+                        />
+                      )}
                     </td>
                     <td className="right">
                       <Money
@@ -517,6 +565,12 @@ export default function Pricing() {
                           )}
                         </div>
                       )}
+                    </td>
+                    <td>
+                      <Badge tone={rec.outcome.status === "OBSERVED_AFTER_CHANGE" ? "good" : "neutral"}>
+                        {rec.outcome.label}
+                      </Badge>
+                      <div className="cell-sub">{rec.outcome.detail}</div>
                     </td>
                     <td className="right">
                       <Form method="post">

@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { publicAppOrigin } from "./public-origin.server";
+import {
+  canonicalDeploymentRedirect,
+  publicAppOrigin,
+} from "./public-origin.server";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -32,5 +35,47 @@ describe("publicAppOrigin", () => {
     expect(publicAppOrigin(new Request("https://meridian.example/path"))).toBe(
       "https://meridian.example",
     );
+  });
+});
+
+describe("canonicalDeploymentRedirect", () => {
+  it("redirects www to the production origin and preserves path and query", () => {
+    const response = canonicalDeploymentRedirect(
+      new Request("https://www.mymeridian.io/privacy?source=footer"),
+      {
+        NODE_ENV: "production",
+        SHOPIFY_APP_URL: "https://mymeridian.io",
+      },
+    );
+
+    expect(response?.status).toBe(308);
+    expect(response?.headers.get("location")).toBe(
+      "https://mymeridian.io/privacy?source=footer",
+    );
+  });
+
+  it("does not redirect the canonical host, staging, or Shopify CLI tunnels", () => {
+    expect(
+      canonicalDeploymentRedirect(
+        new Request("https://mymeridian.io/"),
+        { NODE_ENV: "production", SHOPIFY_APP_URL: "https://mymeridian.io" },
+      ),
+    ).toBeNull();
+    expect(
+      canonicalDeploymentRedirect(
+        new Request("https://staging.mymeridian.io/"),
+        { NODE_ENV: "production", SHOPIFY_APP_URL: "https://mymeridian.io" },
+      ),
+    ).toBeNull();
+    expect(
+      canonicalDeploymentRedirect(
+        new Request("https://www.mymeridian.io/"),
+        {
+          NODE_ENV: "production",
+          APP_URL: "https://example-tunnel.trycloudflare.com",
+          SHOPIFY_APP_URL: "https://mymeridian.io",
+        },
+      ),
+    ).toBeNull();
   });
 });

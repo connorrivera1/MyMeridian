@@ -94,6 +94,15 @@ function dashboard(
       mode: "unavailable" as const,
       syncedSourceCount: 0,
     },
+    profitConfidence: {
+      level: "PARTIAL",
+      label: "Partial",
+      measured: [],
+      configured: [],
+      missing: [{ state: "MISSING", label: "Paid marketing spend", detail: "No paid-marketing source has completed a sync." }],
+      nextStep: "Connect the paid-marketing source you use to include its recorded spend.",
+    },
+    dismissedActionKeys: [],
     rangeLabel: "30 days",
     preset: "30d",
     capabilities: { inventoryCost: true },
@@ -203,7 +212,7 @@ describe("Overview ad-spend honesty", () => {
     const html = await renderOverview();
 
     expect(html).toContain("1 of 2 order is missing at least one COGS input");
-    expect(html).toContain("Review does not turn a model into measured");
+    expect(html).toContain("Confirmation does not turn an estimate into measured");
     expect(html).toContain("remain marked amber");
   });
 

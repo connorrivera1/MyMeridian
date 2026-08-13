@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200" role="img" aria-labelledby="title desc">
+  <title id="title">MyMeridian globe mark</title>
+  <desc id="desc">The MyMeridian globe logo in white on a dark background.</desc>
+  <defs>
+    <radialGradient id="background" cx="50%" cy="43%" r="75%">
+      <stop offset="0" stop-color="#1a1a1a"/>
+      <stop offset="1" stop-color="#050505"/>
+    </radialGradient>
+    <filter id="glow" x="-35%" y="-35%" width="170%" height="170%">
+      <feGaussianBlur stdDeviation="14" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="1200" height="1200" fill="url(#background)"/>
+  <g transform="translate(600 600)" fill="none" stroke="#f3f3f3" stroke-linecap="round" filter="url(#glow)">
+    <circle r="326" stroke-width="14" opacity=".88"/>
+    <ellipse rx="232" ry="326" stroke-width="14" opacity=".88"/>
+    <ellipse rx="128" ry="326" stroke-width="14" opacity=".88"/>
+    <path d="M0-326V326" stroke-width="14" opacity=".88"/>
+  </g>
+</svg>

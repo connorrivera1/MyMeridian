@@ -126,7 +126,7 @@ export function buildActionCenter(input: ActionCenterInput): ActionRecommendatio
     actions.push({
       key,
       severity: "CRITICAL",
-      title: `${lossOrders.length.toLocaleString()} orders lost contribution`,
+      title: `${lossOrders.length.toLocaleString()} Orders Lost Contribution`,
       observedFact: `${lossOrders.length.toLocaleString()} orders had negative contribution after the recorded costs, totaling ${formatCents(lossCents)} in losses.`,
       likelyExplanation:
         productsWithLosses.length > 0

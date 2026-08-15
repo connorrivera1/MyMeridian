@@ -7,6 +7,27 @@
 -- real Shopify shops, then enqueue an independent whole-history recompute so
 -- every materialized order/customer aggregate is rebuilt from corrected input.
 
+-- Repair and enqueue in one PostgreSQL statement. Prisma does not wrap
+-- PostgreSQL migration files in a transaction automatically; a separate job
+-- insert could otherwise be leased by a live worker before the subtotal update
+-- became visible. The data-modifying CTE makes the repaired rows and durable
+-- recompute receipt one atomic commit.
+WITH repaired_shops AS (
+  UPDATE "Order" AS o
+  SET "subtotal" = COALESCE(
+    (
+      SELECT SUM(li."unitPrice" * li.quantity)
+      FROM "OrderLineItem" AS li
+      WHERE li."orderId" = o.id
+    ),
+    o."subtotal" + o."discountTotal"
+  )
+  FROM "Shop" AS s
+  WHERE o."shopId" = s.id
+    AND NOT s."isDemo"
+    AND o."discountTotal" <> 0
+  RETURNING o."shopId"
+)
 INSERT INTO "RecalcJob" (
   "id",
   "shopId",
@@ -27,25 +48,9 @@ SELECT
   CURRENT_TIMESTAMP,
   CURRENT_TIMESTAMP
 FROM "Shop" AS s
-WHERE NOT s."isDemo"
-  AND EXISTS (
-    SELECT 1
-    FROM "Order" AS o
-    WHERE o."shopId" = s.id
-      AND o."discountTotal" <> 0
-  )
-ON CONFLICT ("dedupeKey") DO NOTHING;
-
-UPDATE "Order" AS o
-SET "subtotal" = COALESCE(
-  (
-    SELECT SUM(li."unitPrice" * li.quantity)
-    FROM "OrderLineItem" AS li
-    WHERE li."orderId" = o.id
-  ),
-  o."subtotal" + o."discountTotal"
+WHERE EXISTS (
+  SELECT 1
+  FROM repaired_shops
+  WHERE repaired_shops."shopId" = s.id
 )
-FROM "Shop" AS s
-WHERE o."shopId" = s.id
-  AND NOT s."isDemo"
-  AND o."discountTotal" <> 0;
+ON CONFLICT ("dedupeKey") DO NOTHING;

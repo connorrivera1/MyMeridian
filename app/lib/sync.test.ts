@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { computeOrderProfit } from "~/engine/profit";
+import { ZERO_COST_RULES } from "~/engine/types";
 
 /**
  * Regression cover for the webhook order sync.
@@ -293,6 +295,82 @@ beforeEach(() => {
 });
 
 describe("syncOrderFromShopify — isFirstOrder", () => {
+  it("normalizes Shopify's discounted subtotal before the profit engine subtracts the discount", async () => {
+    const synced = await syncOrderFromShopify(
+      SHOP_ID,
+      orderPayload({
+        // Values from Shopify's documented discounted-order response:
+        // 199.00 of merchandise - 17.91 discount = 181.09 paid.
+        subtotal_price: "181.09",
+        total_line_items_price: "199.00",
+        total_discounts: "17.91",
+        total_price: "181.09",
+        line_items: [
+          {
+            id: 1,
+            title: "iPod Touch 8GB",
+            quantity: 1,
+            price: "199.00",
+            discount_allocations: [{ amount: "17.91" }],
+          },
+        ],
+      }),
+    );
+
+    expect(synced.subtotal.toString()).toBe("199.00");
+
+    const profit = computeOrderProfit(
+      {
+        id: synced.id,
+        orderNumber: synced.orderNumber,
+        processedAt: synced.processedAt,
+        customerId: synced.customerId,
+        channel: synced.channel,
+        campaignId: synced.campaignId,
+        isFirstOrder: synced.isFirstOrder,
+        subtotalCents: Number(synced.subtotal) * 100,
+        discountTotalCents: Number(synced.discountTotal) * 100,
+        shippingChargedCents: 0,
+        taxTotalCents: 0,
+        totalCents: Number(synced.total) * 100,
+        refundedTotalCents: 0,
+        returnFeesRetainedCents: 0,
+        returnShippingCostCents: 0,
+        actualShippingCostCents: 0,
+        actualPickPackCostCents: 0,
+        lineItems: [
+          {
+            id: "line_1",
+            productId: "product_1",
+            variantId: "variant_1",
+            title: "iPod Touch 8GB",
+            quantity: 1,
+            refundedQty: 0,
+            unitPriceCents: 19_900,
+            discountCents: 1_791,
+            unitCostMicros: 0,
+          },
+        ],
+      },
+      ZERO_COST_RULES,
+    );
+
+    expect(profit.netRevenueCents).toBe(18_109);
+  });
+
+  it("reconstructs pre-discount merchandise when a minimal delivery omits the line total", async () => {
+    const synced = await syncOrderFromShopify(
+      SHOP_ID,
+      orderPayload({
+        subtotal_price: "75.25",
+        total_discounts: "4.75",
+        total_price: "75.25",
+      }),
+    );
+
+    expect(synced.subtotal.toString()).toBe("80.00");
+  });
+
   it("imports a post-redaction delivery anonymously instead of recreating the customer", async () => {
     customerErasureFindFirst.mockResolvedValue({ id: "erased_1" });
 

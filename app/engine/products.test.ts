@@ -83,6 +83,30 @@ function analyse(orders: EngineOrder[]) {
 }
 
 describe("computeProductProfitability", () => {
+  it("subtracts line-level discount allocations exactly once", () => {
+    const discounted = order(
+      "discounted-1",
+      "customer-1",
+      new Date("2026-01-01"),
+      [
+        {
+          ...line("hero", 10_000, 3_000),
+          discountCents: 1_000,
+        },
+      ],
+      true,
+    );
+    discounted.discountTotalCents = 1_000;
+    discounted.totalCents = 9_000;
+
+    const [result] = analyse([discounted]);
+    if (!result) throw new Error("expected discounted product result");
+
+    expect(result.netRevenueCents).toBe(9_000);
+    expect(result.discountCents).toBe(1_000);
+    expect(result.contributionProfitCents).toBe(6_000);
+  });
+
   it("propagates missing COGS and modeled order costs to the product", () => {
     const missingOrder = order(
       "quality-1",

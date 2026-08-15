@@ -44,6 +44,29 @@ function decimal(value: unknown, fallback = "0.00"): string {
   return /^-?\d+(\.\d+)?$/.test(text) ? text : fallback;
 }
 
+/**
+ * Meridian's profit engine keeps merchandise revenue before discounts, while
+ * Shopify's `subtotal_price` is already after discounts. Prefer Shopify's
+ * explicit pre-discount line total when the webhook carries it; the GraphQL
+ * backfill synthesizes the same field from its complete line-item collection.
+ * The addition fallback covers older/minimal deliveries without introducing a
+ * binary-float round trip.
+ */
+function grossMerchandiseSubtotal(payload: Payload): string {
+  const explicit = payload.total_line_items_price;
+  if (
+    explicit !== null &&
+    explicit !== undefined &&
+    /^-?\d+(\.\d+)?$/.test(String(explicit))
+  ) {
+    return String(explicit);
+  }
+
+  return new Prisma.Decimal(decimal(payload.subtotal_price))
+    .plus(decimal(payload.total_discounts))
+    .toFixed(2);
+}
+
 function centsDecimal(cents: number): string {
   const sign = cents < 0 ? "-" : "";
   const absolute = Math.abs(Math.trunc(cents));
@@ -345,7 +368,7 @@ export async function syncOrderFromShopify(shopId: string, payload: Payload) {
     processedAt,
     shopifyUpdatedAt,
     currency: shopCurrency,
-    subtotal: decimal(payload.subtotal_price),
+    subtotal: grossMerchandiseSubtotal(payload),
     discountTotal: decimal(payload.total_discounts),
     shippingCharged: decimal(shippingCharged),
     taxTotal: decimal(payload.total_tax),

@@ -1034,6 +1034,31 @@ describe("runBackfill: what one order writes", () => {
     product: { id: "gid://shopify/Product/1" },
   });
 
+  it("uses the complete line-item corpus as the pre-discount subtotal", async () => {
+    const admin = scriptedAdmin({
+      orders: [
+        orderPage(
+          [
+            orderNode("1001", {
+              subtotalPriceSet: { shopMoney: { amount: "230.00" } },
+              totalDiscountsSet: { shopMoney: { amount: "10.00" } },
+              lineItems: {
+                pageInfo: { hasNextPage: false, endCursor: null },
+                nodes: [lineItem("1", "11", 1), lineItem("2", "11", 1)],
+              },
+            }),
+          ],
+          null,
+        ),
+      ],
+    });
+
+    await runBackfill("shop_1", admin);
+
+    expect(storedOrder?.subtotal.toString()).toBe("240.00");
+    expect(storedOrder?.discountTotal.toString()).toBe("10.00");
+  });
+
   it("imports a redacted customer's later history without recreating the customer", async () => {
     prismaMock.customerErasure.findFirst.mockResolvedValue({ id: "erased_1" });
     const admin = scriptedAdmin({

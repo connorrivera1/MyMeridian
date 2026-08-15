@@ -1591,6 +1591,17 @@ async function importOneOrder(shopId: string, node: OrderNode) {
   );
   const refundedTotal = money(node.totalRefundedSet);
   const orderPresentment = presentmentMoney(node.totalPriceSet);
+  const totalLineItemsPrice = node.lineItems.nodes
+    .reduce(
+      (total, item) =>
+        total.plus(
+          new Prisma.Decimal(money(item.originalUnitPriceSet)).times(
+            item.quantity,
+          ),
+        ),
+      new Prisma.Decimal(0),
+    )
+    .toFixed(2);
 
   // Use the exact same source-watermarked, advisory-locked transaction as live
   // webhooks. A page fetched before a newer delivery can therefore finish
@@ -1605,6 +1616,7 @@ async function importOneOrder(shopId: string, node: OrderNode) {
     presentment_currency:
       node.presentmentCurrencyCode ?? orderPresentment?.currencyCode ?? null,
     subtotal_price: money(node.subtotalPriceSet),
+    total_line_items_price: totalLineItemsPrice,
     total_discounts: money(node.totalDiscountsSet),
     total_shipping_price_set: {
       shop_money: { amount: money(node.totalShippingPriceSet) },

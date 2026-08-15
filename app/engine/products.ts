@@ -114,9 +114,16 @@ function allocateOrderToProducts(
   const pickPack = allocate(profit.pickPackCents, weights);
   const adCost = allocate(profit.adCostCents, weights);
 
-  // Order-level discounts and refunds also have to land somewhere.
-  const orderDiscount = allocate(
-    Math.max(0, order.discountTotalCents),
+  // Shopify's order discount total already includes every allocation copied
+  // onto a line item. Allocate only the remainder: adding the full order total
+  // to each line's own allocation subtracts merchandise discounts twice on the
+  // Products page even after the order-level P&L is correct.
+  const recordedLineDiscount = lines.reduce(
+    (total, item) => total + Math.max(0, item.discountCents),
+    0,
+  );
+  const unallocatedOrderDiscount = allocate(
+    Math.max(0, order.discountTotalCents - recordedLineDiscount),
     weights,
   );
   const orderRefund = allocate(Math.max(0, order.refundedTotalCents), weights);
@@ -124,7 +131,8 @@ function allocateOrderToProducts(
   return lines.map((item, i) => {
     const soldQty = Math.max(0, item.quantity - item.refundedQty);
     const gross = item.unitPriceCents * soldQty;
-    const discount = item.discountCents + (orderDiscount[i] ?? 0);
+    const discount =
+      Math.max(0, item.discountCents) + (unallocatedOrderDiscount[i] ?? 0);
 
     return {
       productId: item.productId!,

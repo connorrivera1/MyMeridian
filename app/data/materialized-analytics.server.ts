@@ -205,6 +205,7 @@ type ProductRollupRow = {
   payment: Prisma.Decimal;
   pickPack: Prisma.Decimal;
   adCost: Prisma.Decimal;
+  returnShipping: Prisma.Decimal;
   missingCogs: boolean;
   modeledCosts: boolean;
 };
@@ -222,14 +223,25 @@ async function loadMaterializedProducts(
         li."orderId" AS order_id,
         GREATEST(li.quantity - li."refundedQty", 0)::numeric AS units,
         (li."unitPrice" * GREATEST(li.quantity - li."refundedQty", 0))::numeric AS gross,
-        li.discount::numeric AS discount,
+        CASE WHEN li.quantity > 0 THEN
+          li.discount * GREATEST(li.quantity - li."refundedQty", 0) / li.quantity
+          ELSE 0
+        END::numeric AS discount,
         (li."unitCost" * GREATEST(li.quantity - li."refundedQty", 0))::numeric AS cogs,
         GREATEST(
-          li."unitPrice" * GREATEST(li.quantity - li."refundedQty", 0) - li.discount,
+          li."unitPrice" * GREATEST(li.quantity - li."refundedQty", 0) -
+            CASE WHEN li.quantity > 0 THEN
+              li.discount * GREATEST(li.quantity - li."refundedQty", 0) / li.quantity
+              ELSE 0
+            END,
           0
         )::numeric AS line_weight,
         SUM(GREATEST(
-          li."unitPrice" * GREATEST(li.quantity - li."refundedQty", 0) - li.discount,
+          li."unitPrice" * GREATEST(li.quantity - li."refundedQty", 0) -
+            CASE WHEN li.quantity > 0 THEN
+              li.discount * GREATEST(li.quantity - li."refundedQty", 0) / li.quantity
+              ELSE 0
+            END,
           0
         )) OVER (PARTITION BY li."orderId") AS order_weight,
         COUNT(*) OVER (PARTITION BY li."orderId")::numeric AS line_count,
@@ -258,6 +270,7 @@ async function loadMaterializedProducts(
         o."materializedPaymentFee" AS payment,
         o."materializedPickPackCost" AS pick_pack,
         o."adCostAttributed" AS ad_cost,
+        o."materializedReturnShippingCost" AS return_shipping,
         o."materializedModeledCosts" AS modeled_costs
       FROM line_basis b
       JOIN "Order" o ON o.id = b.order_id
@@ -278,61 +291,80 @@ async function loadMaterializedProducts(
       COALESCE(SUM(a.payment * a.weight), 0)::numeric AS payment,
       COALESCE(SUM(a.pick_pack * a.weight), 0)::numeric AS "pickPack",
       COALESCE(SUM(a.ad_cost * a.weight), 0)::numeric AS "adCost",
+      COALESCE(SUM(a.return_shipping * a.weight), 0)::numeric AS "returnShipping",
       COALESCE(BOOL_OR(a.missing_cogs), false) AS "missingCogs",
       COALESCE(BOOL_OR(a.modeled_costs), false) AS "modeledCosts"
     FROM allocated a
     JOIN "Product" p ON p.id = a.product_id
     GROUP BY p.id, p.title, p."imageUrl", p."productType", p.vendor
   `);
-  return rows.map((row) => {
-    const units = Number(row.units);
-    const ordersContaining = Number(row.ordersContaining);
-    const grossRevenueCents = cents(row.grossRevenue);
-    const discountCents = cents(row.discount);
-    const netRevenueCents = cents(row.netRevenue);
-    const cogsCents = cents(row.cogs);
-    const allocatedShippingCents = cents(row.shipping);
-    const allocatedPaymentFeeCents = cents(row.payment);
-    const allocatedPickPackCents = cents(row.pickPack);
-    const allocatedAdCostCents = cents(row.adCost);
-    const contributionProfitCents = netRevenueCents - cogsCents -
-      allocatedShippingCents - allocatedPaymentFeeCents -
-      allocatedPickPackCents - allocatedAdCostCents;
-    const marginPct = ratio(contributionProfitCents, netRevenueCents);
-    const classification: ProductClass = contributionProfitCents <= 0
+  return rows
+    .map((row) =>
+      productProfitFromRollup(row, totalOrders, totalNetRevenueCents),
+    )
+    .sort((a, b) => b.contributionProfitCents - a.contributionProfitCents);
+}
+
+export function productProfitFromRollup(
+  row: ProductRollupRow,
+  totalOrders: number,
+  totalNetRevenueCents: number,
+): ProductProfit {
+  const units = Number(row.units);
+  const ordersContaining = Number(row.ordersContaining);
+  const grossRevenueCents = cents(row.grossRevenue);
+  const discountCents = cents(row.discount);
+  const netRevenueCents = cents(row.netRevenue);
+  const cogsCents = cents(row.cogs);
+  const allocatedShippingCents = cents(row.shipping);
+  const allocatedPaymentFeeCents = cents(row.payment);
+  const allocatedPickPackCents = cents(row.pickPack);
+  const allocatedAdCostCents = cents(row.adCost);
+  const allocatedReturnShippingCents = cents(row.returnShipping);
+  const contributionProfitCents =
+    netRevenueCents -
+    cogsCents -
+    allocatedShippingCents -
+    allocatedPaymentFeeCents -
+    allocatedPickPackCents -
+    allocatedAdCostCents -
+    allocatedReturnShippingCents;
+  const marginPct = ratio(contributionProfitCents, netRevenueCents);
+  const classification: ProductClass =
+    contributionProfitCents <= 0
       ? "BLEEDING"
       : marginPct !== null && marginPct < 0.1
         ? "THIN_MARGIN"
         : "PROFITABLE";
-    return {
-      productId: row.productId,
-      title: row.title,
-      imageUrl: row.imageUrl,
-      productType: row.productType,
-      vendor: row.vendor,
-      units,
-      ordersContaining,
-      grossRevenueCents,
-      discountCents,
-      netRevenueCents,
-      cogsCents,
-      allocatedShippingCents,
-      allocatedPaymentFeeCents,
-      allocatedPickPackCents,
-      allocatedAdCostCents,
-      contributionProfitCents,
-      marginPct,
-      profitPerUnitCents: units ? Math.round(contributionProfitCents / units) : 0,
-      hasMissingCogs: row.missingCogs,
-      usesModeledCosts: row.modeledCosts,
-      classification,
-      acquiredCustomers: 0,
-      downstreamProfitCents: 0,
-      downstreamProfitPerCustomerCents: 0,
-      attachRatePct: ratio(ordersContaining, totalOrders),
-      revenueSharePct: ratio(netRevenueCents, totalNetRevenueCents),
-    };
-  }).sort((a, b) => b.contributionProfitCents - a.contributionProfitCents);
+  return {
+    productId: row.productId,
+    title: row.title,
+    imageUrl: row.imageUrl,
+    productType: row.productType,
+    vendor: row.vendor,
+    units,
+    ordersContaining,
+    grossRevenueCents,
+    discountCents,
+    netRevenueCents,
+    cogsCents,
+    allocatedShippingCents,
+    allocatedPaymentFeeCents,
+    allocatedPickPackCents,
+    allocatedAdCostCents,
+    allocatedReturnShippingCents,
+    contributionProfitCents,
+    marginPct,
+    profitPerUnitCents: units ? Math.round(contributionProfitCents / units) : 0,
+    hasMissingCogs: row.missingCogs,
+    usesModeledCosts: row.modeledCosts,
+    classification,
+    acquiredCustomers: 0,
+    downstreamProfitCents: 0,
+    downstreamProfitPerCustomerCents: 0,
+    attachRatePct: ratio(ordersContaining, totalOrders),
+    revenueSharePct: ratio(netRevenueCents, totalNetRevenueCents),
+  };
 }
 
 export async function loadMaterializedShopAnalytics(shop: Shop, range: DateRange) {

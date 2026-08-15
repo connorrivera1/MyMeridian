@@ -40,7 +40,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
     allocatedCostsCents:
       product.allocatedShippingCents +
       product.allocatedPaymentFeeCents +
-      product.allocatedPickPackCents,
+      product.allocatedPickPackCents +
+      product.allocatedReturnShippingCents,
     allocatedAdCostCents: product.allocatedAdCostCents,
     contributionProfitCents: product.contributionProfitCents,
     marginPct: product.marginPct,

@@ -2,6 +2,7 @@ import { Decimal } from "@prisma/client/runtime/library";
 import { describe, expect, it } from "vitest";
 
 import {
+  productProfitFromRollup,
   rollupMaterializedProfits,
   toMaterializedOrderProfit,
   type MaterializedOrder,
@@ -69,5 +70,36 @@ describe("large-window materialized analytics", () => {
     expect(period.attributedAdCostCents).toBe(500);
     expect(period.unattributedAdCostCents).toBe(300);
     expect(period.netProfitCents).toBe(4_800);
+  });
+
+  it("includes return shipping in materialized product contribution", () => {
+    const product = productProfitFromRollup(
+      {
+        productId: "product_1",
+        title: "Returned Jacket",
+        imageUrl: null,
+        productType: null,
+        vendor: null,
+        units: 1n,
+        ordersContaining: 1n,
+        grossRevenue: money(100),
+        discount: money(10),
+        netRevenue: money(95),
+        cogs: money(30),
+        shipping: money(0),
+        payment: money(0),
+        pickPack: money(0),
+        adCost: money(0),
+        returnShipping: money(3),
+        missingCogs: false,
+        modeledCosts: false,
+      },
+      1,
+      9_500,
+    );
+
+    expect(product.allocatedReturnShippingCents).toBe(300);
+    expect(product.contributionProfitCents).toBe(6_200);
+    expect(product.revenueSharePct).toBe(1);
   });
 });

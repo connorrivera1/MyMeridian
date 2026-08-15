@@ -107,6 +107,59 @@ describe("computeProductProfitability", () => {
     expect(result.contributionProfitCents).toBe(6_000);
   });
 
+  it("reconciles every product to the order ledger after a discounted partial refund", () => {
+    const partiallyRefunded = order(
+      "partial-refund-1",
+      "customer-1",
+      new Date("2026-01-01"),
+      [
+        {
+          ...line("hero", 10_000, 3_000, 2),
+          refundedQty: 1,
+          discountCents: 2_000,
+        },
+        line("thin", 5_000, 4_000),
+      ],
+      true,
+    );
+    partiallyRefunded.discountTotalCents = 2_000;
+    partiallyRefunded.shippingChargedCents = 500;
+    partiallyRefunded.totalCents = 23_500;
+    partiallyRefunded.refundedTotalCents = 9_000;
+    partiallyRefunded.returnShippingCostCents = 300;
+
+    const profit = computeOrderProfit(partiallyRefunded, RULES);
+    const products = computeProductProfitability(
+      [partiallyRefunded],
+      [profit],
+      PRODUCTS,
+    );
+
+    expect(products).toHaveLength(2);
+    expect(products.reduce((sum, row) => sum + row.units, 0)).toBe(
+      profit.units,
+    );
+    expect(products.reduce((sum, row) => sum + row.netRevenueCents, 0)).toBe(
+      profit.netRevenueCents,
+    );
+    expect(
+      products.reduce(
+        (sum, row) => sum + row.allocatedReturnShippingCents,
+        0,
+      ),
+    ).toBe(profit.returnShippingCostCents);
+    expect(
+      products.reduce((sum, row) => sum + row.contributionProfitCents, 0),
+    ).toBe(profit.contributionProfitCents);
+
+    const hero = products.find((row) => row.productId === "hero");
+    expect(hero).toMatchObject({
+      units: 1,
+      grossRevenueCents: 10_000,
+      discountCents: 1_000,
+    });
+  });
+
   it("propagates missing COGS and modeled order costs to the product", () => {
     const missingOrder = order(
       "quality-1",

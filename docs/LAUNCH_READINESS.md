@@ -41,6 +41,15 @@ implied by an earlier one.
   100. The SEO score remains 69 because staging intentionally serves
   `Disallow: /`; this is correct for a pre-launch environment. An emulated
   Fast 4G mobile trace observed 438ms LCP and 0.00 CLS, without field/CrUX data.
+- **Staging release v89 (2026-08-16):** Fly served release
+  `1RNM1g3ppxjNQH4j2Mve8PYp` from
+  `registry.fly.io/mymeridian-staging:deployment-01M06A4GPNPBKDV48AJXBGFJY3`.
+  A clean browser recheck confirmed the public page sequence is Hero → proof →
+  outcomes → product tour → truth → store trust → pricing → FAQ → waitlist;
+  the old hero demo visualization, early waitlist form, standalone Arithmetic
+  section and obsolete pricing language are absent. The desktop outcomes cards
+  use the same 32px grid rhythm and metric hierarchy as the approved truth
+  cards. Public `/healthz` and `/readyz` both passed after the rolling release.
 - **Staging release v84 (2026-08-16):** the verified landing-page conversion
   pass, clearer Overview decision language, Reports & Exports navigation, and
   data-confidence CSV columns are live on staging. The Fly release command,
@@ -295,7 +304,7 @@ implied by an earlier one.
 | Area | Status | Evidence or exact next action |
 | --- | --- | --- |
 | Core profitability engine, materialized-read fallback, financial reconciliation | **DONE — code and required verification complete** | Canonical engine remains the source of truth; bounded/materialized reads have reconciliation and stale-data fallback coverage. |
-| Merchant isolation and PostgreSQL RLS | **DONE — staging acceptance** | Real separate runtime tenant/system login tests passed; live staging is current through 41 migrations. |
+| Merchant isolation and PostgreSQL RLS | **DONE — staging acceptance** | Real separate runtime tenant/system login tests passed; live staging is current through 42 migrations. |
 | Merchant session boundary, standalone MFA/reauth, operator MFA | **DONE — code and required verification complete** | Shopify embedded sessions remain distinct from cookie-authenticated web accounts; standalone mutations require same-origin checks, MFA and step-up reauthentication; operator uses password + replay-protected TOTP. |
 | Rate limiting and repeated-request protection | **DONE — code and required verification complete** | Durable PostgreSQL limits cover public authentication/OAuth, operator access, every merchant mutation, billing, connector OAuth and exports. |
 | Sensitive logs, secrets and client-bundle boundary | **DONE — code and required verification complete** | Production artifact scan passed; connector callback no longer preserves provider-controlled errors in logs or browser URLs. |
@@ -305,7 +314,7 @@ implied by an earlier one.
 | Profit Data Quality | **DONE — code and local verification complete** | The merchant now sees categorical Complete / Strong / Partial / Limited quality with explicit Measured, Configured estimate and Missing reasons. It never turns unavailable input into zero or a false percentage. |
 | Deterministic Action Center | **DONE — code and local verification complete** | Starter shows only data-quality guidance; Growth/Scale overview ranks at most five aggregate, evidence-backed loss, product, channel, fulfilment-projection and data-quality actions. Every card separates observed fact, likely explanation, suggested next step, confidence and evidence. |
 | Recommendation decisions and outcomes | **DONE — code and local verification complete** | Dismissals are tenant-scoped and persist until a material impact bucket changes. Accepted pricing recommendations wait for a Shopify price change and a 28-day observation period; no causal outcome is claimed. |
-| Staging Postgres, separate application roles and secret vault | **DONE — staging acceptance** | Fly Managed Postgres Basic `mymeridian-staging-db` is provisioned in `iad` with isolated `meridian` database and `meridian-app-system` / `meridian-app-tenant` runtime users. All 41 migrations, plus live cross-store/identity RLS proof, passed. Production remains unprovisioned. |
+| Staging Postgres, separate application roles and secret vault | **DONE — staging acceptance** | Fly Managed Postgres Basic `mymeridian-staging-db` is provisioned in `iad` with isolated `meridian` database and `meridian-app-system` / `meridian-app-tenant` runtime users. All 42 migrations, plus live cross-store/identity RLS proof, passed. Production remains unprovisioned. |
 | Staging Redis queue | **BLOCKED — provider request quota exhausted** | Previous live TLS/authentication, BullMQ processing/retry and abandoned-lease recovery passed. Upstash has now rejected commands at the 500,000-request limit, so staging ad-polling workers are disabled. No provider plan, paid service or new database may be changed without owner authorization. Production Redis remains unprovisioned. |
 | Domain, TLS and public origin | **STAGING READY — ROOT ROUTING PENDING** | `staging.mymeridian.io` is deployed over TLS. The apex still serves GoDaddy's temporary page over HTTPS. The three exact non-routing ACME CNAMEs are live and Fly’s apex, `www` and staging certificates are verified and active. Preserve every Microsoft 365 and Resend record. |
 | Auth delivery providers | **DONE — staging acceptance** | Controlled real Resend inbox delivery, email identity/Reply-To routing, SPF/DKIM/DMARC and Twilio Verify SMS passed. `welcome@`, `support@` and `eevee@` send automatically through Resend and route inbound mail to welcome. Microsoft 365 alias send-as is deferred as a non-blocking operator convenience. Shopify-embedded merchants do not receive redundant standalone SMS challenges. |

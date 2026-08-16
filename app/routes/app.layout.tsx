@@ -26,6 +26,7 @@ import {
   IconPlan,
   IconPricing,
   IconPrivacy,
+  IconReports,
   IconCosts,
   IconProducts,
   IconSettings,
@@ -251,6 +252,7 @@ const NAV = [
   { to: "/app/orders", label: "Profit Per Order", Icon: IconOrders },
   { to: "/app/products", label: "Products", Icon: IconProducts },
   { to: "/app/costs", label: "Costs & Bundles", Icon: IconCosts },
+  { to: "/app/reports", label: "Reports & Exports", Icon: IconReports },
   { to: "/app/acquisition", label: "Acquisition", Icon: IconChannels },
   { to: "/app/pricing", label: "Pricing", Icon: IconPricing },
   {
@@ -759,6 +761,10 @@ const TITLES: Record<string, { title: string; subtitle: string }> = {
   "/app/costs": {
     title: "Costs & Bundles",
     subtitle: "What Things Cost, When They Cost It, And What A Pack Is Made Of",
+  },
+  "/app/reports": {
+    title: "Reports & Exports",
+    subtitle: "Private Profit Records For The Period You Are Reviewing",
   },
   "/app/settings": {
     title: "Costs & Connections",

@@ -74,6 +74,7 @@ export default [
     route("pricing", "routes/app.pricing.tsx"),
     route("fulfilment", "routes/app.fulfilment.tsx"),
     route("costs", "routes/app.costs.tsx"),
+    route("reports", "routes/app.reports.tsx"),
     route("settings", "routes/app.settings.tsx"),
     route("connections/:provider/start", "routes/app.connector-start.ts"),
     route("export/profit.csv", "routes/app.profit-export.ts"),

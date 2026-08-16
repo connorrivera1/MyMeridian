@@ -33,6 +33,8 @@ describe("profit CSV export", () => {
 
   it("keeps the accountant-facing columns and decimal precision stable", () => {
     expect(PROFIT_EXPORT_HEADER).toContain("net_profit");
+    expect(PROFIT_EXPORT_HEADER).toContain("ad_spend_status");
+    expect(PROFIT_EXPORT_HEADER).toContain("has_missing_cogs");
     const row = profitOrderCsvRow({
       orderNumber: 1042,
       processedAt: new Date("2026-08-10T12:00:00.000Z"),
@@ -46,13 +48,18 @@ describe("profit CSV export", () => {
       materializedPaymentFee: new Decimal("3.21"),
       materializedPickPackCost: new Decimal("1.75"),
       adCostAttributed: new Decimal("4"),
+      adSpendStatus: "UNAVAILABLE",
       overheadAllocated: new Decimal("2"),
       contributionProfit: new Decimal("54.415"),
       netProfit: new Decimal("52.415"),
+      materializedMissingCogs: true,
+      materializedModeledCosts: false,
       computedAt: new Date("2026-08-10T12:01:00.000Z"),
     });
     expect(row).toContain("100.25");
     expect(row).toContain("30.125");
     expect(row).toContain("52.415");
+    expect(row).toContain("UNAVAILABLE");
+    expect(row).toContain("true,false");
   });
 });

@@ -6,8 +6,12 @@ is the only current release-status source; use
 [`docs/SHOPIFY_SUBMISSION_PACKET.md`](docs/SHOPIFY_SUBMISSION_PACKET.md) for the
 current submission handoff.
 
-Current implementation branch: `feature/mymeridian-web-accounts`. The GitHub
-remote is `connorrivera1/MyMeridian`; nothing has been deployed or submitted.
+**Historical branch context:** this checklist was originally written against
+`feature/mymeridian-web-accounts` on `connorrivera1/MyMeridian`. It is not a
+live deployment record. As of 2026-08-16, staging is deployed and its
+`/healthz` and `/readyz` checks are live; see the authoritative matrix for the
+current evidence. No production MyMeridian service has been verified, no App
+Store submission has been made, and no production billing has been exercised.
 
 **Historical evidence, not a current release claim:** the development app has now been installed on a real Shopify
 development store and rendered embedded in Admin. Onboarding persisted, a
@@ -17,7 +21,8 @@ does not prove production webhook delivery, production charging or a
 representative order-volume backfill. Where a claim below says "verified", the
 level is named. See _What has not been tested_ at the end.
 
-**Current local gate:** `npm run ci` passes — typecheck, coverage thresholds,
+**Historical local gate (superseded by the 2026-08-16 matrix):** `npm run ci`
+passes — typecheck, coverage thresholds,
 1,173 unit tests and production build. The explicit real-PostgreSQL run passes
 all 74 opt-in integration cases after all 34 migrations apply from empty.
 Billing is no longer merely declared:
@@ -42,24 +47,29 @@ Acquisition view.
 
 ## Blockers — the app cannot be submitted until these are done
 
-### 1. Production origin is still missing
+### 1. Production origin is still not serving MyMeridian
 
-`shopify.app.toml` points at `https://shopify.dev/apps/default-app-home`. Every
-webhook `uri` in the file is relative and resolves against it, so **the three
-mandatory compliance webhooks and every other relative subscription currently
-resolve to a host Shopify cannot deliver to.** Shopify additionally rejects an `application_url`
+The default `shopify.app.toml` is intentionally the tunnel-rewritten
+development config and points at `https://shopify.dev/apps/default-app-home`.
+It must not be used for production. `shopify.app.production.toml` contains the
+correct intended production origin and callback, but a checked-in config is not
+proof that it has been published to the Partner Dashboard or that the target is
+serving the app. On 2026-08-16, `https://mymeridian.io` still returned the
+GoDaddy temporary page. Shopify additionally rejects an `application_url`
 containing the word "Shopify".
 
-Needs a real, stable, public HTTPS origin, then `application_url` deployed with
-`shopify app deploy`. It blocks real OAuth and webhooks, while the name and
-access-request work can proceed in parallel.
+Production needs a real, stable, public HTTPS MyMeridian origin, then the
+production-specific config must be validated and deployed with `shopify app
+deploy --config production`. Until then, real production OAuth and webhooks
+are blocked, while the name and access-request work can proceed in parallel.
 
 **`DEPLOY_PLAN.md` carries the whole path**: Fly.io as the host and why a
 serverless one would silently truncate every store's first import, plus the
 locally validated `Dockerfile`, `.dockerignore`, and `fly.toml`. Docker CLI
-29.7.1 and flyctl 0.4.79 are installed; the image was built and booted locally,
-but flyctl is not authenticated, no Managed Postgres cluster or Fly app exists,
-and no production deploy has run. **`shopify app config push` does not exist**
+29.7.1 and flyctl 0.4.79 are installed; the image was built and booted locally.
+The production Fly app record exists, but no production Managed Postgres
+cluster, production-secret set, or production deploy has been verified.
+**`shopify app config push` does not exist**
 on CLI 4.x: after editing and validating the config, publish it with `shopify app
 deploy` (`include_config_on_deploy = true`).
 

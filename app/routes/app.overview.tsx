@@ -363,7 +363,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
             Order
           </span>
           <a className="chip solid" href="#bridge">
-            Where The Money Went
+            See Where The Money Went
           </a>
         </div>
       </section>
@@ -424,8 +424,8 @@ export function OverviewView({ data }: { data: OverviewData }) {
       )}
 
       <Card
-        title="What Should I Do?"
-        hint="Ranked from current aggregate evidence. Meridian separates what it observed from what it suggests you investigate."
+        title="What Needs Attention"
+        hint="Prioritized next steps from current evidence. MyMeridian separates what happened from what it suggests you investigate."
       >
         {data.actionCenter.length === 0 ? (
           <Empty>
@@ -468,17 +468,17 @@ export function OverviewView({ data }: { data: OverviewData }) {
                 </div>
                 <dl className="action-center-copy">
                   <div>
-                    <dt>Observed Fact</dt>
+                    <dt>What Happened</dt>
                     <dd>{item.observedFact}</dd>
                   </div>
                   {item.likelyExplanation && (
                     <div>
-                      <dt>Likely Explanation</dt>
+                      <dt>What May Explain It</dt>
                       <dd>{item.likelyExplanation}</dd>
                     </div>
                   )}
                   <div>
-                  <dt>Suggested Next Step</dt>
+                    <dt>What To Do Next</dt>
                     <dd>{item.suggestedAction}</dd>
                   </div>
                 </dl>
@@ -510,8 +510,8 @@ export function OverviewView({ data }: { data: OverviewData }) {
       </Card>
 
       <Card
-        title={`Profit Data Quality: ${data.profitConfidence.label}`}
-        hint="Measured values come from an authoritative source. Configured estimates remain estimates. Missing inputs are never shown as zero."
+        title={`How Reliable Are These Figures? ${data.profitConfidence.label}`}
+        hint="Measured values come from a source MyMeridian can verify. Configured estimates stay estimates. Missing inputs are never shown as zero."
       >
         <div className="confidence-grid">
           <ConfidenceColumn title="Measured" items={data.profitConfidence.measured} />
@@ -520,7 +520,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
         </div>
         {data.profitConfidence.nextStep && (
           <p className="confidence-next-step">
-            <strong>Suggested Next Step:</strong> {data.profitConfidence.nextStep}
+            <strong>What To Do Next:</strong> {data.profitConfidence.nextStep}
           </p>
         )}
       </Card>
@@ -708,7 +708,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
 
       <div className="grid cols-2">
         <Card
-          title="Carrying The Business"
+          title="Products Carrying Profit"
           hint="Highest non-negative contribution after available product-level costs. Overhead and unconnected spend are excluded."
           flush
         >
@@ -716,7 +716,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
         </Card>
 
         <Card
-          title="Losing Money"
+          title="Products Losing Money"
           hint="Negative contribution after available product-level costs; overhead is excluded. Products with missing COGS receive no verdict."
           flush
         >

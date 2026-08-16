@@ -449,6 +449,14 @@ export const IconPricing = svg(
   </>,
 );
 
+/** A compact ledger: reporting without borrowing the accounting-system look. */
+export const IconReports = svg(
+  <>
+    <rect x="4" y="2.5" width="16" height="19" rx="2" />
+    <path d="M8 7h8M8 11h8M8 15h4" />
+  </>,
+);
+
 export const IconFulfilment = svg(
   <>
     <path d="M2 8h11v9H2zM13 11h4.5l3.5 3.5V17h-8z" />

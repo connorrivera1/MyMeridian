@@ -32,7 +32,8 @@ describe("feature gating", () => {
     expect(planAllows(on("starter"), "capacity")).toBe(false);
     expect(planAllows(on("starter"), "anomalyAlerts")).toBe(false);
     expect(planAllows(on("growth"), "scheduledReports")).toBe(false);
-    expect(planAllows(on("growth"), "exports")).toBe(false);
+    expect(planAllows(on("starter"), "scheduledReports")).toBe(false);
+    expect(planAllows(on("starter"), "exports")).toBe(true);
   });
 
   it("does not gate the data connections needed for honest profitability", () => {
@@ -75,8 +76,10 @@ describe("gates match what the plans advertise", () => {
     expect(advertised("growth")).toContain("capacity");
     expect(FEATURE_MIN_PLAN.pricing).toBe("growth");
     expect(FEATURE_MIN_PLAN.capacity).toBe("growth");
-    expect(advertised("growth")).toContain("proactive alerts");
+    expect(advertised("growth")).toContain("priority alerts");
     expect(FEATURE_MIN_PLAN.anomalyAlerts).toBe("growth");
+    expect(advertised("starter")).toContain("profit csv export");
+    expect(FEATURE_MIN_PLAN.exports).toBe("starter");
     expect(advertised("starter")).toContain("meta");
     expect(advertised("starter")).toContain("google");
     expect(advertised("starter")).toContain("tiktok");
@@ -87,10 +90,8 @@ describe("gates match what the plans advertise", () => {
 
   it("Scale advertises the reporting capabilities it gates", () => {
     expect(advertised("scale")).toContain("weekly profitability summaries");
-    expect(advertised("scale")).toContain("advanced csv");
     expect(advertised("scale")).toContain("multi-store");
     expect(FEATURE_MIN_PLAN.scheduledReports).toBe("scale");
-    expect(FEATURE_MIN_PLAN.exports).toBe("scale");
     expect(FEATURE_MIN_PLAN.multiStore).toBe("scale");
   });
 

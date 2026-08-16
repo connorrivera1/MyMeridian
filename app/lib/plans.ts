@@ -44,6 +44,7 @@ export const PLANS = {
       "Meta, Google and TikTok ad-spend connections",
       "ShipStation and available Shopify Shipping costs",
       "Profit data quality and missing-data alerts",
+      "Private order-level profit CSV export",
     ],
   },
   growth: {
@@ -55,7 +56,7 @@ export const PLANS = {
     features: [
       "Everything in Starter",
       "Evidence-backed pricing recommendations and outcome history",
-      "What Should I Do? diagnosis and proactive alerts",
+      "Priority alerts and next-step guidance",
       "Fulfilment forecast and capacity warnings",
       "Advanced acquisition economics when authorised data is available",
     ],
@@ -69,7 +70,6 @@ export const PLANS = {
     features: [
       "Everything in Growth",
       "Scheduled weekly profitability summaries",
-      "Advanced CSV and accountant-ready exports",
       "Multi-store portfolio and rollup access",
     ],
   },

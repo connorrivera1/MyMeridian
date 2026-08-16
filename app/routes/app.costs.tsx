@@ -7,7 +7,7 @@ import {
   useNavigation,
   useRouteError,
 } from "react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { z } from "zod";
 
@@ -691,7 +691,7 @@ function displayDate(value: string): string {
   }).format(date);
 }
 
-function MeridianDateField({
+export function MeridianDateField({
   label,
   name,
   defaultValue,
@@ -709,15 +709,57 @@ function MeridianDateField({
   const [open, setOpen] = useState(false);
   const [month, setMonth] = useState(() => dateFromValue(initialValue));
   const rootRef = useRef<HTMLDivElement>(null);
-  const labelId = `${name}-label`;
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const calendarRef = useRef<HTMLDivElement>(null);
+  const restoreTriggerFocus = useRef(false);
+  const controlId = useId();
+  const labelId = `${controlId}-label`;
+  const calendarId = `${controlId}-calendar`;
+  const calendarTitleId = `${controlId}-calendar-title`;
+
+  const closeCalendar = (restoreFocus = true) => {
+    restoreTriggerFocus.current = restoreFocus;
+    setOpen(false);
+  };
 
   useEffect(() => {
+    if (!open) return;
     const dismiss = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      // A pointer target outside this non-modal popover owns focus itself; do
+      // not steal it back to the date button after that click.
+      if (!rootRef.current?.contains(event.target as Node)) closeCalendar(false);
     };
     document.addEventListener("mousedown", dismiss);
     return () => document.removeEventListener("mousedown", dismiss);
-  }, []);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      if (restoreTriggerFocus.current) {
+        restoreTriggerFocus.current = false;
+        requestAnimationFrame(() => triggerRef.current?.focus());
+      }
+      return;
+    }
+
+    // Focus the current selection (or the first calendar control) on open.
+    // The picker is not modal, so Tab may continue through the form normally.
+    const selected = calendarRef.current?.querySelector<HTMLButtonElement>(
+      '[aria-pressed="true"]',
+    );
+    const firstControl = calendarRef.current?.querySelector<HTMLButtonElement>(
+      "button",
+    );
+    (selected ?? firstControl)?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      closeCalendar(true);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open]);
 
   const year = month.getFullYear();
   const monthIndex = month.getMonth();
@@ -736,7 +778,7 @@ function MeridianDateField({
   const choose = (day: number) => {
     const next = new Date(year, monthIndex, day);
     setValue(toDateValue(next));
-    setOpen(false);
+    closeCalendar(true);
   };
 
   return (
@@ -753,7 +795,15 @@ function MeridianDateField({
         aria-labelledby={labelId}
         aria-haspopup="dialog"
         aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
+        aria-controls={open ? calendarId : undefined}
+        ref={triggerRef}
+        onClick={() => {
+          if (open) closeCalendar(true);
+          else {
+            restoreTriggerFocus.current = false;
+            setOpen(true);
+          }
+        }}
       >
         <span>{displayDate(value)}</span>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
@@ -762,13 +812,19 @@ function MeridianDateField({
         </svg>
       </button>
       {open && (
-        <div className="meridian-calendar" role="dialog" aria-label={`Choose date for ${label}`}>
+        <div
+          id={calendarId}
+          className="meridian-calendar"
+          role="dialog"
+          aria-labelledby={calendarTitleId}
+          ref={calendarRef}
+        >
           <div className="meridian-calendar-head">
             <button type="button" aria-label="Previous Month" onClick={() => changeMonth(-1)}>‹</button>
-            <strong>{monthName}</strong>
+            <strong id={calendarTitleId}>{monthName}</strong>
             <button type="button" aria-label="Next Month" onClick={() => changeMonth(1)}>›</button>
           </div>
-          <div className="meridian-calendar-grid" role="grid" aria-label={monthName}>
+          <div className="meridian-calendar-grid" role="group" aria-label={`${monthName} dates`}>
             {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
               <span className="meridian-calendar-weekday" key={`${day}-${index}`}>{day}</span>
             ))}
@@ -789,7 +845,6 @@ function MeridianDateField({
               return (
                 <button
                   type="button"
-                  role="gridcell"
                   key={day}
                   className={isSelected ? "selected" : isToday ? "today" : undefined}
                   aria-label={`${monthName} ${day}`}
@@ -808,7 +863,7 @@ function MeridianDateField({
               const today = new Date();
               setMonth(new Date(today.getFullYear(), today.getMonth(), 1));
               setValue(toDateValue(today));
-              setOpen(false);
+              closeCalendar(true);
             }}
           >
             Today

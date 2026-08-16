@@ -77,8 +77,8 @@ export const FEATURE_MIN_PLAN = {
   carrierConnections: "starter",
   /** Automated weekly profit email. */
   scheduledReports: "scale",
-  /** Streamed accountant-grade order profitability export. */
-  exports: "scale",
+  /** Private, order-level profitability export. */
+  exports: "starter",
   /** One web account may manage more than one connected Shopify store. */
   multiStore: "scale",
 } as const satisfies Record<string, PlanId>;

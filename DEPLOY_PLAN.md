@@ -475,8 +475,9 @@ reviewer store and production-like setup; it cannot use the demo bypass.
 
 The Scale cohort claim has been removed without expanding access:
 `read_customers` remains absent and no paid plan promises LTV/payback. Scale is
-now differentiated by scheduled weekly profit summaries, advanced CSV exports
-and multi-store portfolio access at $299/month or $2,990/year. Growth includes
+now differentiated by scheduled weekly profit summaries and multi-store
+portfolio access at $299/month or $2,990/year. Private order-level CSV exports
+are available from Starter upward. Growth includes
 self-service Meta, Google and TikTok connections plus anomaly alerts. Provider
 application approval and production credentials remain deployment activation
 work, not missing product code.

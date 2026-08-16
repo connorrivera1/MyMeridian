@@ -4,7 +4,7 @@ import {
   useNavigate,
   useSearchParams,
 } from "react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { LoaderFunctionArgs } from "react-router";
 
@@ -307,7 +307,63 @@ export function ProfitBreakdownDrawer({
   // viewport drawer into a document-height panel. Keep the server markup
   // deterministic, then lift the hydrated drawer directly under body.
   const [isMounted, setIsMounted] = useState(false);
+  const drawerRef = useRef<HTMLElement>(null);
+  const closeRef = useRef<HTMLAnchorElement>(null);
+  const navigate = useNavigate();
   useEffect(() => setIsMounted(true), []);
+
+  /*
+   * This is a real modal, not merely something that looks like one. Keeping
+   * keyboard focus inside it means a screen-reader or keyboard user cannot
+   * tab into the obscured order table, and Escape offers the same exit as the
+   * visible Close link. The effect runs only after hydration: server markup
+   * stays deterministic and the portal has a concrete DOM home to focus.
+   */
+  useEffect(() => {
+    if (!isMounted) return;
+
+    const previousFocus =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    closeRef.current?.focus({ preventScroll: true });
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        navigate(closeTo, { replace: true, preventScrollReset: true });
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const focusable = drawerRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (!focusable?.length) {
+        event.preventDefault();
+        drawerRef.current?.focus({ preventScroll: true });
+        return;
+      }
+
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus({ preventScroll: true });
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus({ preventScroll: true });
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      // A drawer opened from the order field should leave the merchant where
+      // they started rather than dropping focus on the document body.
+      previousFocus?.focus({ preventScroll: true });
+    };
+  }, [closeTo, isMounted, navigate]);
 
   const money = (cents: number) => formatMoney(cents as Cents, currency);
   const deduction = (cents: number) => money(-cents);
@@ -338,6 +394,8 @@ export function ProfitBreakdownDrawer({
         aria-modal="true"
         aria-labelledby="profit-drawer-title"
         aria-describedby="profit-drawer-description"
+        ref={drawerRef}
+        tabIndex={-1}
       >
         <header className="profit-drawer-head">
           <div>
@@ -358,6 +416,7 @@ export function ProfitBreakdownDrawer({
             className="profit-drawer-close"
             to={closeTo}
             aria-label="Close Profit Breakdown"
+            ref={closeRef}
           >
             Close
           </Link>

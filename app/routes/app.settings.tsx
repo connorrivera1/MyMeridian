@@ -1151,11 +1151,11 @@ export default function Settings() {
 
       <Card
         title="Reports And Alerts"
-        hint="MyMeridian monitors qualified profit inputs daily. Scale can also send a weekly summary and export order-level figures for an accountant."
+        hint="Download a private, order-level profit CSV for your records. Scale also adds scheduled weekly summaries and multi-store reporting."
         actions={
           data.reporting.canExport ? (
-            <a className="btn sm" href="/app/export/profit.csv">
-              Export Profit CSV
+            <a className="btn sm" href="/app/reports">
+              Reports &amp; Exports
             </a>
           ) : (
             <a className="btn sm" href="/app/plan">

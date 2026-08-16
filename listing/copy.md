@@ -85,7 +85,7 @@ Connect Meta, Google, TikTok and ShipStation without contacting support
 Catch margin drops, refund spikes, carrier drift and missing product costs
 ```
 ```
-Schedule weekly profit summaries and export accountant-ready order detail
+Export private order-level profit CSVs; Scale adds weekly summaries
 ```
 ```
 Read-only. MyMeridian requests no write access and changes nothing

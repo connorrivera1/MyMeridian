@@ -6,6 +6,7 @@ import {
   createProfitExportStream,
   profitExportRangeIsAllowed,
 } from "~/lib/profit-export.server";
+import { loadAdSpendCoverage } from "~/lib/ad-spend-coverage.server";
 import {
   firstDeniedRequestLimit,
   RATE_LIMIT_MESSAGE,
@@ -78,8 +79,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
       resource: `profit_export:${from.toISOString().slice(0, 10)}:${new Date(to.getTime() - 1).toISOString().slice(0, 10)}`,
     });
     const filename = `mymeridian-profit-${from.toISOString().slice(0, 10)}-${new Date(to.getTime() - 1).toISOString().slice(0, 10)}.csv`;
+    const adSpendCoverage = await loadAdSpendCoverage(ctx.shop.id, ctx.isDemo);
     return new Response(
-      createProfitExportStream({ shopId: ctx.shop.id, from, to }),
+      createProfitExportStream({
+        shopId: ctx.shop.id,
+        from,
+        to,
+        adSpendStatus:
+          adSpendCoverage.mode === "connected" ? "RECORDED" : "UNAVAILABLE",
+      }),
       {
         headers: {
           "content-type": "text/csv; charset=utf-8",

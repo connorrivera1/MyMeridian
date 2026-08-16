@@ -73,7 +73,7 @@ vi.mock("~/db.server", () => ({
   },
 }));
 
-const { CostsView, action, parseCogsCsv } = await import("./app.costs");
+const { CostsView, MeridianDateField, action, parseCogsCsv } = await import("./app.costs");
 
 function data(overrides: Record<string, unknown> = {}) {
   return {
@@ -275,6 +275,23 @@ describe("Costs page", () => {
     expect(html).toContain('class="field-input"');
     expect(html).toContain('class="btn primary"');
     expect(html).not.toContain("settings-form");
+  });
+});
+
+describe("MeridianDateField", () => {
+  it("uses a labelled button and dialog, rather than broken gridcell semantics", () => {
+    const html = renderToStaticMarkup(
+      createElement(MeridianDateField, {
+        label: "Effective Date",
+        name: "effectiveAt",
+        defaultValue: "2026-08-16",
+        required: true,
+      }),
+    );
+
+    expect(html).toContain('aria-haspopup="dialog"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain('role="gridcell"');
   });
 });
 

@@ -358,6 +358,8 @@ describe("ProfitBreakdownDrawer", () => {
     );
 
     expect(html).toContain('role="dialog"');
+    expect(html).toContain('tabindex="-1"');
+    expect(html).toContain('aria-modal="true"');
     expect(html).toContain("Transparent Math");
     expect(html).toContain("Revenue Kept");
     expect(html).toContain("Merchandise Subtotal");

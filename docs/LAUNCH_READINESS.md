@@ -1,6 +1,6 @@
 # Launch readiness matrix
 
-**Authoritative status as of 2026-08-14.** This matrix supersedes dated
+**Authoritative status as of 2026-08-16.** This matrix supersedes dated
 snapshots elsewhere in the repository when they disagree. A local or
 disposable-environment pass is not a production claim. The draft PR remains
 unmerged and no production service, App Store submission, payment, or legal
@@ -26,6 +26,34 @@ production deployment → Shopify submission → public launch**. No later gate 
 implied by an earlier one.
 
 ## Latest verification record
+
+- **Local release verification (2026-08-16):** an isolated empty PostgreSQL
+  database applied all **42** checked-in migrations cleanly. The full Vitest
+  suite passed **1,309 tests** with **76 opt-in integration cases skipped**;
+  the explicit real-PostgreSQL suite passed all **76/76** cases. Typecheck,
+  production build and production-bundle secret/demo scans passed; `npm audit
+  --omit=dev --audit-level=high` reported zero vulnerabilities. This is local
+  code and database evidence only, not a deployment or Shopify proof.
+- **Staging liveness and public-surface recheck (2026-08-16):**
+  `https://staging.mymeridian.io/healthz` returned `200`; `/readyz` returned
+  `200` with a reachable database and enforced tenant isolation. Desktop and
+  390px mobile Lighthouse audits returned Accessibility 100 and Best Practices
+  100. The SEO score remains 69 because staging intentionally serves
+  `Disallow: /`; this is correct for a pre-launch environment. An emulated
+  Fast 4G mobile trace observed 438ms LCP and 0.00 CLS, without field/CrUX data.
+- **Staging release v84 (2026-08-16):** the verified landing-page conversion
+  pass, clearer Overview decision language, Reports & Exports navigation, and
+  data-confidence CSV columns are live on staging. The Fly release command,
+  rolling machine health check, public `/healthz`, and public `/readyz` all
+  passed. Mobile Lighthouse remained Accessibility **100** and Best Practices
+  **100**; an unthrottled mobile lab trace observed **240ms LCP** and **0.00
+  CLS**.
+- **Local accessibility repair (2026-08-16, staged in v84):** the order
+  Profit Autopsy drawer now traps keyboard focus, focuses its close control,
+  restores the invoking focus, and closes with Escape. The custom date picker
+  now has labelled non-modal dialog semantics, Escape dismissal and predictable
+  focus return instead of invalid gridcell semantics. Targeted route tests,
+  typecheck and production build passed after the change.
 
 - **Staging email identity acceptance (2026-08-13):** controlled Resend
   delivery accepted and arrived for `welcome@mymeridian.io`,
@@ -319,9 +347,9 @@ implied by an earlier one.
 
 | Plan | Merchant promise | Included capabilities |
 | --- | --- | --- |
-| Starter — $49/mo or $490/year | **Know the truth.** | Overview; profit per order; products and channels; costs and bundles; core Shopify integration; Meta, Google and TikTok connection paths; ShipStation and available Shopify Shipping costs; payment, shipping fallback, pick/pack and overhead estimates; Profit Data Quality; core missing-input alerts. |
+| Starter — $49/mo or $490/year | **Know the truth.** | Overview; profit per order; products and channels; costs and bundles; core Shopify integration; Meta, Google and TikTok connection paths; ShipStation and available Shopify Shipping costs; payment, shipping fallback, pick/pack and overhead estimates; Profit Data Quality; core missing-input alerts; private order-level profit CSV export. |
 | Growth — $129/mo or $1,290/year | **Know what to investigate or change.** | Everything in Starter; deterministic pricing recommendations; price-test/insufficient-data states; fulfilment forecast and capacity warnings; loss, product and channel diagnosis; proactive recommendations; recommendation decisions and outcome states; advanced acquisition economics only where authorised source data is actually available. |
-| Scale — $299/mo or $2,990/year | **Operate at scale.** | Everything in Growth; multi-store portfolio and rollups; scheduled weekly profitability summaries; advanced CSV/accountant export; portfolio reporting and alerts. Priority support is not advertised until it can be delivered. |
+| Scale — $299/mo or $2,990/year | **Operate at scale.** | Everything in Growth; multi-store portfolio and rollups; scheduled weekly profitability summaries; portfolio reporting and alerts. Priority support is not advertised until it can be delivered. |
 
 ### Confidence methodology
 

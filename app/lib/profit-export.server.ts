@@ -23,9 +23,12 @@ export const PROFIT_EXPORT_HEADER = [
   "payment_fee",
   "pick_pack_cost",
   "ad_cost_attributed",
+  "ad_spend_status",
   "overhead_allocated",
   "contribution_profit",
   "net_profit",
+  "has_missing_cogs",
+  "uses_modeled_costs",
   "computed_at",
 ] as const;
 
@@ -52,11 +55,19 @@ type ExportOrder = Prisma.OrderGetPayload<{
     overheadAllocated: true;
     contributionProfit: true;
     netProfit: true;
+    materializedMissingCogs: true;
+    materializedModeledCosts: true;
     computedAt: true;
   };
 }>;
 
-export function profitOrderCsvRow(order: Omit<ExportOrder, "id">): string {
+export type ProfitExportAdSpendStatus = "RECORDED" | "UNAVAILABLE";
+
+export function profitOrderCsvRow(
+  order: Omit<ExportOrder, "id"> & {
+    adSpendStatus: ProfitExportAdSpendStatus;
+  },
+): string {
   return [
     order.orderNumber,
     order.processedAt.toISOString(),
@@ -70,9 +81,12 @@ export function profitOrderCsvRow(order: Omit<ExportOrder, "id">): string {
     order.materializedPaymentFee,
     order.materializedPickPackCost,
     order.adCostAttributed,
+    order.adSpendStatus,
     order.overheadAllocated,
     order.contributionProfit,
     order.netProfit,
+    order.materializedMissingCogs ? "true" : "false",
+    order.materializedModeledCosts ? "true" : "false",
     order.computedAt?.toISOString() ?? "",
   ]
     .map(csvCell)
@@ -87,6 +101,7 @@ export function createProfitExportStream(input: {
   shopId: string;
   from: Date;
   to: Date;
+  adSpendStatus: ProfitExportAdSpendStatus;
 }): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   let cursor: string | undefined;
@@ -130,6 +145,8 @@ export function createProfitExportStream(input: {
               overheadAllocated: true,
               contributionProfit: true,
               netProfit: true,
+              materializedMissingCogs: true,
+              materializedModeledCosts: true,
               computedAt: true,
             },
           }),
@@ -141,7 +158,16 @@ export function createProfitExportStream(input: {
         }
         cursor = rows.at(-1)!.id;
         controller.enqueue(
-          encoder.encode(`${rows.map(profitOrderCsvRow).join("\r\n")}\r\n`),
+          encoder.encode(
+            `${rows
+              .map((row) =>
+                profitOrderCsvRow({
+                  ...row,
+                  adSpendStatus: input.adSpendStatus,
+                }),
+              )
+              .join("\r\n")}\r\n`,
+          ),
         );
         if (rows.length < 1_000) done = true;
       } catch (error) {

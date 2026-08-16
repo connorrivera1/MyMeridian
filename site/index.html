@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>MyMeridian — See What Your Shopify Store Actually Keeps</title>
-<meta name="description" content="Shopify tells you what you sold. MyMeridian tells you what you kept, where you are losing it, and what deserves attention next — with every configured estimate and missing input visible." />
+<meta name="description" content="Shopify tells you what you sold. MyMeridian tells you what you kept, where you are losing money and what to fix next." />
 <meta property="og:title" content="MyMeridian — see what your Shopify store actually keeps" />
 <meta property="og:description" content="Shopify tells you what you sold. MyMeridian tells you what you kept." />
 <meta property="og:url" content="https://mymeridian.io/" />
@@ -234,9 +234,8 @@ document.documentElement.classList.add("js");
           <span class="line line-4"><strong>What You <em>Kept</em>.</strong></span>
         </h1>
         <p class="hero-sub">
-          See what each Shopify order keeps after product cost, shipping, fees,
-          refunds and overhead. Missing costs stay visible, so you know what the
-          number does and does not include.
+          See what each order really kept after product cost, shipping, fees,
+          refunds and overhead. Find the losses hiding inside your sales.
         </p>
         <div class="hero-actions">
           <a class="pill pill-lg" href="#waitlist">
@@ -247,7 +246,7 @@ document.documentElement.classList.add("js");
             <span>See The Order Breakdown</span>
           </a>
         </div>
-        <p class="hero-offer">Join early for 15% off your first 12 months on an eligible monthly plan.</p>
+        <p class="hero-offer">Join early and get 15% off your first 12 months on an eligible monthly plan.</p>
       </div>
 
         <!--
@@ -346,68 +345,6 @@ document.documentElement.classList.add("js");
         </div>
     </div>
 
-    <!-- The reference's scroll cue: a rule either side of a small mark, with
-         the instruction split across it. -->
-    <div class="scroll-rule" aria-hidden="true">
-      <span>Scroll Down</span>
-      <i></i>
-      <em></em>
-      <i></i>
-      <span>To See The Arithmetic</span>
-    </div>
-    <!--
-      The hero graphic is the store's own month, not an ornament: thirty days
-      of daily profit before paid marketing, the same series the app draws on
-      the Orders screen. The shape is real; per-day figures are deliberately
-      not labelled, because these were read back off the rendered chart and
-      carry about a percent of quantisation error. The axis and the shape are
-      honest at that precision; a printed dollar-per-day would not be.
-    -->
-    <div class="hero-chart-stage hero-chart-band" aria-hidden="false">
-    <svg class="hero-chart" viewBox="0 0 1200 300" fill="none" preserveAspectRatio="none"
-           role="img" aria-label="Daily Profit Before Paid Marketing Across Thirty Days Of The Demo Store, Ranging From About Four And A Half Thousand To About Eleven Thousand Dollars A Day.">
-      <line class="hc-grid" x1="0" y1="160.2" x2="1200.0" y2="160.2" />
-      <text class="hc-tick" x="0" y="152.2">$5,000</text>
-      <line class="hc-grid" x1="0" y1="64.3" x2="1200.0" y2="64.3" />
-      <text class="hc-tick" x="0" y="56.3">$10K</text>
-      <line class="hc-axis" x1="0" y1="256.0" x2="1200.0" y2="256.0" />
-      <path class="hc-area" d="M0,256.0 L0.0,139.1 L41.4,151.1 L82.8,136.7 L124.1,101.7 L165.5,100.5 L206.9,135.5 L248.3,121.0 L289.7,113.8 L331.0,151.1 L372.4,46.3 L413.8,64.3 L455.2,127.0 L496.6,134.3 L537.9,121.0 L579.3,155.9 L620.7,171.6 L662.1,118.6 L703.4,71.6 L744.8,159.6 L786.2,147.5 L827.6,131.8 L869.0,165.6 L910.3,148.7 L951.7,84.8 L993.1,94.5 L1034.5,122.2 L1075.9,116.2 L1117.2,130.6 L1158.6,141.5 L1200.0,151.1 L1200.0,256.0 Z" />
-      <polyline class="hc-line" points="0.0,139.1 41.4,151.1 82.8,136.7 124.1,101.7 165.5,100.5 206.9,135.5 248.3,121.0 289.7,113.8 331.0,151.1 372.4,46.3 413.8,64.3 455.2,127.0 496.6,134.3 537.9,121.0 579.3,155.9 620.7,171.6 662.1,118.6 703.4,71.6 744.8,159.6 786.2,147.5 827.6,131.8 869.0,165.6 910.3,148.7 951.7,84.8 993.1,94.5 1034.5,122.2 1075.9,116.2 1117.2,130.6 1158.6,141.5 1200.0,151.1" />
-      <circle class="hc-node" cx="0.0" cy="139.1" r="4.5" />
-      <circle class="hc-node" cx="124.1" cy="101.7" r="4.5" />
-      <circle class="hc-node" cx="248.3" cy="121.0" r="4.5" />
-      <circle class="hc-node" cx="372.4" cy="46.3" r="4.5" />
-      <circle class="hc-node" cx="496.6" cy="134.3" r="4.5" />
-      <circle class="hc-node" cx="620.7" cy="171.6" r="4.5" />
-      <circle class="hc-node" cx="744.8" cy="159.6" r="4.5" />
-      <circle class="hc-node" cx="869.0" cy="165.6" r="4.5" />
-      <circle class="hc-node" cx="993.1" cy="94.5" r="4.5" />
-      <circle class="hc-node" cx="1117.2" cy="130.6" r="4.5" />
-    </svg>
-      <p class="hero-chart-caption">
-        <span>Daily Profit Before Paid Marketing</span>
-        <span>Demo Store &middot; 30 Days</span>
-      </p>
-    </div>
-
-
-    <div class="wrap hero-stage-wrap">
-      <div class="hero-product" aria-label="MyMeridian Overview Using Demo Data">
-        <div class="product-glow" aria-hidden="true"></div>
-        <div class="product-window">
-          <div class="window-bar">
-            <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-            <span class="window-title">MyMeridian · Northwind Supply Co. · Demo Data</span>
-            <span class="window-meta">30 Days</span>
-          </div>
-          <div class="window-body">
-            <img data-dark="assets/overview-hero-dark.jpg" src="assets/overview-hero.jpg" alt="MyMeridian Overview Showing $207,749 Profit Before Paid Marketing For Northwind Supply Co." width="1800" height="1126" fetchpriority="high" />
-            <span class="window-sheen" aria-hidden="true"></span>
-          </div>
-        </div>
-      </div>
-    </div>
-
   </section>
 
   <div class="ground">
@@ -473,12 +410,12 @@ document.documentElement.classList.add("js");
       <div class="reckoning-head reveal">
         <span class="kicker">Revenue Can Hide The Problem</span>
         <h2>
-          3,071 Orders In A Month.<br />
-          <strong>383 Of Them Lost Money.</strong>
+          3,071 orders in a month.<br />
+          <strong>383 of them lost money.</strong>
         </h2>
         <p>
-          In the MyMeridian demo store, 12.5% of the month’s orders lost money
-          before paid marketing — <span class="loss">−$7,928</span> hidden inside
+          In the MyMeridian demo store, 12.5% of the month’s orders lost
+          <span class="loss">−$7,928</span> before paid marketing — hidden inside
           otherwise healthy-looking revenue.
         </p>
       </div>
@@ -538,27 +475,27 @@ document.documentElement.classList.add("js");
     <div class="wrap">
       <div class="section-head reveal">
         <span class="kicker">What MyMeridian Gives You</span>
-        <h2>Turn revenue into<br /><strong>clear next steps.</strong></h2>
+        <h2>Know what you kept.<br /><strong>Know what to fix.</strong></h2>
         <p>
-          Start with what you kept, then see where profit disappears and what deserves
+          See your real profit, find where it disappears and focus on what needs
           attention first.
         </p>
       </div>
       <div class="outcome-grid">
         <article class="outcome-card reveal">
           <span class="outcome-index">01</span>
-          <h3>Know what you kept.</h3>
-          <p>See revenue after product cost, shipping, payment fees, refunds and overhead — with missing inputs clearly marked.</p>
+          <h3>See what each sale left you.</h3>
+          <p>See revenue after product cost, shipping, payment fees, refunds and overhead.</p>
         </article>
         <article class="outcome-card reveal">
           <span class="outcome-index">02</span>
-          <h3>Find where profit disappears.</h3>
-          <p>Surface losing orders, weak products and margin leakage before they disappear into a healthy-looking sales total.</p>
+          <h3>Find what is hurting margin.</h3>
+          <p>Surface losing orders and weak products before they disappear into a healthy-looking sales total.</p>
         </article>
         <article class="outcome-card reveal">
           <span class="outcome-index">03</span>
-          <h3>Know what deserves attention.</h3>
-          <p>Prioritize meaningful changes, pricing opportunities and fulfilment pressure using the sales history you actually have.</p>
+          <h3>Know what to fix next.</h3>
+          <p>Use your sales history to prioritize pricing opportunities and fulfilment pressure.</p>
         </article>
       </div>
     </div>
@@ -572,8 +509,8 @@ document.documentElement.classList.add("js");
   <section class="story" id="tour">
     <div class="wrap section-head reveal">
       <span class="kicker">Product Tour</span>
-      <h2>See the business<br /><strong>behind the sale.</strong></h2>
-      <p>Each view answers a practical question: where the money went, what is weakening margin and what to investigate next.</p>
+      <h2>See where every dollar went.<br /><strong>Then find what to fix.</strong></h2>
+      <p>Orders, products, pricing and fulfilment — each view answers a question you can act on.</p>
     </div>
 
     <div class="wrap story-layout">
@@ -599,7 +536,7 @@ document.documentElement.classList.add("js");
               that column is the money.
             -->
             <img data-dark="assets/orders-dark.jpg" class="story-screen is-active" data-screen="orders" style="--fy:100%; --zoom:1.78" src="assets/orders.jpg" alt="MyMeridian profit per order view: a table of orders with revenue, COGS, shipping, fees and a dash in the Ads column" width="1800" height="1126" loading="lazy" />
-            <img data-dark="assets/products-dark.jpg" class="story-screen" data-screen="products" style="--fy:100%; --zoom:1.15" src="assets/products.jpg" alt="MyMeridian products view ranking qualified contribution before paid marketing, with two products showing negative contribution" width="1800" height="1126" loading="lazy" />
+            <img data-dark="assets/products-dark.jpg" class="story-screen" data-screen="products" style="--fy:100%; --zoom:1.15" src="assets/products.jpg" alt="MyMeridian product profit view, with two products showing negative profit before paid marketing" width="1800" height="1126" loading="lazy" />
             <img data-dark="assets/pricing-dark.jpg" class="story-screen" data-screen="pricing" style="--fy:100%; --zoom:1.16" src="assets/pricing.jpg" alt="MyMeridian pricing recommendations with suggested prices, and one product marked as needing a price test" width="1800" height="1126" loading="lazy" />
             <img data-dark="assets/fulfilment-dark.jpg" class="story-screen" data-screen="fulfilment" style="--fy:70%; --zoom:1.18" src="assets/fulfilment.jpg" alt="MyMeridian fulfilment view showing backlog exceeding the shipping promise and 14 days over capacity" width="1800" height="1126" loading="lazy" />
           </div>
@@ -628,8 +565,8 @@ document.documentElement.classList.add("js");
           <span class="chapter">02 · Products</span>
           <h3>Find the products draining margin.</h3>
           <p>
-            Rank products by contribution and isolate the lines that need a cost,
-            price or operational decision.
+            See which products are earning, breaking even or losing you money —
+            then focus on the ones that need a cost, price or operational decision.
           </p>
           <div class="truth-line"><span>No COGS</span><strong>Marked Incomplete, Not Profitable</strong></div>
         </article>
@@ -637,12 +574,12 @@ document.documentElement.classList.add("js");
         <article class="story-step reveal" data-screen="pricing" data-index="03" data-title="Pricing">
           <img data-dark="assets/pricing-dark.jpg" class="story-mobile-image" style="--fy:100%" src="assets/pricing.jpg" alt="MyMeridian pricing recommendations view" width="1800" height="1126" loading="lazy" />
           <span class="chapter">03 · Pricing</span>
-          <h3>Know when your sales history supports a price change.</h3>
+          <h3>Find pricing opportunities supported by your sales history.</h3>
           <p>
-            MyMeridian uses price movements it observed after install. When the
-            evidence is not there yet, it says so instead of inventing a move.
+            MyMeridian learns from price changes after install. If the history is
+            not there yet, it says so instead of guessing.
           </p>
-          <div class="truth-line"><span>Suggested Moves</span><strong>Capped At 25%</strong></div>
+          <div class="truth-line"><span>Price Changes</span><strong>Up To 25%</strong></div>
         </article>
 
         <article class="story-step reveal" data-screen="fulfilment" data-index="04" data-title="Fulfilment Capacity">
@@ -653,7 +590,7 @@ document.documentElement.classList.add("js");
             Compare incoming demand with the throughput your team has already
             demonstrated, so a shipping risk arrives with notice.
           </p>
-          <div class="truth-line"><span>Forecast</span><strong>14 Days Of Observed Capacity</strong></div>
+          <div class="truth-line"><span>Forecast</span><strong>14 Days Of Capacity</strong></div>
         </article>
       </div>
     </div>
@@ -667,10 +604,10 @@ document.documentElement.classList.add("js");
   <section class="method" id="method">
     <div class="wrap">
       <div class="section-head reveal">
-        <span class="kicker">Data You Can Trust</span>
-        <h2>Missing data is<br /><strong>never convenient data.</strong></h2>
+        <span class="kicker">No Invented Numbers</span>
+        <h2>A missing cost<br /><strong>never becomes a zero.</strong></h2>
         <p>
-          MyMeridian tells you what is incomplete before it tells you what to fix.
+          If MyMeridian cannot see a cost or the history it needs, it says so.
         </p>
       </div>
 
@@ -691,29 +628,29 @@ document.documentElement.classList.add("js");
 
         <article class="refusal reveal">
           <span class="refusal-index">02</span>
-          <h3>Missing COGS means no profit verdict.</h3>
+          <h3>Missing COGS means profit is incomplete.</h3>
           <p>
-            Products without a recorded cost are marked incomplete, not quietly
-            ranked as winners or losers.
+            Products without a recorded cost are marked incomplete, not called
+            profitable.
           </p>
           <div class="refusal-demo" aria-hidden="true">
             <span class="demo-wrong"><b>Trail Runner 2</b><i class="is-loss">Bleeding</i></span>
             <span class="demo-arrow">→</span>
-            <span class="demo-right"><b>Trail Runner 2</b><i>Unclassified</i><small>No Cost Recorded</small></span>
+            <span class="demo-right"><b>Trail Runner 2</b><i>Incomplete</i><small>Cost Missing</small></span>
           </div>
         </article>
 
         <article class="refusal reveal">
           <span class="refusal-index">03</span>
-          <h3>No history means no pricing recommendation.</h3>
+          <h3>No pricing history, no made-up recommendation.</h3>
           <p>
-            MyMeridian waits for price changes it can actually observe before
-            suggesting a move.
+            MyMeridian waits for a price change it can see before suggesting the
+            next one.
           </p>
           <div class="refusal-demo" aria-hidden="true">
             <span class="demo-wrong"><b>Suggested Price</b><i>$44.90</i></span>
             <span class="demo-arrow">→</span>
-            <span class="demo-right"><b>Suggested Price</b><i>Not Yet</i><small>Needs Observed Movement</small></span>
+            <span class="demo-right"><b>Suggested Price</b><i>Not Yet</i><small>Needs Sales History</small></span>
           </div>
         </article>
       </div>
@@ -725,7 +662,7 @@ document.documentElement.classList.add("js");
     <div class="wrap">
       <div class="section-head reveal">
         <span class="kicker">Your Store Stays Yours</span>
-        <h2>Built to read the store.<br /><strong>Never to alter it.</strong></h2>
+        <h2>Read your store.<br /><strong>Never change it.</strong></h2>
       </div>
       <div class="trust-ledger">
         <div class="reveal">
@@ -735,13 +672,13 @@ document.documentElement.classList.add("js");
         </div>
         <div class="reveal">
           <span class="trust-no">02</span>
-          <strong>Shopify billing</strong>
-          <p>When plans open, charges appear on your Shopify invoice. MyMeridian does not handle your card number.</p>
+          <strong>Shopify-native billing</strong>
+          <p>Plans appear on your Shopify bill. MyMeridian never handles your card number.</p>
         </div>
         <div class="reveal">
           <span class="trust-no">03</span>
-          <strong>Store-isolated data</strong>
-          <p>Your store’s data stays separate, and any missing information is disclosed instead of guessed.</p>
+          <strong>Your data stays separate</strong>
+          <p>Your store’s data stays isolated, and any missing input is shown instead of guessed.</p>
         </div>
       </div>
     </div>
@@ -756,8 +693,8 @@ document.documentElement.classList.add("js");
     <div class="wrap">
       <div class="section-head reveal">
         <span class="kicker">Pricing</span>
-        <h2>Choose the depth of<br /><strong>decision support you need.</strong></h2>
-        <p>Start with real profit. Move to Growth when you want prioritized opportunities and operational signals.</p>
+        <h2>Start with the question<br /><strong>you need answered.</strong></h2>
+        <p>Starter tells you what happened. Growth shows what needs attention. Scale brings that view across your business.</p>
       </div>
 
       <div class="billing-toggle reveal" role="group" aria-label="Billing Period">
@@ -777,11 +714,11 @@ document.documentElement.classList.add("js");
           </div>
           <p class="plan-for">Know your real profit.</p>
           <ul>
-          <li>Profit by order, product and sales channel</li>
-          <li>COGS, shipping, fees, refunds and overhead</li>
-          <li>Connect Meta, Google, TikTok and shipping-cost sources</li>
-          <li>Know when missing costs make profit incomplete</li>
-          <li>Find loss-making orders and weak products; export the detail</li>
+          <li>See profit by order, product and sales channel</li>
+          <li>Track COGS, shipping, fees, refunds and overhead</li>
+          <li>Find orders and products hurting margin</li>
+          <li>Know when missing data makes profit incomplete</li>
+          <li>Export order-level profitability</li>
           </ul>
           <a class="plan-link" href="#waitlist">Join Waitlist</a>
         </article>
@@ -795,13 +732,13 @@ document.documentElement.classList.add("js");
                     data-annual="$1,290" data-annual-unit="Per Year">$129<small>Per Month</small></strong>
             <span class="plan-sub" data-monthly="Billed Monthly" data-annual="$107.50 A Month, Billed Once">Billed Monthly</span>
           </div>
-          <p class="plan-for">Find what deserves attention next.</p>
+          <p class="plan-for">Find what is costing you money — and what to do next.</p>
           <ul>
           <li>Everything in Starter</li>
-          <li>Pricing opportunities from observed sales history</li>
-          <li>Priority margin and operational alerts</li>
-          <li>Fulfilment forecasts and capacity warnings</li>
-          <li>Clear next steps when the evidence supports them</li>
+          <li>Find pricing opportunities from your own sales history</li>
+          <li>See which pricing, margin or fulfilment issue needs attention first</li>
+          <li>Get proactive margin and operational alerts</li>
+          <li>Forecast fulfilment pressure before customers feel it</li>
           </ul>
           <a class="pill" href="#waitlist">Join Waitlist</a>
         </article>
@@ -814,12 +751,12 @@ document.documentElement.classList.add("js");
                     data-annual="$2,990" data-annual-unit="Per Year">$299<small>Per Month</small></strong>
             <span class="plan-sub" data-monthly="Billed Monthly" data-annual="$249.17 A Month, Billed Once">Billed Monthly</span>
           </div>
-          <p class="plan-for">Operate profitability across a larger business.</p>
+          <p class="plan-for">Run profitability across a larger business.</p>
           <ul>
           <li>Everything in Growth</li>
           <li>Manage multiple Shopify stores</li>
-          <li>Roll up profitability across stores</li>
-          <li>Scheduled weekly profitability summaries</li>
+          <li>See consolidated profitability across stores</li>
+          <li>Use one shared view across the connected business</li>
           </ul>
           <a class="plan-link" href="#waitlist">Join Waitlist</a>
         </article>
@@ -851,8 +788,7 @@ document.documentElement.classList.add("js");
           <div class="faq-answer">
             <p>
               Shopify’s variant cost field supplies COGS. You set shipping, fees,
-              pick-and-pack and overhead rules; a missing cost is shown as incomplete,
-              not treated as zero.
+              pick-and-pack and overhead rules; missing costs are marked incomplete.
             </p>
           </div>
         </details>
@@ -864,9 +800,8 @@ document.documentElement.classList.add("js");
           </summary>
           <div class="faq-answer">
             <p>
-              Yes, once a Meta, Google or TikTok source is connected and synced.
-              Until then, profit is labelled <em>before paid marketing</em> and
-              the spend is shown as unavailable.
+              Yes, after a Meta, Google or TikTok source is connected and synced.
+              Until then, profit is shown <em>before paid marketing</em>.
             </p>
           </div>
         </details>
@@ -878,8 +813,8 @@ document.documentElement.classList.add("js");
           </summary>
           <div class="faq-answer">
             <p>
-              Standard Shopify order access provides 60 days for the first sync.
-              More history needs Shopify’s additional approval.
+              The first sync includes 60 days of Shopify orders. More history
+              requires Shopify approval.
             </p>
           </div>
         </details>
@@ -891,8 +826,8 @@ document.documentElement.classList.add("js");
           </summary>
           <div class="faq-answer">
             <p>
-              No. MyMeridian uses read-only access to orders, products,
-              fulfilments and inventory. It cannot edit prices, products or orders.
+              No. MyMeridian has read-only access and cannot edit prices, products
+              or orders.
             </p>
           </div>
         </details>
@@ -904,8 +839,8 @@ document.documentElement.classList.add("js");
           </summary>
           <div class="faq-answer">
             <p>
-              Once MyMeridian has observed a price change after install. Any
-              recommendation is based on that history and capped at 25%.
+              After MyMeridian sees a price change following install. It waits for
+              that history rather than guessing, and changes are capped at 25%.
             </p>
           </div>
         </details>
@@ -917,9 +852,8 @@ document.documentElement.classList.add("js");
           </summary>
           <div class="faq-answer">
             <p>
-              Monthly and annual plans are billed through Shopify when MyMeridian
-              launches. Eligible Founding Merchants receive 15% off their first
-              12 months on a monthly plan; the offer does not combine with annual pricing.
+              Monthly and annual plans are billed through Shopify at launch. Eligible
+              merchants receive 15% off their first 12 months on a monthly plan.
             </p>
           </div>
         </details>
@@ -927,35 +861,21 @@ document.documentElement.classList.add("js");
     </div>
   </section>
 
-  <!-- 8 ─ Close ------------------------------------------------------------ -->
-  <section class="final-cta">
-    <div class="final-sky" aria-hidden="true"><span class="final-sun"></span></div>
-    <div class="wrap final-inner reveal">
-      <span class="kicker">Early Access</span>
-      <h2>Ready to see what<br /><strong>your store actually keeps?</strong></h2>
-      <p>Join the waitlist for launch access and Founding Merchant eligibility.</p>
-      <a class="pill pill-lg" href="#waitlist">
-        Join Waitlist
-        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h9m0 0L8.5 4.5M12 8l-3.5 3.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </a>
-    </div>
-  </section>
-
   <section class="waitlist-section" id="waitlist" aria-labelledby="waitlist-title">
     <div class="wrap waitlist-layout">
       <div class="waitlist-copy reveal">
-        <span class="kicker">Founding Merchant Access</span>
-        <h2 id="waitlist-title">Join early.<br /><strong>Keep more later.</strong></h2>
+        <span class="kicker">Early Access Savings</span>
+        <h2 id="waitlist-title">See what your store<br /><strong>actually keeps.</strong></h2>
         <p>
-          Join the MyMeridian waitlist for launch access. Eligible Founding
-          Merchants receive 15% off their first 12 months on a monthly plan.
+          Join the waitlist and receive 15% off your first 12 months on an
+          eligible monthly plan at launch.
         </p>
       </div>
       <form class="waitlist-form reveal" method="post" action="/waitlist" aria-describedby="waitlist-note">
         <div class="waitlist-form-mark" aria-hidden="true">
           <svg viewBox="0 0 96 96" fill="none"><g stroke="currentColor" stroke-width="2.6" opacity=".9" stroke-linecap="round"><circle cx="48" cy="48" r="34"/><ellipse cx="48" cy="48" rx="24.5" ry="34"/><ellipse cx="48" cy="48" rx="13.5" ry="34"/><path d="M48 14v68"/></g><path d="M48 14 A 15 34 0 0 1 48 82" stroke="var(--gold)" stroke-width="3.2" stroke-linecap="round"/></svg>
         </div>
-        <p class="waitlist-form-label">Founding Merchant Access</p>
+        <p class="waitlist-form-label">Early Access Savings</p>
         <label for="waitlist-email">Email Address <span aria-hidden="true">*</span></label>
         <input id="waitlist-email" name="email" type="email" inputmode="email" autocomplete="email" maxlength="254" required placeholder="you@store.com" />
         <label for="waitlist-store">Shopify Store URL <span>Optional</span></label>

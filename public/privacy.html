@@ -104,16 +104,13 @@ document.documentElement.classList.add("js");
         </a>
         <h1>Privacy Policy</h1>
         <p class="doc-meta">
-          Last updated 12 August 2026
+          Last updated 16 August 2026
         </p>
 
         <p class="lede">
-          MyMeridian is a pre-launch profitability dashboard for Shopify
-          merchants. This policy describes the data handling implemented in the
-          current product and the production service MyMeridian is preparing to
-          operate. The waitlist portions apply when the public flow is
-          available; merchant-store portions apply when the service is made
-          available to merchants.
+          MyMeridian is a profitability dashboard for Shopify merchants. This
+          policy describes the data handling for the public waitlist and the
+          merchant-store service.
         </p>
 
         <div class="note">
@@ -129,16 +126,10 @@ document.documentElement.classList.add("js");
 
         <h2>Publisher And Contact</h2>
         <div class="note">
-          MyMeridian will be published by its founder as an individual. The
-          production address is
-          <strong>https://mymeridian.io</strong>; the separate staging address
-          is <strong>https://staging.mymeridian.io</strong>. The public service
-          is not live yet, and staging remains a separate environment. The
-          general contact address is <strong>welcome@mymeridian.io</strong>;
-          merchant support is <strong>support@mymeridian.io</strong>; and
-          technical contact is <strong>eevee@mymeridian.io</strong>. Controlled
-          delivery and monitoring are verified. The final legal publisher name
-          and governing-law details will be supplied before Shopify submission.
+          MyMeridian&rsquo;s public service is
+          <strong>https://mymeridian.io</strong>. The publisher&rsquo;s legal identity
+          and support contact are kept current at
+          <a href="/support">https://mymeridian.io/support</a>.
         </div>
 
         <h2>What MyMeridian Reads From A Store</h2>
@@ -180,9 +171,8 @@ document.documentElement.classList.add("js");
             address, phone and email. This is a ShopifyQL access gate:
             MyMeridian does not query or persist shopper name, address or phone,
             and the connection stays paused until Shopify grants the approval.
-            MyMeridian has not submitted that expanded request yet and will not
-            query, retain or use those fields merely because approval is
-            available.
+            MyMeridian does not query, retain or use those fields merely
+            because approval is available.
           </li>
         </ul>
         <p>
@@ -257,9 +247,8 @@ document.documentElement.classList.add("js");
           selected account identifier, account label and currency plus the
           minimum token or API credential needed to sync spend or shipping
           costs. Provider tokens are encrypted at rest and can be disconnected
-          from inside the app. These provider connections are not yet
-          production-proven and will not be represented as such before their
-          complete lifecycle is tested in staging.
+          from inside the app. Shopify customer records are not sent to these
+          providers through the connector flow.
         </p>
 
         <h2>How Data Is Stored And Secured</h2>
@@ -295,14 +284,11 @@ document.documentElement.classList.add("js");
         <p>
           MyMeridian does <strong>not</strong> sell store data, does not share it
           with advertisers, and does not use it to train machine-learning
-          models. MyMeridian is currently pre-launch and has no production
-          merchant-data environment. The planned production architecture uses
-          Fly.io for application hosting, Fly Managed Postgres for the database
-          and Upstash for managed Redis; Shopify receives information required
-          to provide the app. Resend and Twilio Verify may process only the
-          email or phone information needed for merchant or operator security
-          communications after those services are configured. This policy will
-          be updated before launch if a production provider changes. When a
+          models. The service uses Fly.io for application hosting, Fly Managed
+          Postgres for the database and Upstash for managed Redis; Shopify
+          receives information required to provide the app. Resend and Twilio
+          Verify process only the email or phone information needed for merchant
+          or operator security communications. When a
           merchant chooses to connect Meta, Google, TikTok or ShipStation,
           MyMeridian exchanges authorization details with that provider and
           requests only the account and cost data needed for the selected
@@ -310,7 +296,7 @@ document.documentElement.classList.add("js");
           advertising platforms.
         </p>
 
-        <h2>Pre-Launch Waitlist</h2>
+        <h2>Waitlist</h2>
         <p>
           A visitor may join the MyMeridian waitlist with an email address and
           an optional Shopify store URL. We retain campaign attribution passed
@@ -320,14 +306,14 @@ document.documentElement.classList.add("js");
           unnecessary personal information for the waitlist.
         </p>
         <p>
-          A signup creates an email-bound Founding Merchant eligibility record
-          for the stated 15% first-year monthly-plan benefit if activated at
-          launch. It is not a public coupon. Transactional confirmation may be
-          sent once MyMeridian's sender is verified; product/newsletter mail is
-          sent only after separate consent and includes an unsubscribe link.
-          Transactional delivery receipts are retained for up to 90 days for
-          reliability and abuse troubleshooting. To request access, correction
-          or deletion of waitlist data, use the contact details on this page.
+          A signup creates an email-bound waitlist record and may create an
+          eligibility record for an offer communicated at signup. Transactional
+          confirmation may be sent once MyMeridian's sender is verified;
+          product/newsletter mail is sent only after separate consent and
+          includes an unsubscribe link. Transactional delivery receipts are
+          retained for up to 90 days for reliability and abuse troubleshooting.
+          To request access, correction or deletion of waitlist data, use the
+          contact details on this page.
         </p>
 
         <h2>How Long It Is Kept</h2>
@@ -423,9 +409,8 @@ document.documentElement.classList.add("js");
 
         <h2>Contact</h2>
         <p>
-          For support, contact <strong>support@mymeridian.io</strong>. The
-          mailbox is monitored. MyMeridian is not accepting merchant
-          installations until public distribution begins.
+          For support, use <a href="/support">MyMeridian Support</a>. The
+          publisher identity and current support contact are listed there.
         </p>
       </div>
     </main>

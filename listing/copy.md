@@ -42,7 +42,7 @@ Find margin drops, refund spikes, carrier drift and missing product costs
 ```
 
 ```
-Export private order-level profit CSVs; Scale adds weekly summaries
+Export private order-level profit CSVs
 ```
 
 ```

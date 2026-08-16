@@ -54,12 +54,17 @@ describe("public legal pages", () => {
 
   it.each(PAGES)("%s names current public identity while preserving remaining gates", (page) => {
     const html = read(page);
-    expect(html).toContain("Last updated 12 August 2026");
+    expect(html).toContain("Last updated 16 August 2026");
     expect(html).not.toContain("Project Kaira");
     expect(html).not.toContain("trykaira.ai");
     expect(html).toContain("mymeridian.io");
-    expect(html).toContain("support@mymeridian.io");
+    expect(html).toContain('href="/support"');
     expect(html).not.toContain("have not been selected");
+    expect(html.toLowerCase()).not.toContain("pre-launch");
+    expect(html).not.toContain("staging.mymeridian.io");
+    expect(html).not.toContain("before Shopify submission");
+    expect(html.toLowerCase()).not.toContain("not yet production");
+    expect(html.toLowerCase()).not.toContain("has not submitted");
   });
 
   it("does not repeat claims the code does not support", () => {
@@ -86,8 +91,9 @@ describe("public legal pages", () => {
     // described without implying that Shopify customer records are shared.
     expect(privacy).toContain("meta ads");
     expect(privacy).toContain("encrypted at rest");
-    expect(privacy).toContain("currently pre-launch");
-    expect(privacy).toContain("fly managed postgres");
+    expect(privacy).not.toContain("currently pre-launch");
+    expect(privacy).toContain("publisher&rsquo;s legal identity");
+    expect(privacy).toMatch(/fly managed\s+postgres/);
   });
 
   it("states the retention period the retention worker actually enforces", () => {

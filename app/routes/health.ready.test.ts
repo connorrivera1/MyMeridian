@@ -8,6 +8,7 @@ describe("production readiness", () => {
     RESEND_API_KEY: "resend-test-key",
     MERIDIAN_EMAIL_FROM: "MyMeridian <security@example.com>",
     MERIDIAN_SUPPORT_EMAIL: "support@example.com",
+    MERIDIAN_LEGAL_ENTITY: "Example Analytics LLC",
     MERIDIAN_WAITLIST_UNSUBSCRIBE_KEY: "waitlist-unsubscribe-test-key",
     TWILIO_ACCOUNT_SID: `AC${"a".repeat(32)}`,
     TWILIO_API_KEY_SID: `SK${"b".repeat(32)}`,
@@ -31,6 +32,7 @@ describe("production readiness", () => {
     expect(result.missing).toContain("MERIDIAN_WAITLIST_UNSUBSCRIBE_KEY");
     expect(result.missing).toContain("MERIDIAN_CUSTOMER_ERASURE_KEY");
     expect(result.missing).toContain("MERIDIAN_OPERATOR_TOTP_SECRET");
+    expect(result.missing).toContain("MERIDIAN_LEGAL_ENTITY");
   });
 
   it("requires every launch-promised ad connector only when production opts in", () => {

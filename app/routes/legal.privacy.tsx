@@ -32,30 +32,22 @@ export default function Privacy() {
   return (
     <LegalPage title="Privacy Policy" updated={PRIVACY_UPDATED}>
       <p>
-        {APP_NAME} is a pre-launch profitability dashboard for Shopify stores.
-        It reads a store&rsquo;s order, product, inventory and fulfilment records,
-        combines them with recorded costs and clearly identified configured
-        assumptions, and estimates the profit of each order and product. This
-        policy describes every category of data it touches and what happens to
-        it. The pre-launch waitlist portions apply when that public flow is
-        available; merchant-store data portions apply when the production
-        service launches.
+        {APP_NAME} is a profitability dashboard for Shopify stores. It reads a
+        store&rsquo;s order, product, inventory and fulfilment records, combines them
+        with recorded costs and clearly identified configured assumptions, and
+        estimates the profit of each order and product. This policy describes
+        every category of data it touches and what happens to it, including the
+        public waitlist and merchant-store service.
       </p>
 
-      <h2>Pre-Launch Status</h2>
+      <h2>Service And Publisher</h2>
       <p>
-        The planned production address is <strong>mymeridian.io</strong> and
-        staging is kept separately at <strong>staging.mymeridian.io</strong>.
-        The production domain is controlled but still serves a temporary page;
-        the separate staging service is deployed at
-        <strong>staging.mymeridian.io</strong>. MyMeridian is intended to be
-        published by its founder as an individual. The monitored support
-        address is <strong>support@mymeridian.io</strong>; controlled delivery
-        has been verified. The final legal publisher identity will be supplied
-        before public distribution.
+        The public service is available at <strong>mymeridian.io</strong>. The
+        publisher&rsquo;s legal identity and the current support contact appear in
+        the Contact section below.
       </p>
 
-      <h2>Pre-Launch Waitlist</h2>
+      <h2>Waitlist</h2>
       <p>
         A visitor may join the MyMeridian waitlist with an email address and,
         optionally, a Shopify store URL. We also retain campaign attribution
@@ -65,14 +57,12 @@ export default function Privacy() {
         data or other unnecessary personal information in this flow.
       </p>
       <p>
-        A successful signup creates an email-bound Founding Merchant eligibility
-        record. It records the 15% benefit for the first 12 months of an
-        eligible monthly plan if the offer is activated at launch; it is not a
-        public reusable coupon. We send the transactional waitlist confirmation
-        regardless of marketing consent once the configured sender is verified.
-        Product/newsletter mail is sent only to people who separately opt in,
-        includes an unsubscribe link, and does not suppress necessary account
-        or service notices.
+        A successful signup creates an email-bound waitlist record and may
+        create an eligibility record for an offer communicated at signup. We
+        send the transactional waitlist confirmation regardless of marketing
+        consent once the configured sender is verified. Product/newsletter mail
+        is sent only to people who separately opt in, includes an unsubscribe
+        link, and does not suppress necessary account or service notices.
       </p>
 
       <h2>Who This Policy Is For</h2>
@@ -124,9 +114,8 @@ export default function Privacy() {
           behind Level 2 protected-customer-data approval covering name,
           address, phone and email. This is a ShopifyQL access gate: {APP_NAME}
           does not query or persist shopper name, address or phone, and the
-          connection stays paused until Shopify grants the approval. The
-          expanded request has not been submitted yet, and {APP_NAME} will not
-          query, retain or use those fields merely because approval is
+          connection stays paused until Shopify grants the approval. {APP_NAME}
+          does not query, retain or use those fields merely because approval is
           available.
         </li>
       </ul>
@@ -210,9 +199,8 @@ export default function Privacy() {
         refresh tokens encrypted at rest, the selected account identifier and
         imported campaign-spend or carrier-cost records. Disconnecting removes
         the local tokens and requests provider revocation where the provider
-        supports it. These connections are not yet production-proven and will
-        not be presented as active until their complete lifecycle passes staging
-        verification.
+        supports it. A connection remains unavailable until its provider
+        authorization and first successful sync complete.
       </p>
 
       <h2>How Data Is Stored And Secured</h2>
@@ -254,13 +242,12 @@ export default function Privacy() {
       <h2>Who Else Sees It</h2>
       <p>
         {APP_NAME} does not sell store data, does not share it with advertisers,
-        and does not use it to train models. It has no production merchant-data
-        environment yet. Its planned production architecture uses Fly.io, Fly
-        Managed Postgres and Upstash; Resend and Twilio Verify may process the
+        and does not use it to train models. The service uses Fly.io, Fly
+        Managed Postgres and Upstash for application hosting, database and
+        durable queue processing. Resend and Twilio Verify process only the
         minimum email or phone information needed for merchant or operator
-        security communications after configuration. It is disclosed to Shopify
-        as needed to provide the app. When a merchant chooses a connector,
-        MyMeridian calls that
+        security communications. Information is disclosed to Shopify as needed
+        to provide the app. When a merchant chooses a connector, MyMeridian calls that
         provider only to read the merchant-authorized account, advertising
         report or carrier-label cost. Shopify customer emails, addresses and
         customer records are not sent to Meta, Google, TikTok or ShipStation by

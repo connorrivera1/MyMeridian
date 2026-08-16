@@ -32,6 +32,9 @@ describe("public legal routes", () => {
     expect(html).toContain("does not query or persist shopper name");
     expect(html).toContain("rather than treating the missing cost as $0.00");
     expect(html).not.toContain("permission is already approved");
+    expect(html.toLowerCase()).not.toContain("pre-launch");
+    expect(html).not.toContain("staging.mymeridian.io");
+    expect(html).not.toContain("has not been submitted yet");
     expect(html).toContain("support@example.com");
   });
 

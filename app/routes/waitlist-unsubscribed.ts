@@ -16,7 +16,7 @@ const unsubscribedHtml = confirmedHtml
     "You will no longer receive MyMeridian product updates.",
   )
   .replaceAll(
-    "We’ll let you know when early access opens. As a founding merchant, you’ll also be eligible for <strong>15% off your first 12 months on a monthly Meridian plan</strong> when the offer is activated at launch.",
+    "We’ll let you know when early access opens and confirm any available offer directly to your email address.",
     "Necessary account and service notices may still be sent when relevant.",
   );
 

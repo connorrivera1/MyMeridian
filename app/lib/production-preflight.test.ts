@@ -15,7 +15,7 @@ it("keeps the no-deploy production preflight aligned with checked-in config", ()
   );
 
   expect(output).toContain("Production configuration is valid.");
-  expect(output).toContain("31 secret names are required");
+  expect(output).toContain("32 secret names are required");
 });
 
 it("keeps the environment template complete for a production secret entry", () => {

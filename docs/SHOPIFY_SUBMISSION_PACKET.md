@@ -15,15 +15,23 @@ Partner Dashboard without Connor's explicit authorization. Status is governed by
 - [ ] Required scopes are minimal and match code, listing and data-protection
   request. Protected customer-data request is completed **before** submitting:
   Shopify does not allow a new request while the app is under review.
+- [x] The paste-ready protected customer-data justification is prepared in
+  [`SHOPIFY_PCD_REQUEST.md`](SHOPIFY_PCD_REQUEST.md). Reconcile it to the final
+  submitted feature set before using it in the Partner Dashboard.
 - [ ] Reviewer-accessible controlled store, install instructions, test steps,
   test credentials and any test billing instructions are supplied; no personal
   credentials are embedded in the submission.
 - [ ] Short screencast demonstrates install, embedded core workflow,
   onboarding, historical import, pricing/billing, settings and privacy flow.
-- [ ] Current screenshots/media reflect the shipped colorful UI, actual plan
-  pricing and only currently working connector capability.
+- [ ] Current screenshots/media reflect the shipped UI and only currently
+  working connector capability. App subscription prices stay out of the media
+  and appear only in Shopify's designated Pricing details field.
 - [ ] 1200×1200 JPEG/PNG app icon, primary language, category, listing title,
   truthful description, pricing and support details are complete.
+- [x] Public listing copy is in [`../listing/copy.md`](../listing/copy.md) and
+  the separate Pricing details field is prepared in
+  [`../listing/pricing.md`](../listing/pricing.md). Keep prices out of every
+  other public-listing field and asset.
 - [ ] Public privacy policy and terms use Connor's approved individual legal
   name, `support@mymeridian.io`, and accurate statements after the mailbox is
   live. The repository does not invent or publish those private values.

@@ -99,6 +99,21 @@ describe("listing media and the demo store it is captured from", () => {
     expect(legalStyles).toContain("::-webkit-scrollbar-thumb");
   });
 
+  it("does not present illustrative landing data as merchant evidence", () => {
+    const site = read("site/index.html");
+    const motion = read("public/motion.js");
+
+    expect(site).not.toContain("MyMeridian demo store");
+    expect(site).not.toContain("3,071 orders in a month");
+    expect(site).not.toContain("Most Popular");
+    expect(site).toContain("Illustrative Order");
+    expect(site).toContain("unsynced source stays");
+    // The visual remains a deterministic illustration, but its interactive
+    // label must not invent merchant totals or show a synthetic order number.
+    expect(motion).toContain("Illustrative order");
+    expect(motion).not.toContain("Order #13254 — the receipt alongside");
+  });
+
   it("the seed does not fabricate ad spend", () => {
     // `prisma/seed.ts:949` was the only writer of `AdSpend` in the repo. While no
     // connector exists, any row in that table is invented, and the seeded store
@@ -251,6 +266,31 @@ describe("listing media and the demo store it is captured from", () => {
     expect(png.subarray(1, 4).toString("ascii")).toBe("PNG");
     expect(png.readUInt32BE(16)).toBe(1600);
     expect(png.readUInt32BE(20)).toBe(900);
+  });
+
+  it("keeps complete price disclosure in Shopify's designated pricing field", () => {
+    const pricing = read("listing/pricing.md");
+    const plans = read("app/lib/plans.ts");
+
+    for (const amount of ["49", "129", "299"]) {
+      const formatted = Number(amount).toLocaleString("en-US");
+      expect(plans).toContain(`price: ${amount}`);
+      expect(pricing).toContain(`$${formatted}`);
+    }
+    for (const amount of ["490", "1290", "2990"]) {
+      const formatted = Number(amount).toLocaleString("en-US");
+      expect(plans).toContain(`annualPrice: ${amount}`);
+      expect(pricing).toContain(`$${formatted}`);
+    }
+    expect(pricing).toContain("14-day free trial");
+    expect(pricing).toContain("$0.05 USD per order");
+    expect(pricing).toContain("capped at $50 USD per billing period");
+    expect(pricing).toContain("Shopify Billing");
+
+    // A plan label in a feature bullet acts like pricing information without
+    // explaining the charge. The public feature list stays benefit-led; all
+    // charge details live in the designated Partner Dashboard field above.
+    expect(read("listing/copy.md")).not.toContain("Scale adds weekly summaries");
   });
 
   it("SUBMISSION.md does not record the ad-accuracy flag as closed while it is open", () => {

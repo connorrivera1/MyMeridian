@@ -95,7 +95,7 @@
     }
 
     function chooseLosses() {
-      var random = seeded(13254); // the order number on the receipt beside it
+      var random = seeded(13254); // stable seed for the illustrative breakdown
       var scored = new Array(TOTAL);
 
       for (var i = 0; i < TOTAL; i++) {
@@ -382,9 +382,9 @@
       var box = canvas.getBoundingClientRect();
       var isThis = i === RECEIPT_INDEX;
       readout.textContent = isThis
-        ? "Order #13254 — the receipt alongside"
-        : "Order " + (i + 1).toLocaleString("en-US") + " of 3,071 · " +
-          (isLoss[i] ? "lost money" : "profitable");
+        ? "Illustrative order — the breakdown alongside"
+        : "Illustrative order · " +
+          (isLoss[i] ? "needs investigation" : "qualified profit");
       readout.className = "dot-readout is-on" +
         (isThis ? " is-this" : isLoss[i] ? " is-loss" : "");
       readout.style.left = (clientX - box.left) + "px";

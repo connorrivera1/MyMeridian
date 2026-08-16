@@ -246,7 +246,7 @@ document.documentElement.classList.add("js");
             <span>See The Order Breakdown</span>
           </a>
         </div>
-        <p class="hero-offer">Join early and get 15% off your first 12 months on an eligible monthly plan.</p>
+        <p class="hero-offer">Join the waitlist for launch updates and early-access eligibility.</p>
       </div>
 
         <!--
@@ -410,13 +410,13 @@ document.documentElement.classList.add("js");
       <div class="reckoning-head reveal">
         <span class="kicker">Revenue Can Hide The Problem</span>
         <h2>
-          3,071 orders in a month.<br />
-          <strong>383 of them lost money.</strong>
+          Sales can look healthy.<br />
+          <strong>Individual orders can still lose money.</strong>
         </h2>
         <p>
-          In the MyMeridian demo store, 12.5% of the month’s orders lost
-          <span class="loss">−$7,928</span> before paid marketing — hidden inside
-          otherwise healthy-looking revenue.
+          MyMeridian surfaces the orders where product cost, shipping, fees,
+          refunds or overhead consume the sale — before those losses disappear
+          inside a healthy-looking revenue total.
         </p>
       </div>
 
@@ -424,24 +424,24 @@ document.documentElement.classList.add("js");
         <figure class="dotfield">
           <div class="dotfield-plot">
             <canvas id="dotfield" width="1120" height="420" role="img"
-                    aria-label="A field of 3,071 dots, one per order in the month, with 383 marked as losing money. The order shown in the receipt alongside is marked in gold."></canvas>
+                    aria-label="An illustrative field of orders. Dark markers represent orders needing investigation; the outlined marker corresponds to the illustrative breakdown alongside it."></canvas>
             <!-- Filled by motion.js on hover; empty and hidden until then. -->
             <div class="dot-readout" id="dot-readout" aria-hidden="true"></div>
           </div>
           <figcaption>
             <span class="dot-legend">
-              <span class="dot-key dot-key-keep"></span> 2,688 Profitable
-              <span class="dot-key dot-key-loss"></span> 383 Losing Money
-              <span class="dot-key dot-key-this"></span> The Order Alongside
+              <span class="dot-key dot-key-keep"></span> Orders With Qualified Profit
+              <span class="dot-key dot-key-loss"></span> Orders Needing Investigation
+              <span class="dot-key dot-key-this"></span> Illustrative Breakdown
             </span>
             <span class="dot-hint">Point At Any Order To Pick It Out.</span>
           </figcaption>
         </figure>
 
-        <div class="receipt" aria-label="Order 13254 Cost Breakdown">
+        <div class="receipt" aria-label="Illustrative order cost breakdown">
           <div class="receipt-head">
-            <span class="receipt-id">Order #13254</span>
-            <span class="receipt-meta">Aug 2 · 1 Item · Organic Search</span>
+            <span class="receipt-id">Illustrative Order</span>
+            <span class="receipt-meta">One Item · Organic Search</span>
           </div>
           <dl class="receipt-lines">
             <div class="receipt-line receipt-line-top"><dt>Revenue</dt><dd class="pos">$66.45</dd></div>
@@ -456,16 +456,16 @@ document.documentElement.classList.add("js");
             </div>
           </dl>
           <p class="receipt-note">
-            This $66.45 order kept $3.50 before paid marketing. Because no ad source
-            has synced in the demo, MyMeridian marks that cost unavailable — not $0.
+            This illustrative order shows how MyMeridian separates measured and
+            configured costs from unavailable ad spend. An unsynced source stays
+            unavailable — not $0.
           </p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Real merchant evidence will live here once it is verified. Until then,
-       the demo-store proof above remains deliberately labelled as a demo. -->
+  <!-- Customer evidence belongs here only after a merchant authorizes its use. -->
   <div class="rule-filigree reveal" aria-hidden="true">
   <svg class="filigree-rule" viewBox="0 0 1200 108" fill="none" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMid meet"><use class="fg-cut" href="#fg-art" y="1.3" /><use class="fg-lit" href="#fg-art" y="-1.1" /><use class="fg-face" href="#fg-art" /></svg>
   </div>
@@ -724,7 +724,6 @@ document.documentElement.classList.add("js");
         </article>
 
         <article class="plan plan-featured reveal">
-          <div class="plan-badge">Most Popular</div>
           <div class="plan-top">
             <span class="plan-name">Growth</span>
             <strong class="plan-price"
@@ -852,8 +851,9 @@ document.documentElement.classList.add("js");
           </summary>
           <div class="faq-answer">
             <p>
-              Monthly and annual plans are billed through Shopify at launch. Eligible
-              merchants receive 15% off their first 12 months on a monthly plan.
+              Monthly and annual plans are billed through Shopify. Eligible
+              merchants receive any launch benefit through their verified
+              waitlist account when an offer is available.
             </p>
           </div>
         </details>
@@ -864,18 +864,17 @@ document.documentElement.classList.add("js");
   <section class="waitlist-section" id="waitlist" aria-labelledby="waitlist-title">
     <div class="wrap waitlist-layout">
       <div class="waitlist-copy reveal">
-        <span class="kicker">Early Access Savings</span>
+        <span class="kicker">Early Access</span>
         <h2 id="waitlist-title">See what your store<br /><strong>actually keeps.</strong></h2>
         <p>
-          Join the waitlist and receive 15% off your first 12 months on an
-          eligible monthly plan at launch.
+          Join the waitlist for launch updates and early-access eligibility.
         </p>
       </div>
       <form class="waitlist-form reveal" method="post" action="/waitlist" aria-describedby="waitlist-note">
         <div class="waitlist-form-mark" aria-hidden="true">
           <svg viewBox="0 0 96 96" fill="none"><g stroke="currentColor" stroke-width="2.6" opacity=".9" stroke-linecap="round"><circle cx="48" cy="48" r="34"/><ellipse cx="48" cy="48" rx="24.5" ry="34"/><ellipse cx="48" cy="48" rx="13.5" ry="34"/><path d="M48 14v68"/></g><path d="M48 14 A 15 34 0 0 1 48 82" stroke="var(--gold)" stroke-width="3.2" stroke-linecap="round"/></svg>
         </div>
-        <p class="waitlist-form-label">Early Access Savings</p>
+        <p class="waitlist-form-label">Early Access</p>
         <label for="waitlist-email">Email Address <span aria-hidden="true">*</span></label>
         <input id="waitlist-email" name="email" type="email" inputmode="email" autocomplete="email" maxlength="254" required placeholder="you@store.com" />
         <label for="waitlist-store">Shopify Store URL <span>Optional</span></label>
@@ -889,7 +888,7 @@ document.documentElement.classList.add("js");
         <input type="hidden" name="utm_content" data-tracking="utm_content" />
         <label class="waitlist-consent" for="waitlist-consent"><input id="waitlist-consent" name="marketing_consent" type="checkbox" value="true" /> <span>Send me occasional MyMeridian product updates. You can unsubscribe anytime.</span></label>
         <button class="pill waitlist-submit" type="submit">Join Waitlist <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h9m0 0L8.5 4.5M12 8l-3.5 3.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-        <p class="waitlist-note" id="waitlist-note">No Shopify connection yet. By joining, you agree to the <a href="/privacy">privacy policy</a>. Eligibility is verified and activated at launch; no public coupon is needed.</p>
+        <p class="waitlist-note" id="waitlist-note">This form does not connect a Shopify store. By joining, you agree to the <a href="/privacy">privacy policy</a>. Eligibility details are sent directly by email; no public coupon is needed.</p>
       </form>
     </div>
   </section>

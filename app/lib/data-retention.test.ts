@@ -2,12 +2,49 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const purgeExpiredDataRequests = vi.fn();
 const purgeFinishedRecalcJobs = vi.fn();
+const purgeExpiredSecurityAuditEvents = vi.fn();
+const purgeExpiredConnectorOAuthStates = vi.fn();
+const purgeOldMerchantNotifications = vi.fn();
+const purgeExpiredOperatorSecurityData = vi.fn();
+const purgeExpiredRateLimitBuckets = vi.fn();
+const purgeExpiredMfaChallenges = vi.fn();
+const purgeOldWaitlistEmailDeliveries = vi.fn();
 
 vi.mock("~/lib/data-request.server", () => ({
-  purgeExpiredDataRequests: (...args: unknown[]) => purgeExpiredDataRequests(...args),
+  purgeExpiredDataRequests: (...args: unknown[]) =>
+    purgeExpiredDataRequests(...args),
 }));
 vi.mock("~/lib/recalc-queue.server", () => ({
-  purgeFinishedRecalcJobs: (...args: unknown[]) => purgeFinishedRecalcJobs(...args),
+  purgeFinishedRecalcJobs: (...args: unknown[]) =>
+    purgeFinishedRecalcJobs(...args),
+}));
+vi.mock("~/lib/security-audit.server", () => ({
+  purgeExpiredSecurityAuditEvents: (...args: unknown[]) =>
+    purgeExpiredSecurityAuditEvents(...args),
+}));
+vi.mock("~/lib/connector-oauth.server", () => ({
+  purgeExpiredConnectorOAuthStates: (...args: unknown[]) =>
+    purgeExpiredConnectorOAuthStates(...args),
+}));
+vi.mock("~/lib/merchant-notifications.server", () => ({
+  purgeOldMerchantNotifications: (...args: unknown[]) =>
+    purgeOldMerchantNotifications(...args),
+}));
+vi.mock("~/lib/operator-auth.server", () => ({
+  purgeExpiredOperatorSecurityData: (...args: unknown[]) =>
+    purgeExpiredOperatorSecurityData(...args),
+}));
+vi.mock("~/lib/rate-limit.server", () => ({
+  purgeExpiredRateLimitBuckets: (...args: unknown[]) =>
+    purgeExpiredRateLimitBuckets(...args),
+}));
+vi.mock("~/lib/mfa.server", () => ({
+  purgeExpiredMfaChallenges: (...args: unknown[]) =>
+    purgeExpiredMfaChallenges(...args),
+}));
+vi.mock("~/lib/waitlist.server", () => ({
+  purgeOldWaitlistEmailDeliveries: (...args: unknown[]) =>
+    purgeOldWaitlistEmailDeliveries(...args),
 }));
 
 const {
@@ -21,6 +58,16 @@ beforeEach(() => {
   vi.clearAllMocks();
   purgeExpiredDataRequests.mockResolvedValue(0);
   purgeFinishedRecalcJobs.mockResolvedValue(0);
+  purgeExpiredSecurityAuditEvents.mockResolvedValue(0);
+  purgeExpiredConnectorOAuthStates.mockResolvedValue(0);
+  purgeOldMerchantNotifications.mockResolvedValue(0);
+  purgeExpiredOperatorSecurityData.mockResolvedValue({
+    sessions: 0,
+    auditEvents: 0,
+  });
+  purgeExpiredRateLimitBuckets.mockResolvedValue(0);
+  purgeExpiredMfaChallenges.mockResolvedValue(0);
+  purgeOldWaitlistEmailDeliveries.mockResolvedValue(0);
   stopDataRetentionScheduler();
 });
 
@@ -83,8 +130,9 @@ describe("data retention scheduler", () => {
     startDataRetentionScheduler(1_000);
     await dataRetentionSettled();
     expect(error).toHaveBeenCalledWith(
-      "[privacy] expired customer data export purge failed",
-      expect.any(Error),
+      "[%s] %s",
+      "privacy expired customer data export purge",
+      "Operation failed (Error).",
     );
 
     await vi.advanceTimersByTimeAsync(1_000);
@@ -121,5 +169,51 @@ describe("recalculation job retention", () => {
     await dataRetentionSettled();
 
     expect(purgeExpiredDataRequests).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("operator security retention", () => {
+  it("purges expired operator sessions and audit evidence on every sweep", async () => {
+    startDataRetentionScheduler(60_000);
+    await dataRetentionSettled();
+    expect(purgeExpiredOperatorSecurityData).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    await dataRetentionSettled();
+    expect(purgeExpiredOperatorSecurityData).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not let an operator purge failure stop other retention work", async () => {
+    purgeExpiredOperatorSecurityData.mockRejectedValue(
+      new Error("operator retention unavailable"),
+    );
+    startDataRetentionScheduler(60_000);
+    await dataRetentionSettled();
+    expect(purgeExpiredConnectorOAuthStates).toHaveBeenCalledTimes(1);
+    expect(purgeOldMerchantNotifications).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("rate-limit retention", () => {
+  it("purges expired privacy-safe request fingerprints", async () => {
+    startDataRetentionScheduler(60_000);
+    await dataRetentionSettled();
+    expect(purgeExpiredRateLimitBuckets).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("MFA challenge retention", () => {
+  it("purges expired one-time challenges", async () => {
+    startDataRetentionScheduler(60_000);
+    await dataRetentionSettled();
+    expect(purgeExpiredMfaChallenges).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("waitlist delivery retention", () => {
+  it("purges old sent and terminal email receipts without touching signups", async () => {
+    startDataRetentionScheduler(60_000);
+    await dataRetentionSettled();
+    expect(purgeOldWaitlistEmailDeliveries).toHaveBeenCalledTimes(1);
   });
 });

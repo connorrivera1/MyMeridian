@@ -1,0 +1,412 @@
+/*
+ * Shared styling for the standalone legal documents (privacy.html, terms.html).
+ *
+ * Monochrome, matching the landing page: white ground, near-black ink, and
+ * the same dark-mode inversion driven by `data-theme` on <html>.
+ *
+ * Deliberately NOT the landing page's scene. These pages are read, not
+ * browsed: no shader, no sky, no reveals, no hover lifts. They inherit the
+ * tokens, the type and the gold accent so they belong to the same product,
+ * and nothing else — a raymarched cloudscape behind a privacy policy is
+ * exactly the "too much" the landing page was just cured of.
+ *
+ * The font matches the landing page and app. It is served by Fontshare rather
+ * than copied into this repository, so legal pages use the same Satoshi face
+ * without shipping a local font binary.
+ */
+
+@import url("https://api.fontshare.com/v2/css?f[]=satoshi@300,400,500,600,700,800,900&display=swap");
+
+:root {
+  color-scheme: light;
+  --ground: #ffffff;
+  --raised: #fafafa;
+  --ink: #0a0a0a;
+  --ink-rgb: 10, 10, 10;
+  --ink-2: rgba(10, 10, 10, 0.7);
+  --ink-3: rgba(10, 10, 10, 0.52);
+  --gold: #0a0a0a;
+  --gold-dim: rgba(10, 10, 10, 0.07);
+  --border: rgba(10, 10, 10, 0.13);
+  --font: "Satoshi", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "Helvetica Neue", Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+html, body { margin: 0; padding: 0; }
+
+html {
+  background: var(--ground);
+  scrollbar-color: rgba(10, 10, 10, 0.3) var(--ground);
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+  background: var(--ground);
+}
+
+::-webkit-scrollbar-track { background: var(--ground); }
+
+::-webkit-scrollbar-thumb {
+  min-height: 42px;
+  border: 3px solid var(--ground);
+  border-radius: 999px;
+  background: rgba(10, 10, 10, 0.3);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(10, 10, 10, 0.5);
+  background-clip: padding-box;
+}
+
+body {
+  position: relative;
+  isolation: isolate;
+  overflow-x: hidden;
+  background: var(--ground);
+  color: var(--ink-2);
+  font-family: var(--font);
+  font-size: 15.5px;
+  font-weight: 400;
+  line-height: 1.72;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* One document-length field shared by Privacy and Terms. The curves are
+   continuous across the whole reading surface instead of restarting at each
+   heading or page band. */
+.legal-contour-field {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100vh;
+  overflow: visible;
+  color: var(--ink);
+  pointer-events: none;
+}
+
+.legal-contour-field path,
+.legal-contour-field ellipse,
+.legal-contour-field circle {
+  fill: none;
+  stroke: currentColor;
+  vector-effect: non-scaling-stroke;
+}
+
+.legal-contour-field .contour-major { stroke-width: 1.1; opacity: 0.14; }
+.legal-contour-field .contour-minor { stroke-width: 1; opacity: 0.075; }
+.legal-contour-field .contour-axis { stroke-width: 0.9; opacity: 0.06; }
+
+.header,
+main,
+footer {
+  position: relative;
+  z-index: 1;
+}
+
+a { color: inherit; }
+a:hover { color: var(--ink); }
+::selection { background: var(--gold-dim); color: var(--ink); }
+
+.wrap { max-width: 760px; margin: 0 auto; padding: 0 28px; }
+
+/* ------------------------------------------------------------------ header */
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: color-mix(in srgb, var(--ground) 88%, transparent);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
+}
+.header-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 15px 28px;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--ink);
+  text-decoration: none;
+}
+.header-nav {
+  margin-left: auto;
+  display: flex;
+  gap: 22px;
+  font-size: 13.5px;
+}
+.header-nav a { color: var(--ink-3); text-decoration: none; }
+.header-nav a:hover,
+.header-nav a[aria-current="page"] { color: var(--ink); }
+
+/* -------------------------------------------------------------------- page */
+
+/* Match the standalone legal reading surface to the support route: one quiet,
+   elevated document card rather than policy text floating directly on the
+   field. The card stays translucent enough for the Meridian geometry to read
+   as part of the product, never as a separate site shell. */
+main {
+  max-width: 76ch;
+  margin: 48px auto 72px;
+  padding: 52px clamp(26px, 5vw, 56px) 64px;
+  font-size: 14px;
+  font-weight: 440;
+  line-height: 1.75;
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  background: color-mix(in srgb, var(--ground) 88%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(var(--ink-rgb), 0.055),
+    0 38px 100px -66px rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(28px) saturate(140%);
+  -webkit-backdrop-filter: blur(28px) saturate(140%);
+  overflow: hidden;
+}
+
+.wrap { max-width: 760px; margin: 0 auto; padding: 0; }
+
+/* The same lockup that begins Support's card.  Keeping it inside the reading
+   pane makes a direct legal link feel like Meridian even without landing-page
+   navigation. */
+.legal-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+}
+
+.legal-brand-mark { flex: 0 0 auto; }
+
+.doc-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.doc-kicker::before {
+  content: "";
+  width: 22px;
+  height: 1px;
+  background: var(--gold);
+}
+
+h1 {
+  margin: 22px 0 6px;
+  font-size: 30px;
+  font-weight: 350;
+  letter-spacing: -0.028em;
+  line-height: 1.1;
+  color: var(--ink);
+}
+
+.doc-meta {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.lede {
+  margin: 26px 0 0;
+  font-size: 17px;
+  line-height: 1.7;
+  color: var(--ink-2);
+}
+
+h2 {
+  margin: 54px 0 0;
+  padding-top: 26px;
+  border-top: 1px solid var(--border);
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  color: var(--ink);
+}
+
+h3 {
+  margin: 30px 0 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+p { margin: 14px 0 0; }
+ul { margin: 14px 0 0; padding-left: 20px; }
+li { margin: 8px 0 0; }
+li::marker { color: var(--ink-3); }
+
+strong { color: var(--ink); font-weight: 600; }
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.88em;
+  padding: 1.5px 5px;
+  border-radius: 4px;
+  background: rgba(244, 239, 230, 0.07);
+  color: var(--ink);
+}
+
+/* A table for the plan/price facts, kept to the same rules as the app's. */
+table {
+  width: 100%;
+  margin-top: 18px;
+  border-collapse: collapse;
+  font-size: 14.5px;
+  font-variant-numeric: tabular-nums;
+}
+th, td { text-align: left; padding: 10px 14px 10px 0; border-bottom: 1px solid var(--border); }
+th { font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3); }
+td:last-child, th:last-child { padding-right: 0; text-align: right; }
+
+.note {
+  margin-top: 26px;
+  padding: 18px 20px;
+  border-left: 2px solid var(--gold);
+  background: var(--gold-dim);
+  font-size: 14.5px;
+  color: var(--ink-2);
+}
+
+/* ------------------------------------------------------------------ footer */
+
+footer {
+  border-top: 1px solid var(--border);
+  padding: 40px 0 54px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.foot-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 28px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  align-items: center;
+  justify-content: space-between;
+}
+.foot-nav { display: flex; gap: 22px; }
+.foot-nav a { text-decoration: none; }
+
+@media (max-width: 700px) {
+  /* The document remains the focus on a phone. The footer retains every
+     legal route; keeping a four-link nav beside the mark would clip it. */
+  .header-inner { padding: 15px 20px; }
+  .header-nav { gap: 0; }
+  .header-nav a { display: none; }
+  .theme-switch { margin-left: 0; }
+
+  h2 { margin-top: 42px; }
+}
+
+
+/* -------------------------------------------------------------- dark mode */
+
+/* Set by the shared theme script; a straight inversion of the values above. */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #0a0a0a;
+  --raised: #141414;
+  --ink: #f5f5f5;
+  --ink-rgb: 245, 245, 245;
+  --ink-2: rgba(245, 245, 245, 0.72);
+  --ink-3: rgba(245, 245, 245, 0.54);
+  --gold: #f5f5f5;
+  --gold-dim: rgba(245, 245, 245, 0.08);
+  --border: rgba(245, 245, 245, 0.16);
+}
+
+
+/* --------------------------------------------------------- theme switch */
+
+/*
+ * These pages do not load landing.css, so the switch needs its own copy of
+ * the rules. Same construction: the trail is the page's ink, the thumb is
+ * the page's ground, so the whole control inverts with the theme for free.
+ */
+.theme-switch {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 18px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.theme-switch-track {
+  position: relative;
+  display: block;
+  width: 58px;
+  height: 30px;
+  border-radius: 999px;
+  background: var(--ink);
+  transition: background 300ms ease;
+}
+
+.theme-switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--ground);
+  color: var(--ink);
+  transition: transform 320ms cubic-bezier(0.16, 1, 0.3, 1), background 300ms ease;
+}
+
+html[data-theme="dark"] .theme-switch-thumb { transform: translateX(28px); }
+
+.theme-icon {
+  grid-area: 1 / 1;
+  width: 15px;
+  height: 15px;
+  transition: opacity 200ms ease;
+}
+
+.theme-icon-moon { opacity: 0; }
+html[data-theme="dark"] .theme-icon-sun { opacity: 0; }
+html[data-theme="dark"] .theme-icon-moon { opacity: 1; }
+
+.theme-switch:focus-visible .theme-switch-track {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
+/* The nav has to be a row now that a control sits in it. */
+.header-nav {
+  display: flex;
+  align-items: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-switch-thumb { transition: none; }
+}
+
+@media (max-width: 700px) {
+  .legal-contour-field .contour-minor { display: none; }
+  .legal-contour-field .contour-axis { display: none; }
+  .legal-contour-field .contour-major { opacity: 0.11; }
+}

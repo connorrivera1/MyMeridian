@@ -1,6 +1,4 @@
-import {
-  randomBytes,
-} from "node:crypto";
+import { randomBytes } from "node:crypto";
 
 import {
   ConnectorProvider,
@@ -74,35 +72,37 @@ export function parseShipStationLabels(
     const cost = money(label.shipment_cost);
     const status = (text(label.status) ?? "").toLowerCase();
     const refundStatus = (text(label.refund_status) ?? "").toLowerCase();
-    return [{
-      source: ShippingCostSource.SHIPSTATION,
-      externalId,
-      externalOrderRef:
-        text(label.external_shipment_id) ??
-        text(label.external_order_id) ??
-        text(label.shipment_number) ??
-        text(label.order_number) ??
-        (text(label.shipment_id)
-          ? shipmentReferences.get(text(label.shipment_id)!) ?? null
-          : null),
-      carrier: text(label.carrier_code) ?? text(label.carrier_id),
-      serviceLevel: text(label.service_code),
-      currency: cost.currency,
-      amount: cost.amount,
-      labelCount: 1,
-      observedAt: date(label.created_at ?? label.ship_date, now),
-      sourceUpdatedAt: text(label.modified_at)
-        ? date(label.modified_at, now)
-        : text(label.voided_at)
-          ? date(label.voided_at, now)
-          : null,
-      voided:
-        label.voided === true ||
-        Boolean(text(label.voided_at)) ||
-        status === "voided" ||
-        refundStatus === "approved" ||
-        refundStatus === "refunded",
-    }];
+    return [
+      {
+        source: ShippingCostSource.SHIPSTATION,
+        externalId,
+        externalOrderRef:
+          text(label.external_shipment_id) ??
+          text(label.external_order_id) ??
+          text(label.shipment_number) ??
+          text(label.order_number) ??
+          (text(label.shipment_id)
+            ? (shipmentReferences.get(text(label.shipment_id)!) ?? null)
+            : null),
+        carrier: text(label.carrier_code) ?? text(label.carrier_id),
+        serviceLevel: text(label.service_code),
+        currency: cost.currency,
+        amount: cost.amount,
+        labelCount: 1,
+        observedAt: date(label.created_at ?? label.ship_date, now),
+        sourceUpdatedAt: text(label.modified_at)
+          ? date(label.modified_at, now)
+          : text(label.voided_at)
+            ? date(label.voided_at, now)
+            : null,
+        voided:
+          label.voided === true ||
+          Boolean(text(label.voided_at)) ||
+          status === "voided" ||
+          refundStatus === "approved" ||
+          refundStatus === "refunded",
+      },
+    ];
   });
 }
 
@@ -140,13 +140,14 @@ export function parseShopifyShippingRows(
 ): ShippingObservationInput[] {
   const errors = [
     ...(payload.errors ?? []).map((error) => error.message ?? "GraphQL error"),
-    ...(payload.data?.shopifyqlQuery?.parseErrors ?? []).map(
-      (error) => typeof error === "string"
+    ...(payload.data?.shopifyqlQuery?.parseErrors ?? []).map((error) =>
+      typeof error === "string"
         ? error
-        : error.message ?? "ShopifyQL parse error",
+        : (error.message ?? "ShopifyQL parse error"),
     ),
   ];
-  if (errors.length > 0) throw new Error(`Shopify Shipping query failed: ${errors.join("; ")}`);
+  if (errors.length > 0)
+    throw new Error(`Shopify Shipping query failed: ${errors.join("; ")}`);
 
   const rows = payload.data?.shopifyqlQuery?.tableData?.rows ?? [];
   return rows.flatMap((row) => {
@@ -157,21 +158,31 @@ export function parseShopifyShippingRows(
     // label currency is a grouping attribute and can differ on cross-border
     // purchases, so tagging the metric with it creates a false mismatch.
     const currency = storeCurrency.toUpperCase().slice(0, 3);
-    const labelCurrency = (text(row.shipping_label_currency) ?? currency).toUpperCase().slice(0, 3);
+    const labelCurrency = (text(row.shipping_label_currency) ?? currency)
+      .toUpperCase()
+      .slice(0, 3);
     const carrier = text(row.shipping_carrier);
     const service = text(row.shipping_service);
-    return [{
-      source: ShippingCostSource.SHOPIFY_SHIPPING,
-      externalId: [orderRef, day, carrier ?? "", service ?? "", labelCurrency].join("|"),
-      externalOrderRef: orderRef,
-      carrier,
-      serviceLevel: service,
-      currency,
-      amount: text(row.shipping_label_costs) ?? "0.00",
-      labelCount: Math.max(1, Number(row.shipping_labels ?? 1) || 1),
-      observedAt: date(day, new Date(`${day}T00:00:00.000Z`)),
-      sourceUpdatedAt: null,
-    }];
+    return [
+      {
+        source: ShippingCostSource.SHOPIFY_SHIPPING,
+        externalId: [
+          orderRef,
+          day,
+          carrier ?? "",
+          service ?? "",
+          labelCurrency,
+        ].join("|"),
+        externalOrderRef: orderRef,
+        carrier,
+        serviceLevel: service,
+        currency,
+        amount: text(row.shipping_label_costs) ?? "0.00",
+        labelCount: Math.max(1, Number(row.shipping_labels ?? 1) || 1),
+        observedAt: date(day, new Date(`${day}T00:00:00.000Z`)),
+        sourceUpdatedAt: null,
+      },
+    ];
   });
 }
 
@@ -241,13 +252,19 @@ export function selectCarrierTotal(
   }
   const sources = [...totals.values()];
   if (sources.length === 0) return null;
-  if (sources.length === 1) return { selected: sources[0]!.source, cents: sources[0]!.cents, conflict: false };
+  if (sources.length === 1)
+    return {
+      selected: sources[0]!.source,
+      cents: sources[0]!.cents,
+      conflict: false,
+    };
 
   const conflict = new Set(sources.map((source) => source.cents)).size > 1;
-  sources.sort((a, b) =>
-    b.labels - a.labels ||
-    b.newest - a.newest ||
-    (a.source === ShippingCostSource.SHIPSTATION ? -1 : 1),
+  sources.sort(
+    (a, b) =>
+      b.labels - a.labels ||
+      b.newest - a.newest ||
+      (a.source === ShippingCostSource.SHIPSTATION ? -1 : 1),
   );
   return { selected: sources[0]!.source, cents: sources[0]!.cents, conflict };
 }
@@ -256,7 +273,8 @@ export async function reconcileShippingObservations(
   shopId: string,
   inputs: readonly ShippingObservationInput[],
 ) {
-  if (inputs.length === 0) return { observations: 0, matched: 0, conflicts: 0, ordersUpdated: 0 };
+  if (inputs.length === 0)
+    return { observations: 0, matched: 0, conflicts: 0, ordersUpdated: 0 };
   const orders = await prisma.order.findMany({
     where: { shopId },
     select: { id: true, shopifyId: true, orderNumber: true, currency: true },
@@ -267,11 +285,15 @@ export async function reconcileShippingObservations(
   for (const input of inputs) {
     const order = matchOrderReference(input.externalOrderRef, orders);
     let status: ShippingObservationStatus = ShippingObservationStatus.UNMATCHED;
-    let reason: string | null = "No Meridian order matched the provider reference.";
+    let reason: string | null =
+      "No Meridian order matched the provider reference.";
     if (input.voided) {
       status = ShippingObservationStatus.VOIDED;
       reason = "The provider reports this label as voided or refunded.";
-    } else if (order && order.currency.toUpperCase() !== input.currency.toUpperCase()) {
+    } else if (
+      order &&
+      order.currency.toUpperCase() !== input.currency.toUpperCase()
+    ) {
       status = ShippingObservationStatus.CURRENCY_MISMATCH;
       reason = `Order currency ${order.currency} does not match carrier currency ${input.currency}.`;
     } else if (order) {
@@ -285,7 +307,13 @@ export async function reconcileShippingObservations(
     if (order) affected.add(order.id);
 
     await prisma.shippingCostObservation.upsert({
-      where: { shopId_source_externalId: { shopId, source: input.source, externalId: input.externalId } },
+      where: {
+        shopId_source_externalId: {
+          shopId,
+          source: input.source,
+          externalId: input.externalId,
+        },
+      },
       create: {
         shopId,
         orderId: order?.id ?? null,
@@ -323,18 +351,32 @@ export async function reconcileShippingObservations(
   for (const orderId of affected) {
     const observations = await prisma.shippingCostObservation.findMany({
       where: { shopId, orderId, status: ShippingObservationStatus.MATCHED },
-      select: { id: true, source: true, amount: true, labelCount: true, observedAt: true },
+      select: {
+        id: true,
+        source: true,
+        amount: true,
+        labelCount: true,
+        observedAt: true,
+      },
     });
     const selected = selectCarrierTotal(observations);
     const fulfillments = await prisma.fulfillment.findMany({
-      where: { shopId, orderId, status: { notIn: ["cancelled", "canceled", "error", "failure"] } },
+      where: {
+        shopId,
+        orderId,
+        status: { notIn: ["cancelled", "canceled", "error", "failure"] },
+      },
       select: { id: true, itemCount: true },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     });
     if (fulfillments.length === 0) {
       await prisma.shippingCostObservation.updateMany({
         where: { shopId, orderId, status: ShippingObservationStatus.MATCHED },
-        data: { status: ShippingObservationStatus.UNMATCHED, discrepancyReason: "Order has no active fulfillment to receive carrier cost." },
+        data: {
+          status: ShippingObservationStatus.UNMATCHED,
+          discrepancyReason:
+            "Order has no active fulfillment to receive carrier cost.",
+        },
       });
       continue;
     }
@@ -355,11 +397,22 @@ export async function reconcileShippingObservations(
     if (selected.conflict) {
       conflicts++;
       await prisma.shippingCostObservation.updateMany({
-        where: { shopId, orderId, source: { not: selected.selected }, status: ShippingObservationStatus.MATCHED },
-        data: { status: ShippingObservationStatus.CONFLICT, discrepancyReason: `Conflicts with ${selected.selected}; preserved but excluded from order cost.` },
+        where: {
+          shopId,
+          orderId,
+          source: { not: selected.selected },
+          status: ShippingObservationStatus.MATCHED,
+        },
+        data: {
+          status: ShippingObservationStatus.CONFLICT,
+          discrepancyReason: `Conflicts with ${selected.selected}; preserved but excluded from order cost.`,
+        },
       });
     }
-    const shares = allocateTaxCents(selected.cents, fulfillments.map((fulfillment) => fulfillment.itemCount));
+    const shares = allocateTaxCents(
+      selected.cents,
+      fulfillments.map((fulfillment) => fulfillment.itemCount),
+    );
     await prisma.$transaction(
       fulfillments.map((fulfillment, index) =>
         prisma.fulfillment.update({
@@ -398,7 +451,9 @@ export async function fetchShopifyShippingCosts(
     "ORDER BY day ASC LIMIT 10000",
   ].join(" ");
   const admin = await adminClientForShop(shopDomain);
-  const response = await admin.graphql(SHOPIFYQL_QUERY, { variables: { query } });
+  const response = await admin.graphql(SHOPIFYQL_QUERY, {
+    variables: { query },
+  });
   return parseShopifyShippingRows(
     (await response.json()) as ShopifyQlResponse,
     storeCurrency,
@@ -418,15 +473,21 @@ async function fetchShipStationPages(
   const values: JsonRecord[] = [];
   for (let page = 1; page <= 100; page++) {
     const url = new URL(`https://api.shipstation.com/v2/${path}`);
-    for (const [key, value] of Object.entries(parameters)) url.searchParams.set(key, value);
+    for (const [key, value] of Object.entries(parameters))
+      url.searchParams.set(key, value);
     url.searchParams.set("page_size", String(SHIPSTATION_PAGE_SIZE));
     url.searchParams.set("page", String(page));
-    const response = await fetcher(url, { headers: { "API-Key": apiKey, Accept: "application/json" } });
-    if (!response.ok) throw new Error(`ShipStation ${path} returned HTTP ${response.status}`);
+    const response = await fetcher(url, {
+      headers: { "API-Key": apiKey, Accept: "application/json" },
+    });
+    if (!response.ok)
+      throw new Error(`ShipStation ${path} returned HTTP ${response.status}`);
     const body = record(await response.json()) ?? {};
     const collectionValue = body[collection];
     const pageValues: JsonRecord[] = Array.isArray(collectionValue)
-      ? collectionValue.map(record).filter((value): value is JsonRecord => value !== null)
+      ? collectionValue
+          .map(record)
+          .filter((value): value is JsonRecord => value !== null)
       : [];
     values.push(...pageValues);
     const pages = Number(body.pages ?? body.total_pages);
@@ -435,7 +496,8 @@ async function fetchShipStationPages(
       shouldStop?.(pageValues) === true ||
       (Number.isFinite(pages) && pages > 0 && page >= pages) ||
       (!Number.isFinite(pages) && pageValues.length < SHIPSTATION_PAGE_SIZE)
-    ) break;
+    )
+      break;
   }
   return values;
 }
@@ -450,7 +512,11 @@ async function fetchShipStationShipmentReference(
     { headers: { "API-Key": apiKey, Accept: "application/json" } },
   );
   if (!response.ok) return null;
-  return parseShipStationShipmentReferences({ shipments: [await response.json()] }).get(shipmentId) ?? null;
+  return (
+    parseShipStationShipmentReferences({
+      shipments: [await response.json()],
+    }).get(shipmentId) ?? null
+  );
 }
 
 export async function fetchShipStationCosts(
@@ -459,29 +525,56 @@ export async function fetchShipStationCosts(
   fetcher: typeof fetch = fetch,
 ) {
   const apiKey = decryptSecret(encryptedApiKey);
-  const shipments = await fetchShipStationPages(apiKey, "shipments", "shipments", {
-    modified_at_start: since.toISOString(),
-    sort_by: "modified_at",
-    sort_dir: "asc",
-  }, fetcher);
-  const labels = await fetchShipStationPages(apiKey, "labels", "labels", {
-    created_at_start: since.toISOString(),
-    sort_by: "created_at",
-    sort_dir: "asc",
-  }, fetcher);
+  const shipments = await fetchShipStationPages(
+    apiKey,
+    "shipments",
+    "shipments",
+    {
+      modified_at_start: since.toISOString(),
+      sort_by: "modified_at",
+      sort_dir: "asc",
+    },
+    fetcher,
+  );
+  const labels = await fetchShipStationPages(
+    apiKey,
+    "labels",
+    "labels",
+    {
+      created_at_start: since.toISOString(),
+      sort_by: "created_at",
+      sort_dir: "asc",
+    },
+    fetcher,
+  );
 
   // Created-at filters do not catch an old label voided today. Pull the newest
   // voids separately and retain only those inside the overlap window.
-  const recentVoids = (await fetchShipStationPages(apiKey, "labels", "labels", {
-    label_status: "voided",
-    sort_by: "voided_at",
-    sort_dir: "desc",
-  }, fetcher, (pageValues) => pageValues.some((label) => {
+  const recentVoids = (
+    await fetchShipStationPages(
+      apiKey,
+      "labels",
+      "labels",
+      {
+        label_status: "voided",
+        sort_by: "voided_at",
+        sort_dir: "desc",
+      },
+      fetcher,
+      (pageValues) =>
+        pageValues.some((label) => {
+          const voidedAt = text(label.voided_at);
+          return (
+            Boolean(voidedAt) &&
+            date(voidedAt, new Date(0)).getTime() < since.getTime()
+          );
+        }),
+    )
+  ).filter((label) => {
     const voidedAt = text(label.voided_at);
-    return Boolean(voidedAt) && date(voidedAt, new Date(0)).getTime() < since.getTime();
-  }))).filter((label) => {
-    const voidedAt = text(label.voided_at);
-    return voidedAt ? date(voidedAt, new Date(0)).getTime() >= since.getTime() : false;
+    return voidedAt
+      ? date(voidedAt, new Date(0)).getTime() >= since.getTime()
+      : false;
   });
 
   const uniqueLabels = new Map<string, JsonRecord>();
@@ -490,25 +583,41 @@ export async function fetchShipStationCosts(
     if (labelId) uniqueLabels.set(labelId, label);
   }
   const references = parseShipStationShipmentReferences({ shipments });
-  const missingShipmentIds = [...new Set([...uniqueLabels.values()].flatMap((label) => {
-    const shipmentId = text(label.shipment_id);
-    const explicit = text(label.external_shipment_id) ?? text(label.shipment_number) ?? text(label.external_order_id);
-    return shipmentId && !explicit && !references.has(shipmentId) ? [shipmentId] : [];
-  }))];
+  const missingShipmentIds = [
+    ...new Set(
+      [...uniqueLabels.values()].flatMap((label) => {
+        const shipmentId = text(label.shipment_id);
+        const explicit =
+          text(label.external_shipment_id) ??
+          text(label.shipment_number) ??
+          text(label.external_order_id);
+        return shipmentId && !explicit && !references.has(shipmentId)
+          ? [shipmentId]
+          : [];
+      }),
+    ),
+  ];
   for (let offset = 0; offset < missingShipmentIds.length; offset += 10) {
     const ids = missingShipmentIds.slice(offset, offset + 10);
-    const resolved = await Promise.all(ids.map((id) => fetchShipStationShipmentReference(apiKey, id, fetcher)));
+    const resolved = await Promise.all(
+      ids.map((id) => fetchShipStationShipmentReference(apiKey, id, fetcher)),
+    );
     ids.forEach((id, index) => {
       const reference = resolved[index];
       if (reference) references.set(id, reference);
     });
   }
 
-  return parseShipStationLabels({ labels: [...uniqueLabels.values()] }, new Date(), references);
+  return parseShipStationLabels(
+    { labels: [...uniqueLabels.values()] },
+    new Date(),
+    references,
+  );
 }
 
 function sweepSince(connector: Connector, now: Date) {
-  const anchor = connector.lastSyncedAt ?? new Date(now.getTime() - 30 * 86_400_000);
+  const anchor =
+    connector.lastSyncedAt ?? new Date(now.getTime() - 30 * 86_400_000);
   return new Date(anchor.getTime() - 2 * 86_400_000);
 }
 
@@ -516,33 +625,67 @@ type CarrierConnector = Connector & {
   shop: { domain: string; currency: string };
 };
 
-type CarrierReconciliationResult = Awaited<ReturnType<typeof reconcileShippingObservations>>;
+type CarrierReconciliationResult = Awaited<
+  ReturnType<typeof reconcileShippingObservations>
+>;
+
+export const SHOPIFY_SHIPPING_PROTECTED_DATA_ERROR =
+  "Shopify has not approved protected customer data for Shipping reports yet. In Partner Dashboard, request Level 2 access covering Name, Email, Phone, and Address, then retry this connection. ShopifyQL requires all four approvals; MyMeridian does not query or store shopper name, phone, or address.";
+
+/**
+ * Shopify's Admin client may attach the full HTTP response to a thrown error.
+ * Never persist or log that object: response headers can contain short-lived
+ * session material and add thousands of noisy characters to every sweep.
+ */
+export function isShopifyShippingProtectedDataError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+  return (
+    (normalized.includes("protected customer data") ||
+      normalized.includes("protected customer fields") ||
+      normalized.includes("level 2 protected")) &&
+    (normalized.includes("not approved") ||
+      normalized.includes("request access") ||
+      normalized.includes("access denied") ||
+      normalized.includes("requirements"))
+  );
+}
 
 declare global {
   // eslint-disable-next-line no-var
-  var __meridianCarrierReconciliations: Map<string, Promise<CarrierReconciliationResult>> | undefined;
+  var __meridianCarrierReconciliations:
+    Map<string, Promise<CarrierReconciliationResult>> | undefined;
 }
 
-const carrierReconciliations = (globalThis.__meridianCarrierReconciliations ??= new Map());
+const carrierReconciliations = (globalThis.__meridianCarrierReconciliations ??=
+  new Map());
 
 async function performCarrierReconciliation(
   connector: CarrierConnector,
   now = new Date(),
 ) {
   const since = sweepSince(connector, now);
-  const observations = connector.provider === ConnectorProvider.SHIPSTATION
-    ? connector.accessTokenEnc
-      ? await fetchShipStationCosts(connector.accessTokenEnc, since)
-      : (() => { throw new Error("ShipStation connector has no encrypted API key"); })()
-    : connector.provider === ConnectorProvider.SHOPIFY_SHIPPING
-      ? await fetchShopifyShippingCosts(
-          connector.shop.domain,
-          connector.shop.currency,
-          since,
-          now,
-        )
-      : (() => { throw new Error(`${connector.provider} is not a carrier connector`); })();
-  const result = await reconcileShippingObservations(connector.shopId, observations);
+  const observations =
+    connector.provider === ConnectorProvider.SHIPSTATION
+      ? connector.accessTokenEnc
+        ? await fetchShipStationCosts(connector.accessTokenEnc, since)
+        : (() => {
+            throw new Error("ShipStation connector has no encrypted API key");
+          })()
+      : connector.provider === ConnectorProvider.SHOPIFY_SHIPPING
+        ? await fetchShopifyShippingCosts(
+            connector.shop.domain,
+            connector.shop.currency,
+            since,
+            now,
+          )
+        : (() => {
+            throw new Error(`${connector.provider} is not a carrier connector`);
+          })();
+  const result = await reconcileShippingObservations(
+    connector.shopId,
+    observations,
+  );
   await prisma.connector.update({
     where: { id: connector.id },
     data: { lastSyncedAt: now, lastError: null },
@@ -576,7 +719,9 @@ export async function reconcileConnectedCarriersForShop(
     where: {
       shopId,
       status: ConnectorStatus.CONNECTED,
-      provider: { in: [ConnectorProvider.SHIPSTATION, ConnectorProvider.SHOPIFY_SHIPPING] },
+      provider: {
+        in: [ConnectorProvider.SHIPSTATION, ConnectorProvider.SHOPIFY_SHIPPING],
+      },
     },
     include: { shop: { select: { domain: true, currency: true } } },
   });
@@ -588,32 +733,95 @@ async function reconcileCarrierConnectors(
   connectors: readonly CarrierConnector[],
   now: Date,
 ) {
-  const results = await Promise.allSettled(connectors.map((connector) =>
-    withConnectorWork(
-      connector.id,
-      "carrier-reconciliation",
-      now,
-      () => reconcileCarrierConnector(connector, now),
+  const results = await Promise.allSettled(
+    connectors.map((connector) =>
+      withConnectorWork(connector.id, "carrier-reconciliation", now, () =>
+        reconcileCarrierConnector(connector, now),
+      ),
     ),
-  ));
+  );
   for (let index = 0; index < results.length; index++) {
     const result = results[index]!;
     if (result.status === "fulfilled") continue;
     const connector = connectors[index]!;
-    const message = result.reason instanceof Error ? result.reason.message : String(result.reason);
+    const protectedDataBlocked =
+      connector.provider === ConnectorProvider.SHOPIFY_SHIPPING &&
+      isShopifyShippingProtectedDataError(result.reason);
+    const rawMessage =
+      result.reason instanceof Error
+        ? result.reason.message
+        : String(result.reason);
+    const message = protectedDataBlocked
+      ? SHOPIFY_SHIPPING_PROTECTED_DATA_ERROR
+      : rawMessage.slice(0, 1_000);
     await prisma.connector.update({
       where: { id: connector.id },
-      data: { lastError: message.slice(0, 1000) },
+      data: {
+        lastError: message,
+        // Approval will not change the granted scope, so this connector must
+        // stop sweeping until the merchant explicitly retries after approval.
+        ...(protectedDataBlocked ? { status: ConnectorStatus.ERROR } : {}),
+      },
     });
-    console.error(`[shipping:${connector.provider}] ${connector.shop.domain}`, result.reason);
+    const log = protectedDataBlocked ? console.warn : console.error;
+    log(
+      "[shipping:%s] %s: %s",
+      connector.provider,
+      connector.shop.domain,
+      message,
+    );
   }
+}
+
+/** Retry Shopify Shipping after the publisher's protected-data access changes. */
+export async function retryShopifyShippingConnector(
+  shopId: string,
+  now = new Date(),
+) {
+  const connector = await prisma.connector.findUnique({
+    where: {
+      shopId_provider: { shopId, provider: ConnectorProvider.SHOPIFY_SHIPPING },
+    },
+    include: { shop: { select: { domain: true, currency: true } } },
+  });
+  if (!connector) {
+    return {
+      ok: false as const,
+      message: "Shopify Shipping is not configured for this store.",
+    };
+  }
+
+  await prisma.connector.update({
+    where: { id: connector.id },
+    data: { status: ConnectorStatus.CONNECTED, lastError: null },
+  });
+  await reconcileCarrierConnectors(
+    [{ ...connector, status: ConnectorStatus.CONNECTED, lastError: null }],
+    now,
+  );
+  const refreshed = await prisma.connector.findUnique({
+    where: { id: connector.id },
+    select: { status: true, lastError: true },
+  });
+  return refreshed?.status === ConnectorStatus.CONNECTED
+    ? {
+        ok: true as const,
+        message: "Shopify Shipping cost reconciliation is active.",
+      }
+    : {
+        ok: false as const,
+        message:
+          refreshed?.lastError ?? "Shopify Shipping could not be reconnected.",
+      };
 }
 
 export async function runCarrierReconciliationSweep(now = new Date()) {
   const connectors = await prisma.connector.findMany({
     where: {
       status: ConnectorStatus.CONNECTED,
-      provider: { in: [ConnectorProvider.SHIPSTATION, ConnectorProvider.SHOPIFY_SHIPPING] },
+      provider: {
+        in: [ConnectorProvider.SHIPSTATION, ConnectorProvider.SHOPIFY_SHIPPING],
+      },
     },
     include: { shop: { select: { domain: true, currency: true } } },
   });
@@ -622,65 +830,99 @@ export async function runCarrierReconciliationSweep(now = new Date()) {
 }
 
 export async function ensureShipStationWebhook(
-  connector: Pick<Connector, "id" | "provider" | "accessTokenEnc" | "webhookId" | "webhookSecretEnc">,
+  connector: Pick<
+    Connector,
+    "id" | "provider" | "accessTokenEnc" | "webhookId" | "webhookSecretEnc"
+  >,
   appUrl: string,
   fetcher: typeof fetch = fetch,
 ) {
-  if (connector.provider !== ConnectorProvider.SHIPSTATION || !connector.accessTokenEnc) {
-    throw new Error("A connected ShipStation credential is required to register its webhook.");
+  if (
+    connector.provider !== ConnectorProvider.SHIPSTATION ||
+    !connector.accessTokenEnc
+  ) {
+    throw new Error(
+      "A connected ShipStation credential is required to register its webhook.",
+    );
   }
   const base = new URL(appUrl);
-  if (base.protocol !== "https:" && !["localhost", "127.0.0.1"].includes(base.hostname)) {
-    throw new Error("ShipStation webhook registration requires a public HTTPS app URL.");
+  if (
+    base.protocol !== "https:" &&
+    !["localhost", "127.0.0.1"].includes(base.hostname)
+  ) {
+    throw new Error(
+      "ShipStation webhook registration requires a public HTTPS app URL.",
+    );
   }
   const apiKey = decryptSecret(connector.accessTokenEnc);
   const secret = connector.webhookSecretEnc
     ? decryptSecret(connector.webhookSecretEnc)
     : randomBytes(32).toString("base64url");
-  const target = new URL(`/webhooks/shipstation/${encodeURIComponent(connector.id)}`, base).toString();
+  const target = new URL(
+    `/webhooks/shipstation/${encodeURIComponent(connector.id)}`,
+    base,
+  ).toString();
   const commonBody = {
-    name: "Meridian carrier cost reconciliation",
+    name: "MyMeridian carrier cost reconciliation",
     url: target,
     headers: [{ key: "X-Meridian-Webhook-Secret", value: secret }],
   };
   let webhookId = connector.webhookId;
   if (!webhookId) {
-    const listed = await fetcher("https://api.shipstation.com/v2/environment/webhooks", {
-      headers: { "API-Key": apiKey, Accept: "application/json" },
-    });
+    const listed = await fetcher(
+      "https://api.shipstation.com/v2/environment/webhooks",
+      {
+        headers: { "API-Key": apiKey, Accept: "application/json" },
+      },
+    );
     if (listed.ok) {
       const values = await listed.json();
       const existing = Array.isArray(values)
-        ? values.map(record).find((value) =>
-            text(value?.url) === target &&
-            text(value?.event) === "fulfillment_shipped_v2",
-          )
+        ? values
+            .map(record)
+            .find(
+              (value) =>
+                text(value?.url) === target &&
+                text(value?.event) === "fulfillment_shipped_v2",
+            )
         : null;
       webhookId = text(existing?.webhook_id);
     }
   }
 
-  const send = (existingId: string | null) => fetcher(
-    existingId
-      ? `https://api.shipstation.com/v2/environment/webhooks/${encodeURIComponent(existingId)}`
-      : "https://api.shipstation.com/v2/environment/webhooks",
-    {
-      method: existingId ? "PUT" : "POST",
-      headers: { "API-Key": apiKey, "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify(existingId
-        ? commonBody
-        : { ...commonBody, event: "fulfillment_shipped_v2" }),
-    },
-  );
+  const send = (existingId: string | null) =>
+    fetcher(
+      existingId
+        ? `https://api.shipstation.com/v2/environment/webhooks/${encodeURIComponent(existingId)}`
+        : "https://api.shipstation.com/v2/environment/webhooks",
+      {
+        method: existingId ? "PUT" : "POST",
+        headers: {
+          "API-Key": apiKey,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(
+          existingId
+            ? commonBody
+            : { ...commonBody, event: "fulfillment_shipped_v2" },
+        ),
+      },
+    );
   let response = await send(webhookId);
   if (webhookId && response.status === 404) {
     webhookId = null;
     response = await send(null);
   }
-  if (!response.ok) throw new Error(`ShipStation webhook registration returned HTTP ${response.status}`);
-  const responseBody = response.status === 204 ? {} : record(await response.json()) ?? {};
+  if (!response.ok)
+    throw new Error(
+      `ShipStation webhook registration returned HTTP ${response.status}`,
+    );
+  const responseBody =
+    response.status === 204 ? {} : (record(await response.json()) ?? {});
   webhookId = webhookId ?? text(responseBody.webhook_id);
-  if (!webhookId) throw new Error("ShipStation webhook registration omitted webhook_id.");
+  if (!webhookId)
+    throw new Error("ShipStation webhook registration omitted webhook_id.");
   await prisma.connector.update({
     where: { id: connector.id },
     data: {

@@ -283,6 +283,19 @@ describe("computeOrderProfit", () => {
     expect(profit.usesEstimatedCosts).toBe(true);
   });
 
+  it("does not mistake a confirmed zero COGS value for missing evidence", () => {
+    const confirmedFreeGoods = makeOrder({
+      lineItems: makeOrder().lineItems.map((item) => ({
+        ...item,
+        unitCostMicros: 0,
+        cogsKnown: true,
+      })),
+    });
+
+    const profit = computeOrderProfit(confirmedFreeGoods, RULES);
+    expect(profit.hasMissingCogs).toBe(false);
+  });
+
   it("flags a reviewed payment-fee model even with measured fulfilment", () => {
     const rules: CostRuleSet = {
       ...RULES,
@@ -445,6 +458,27 @@ describe("attributeAdSpend", () => {
     expect(result.byOrderId.get("a")).toBe(10_000);
     expect(result.unattributedCents).toBe(7500);
     expect(result.unattributedByChannel.get("FACEBOOK")).toBe(7500);
+  });
+
+  it("does not apply aggregate Shop Campaign spend to an order already attributed to another channel", () => {
+    const metaOrder = makeOrder({ id: "meta-order", channel: "FACEBOOK" });
+    const shopCampaignSpend = spendRow({
+      channel: "SHOP_CAMPAIGNS",
+      campaignId: "shop-campaign:Autumn",
+      spendCents: 4_500,
+      platformConversions: 3,
+      platformRevenueCents: 18_000,
+    });
+
+    const result = attributeAdSpend([metaOrder], [shopCampaignSpend], TZ);
+
+    // ShopifyQL publishes aggregate campaign metrics without order ids. Its
+    // sales can overlap a platform claim, so it remains source-reported and
+    // contributes to the P&L as unattributed spend unless an order itself has
+    // explicit Shop Campaign attribution.
+    expect(result.byOrderId.get("meta-order")).toBeUndefined();
+    expect(result.unattributedCents).toBe(4_500);
+    expect(result.unattributedByChannel.get("SHOP_CAMPAIGNS")).toBe(4_500);
   });
 
   it("treats a zero-spend ad day as no cost, not an unattributed gap", () => {

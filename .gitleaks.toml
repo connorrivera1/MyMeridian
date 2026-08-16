@@ -1,0 +1,8 @@
+title = "MyMeridian credential scanning"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Shopify client IDs identify an app publicly and are not client secrets."
+paths = ["^shopify\\.app\\.toml$"]

@@ -10,6 +10,8 @@ const shopFindUnique = vi.fn();
 const shopCreate = vi.fn();
 const shopUpdate = vi.fn();
 const connectorCreateMany = vi.fn();
+const connectorFindUnique = vi.fn();
+const connectorUpsert = vi.fn();
 
 vi.mock("~/db.server", () => ({
   default: {
@@ -20,11 +22,17 @@ vi.mock("~/db.server", () => ({
     },
     connector: {
       createMany: (...args: unknown[]) => connectorCreateMany(...args),
+      findUnique: (...args: unknown[]) => connectorFindUnique(...args),
+      upsert: (...args: unknown[]) => connectorUpsert(...args),
     },
   },
 }));
 
-const { ensureShopProvisioned } = await import("./provision.server");
+const {
+  ensureShopProvisioned,
+  synchroniseShopifyShippingConnector,
+  synchroniseShopifyShopCampaignsConnector,
+} = await import("./provision.server");
 
 /**
  * What a store is given at install.
@@ -73,10 +81,93 @@ beforeEach(() => {
   shopCreate.mockReset();
   shopUpdate.mockReset();
   connectorCreateMany.mockReset();
+  connectorFindUnique.mockReset();
+  connectorUpsert.mockReset();
 
   shopCreate.mockResolvedValue({ id: "shop_1", domain: DOMAIN });
   shopUpdate.mockResolvedValue({ id: "shop_1", domain: DOMAIN });
   connectorCreateMany.mockResolvedValue({ count: 0 });
+  connectorFindUnique.mockResolvedValue(null);
+  connectorUpsert.mockResolvedValue({});
+});
+
+describe("Shopify Shipping protected-data approval", () => {
+  it("does not re-enable a permission-blocked connector on every authenticated page", async () => {
+    const approvalMessage =
+      "Shopify has not approved protected customer data for Shipping reports yet. In Partner Dashboard, request Level 2 access covering Name, Email, Phone, and Address, then retry this connection. ShopifyQL requires all four approvals; MyMeridian does not query or store shopper name, phone, or address.";
+    connectorFindUnique.mockResolvedValue({
+      status: ConnectorStatus.ERROR,
+      lastError: approvalMessage,
+    });
+
+    await synchroniseShopifyShippingConnector(
+      "shop_1",
+      "read_orders,read_reports",
+    );
+
+    expect(connectorUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          status: ConnectorStatus.ERROR,
+          lastError: approvalMessage,
+        }),
+      }),
+    );
+  });
+
+  it("connects normally when read_reports is granted and no approval block exists", async () => {
+    await synchroniseShopifyShippingConnector(
+      "shop_1",
+      "read_orders,read_reports",
+    );
+
+    expect(connectorUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          status: ConnectorStatus.CONNECTED,
+          lastError: null,
+        }),
+      }),
+    );
+  });
+});
+
+describe("Shop Campaigns ShopifyQL approval", () => {
+  it("leaves Shop Campaigns paused after Shopify denies Level 2 access", async () => {
+    const approvalMessage =
+      "Shopify has not approved Level 2 protected customer data for ShopifyQL yet. In Partner Dashboard, request Level 2 access covering Name, Email, Phone, and Address, then retry Shop Campaigns. MyMeridian queries only aggregate Shop Campaign metrics and does not query or store shopper name, email, phone, or address.";
+    connectorFindUnique.mockResolvedValue({
+      status: ConnectorStatus.ERROR,
+      lastError: approvalMessage,
+    });
+
+    await synchroniseShopifyShopCampaignsConnector(
+      "shop_1",
+      "read_orders,read_reports",
+    );
+
+    expect(connectorUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          status: ConnectorStatus.ERROR,
+          lastError: approvalMessage,
+        }),
+      }),
+    );
+  });
+
+  it("does not call read_reports sufficient when scope is absent", async () => {
+    await synchroniseShopifyShopCampaignsConnector("shop_1", "read_orders");
+
+    expect(connectorUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          status: ConnectorStatus.DISCONNECTED,
+          lastError: expect.stringContaining("read_reports was revoked"),
+        }),
+      }),
+    );
+  });
 });
 
 describe("connectors given to a new store", () => {

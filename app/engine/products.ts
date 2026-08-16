@@ -48,6 +48,7 @@ export interface ProductProfit extends ProductMeta {
   allocatedPaymentFeeCents: Cents;
   allocatedPickPackCents: Cents;
   allocatedAdCostCents: Cents;
+  allocatedReturnShippingCents: Cents;
 
   contributionProfitCents: Cents;
   marginPct: number | null;
@@ -82,6 +83,7 @@ interface LineAllocation {
   paymentFeeCents: Cents;
   pickPackCents: Cents;
   adCostCents: Cents;
+  returnShippingCents: Cents;
   hasMissingCogs: boolean;
   usesModeledCosts: boolean;
 }
@@ -101,9 +103,23 @@ function allocateOrderToProducts(
   const lines = order.lineItems.filter((item) => item.productId);
   if (lines.length === 0) return [];
 
-  const lineNet = lines.map((item) => {
+  // Shopify records each line's discount across its original quantity. When a
+  // unit is refunded, that unit and its share of the discount both leave the
+  // product roll-up. Keeping the full original discount against only the
+  // retained units makes partially refunded products look too unprofitable.
+  const retainedDiscounts = lines.map((item) => {
     const soldQty = Math.max(0, item.quantity - item.refundedQty);
-    return Math.max(0, item.unitPriceCents * soldQty - item.discountCents);
+    if (soldQty === 0 || item.quantity <= 0) return 0;
+    return Math.round(
+      (Math.max(0, item.discountCents) * soldQty) / item.quantity,
+    );
+  });
+  const lineNet = lines.map((item, index) => {
+    const soldQty = Math.max(0, item.quantity - item.refundedQty);
+    return Math.max(
+      0,
+      item.unitPriceCents * soldQty - (retainedDiscounts[index] ?? 0),
+    );
   });
 
   const weightTotal = lineNet.reduce((a, b) => a + b, 0);
@@ -113,31 +129,47 @@ function allocateOrderToProducts(
   const payment = allocate(profit.paymentFeeCents, weights);
   const pickPack = allocate(profit.pickPackCents, weights);
   const adCost = allocate(profit.adCostCents, weights);
+  const returnShipping = allocate(profit.returnShippingCostCents, weights);
 
-  // Order-level discounts and refunds also have to land somewhere.
-  const orderDiscount = allocate(
-    Math.max(0, order.discountTotalCents),
+  // Shopify's order discount total already includes every allocation copied
+  // onto a line item. Allocate only the remainder: adding the full order total
+  // to each line's own allocation subtracts merchandise discounts twice on the
+  // Products page even after the order-level P&L is correct.
+  const recordedLineDiscount = lines.reduce(
+    (total, item) => total + Math.max(0, item.discountCents),
+    0,
+  );
+  const unallocatedOrderDiscount = allocate(
+    Math.max(0, order.discountTotalCents - recordedLineDiscount),
     weights,
   );
-  const orderRefund = allocate(Math.max(0, order.refundedTotalCents), weights);
+  // `profit.netRevenueCents` is the authoritative ex-tax order result. The
+  // retained quantity has already removed returned merchandise from each
+  // line's gross figure, so subtracting the Shopify refund again here removes
+  // the same sale twice. Allocating the reconciled order total also preserves
+  // shipping revenue and retained return-fee treatment.
+  const netRevenue = allocate(profit.netRevenueCents, weights);
 
   return lines.map((item, i) => {
     const soldQty = Math.max(0, item.quantity - item.refundedQty);
     const gross = item.unitPriceCents * soldQty;
-    const discount = item.discountCents + (orderDiscount[i] ?? 0);
+    const discount =
+      (retainedDiscounts[i] ?? 0) + (unallocatedOrderDiscount[i] ?? 0);
 
     return {
       productId: item.productId!,
       grossRevenueCents: gross,
       discountCents: discount,
-      netRevenueCents: gross - discount - (orderRefund[i] ?? 0),
+      netRevenueCents: netRevenue[i] ?? 0,
       cogsCents: costOfUnits(item.unitCostMicros, soldQty),
       units: soldQty,
       shippingCents: shipping[i] ?? 0,
       paymentFeeCents: payment[i] ?? 0,
       pickPackCents: pickPack[i] ?? 0,
       adCostCents: adCost[i] ?? 0,
-      hasMissingCogs: item.unitCostMicros <= 0 && soldQty > 0,
+      returnShippingCents: returnShipping[i] ?? 0,
+      hasMissingCogs:
+        soldQty > 0 && !(item.cogsKnown ?? item.unitCostMicros > 0),
       usesModeledCosts: profit.usesModeledCosts,
     };
   });
@@ -173,6 +205,7 @@ export function computeProductProfitability(
         paymentFeeCents: 0,
         pickPackCents: 0,
         adCostCents: 0,
+        returnShippingCents: 0,
         hasMissingCogs: false,
         usesModeledCosts: false,
         ordersContaining: 0,
@@ -187,6 +220,7 @@ export function computeProductProfitability(
       current.paymentFeeCents += line.paymentFeeCents;
       current.pickPackCents += line.pickPackCents;
       current.adCostCents += line.adCostCents;
+      current.returnShippingCents += line.returnShippingCents;
       current.hasMissingCogs ||= line.hasMissingCogs;
       current.usesModeledCosts ||= line.usesModeledCosts;
 
@@ -213,7 +247,7 @@ export function computeProductProfitability(
   for (const [productId, t] of totals) {
     const meta = products.get(productId) ?? {
       productId,
-      title: "Unknown product",
+      title: "Unknown Product",
     };
 
     const contributionProfitCents =
@@ -222,7 +256,8 @@ export function computeProductProfitability(
       t.shippingCents -
       t.paymentFeeCents -
       t.pickPackCents -
-      t.adCostCents;
+      t.adCostCents -
+      t.returnShippingCents;
 
     const marginPct = ratio(contributionProfitCents, t.netRevenueCents);
 
@@ -270,6 +305,7 @@ export function computeProductProfitability(
       allocatedPaymentFeeCents: t.paymentFeeCents,
       allocatedPickPackCents: t.pickPackCents,
       allocatedAdCostCents: t.adCostCents,
+      allocatedReturnShippingCents: t.returnShippingCents,
       contributionProfitCents,
       marginPct,
       profitPerUnitCents: t.units

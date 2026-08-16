@@ -1,4 +1,6 @@
 import {
+  Channel,
+  ConnectorProvider,
   ConnectorStatus,
   CostRuleKind,
   CostRuleOrigin,
@@ -16,18 +18,49 @@ import { z } from "zod";
 import prisma from "~/db.server";
 import { invalidateAnalyticsCache } from "~/data/analytics.server";
 import { Badge, Banner, Card, Stat } from "~/design/components";
-import { requireShopContext } from "~/lib/auth.server";
+import { withShopContext, type ShopContext } from "~/lib/auth.server";
+import { requireRecentReauthentication } from "~/lib/reauth.server";
 import { backfillIsStale } from "~/lib/backfill-claim.server";
-import { requireActivePlan } from "~/lib/plan.server";
-import { recomputeShopProfitability } from "~/lib/recompute.server";
+import { mailConfiguration } from "~/lib/mail.server";
+import { nextWeeklyOccurrence } from "~/lib/merchant-notifications.server";
+import {
+  connectorOAuthConfigured,
+  disconnectConnector,
+} from "~/lib/connector-oauth.server";
+import { planAllows, requireActivePlan } from "~/lib/plan.server";
+import { enqueueShopRecompute } from "~/lib/recompute-queue.server";
+import { retryShopCampaignsConnector } from "~/lib/ad-ingestion.server";
 import { scopeReport } from "~/lib/scopes";
 import { PLANS } from "~/lib/plans";
+import { publicAppOrigin } from "~/lib/public-origin.server";
+import { storeConnectorCredentials } from "~/integrations/ad-health.server";
+import {
+  ensureShipStationWebhook,
+  retryShopifyShippingConnector,
+} from "~/integrations/shipping.server";
+
+function adChannelForConnector(provider: ConnectorProvider): Channel | null {
+  switch (provider) {
+    case ConnectorProvider.FACEBOOK_ADS:
+      return Channel.FACEBOOK;
+    case ConnectorProvider.GOOGLE_ADS:
+      return Channel.GOOGLE;
+    case ConnectorProvider.TIKTOK_ADS:
+      return Channel.TIKTOK;
+    default:
+      return null;
+  }
+}
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const ctx = await requireShopContext(request);
+  return withShopContext(request, (ctx) => loadSettings(request, ctx));
+}
+
+async function loadSettings(request: Request, ctx: ShopContext) {
   const { shop } = ctx;
   const plan = await requireActivePlan(ctx, request);
   const staleBackfill = backfillIsStale(shop);
+  const url = new URL(request.url);
 
   const [costRules, connectors, orderCount, productCount] = await Promise.all([
     prisma.costRule.findMany({
@@ -87,10 +120,61 @@ export async function loader({ request }: LoaderFunctionArgs) {
       provider: connector.provider,
       status: connector.status,
       displayName: connector.displayName,
+      externalAccountId: connector.externalAccountId,
+      availableAccounts: Array.isArray(connector.availableAccounts)
+        ? connector.availableAccounts.flatMap((value) => {
+            if (!value || typeof value !== "object" || Array.isArray(value))
+              return [];
+            const account = value as Record<string, unknown>;
+            return typeof account.id === "string"
+              ? [
+                  {
+                    id: account.id,
+                    name:
+                      typeof account.name === "string" ? account.name : null,
+                    currency:
+                      typeof account.currency === "string"
+                        ? account.currency
+                        : null,
+                  },
+                ]
+              : [];
+          })
+        : [],
       lastSyncedAt: connector.lastSyncedAt,
       lastError: connector.lastError,
+      selfServeConfigured:
+        connector.provider === ConnectorProvider.FACEBOOK_ADS
+          ? connectorOAuthConfigured("meta")
+          : connector.provider === ConnectorProvider.GOOGLE_ADS
+            ? connectorOAuthConfigured("google")
+            : connector.provider === ConnectorProvider.TIKTOK_ADS
+              ? connectorOAuthConfigured("tiktok")
+              : true,
     })),
     plan: plan.planId,
+    reporting: {
+      anomalyAlertsEnabled: shop.anomalyAlertsEnabled,
+      weeklySummaryEnabled: shop.weeklySummaryEnabled,
+      weeklySummaryEmail: shop.weeklySummaryEmail ?? shop.email ?? "",
+      weeklySummaryDay: shop.weeklySummaryDay,
+      lastWeeklySummaryAt: shop.lastWeeklySummaryAt,
+      lastWeeklySummaryError: shop.lastWeeklySummaryError,
+      mailConfigured: mailConfiguration().configured,
+      canUseAlerts: planAllows(plan, "anomalyAlerts"),
+      canUseWeekly: planAllows(plan, "scheduledReports"),
+      canExport: planAllows(plan, "exports"),
+      canUseConnections: planAllows(plan, "adConnections"),
+      canUseCarrierConnections: planAllows(plan, "carrierConnections"),
+    },
+    connectionFeedback: url.searchParams.get("connection_error")
+      ? { ok: false, message: url.searchParams.get("connection_error")! }
+      : url.searchParams.get("connected")
+        ? {
+            ok: true,
+            message: `${url.searchParams.get("connected")} connected. Initial spend sync is queued.`,
+          }
+        : null,
   };
 }
 
@@ -146,10 +230,189 @@ function valuesForRuleKind(
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  const ctx = await requireShopContext(request);
-  await requireActivePlan(ctx, request);
+  return withShopContext(request, (ctx) => updateSettings(request, ctx));
+}
+
+async function updateSettings(request: Request, ctx: ShopContext) {
+  await requireRecentReauthentication(request, ctx.user);
+  const plan = await requireActivePlan(ctx, request);
   const { shop, admin } = ctx;
   const form = await request.formData();
+
+  if (form.get("intent") === "reporting") {
+    const anomalyAlertsEnabled = form.get("anomalyAlertsEnabled") === "on";
+    const weeklySummaryEnabled = form.get("weeklySummaryEnabled") === "on";
+    const weeklySummaryEmail = String(
+      form.get("weeklySummaryEmail") ?? "",
+    ).trim();
+    const weeklySummaryDay = Number(form.get("weeklySummaryDay") ?? 1);
+    if (weeklySummaryEnabled && !planAllows(plan, "scheduledReports")) {
+      return { ok: false, message: "Weekly summaries require the Scale plan." };
+    }
+    if (anomalyAlertsEnabled && !planAllows(plan, "anomalyAlerts")) {
+      return {
+        ok: false,
+        message: "Profit anomaly alerts require Growth or Scale.",
+      };
+    }
+    if (
+      weeklySummaryEnabled &&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(weeklySummaryEmail)
+    ) {
+      return { ok: false, message: "Enter a valid report email address." };
+    }
+    if (
+      !Number.isInteger(weeklySummaryDay) ||
+      weeklySummaryDay < 0 ||
+      weeklySummaryDay > 6
+    ) {
+      return { ok: false, message: "Choose a valid summary day." };
+    }
+    await prisma.shop.update({
+      where: { id: shop.id },
+      data: {
+        anomalyAlertsEnabled: planAllows(plan, "anomalyAlerts")
+          ? anomalyAlertsEnabled
+          : false,
+        weeklySummaryEnabled: planAllows(plan, "scheduledReports")
+          ? weeklySummaryEnabled
+          : false,
+        weeklySummaryEmail: weeklySummaryEmail || null,
+        weeklySummaryDay,
+        nextWeeklySummaryAt: weeklySummaryEnabled
+          ? nextWeeklyOccurrence(weeklySummaryDay)
+          : null,
+        lastWeeklySummaryError: null,
+      },
+    });
+    return { ok: true, message: "Reporting preferences saved." };
+  }
+
+  if (form.get("intent") === "shipstation-connect") {
+    if (!planAllows(plan, "carrierConnections")) {
+      return { ok: false, message: "ShipStation requires Growth or Scale." };
+    }
+    const apiKey = String(form.get("apiKey") ?? "").trim();
+    if (apiKey.length < 10 || apiKey.length > 1_000) {
+      return { ok: false, message: "Enter a valid ShipStation API key." };
+    }
+    try {
+      const connector = await storeConnectorCredentials({
+        shopId: shop.id,
+        provider: ConnectorProvider.SHIPSTATION,
+        accessToken: apiKey,
+      });
+      await ensureShipStationWebhook(connector, publicAppOrigin(request));
+      return {
+        ok: true,
+        message: "ShipStation connected and its cost webhook is active.",
+      };
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "ShipStation setup failed.";
+      await prisma.connector.updateMany({
+        where: { shopId: shop.id, provider: ConnectorProvider.SHIPSTATION },
+        data: {
+          status: ConnectorStatus.ERROR,
+          lastError: message.slice(0, 1_000),
+        },
+      });
+      return { ok: false, message };
+    }
+  }
+
+  if (form.get("intent") === "select-connector-account") {
+    const provider = String(form.get("provider") ?? "") as ConnectorProvider;
+    const externalAccountId = String(form.get("externalAccountId") ?? "");
+    const connector = await prisma.connector.findFirst({
+      where: { shopId: shop.id, provider },
+    });
+    const accounts = Array.isArray(connector?.availableAccounts)
+      ? connector.availableAccounts
+      : [];
+    const selected = accounts.find((value) => {
+      return (
+        value &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        (value as Record<string, unknown>).id === externalAccountId
+      );
+    }) as Record<string, unknown> | undefined;
+    if (!connector || !selected) {
+      return {
+        ok: false,
+        message: "That ad account is not authorized for this connection.",
+      };
+    }
+    if (connector.externalAccountId === externalAccountId) {
+      return { ok: true, message: "That ad account is already selected." };
+    }
+    const channel = adChannelForConnector(connector.provider);
+    if (!channel) {
+      return { ok: false, message: "That connection does not support ad-account selection." };
+    }
+    // Spend is keyed to the store and channel, rather than the connector id.
+    // Retaining it after the merchant selects another advertiser would blend
+    // two accounts into one profitability result. Clear both the reporting
+    // rows and their sync ledger atomically, then let the scheduler import the
+    // newly chosen account from a clean horizon.
+    await prisma.$transaction([
+      prisma.adSpend.deleteMany({ where: { shopId: shop.id, channel } }),
+      prisma.adSyncWindow.deleteMany({ where: { connectorId: connector.id } }),
+      prisma.connector.update({
+        where: { id: connector.id },
+        data: {
+          externalAccountId,
+          displayName: typeof selected.name === "string" ? selected.name : null,
+          accountCurrency:
+            typeof selected.currency === "string" ? selected.currency : null,
+          lastSyncedAt: null,
+          lastDeepSyncAt: null,
+          lastError: null,
+        },
+      }),
+    ]);
+    invalidateAnalyticsCache();
+    await enqueueShopRecompute(shop.id, "ad_account_changed");
+    return {
+      ok: true,
+      message: "Ad account changed. Previous-account spend was cleared and a fresh sync is queued.",
+    };
+  }
+
+  if (form.get("intent") === "disconnect") {
+    const provider = String(form.get("provider") ?? "") as ConnectorProvider;
+    if (
+      !new Set<ConnectorProvider>([
+        ConnectorProvider.FACEBOOK_ADS,
+        ConnectorProvider.GOOGLE_ADS,
+        ConnectorProvider.TIKTOK_ADS,
+        ConnectorProvider.SHIPSTATION,
+      ]).has(provider)
+    ) {
+      return {
+        ok: false,
+        message: "That data source cannot be disconnected here.",
+      };
+    }
+    try {
+      const disconnected = await disconnectConnector({
+        shopId: shop.id,
+        provider,
+      });
+      return {
+        ok: true,
+        message: disconnected.remoteRevoked
+          ? "Connection removed and provider access revoked."
+          : "Local credentials removed. The provider did not confirm remote revocation; remove MyMeridian in that provider too.",
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        message: error instanceof Error ? error.message : "Disconnect failed.",
+      };
+    }
+  }
 
   if (form.get("intent") === "resync") {
     if (!admin) {
@@ -160,8 +423,8 @@ export async function action({ request }: ActionFunctionArgs) {
       };
     }
 
-    const { startBackfill } = await import("~/lib/backfill.server");
-    const started = await startBackfill(shop.id, admin);
+    const { requestBackfill } = await import("~/lib/backfill-queue.server");
+    const started = await requestBackfill(shop.id);
 
     if (!started.started) {
       return {
@@ -180,9 +443,20 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   if (form.get("intent") === "recompute") {
-    const result = await recomputeShopProfitability(shop.id);
-    invalidateAnalyticsCache();
-    return { ok: true, message: `Recomputed ${result.ordersUpdated} orders.` };
+    await enqueueShopRecompute(shop.id, "merchant_requested");
+    return {
+      ok: true,
+      message:
+        "Profit recomputation is queued and will continue in the background.",
+    };
+  }
+
+  if (form.get("intent") === "retry-shopify-shipping") {
+    return retryShopifyShippingConnector(shop.id);
+  }
+
+  if (form.get("intent") === "retry-shop-campaigns") {
+    return retryShopCampaignsConnector(shop.id);
   }
 
   const parsed = CostRuleUpdate.safeParse({
@@ -223,12 +497,12 @@ export async function action({ request }: ActionFunctionArgs) {
   });
 
   // A changed cost rule invalidates every materialised profit figure.
-  const result = await recomputeShopProfitability(shop.id);
+  await enqueueShopRecompute(shop.id, "cost_rule_changed");
   invalidateAnalyticsCache();
 
   return {
     ok: true,
-    message: `Saved. Reprofiled ${result.ordersUpdated.toLocaleString()} orders.`,
+    message: "Saved. Profit recomputation is queued in the background.",
   };
 }
 
@@ -237,10 +511,17 @@ const CONNECTOR_LABEL: Record<string, string> = {
   FACEBOOK_ADS: "Meta Ads",
   GOOGLE_ADS: "Google Ads",
   TIKTOK_ADS: "TikTok Ads",
+  SHOPIFY_SHOP_CAMPAIGNS: "Shop Campaigns",
   STRIPE: "Stripe",
   WAREHOUSE_3PL: "3PL / warehouse",
   SHIPSTATION: "ShipStation",
   SHOPIFY_SHIPPING: "Shopify Shipping",
+};
+
+const CONNECTOR_SLUG: Partial<Record<ConnectorProvider, string>> = {
+  [ConnectorProvider.FACEBOOK_ADS]: "meta",
+  [ConnectorProvider.GOOGLE_ADS]: "google",
+  [ConnectorProvider.TIKTOK_ADS]: "tiktok",
 };
 
 const CONNECTOR_PURPOSE: Record<string, string> = {
@@ -248,6 +529,8 @@ const CONNECTOR_PURPOSE: Record<string, string> = {
   FACEBOOK_ADS: "Ad spend and campaign attribution",
   GOOGLE_ADS: "Ad spend and campaign attribution",
   TIKTOK_ADS: "Ad spend and campaign attribution",
+  SHOPIFY_SHOP_CAMPAIGNS:
+    "Shopify-reported Shop Campaign spend and campaign metrics",
   STRIPE:
     "Unavailable in this release; processing uses the configured fee model",
   WAREHOUSE_3PL:
@@ -288,14 +571,14 @@ export function ruleNeedsConfirmation(
 function CostRuleState({ rule }: { rule: DisplayCostRule | undefined }) {
   if (!rule?.active) return <Badge tone="critical">Missing</Badge>;
   if (!ruleHasNonZeroValue(rule))
-    return <Badge tone="neutral">No cost applied</Badge>;
-  if (rule.confirmedAt) return <Badge tone="good">Reviewed assumption</Badge>;
+    return <Badge tone="neutral">No Cost Applied</Badge>;
+  if (rule.confirmedAt) return <Badge tone="good">Merchant-Confirmed Estimate</Badge>;
 
   return (
     <Badge tone="warning" dot>
       {rule.origin === CostRuleOrigin.INSTALL_DEFAULT
-        ? "Unconfirmed install default"
-        : "Unconfirmed assumption"}
+        ? "Unconfirmed Install Default"
+        : "Configured Estimate"}
     </Badge>
   );
 }
@@ -316,7 +599,7 @@ export function backfillControlFor(sync: {
 
   if (sync.status === SyncStatus.RUNNING && sync.isStale) {
     return {
-      buttonLabel: sync.hasResumeCursor ? "Resume import" : "Restart import",
+      buttonLabel: sync.hasResumeCursor ? "Resume Import" : "Restart Import",
       statusLabel: "Interrupted",
       disabled: false,
       recoveryCopy: sync.hasResumeCursor
@@ -327,8 +610,8 @@ export function backfillControlFor(sync: {
 
   if (sync.status === SyncStatus.FAILED) {
     return {
-      buttonLabel: sync.hasResumeCursor ? "Resume import" : "Retry import",
-      statusLabel: "Stopped early",
+      buttonLabel: sync.hasResumeCursor ? "Resume Import" : "Retry Import",
+      statusLabel: "Stopped Early",
       disabled: false,
       recoveryCopy: sync.hasResumeCursor
         ? "A saved order-history checkpoint is ready. Resume without re-reading completed pages."
@@ -338,16 +621,16 @@ export function backfillControlFor(sync: {
 
   if (sync.status === SyncStatus.COMPLETE) {
     return {
-      buttonLabel: "Re-import",
-      statusLabel: "Up to date",
+      buttonLabel: "Re-Import",
+      statusLabel: "Up to Date",
       disabled: false,
       recoveryCopy: null,
     };
   }
 
   return {
-    buttonLabel: "Start import",
-    statusLabel: "Not started",
+    buttonLabel: "Start Import",
+    statusLabel: "Not Started",
     disabled: false,
     recoveryCopy: null,
   };
@@ -397,6 +680,11 @@ export default function Settings() {
 
   return (
     <>
+      {data.connectionFeedback?.message && (
+        <Banner tone={data.connectionFeedback.ok ? "neutral" : "warn"}>
+          {data.connectionFeedback.message}
+        </Banner>
+      )}
       {result?.message && (
         <Banner tone={result.ok ? "neutral" : "warn"}>{result.message}</Banner>
       )}
@@ -424,28 +712,28 @@ export default function Settings() {
 
       <div className="grid cols-2">
         <Card
-          title="Payment processing"
+          title="Payment Processing"
           hint="Charged on the full captured amount including tax and shipping. Processors do not refund their fee when you refund an order, and Meridian models it that way."
           actions={<CostRuleState rule={payment} />}
         >
           <Form method="post" className="stack">
             <input type="hidden" name="id" value={payment?.id} />
             <Field
-              label="Percentage rate"
+              label="Percentage Rate"
               name="percentRate"
               defaultValue={payment?.percentRate ?? 0.029}
               step="0.00001"
               suffix={`= ${((payment?.percentRate ?? 0) * 100).toFixed(2)}%`}
             />
             <Field
-              label="Fixed per order"
+              label="Fixed Per Order"
               name="fixedPerOrder"
               defaultValue={payment?.fixedPerOrder ?? 0.3}
               step="0.01"
               prefix="$"
             />
             <button className="btn primary" disabled={busy}>
-              Save and reprofile
+              Save and Reprofile
             </button>
           </Form>
         </Card>
@@ -458,67 +746,67 @@ export default function Settings() {
           <Form method="post" className="stack">
             <input type="hidden" name="id" value={shipping?.id} />
             <Field
-              label="Estimated cost per order"
+              label="Estimated Cost Per Order"
               name="fixedPerOrder"
               defaultValue={shipping?.fixedPerOrder ?? 8.5}
               step="0.01"
               prefix="$"
             />
             <button className="btn primary" disabled={busy}>
-              Save and reprofile
+              Save and Reprofile
             </button>
           </Form>
         </Card>
 
         <Card
-          title="Pick, pack and materials"
+          title="Pick, Pack And Materials"
           actions={<CostRuleState rule={pickPack} />}
         >
           <Form method="post" className="stack">
             <input type="hidden" name="id" value={pickPack?.id} />
             <Field
-              label="Per order"
+              label="Per Order"
               name="fixedPerOrder"
               defaultValue={pickPack?.fixedPerOrder ?? 1.75}
               step="0.01"
               prefix="$"
             />
             <Field
-              label="Per item"
+              label="Per Item"
               name="fixedPerItem"
               defaultValue={pickPack?.fixedPerItem ?? 0.35}
               step="0.01"
               prefix="$"
             />
             <button className="btn primary" disabled={busy}>
-              Save and reprofile
+              Save and Reprofile
             </button>
           </Form>
         </Card>
 
         <Card
-          title="Fixed monthly overhead"
+          title="Fixed Monthly Overhead"
           hint="Rent, salaries, software — anything you pay whether or not you sell. Amortised evenly across each month's orders, to the cent."
           actions={<CostRuleState rule={overhead} />}
         >
           <Form method="post" className="stack">
             <input type="hidden" name="id" value={overhead?.id} />
             <Field
-              label="Monthly amount"
+              label="Monthly Amount"
               name="monthlyAmount"
               defaultValue={overhead?.monthlyAmount ?? 0}
               step="0.01"
               prefix="$"
             />
             <button className="btn primary" disabled={busy}>
-              Save and reprofile
+              Save and Reprofile
             </button>
           </Form>
         </Card>
       </div>
 
       <Card
-        title="Shopify data"
+        title="Shopify Data"
         hint={
           data.isDemo
             ? "This is the seeded demo store. Install Meridian on a real store to import live data."
@@ -535,7 +823,7 @@ export default function Settings() {
         <div className="grid cols-4">
           <Stat
             small
-            label="Import status"
+            label="Import Status"
             value={
               <span className="secondary">
                 {data.isDemo ? "Seeded" : backfillControl.statusLabel}
@@ -545,21 +833,21 @@ export default function Settings() {
           />
           <Stat
             small
-            label="Orders held"
+            label="Orders Held"
             value={
               <span className="num">{data.sync.orders.toLocaleString()}</span>
             }
           />
           <Stat
             small
-            label="Products held"
+            label="Products Held"
             value={
               <span className="num">{data.sync.products.toLocaleString()}</span>
             }
           />
           <Stat
             small
-            label="History reaches"
+            label="History Reaches"
             value={
               <span className="secondary">
                 {data.sync.earliestOrderAt
@@ -577,7 +865,7 @@ export default function Settings() {
             }
             meta={
               !data.isDemo && !data.sync.hasAllOrdersScope ? (
-                <span>capped at 60 days without read_all_orders</span>
+                <span>Capped at 60 Days Without read_all_orders</span>
               ) : undefined
             }
           />
@@ -596,7 +884,7 @@ export default function Settings() {
 
       {data.scopes.length > 0 && (
         <Card
-          title="Data access"
+        title="Data Access"
           hint="What this store authorised at install. Meridian only requests fields it is allowed to read — a missing permission removes a feature, it does not produce a wrong number."
           flush
         >
@@ -605,7 +893,7 @@ export default function Settings() {
               <thead>
                 <tr>
                   <th>Permission</th>
-                  <th>What it provides</th>
+                  <th>What It Provides</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -628,7 +916,7 @@ export default function Settings() {
                       ) : entry.essential ? (
                         <Badge tone="critical">Missing</Badge>
                       ) : (
-                        <Badge tone="warning">Not granted</Badge>
+                        <Badge tone="warning">Not Granted</Badge>
                       )}
                     </td>
                   </tr>
@@ -639,7 +927,7 @@ export default function Settings() {
           {data.scopes.some((s) => !s.granted) && (
             <p className="card-hint" style={{ padding: "12px 16px 14px" }}>
               A missing permission cannot be enabled from this screen. Contact{" "}
-              <a href="/support">support</a>; Shopify will ask you to
+              <a href="/support">Support</a>; Shopify will ask you to
               re-authorise only when an approved app update adds the required
               access. Protected customer-data permissions, including order
               access, also require approval obtained by the app publisher.
@@ -650,7 +938,7 @@ export default function Settings() {
 
       <Card
         title="Connections"
-        hint="Configured data sources appear here. Ad and ShipStation credentials are operator-provisioned in this release; Stripe and 3PL sources remain unavailable, and missing costs are never inferred."
+        hint="Connect measured ad spend and carrier label costs without sending credentials to support. Shop Campaigns uses Shopify reports when the app has the required approval. Tokens are encrypted at rest and removed on disconnect; Stripe and 3PL sources remain unavailable."
         actions={
           <Form method="post">
             <button
@@ -659,7 +947,7 @@ export default function Settings() {
               value="recompute"
               disabled={busy}
             >
-              {busy ? "Recomputing…" : "Recompute all"}
+              {busy ? "Recomputing…" : "Recompute All"}
             </button>
           </Form>
         }
@@ -670,9 +958,10 @@ export default function Settings() {
             <thead>
               <tr>
                 <th>Source</th>
-                <th>What it provides</th>
+                <th>What It Provides</th>
                 <th>Status</th>
-                <th>Last sync</th>
+                <th>Last Sync</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -693,9 +982,9 @@ export default function Settings() {
                     ) : connector.status === ConnectorStatus.DISCONNECTED ? (
                       <Badge tone="critical">Disconnected</Badge>
                     ) : connector.status === ConnectorStatus.ERROR ? (
-                      <Badge tone="critical">Needs attention</Badge>
+                      <Badge tone="critical">Needs Attention</Badge>
                     ) : (
-                      <Badge tone="neutral">Not connected</Badge>
+                      <Badge tone="neutral">Not Connected</Badge>
                     )}
                     {connector.lastError && (
                       <div className="cell-sub">{connector.lastError}</div>
@@ -713,11 +1002,257 @@ export default function Settings() {
                         )
                       : "—"}
                   </td>
+                  <td>
+                    {connector.status === ConnectorStatus.CONNECTED &&
+                    new Set<ConnectorProvider>([
+                      ConnectorProvider.FACEBOOK_ADS,
+                      ConnectorProvider.GOOGLE_ADS,
+                      ConnectorProvider.TIKTOK_ADS,
+                      ConnectorProvider.SHIPSTATION,
+                    ]).has(connector.provider as ConnectorProvider) ? (
+                      <div className="stack" style={{ gap: 6 }}>
+                        {connector.availableAccounts.length > 1 && (
+                          <Form
+                            method="post"
+                            className="row"
+                            style={{ gap: 6 }}
+                          >
+                            <input
+                              type="hidden"
+                              name="intent"
+                              value="select-connector-account"
+                            />
+                            <input
+                              type="hidden"
+                              name="provider"
+                              value={connector.provider}
+                            />
+                            <select
+                              className="field-input"
+                              name="externalAccountId"
+                              defaultValue={connector.externalAccountId ?? ""}
+                            >
+                              {connector.availableAccounts.map((account) => (
+                                <option key={account.id} value={account.id}>
+                                  {account.name ?? account.id}
+                                </option>
+                              ))}
+                            </select>
+                            <button className="btn sm" disabled={busy}>
+                              Use
+                            </button>
+                          </Form>
+                        )}
+                        <Form method="post">
+                          <input
+                            type="hidden"
+                            name="intent"
+                            value="disconnect"
+                          />
+                          <input
+                            type="hidden"
+                            name="provider"
+                            value={connector.provider}
+                          />
+                          <button className="btn sm" disabled={busy}>
+                            Disconnect
+                          </button>
+                        </Form>
+                      </div>
+                    ) : connector.provider === ConnectorProvider.FACEBOOK_ADS ||
+                      connector.provider === ConnectorProvider.GOOGLE_ADS ||
+                      connector.provider === ConnectorProvider.TIKTOK_ADS ? (
+                      connector.selfServeConfigured ? (
+                        <Form
+                          method="post"
+                          action={`/app/connections/${CONNECTOR_SLUG[connector.provider]}/start`}
+                        >
+                          <button
+                            className="btn sm"
+                            disabled={busy || !data.reporting.canUseConnections}
+                          >
+                            {connector.status === ConnectorStatus.ERROR ||
+                            connector.status === ConnectorStatus.DISCONNECTED
+                              ? "Reconnect"
+                              : "Connect"}
+                          </button>
+                        </Form>
+                      ) : (
+                        <span className="tiny muted">
+                          Awaiting Provider App Approval
+                        </span>
+                      )
+                    ) : connector.provider ===
+                        ConnectorProvider.SHOPIFY_SHIPPING &&
+                      connector.status === ConnectorStatus.ERROR ? (
+                      <Form method="post">
+                        <input
+                          type="hidden"
+                          name="intent"
+                          value="retry-shopify-shipping"
+                        />
+                        <button className="btn sm" disabled={busy}>
+                          Retry
+                        </button>
+                      </Form>
+                    ) : connector.provider ===
+                        ConnectorProvider.SHOPIFY_SHOP_CAMPAIGNS &&
+                      connector.status === ConnectorStatus.ERROR ? (
+                      <Form method="post">
+                        <input
+                          type="hidden"
+                          name="intent"
+                          value="retry-shop-campaigns"
+                        />
+                        <button className="btn sm" disabled={busy}>
+                          Retry After Shopify Approval
+                        </button>
+                      </Form>
+                    ) : connector.provider === ConnectorProvider.SHIPSTATION ? (
+                      <span className="tiny muted">
+                        Use the Secure Key Form Below
+                      </span>
+                    ) : (
+                      <span className="tiny muted">—</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        <div style={{ padding: "14px 16px" }}>
+          <Form
+            method="post"
+            className="row"
+            style={{ gap: 10, flexWrap: "wrap" }}
+          >
+            <input type="hidden" name="intent" value="shipstation-connect" />
+            <label className="stack" style={{ gap: 4, flex: "1 1 260px" }}>
+              <span className="tiny muted">ShipStation API Key</span>
+              <input
+                className="field-input"
+                type="password"
+                name="apiKey"
+                autoComplete="off"
+                placeholder="Not Stored in the Browser"
+                disabled={!data.reporting.canUseCarrierConnections}
+              />
+            </label>
+            <button
+              className="btn sm"
+              disabled={busy || !data.reporting.canUseCarrierConnections}
+            >
+              Connect ShipStation
+            </button>
+          </Form>
+        </div>
+      </Card>
+
+      <Card
+        title="Reports And Alerts"
+        hint="MyMeridian monitors qualified profit inputs daily. Scale can also send a weekly summary and export order-level figures for an accountant."
+        actions={
+          data.reporting.canExport ? (
+            <a className="btn sm" href="/app/export/profit.csv">
+              Export Profit CSV
+            </a>
+          ) : (
+            <a className="btn sm" href="/app/plan">
+              Scale Features
+            </a>
+          )
+        }
+      >
+        {!data.reporting.mailConfigured && (
+          <Banner tone="warn">
+            Email delivery is not active on this deployment yet. Preferences are
+            saved, but the operator must configure the verified sending domain
+            before any message can leave MyMeridian.
+          </Banner>
+        )}
+        <Form method="post" className="stack">
+          <input type="hidden" name="intent" value="reporting" />
+          <label className="row" style={{ gap: 10, alignItems: "flex-start" }}>
+            <input
+              type="checkbox"
+              name="anomalyAlertsEnabled"
+              defaultChecked={data.reporting.anomalyAlertsEnabled}
+              disabled={!data.reporting.canUseAlerts}
+            />
+            <span>
+              <strong>Profit Anomaly Alerts</strong>
+              <span className="cell-sub">
+                Margin drops, refund spikes, carrier-cost drift, missing COGS
+                and unhealthy data sources. Growth or Scale.
+              </span>
+            </span>
+          </label>
+          <label className="row" style={{ gap: 10, alignItems: "flex-start" }}>
+            <input
+              type="checkbox"
+              name="weeklySummaryEnabled"
+              defaultChecked={data.reporting.weeklySummaryEnabled}
+              disabled={!data.reporting.canUseWeekly}
+            />
+            <span>
+              <strong>Weekly Profit Summary</strong>
+              <span className="cell-sub">
+                Current week, prior-week change and missing-cost disclosure.
+                Scale.
+              </span>
+            </span>
+          </label>
+          <div className="row" style={{ gap: 16, flexWrap: "wrap" }}>
+            <label className="stack" style={{ gap: 4, flex: "1 1 240px" }}>
+              <span className="tiny muted">Report Email</span>
+              <input
+                className="field-input"
+                type="email"
+                name="weeklySummaryEmail"
+                defaultValue={data.reporting.weeklySummaryEmail}
+                disabled={!data.reporting.canUseWeekly}
+              />
+            </label>
+            <label className="stack" style={{ gap: 4 }}>
+              <span className="tiny muted">Send Day</span>
+              <select
+                className="field-input"
+                name="weeklySummaryDay"
+                defaultValue={data.reporting.weeklySummaryDay}
+                disabled={!data.reporting.canUseWeekly}
+              >
+                {[
+                  [1, "Monday"],
+                  [2, "Tuesday"],
+                  [3, "Wednesday"],
+                  [4, "Thursday"],
+                  [5, "Friday"],
+                  [6, "Saturday"],
+                  [0, "Sunday"],
+                ].map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {data.reporting.lastWeeklySummaryAt && (
+            <p className="tiny muted">
+              Last sent{" "}
+              {new Date(data.reporting.lastWeeklySummaryAt).toLocaleString()}.
+            </p>
+          )}
+          {data.reporting.lastWeeklySummaryError && (
+            <p className="tiny negative">
+              Last delivery failed: {data.reporting.lastWeeklySummaryError}
+            </p>
+          )}
+          <button className="btn primary" disabled={busy}>
+            Save Reporting Preferences
+          </button>
+        </Form>
       </Card>
 
       <Card
@@ -725,7 +1260,7 @@ export default function Settings() {
         hint="Billed by Shopify and shown on your Shopify invoice. Meridian never sees a card number."
         actions={
           <a className="btn sm" href="/app/plan">
-            {data.plan ? "Change plan" : "Choose a plan"}
+            {data.plan ? "Change Plan" : "Choose a Plan"}
           </a>
         }
       >
@@ -760,7 +1295,7 @@ export default function Settings() {
           />
           <Stat
             small
-            label="Last computed"
+            label="Last Computed"
             value={
               <span className="tiny">
                 {data.lastComputedAt

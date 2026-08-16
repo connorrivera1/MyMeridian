@@ -24,7 +24,7 @@ vi.mock("./integrations/scheduler.server", () => ({
 }));
 
 it("validates the stable erasure key before starting either background worker", async () => {
-  await import("./entry.server");
+  const { addSecurityHeaders } = await import("./entry.server");
 
   expect(startup.validateErasureKey).toHaveBeenCalledOnce();
   expect(startup.startRetention).toHaveBeenCalledOnce();
@@ -38,5 +38,22 @@ it("validates the stable erasure key before starting either background worker", 
   );
   expect(startup.validateErasureKey.mock.invocationCallOrder[0]).toBeLessThan(
     startup.startIntegrations.mock.invocationCallOrder[0]!,
+  );
+
+  const defaults = new Headers();
+  addSecurityHeaders(defaults);
+  expect(defaults.get("referrer-policy")).toBe(
+    "strict-origin-when-cross-origin",
+  );
+  expect(defaults.get("x-content-type-options")).toBe("nosniff");
+
+  const stricter = new Headers({
+    "referrer-policy": "no-referrer",
+    "x-content-type-options": "custom-route-policy",
+  });
+  addSecurityHeaders(stricter);
+  expect(stricter.get("referrer-policy")).toBe("no-referrer");
+  expect(stricter.get("x-content-type-options")).toBe(
+    "custom-route-policy",
   );
 });

@@ -1,7 +1,9 @@
 # Meridian deploy plan
 
-Canonical checkout: branch `main`, no git remote. Nothing here has been deployed,
-pushed or submitted.
+Canonical checkout: `/Users/connorrivera/Meridian`, branch
+`feature/mymeridian-web-accounts`, with GitHub remote
+`connorrivera1/MyMeridian`. The implementation is pushed to draft PR #1. No
+production deployment or App Store submission has been made.
 
 **Ads ingestion dependency.** `MERIDIAN_REDIS_URL` enables continuous
 Meta/Google/TikTok polling; without it the app stays up and ad ingestion is
@@ -9,11 +11,11 @@ offline. The durable `AdSyncWindow` ledger is Postgres, so a lost Redis queue
 is reconciled on the next polling cycle. Google Ads also needs its client id,
 secret, and developer token configured as deployment secrets.
 
-**Current snapshot, 2026-08-11.** This snapshot overrides stale "now" claims in
-the dated audit history below. In particular, billing is enforced, the suite has
-907 tests, Docker and flyctl are installed, and the remaining release gates are
-external configuration, access requests, business decisions, and real-Shopify
-acceptance testing.
+**Current release status:** [`docs/LAUNCH_READINESS.md`](docs/LAUNCH_READINESS.md)
+is authoritative. The dated audit narrative below is retained as implementation
+history; do not use its totals or dates as a current release claim. The
+deterministic current deployment procedure is
+[`docs/DEPLOYMENT_RUNBOOK.md`](docs/DEPLOYMENT_RUNBOOK.md).
 
 **Version 2, 2026-08-05 23:58.** This supersedes the version written earlier the
 same day at 18:53. That version's hosting analysis was sound and is carried
@@ -33,14 +35,15 @@ the ordered path from here to a submitted listing.
 
 ## 1. Current state, verified now
 
-| Check                             | Result                                                                                                                                                                                                                                                                                                                          |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm run ci`                      | **Passes** (2026-08-11): typecheck, coverage thresholds and production build.                                                                                                                                                                                                                                                   |
-| `npx vitest run`                  | **907 collected: 850 passed, 57 skipped** across 87 files. All 57 skipped cases are opt-in PostgreSQL integration tests; the explicit ten-file real-PostgreSQL run passes **57/57**.                                                                                                                                              |
-| Billing enforcement               | **Implemented and tested locally.** `resolvePlan` reads/caches Billing API state, the app layout redirects stores without an active plan, `planAllows` enforces the paid capabilities, the pricing action re-checks its gate, and `/app/plan` calls `billing.request`. The real Shopify approval/return flow is still untested. |
-| `npx shopify app config validate` | **Passes.** On CLI 4.x, `app config` has `link`, `pull`, `use`, and `validate`; **there is no `config push`**. Config is published by `shopify app deploy` because `include_config_on_deploy = true`.                                                                                                                           |
-| Docker / flyctl                   | **Installed.** Docker CLI 29.7.1 and flyctl 0.4.79 are present. The image was previously built and booted locally (§11); the Docker daemon was stopped during this verification. flyctl is not authenticated (`fly auth whoami` returns `no access token available`).                                                           |
-| Production state                  | `Dockerfile`, `.dockerignore`, and `fly.toml` exist, but there is no Fly app, managed Postgres cluster, production origin, or deployment. The app has never been installed on a real Shopify store.                                                                                                                             |
+| Check                             | Result                                                                                                                                                                                                                                                                                                                                                                                                           |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run ci`                      | **Passes** (2026-08-11): typecheck, coverage thresholds and production build.                                                                                                                                                                                                                                                                                                                                    |
+| `npx vitest run`                  | **1,173 passed, 74 skipped**. The 74 skipped cases are opt-in PostgreSQL integration tests; the explicit real-PostgreSQL run passes **74/74** after applying all 34 migrations to a fresh database.                                                                                                                                                                                                              |
+| Billing enforcement               | **Implemented and tested.** `resolvePlan` reads/caches Billing API state, the app layout redirects stores without an active plan, `planAllows` enforces paid capabilities, and `/app/plan` calls `billing.request`. A real Shopify development-store test charge completed its approval and return flow without moving money.                                                                                    |
+| `npx shopify app config validate --config production` | A production-only config now pins `https://mymeridian.io`, `/auth/callback`, relative webhooks and `automatically_update_urls_on_dev = false`. On CLI 4.x, config is published only by an explicitly authorized `shopify app deploy --config production`; there is no `config push`. |
+| Docker / flyctl                   | **Installed and authenticated.** Docker CLI 29.7.1 and flyctl 0.4.79 are present. Both Fly configuration files validate. The image was previously built and booted locally (§11); the Docker daemon was stopped during this verification.                                                                                                                                                                           |
+| Shopify development acceptance    | **Passed for the currently testable core path.** The app installed and rendered embedded in Shopify Admin; onboarding persisted; all six monthly/annual prices rendered; Starter test billing returned active; and a zero-order store completed a full-history import with `read_all_orders`. Shopify Shipping correctly paused with an actionable error because the remaining ShopifyQL PCD approval is absent. |
+| Production state                  | Empty `mymeridian-prod` and `mymeridian-staging` Fly app records, included ingress IPs and three pending hostname certificates exist. There is no Machine, Managed Postgres cluster, Redis database, deployed origin or paid Fly resource. GoDaddy routing remains unchanged.                                                                                                                                       |
 
 The code is in good shape. Nothing here blocks starting deployment work.
 
@@ -48,60 +51,59 @@ The code is in good shape. Nothing here blocks starting deployment work.
 
 ## 2. External blocker — production origin
 
-Still true: `shopify.app.toml` has
-`application_url = "https://shopify.dev/apps/default-app-home"`, `redirect_urls`
-points at the same placeholder host, and every webhook `uri` is relative and
-resolves against it. So the three mandatory compliance webhooks and every other
-relative webhook subscription currently resolve to a host Shopify cannot
-deliver to. Shopify separately rejects an `application_url`
-containing the word "Shopify", so this exact string fails twice over.
+The default `shopify.app.toml` remains the development/tunnel configuration and
+still contains Shopify CLI's placeholder. It must never be deployed to the
+production app. `shopify.app.production.toml` is the production configuration:
+it pins `https://mymeridian.io`, the real `/auth/callback`, relative webhook
+paths and disabled dev URL rewriting.
 
-The deployment files now exist, but their current Fly slug is provisional and
-there is still no deployed origin. Do not replace the placeholder until the app
-name is decided and the first Fly deployment returns the real stable HTTPS
-origin. `SHOPIFY_APP_URL` in the local `.env` remains
-`http://localhost:3000`; `.shopify/` contains only the CLI project link.
+The domain is controlled and currently serves GoDaddy's temporary page. The
+two empty Fly app records and hostname certificates are reserved, but there is
+still no Machine, managed Postgres cluster, Redis database or deployed
+MyMeridian origin, so the production config must not be released yet. Local
+`.env` remains a development concern and is never a production configuration
+source.
 
-This blocks OAuth callbacks and webhook delivery. It is not the only critical
-path: the app-name decision and Shopify access requests can start before a host
-exists and should run in parallel.
+This blocks production OAuth callbacks and webhook delivery. It is not the only
+critical path: Shopify access and App Store registration work can proceed before
+a host exists.
 
 ---
 
 ## 3. Hosting decision — Fly.io
 
-Carried forward from v1, and re-verified. The deciding constraint is not
-framework preference, it is that **this app owns long-running workers inside
-the web process**:
+Carried forward from v1, and re-verified after the durable-work migration. The
+deciding constraint is not framework preference: **the work is now durable in
+Postgres, but this deployment still runs its worker inside the web process**:
 
-- `afterAuth` awaits only `startBackfill`'s atomic database claim; the claimed
-  import then runs in-process after the OAuth handler returns.
+- `afterAuth` persists a deduplicated `HISTORICAL_BACKFILL` job before returning;
+  Settings and onboarding do the same for `FULL_RECOMPUTE` work.
 - The backfill walks the store's entire accessible order history with no
   implicit ceiling and
   re-acquires its admin token every 40 minutes because it expects to outlive an
   hour-long access token.
 - A five-minute lease is heartbeated every minute, progress and terminal writes
   are fenced to the current owner, and the saved cursor makes an interrupted run
-  visible and resumable. No external queue restarts it automatically.
+  visible and resumable. The worker automatically reclaims expired queued work.
 - The same always-on process runs the ten-second durable-webhook recovery worker
   and hourly privacy-retention sweep.
 
-Anything that treats the process as disposable once the response is written will
-interrupt those workers. The lease prevents a silent false completion, but a
-merchant still needs the process to remain alive for uninterrupted progress.
+Anything that provides no continuously available worker pauses those jobs. The
+request is safe and the lease makes restart recovery automatic, but a production
+worker must still be available for progress.
 
 | Option              | Fit             | Why                                                                                                                                                                                                                                                                      |
 | ------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Fly.io**          | **Recommended** | Long-lived container, managed Postgres or bring-your-own, cheap always-on small VM, `fly deploy` from a Dockerfile, custom domain and free TLS. The in-process backfill keeps working correctly with no code change.                                                     |
+| **Fly.io**          | **Recommended** | Long-lived container, managed Postgres or bring-your-own, cheap always-on small VM, `fly deploy` from a Dockerfile, custom domain and free TLS. The durable worker runs with no architecture change.                                                     |
 | Railway             | Close second    | Same long-lived-process model, easier Postgres, but usage-based pricing is less predictable. Fine as a fallback.                                                                                                                                                         |
 | Render              | Viable          | Long-lived service plus managed Postgres. The free tier spins down on idle, which would kill a backfill on a cold start — paid tier from day one or not at all.                                                                                                          |
-| Vercel              | **Not as-is**   | Serverless functions have execution limits and no guarantee the process outlives the response. Directly hostile to the current backfill. Would need a real job queue first, which is a genuine architecture change and the wrong thing to do just to unblock submission. |
+| Vercel              | **Not as-is**   | The Postgres queue is durable, but a serverless request does not provide the continuously running worker that drains it. A separate worker service would still be required. |
 | ngrok / cloudflared | **Test only**   | A tunnel is enough to exercise OAuth, webhooks and billing locally (Phase 2), but Shopify does not accept a tunnel URL as `application_url` — it is not stable and disappears with the dev session. Use it to test, never to submit.                                     |
 
 **Decision: Fly.io.** Deploy there, take the `*.fly.dev` subdomain (or attach a
 real domain if there is one), set that as `application_url`, and do not block
-submission on moving the backfill to a job queue — Fly's model tolerates it
-correctly today. Revisit post-submission (§9).
+submission on replacing the Postgres queue — Fly's model runs it correctly
+today. Revisit only if worker execution moves to another service (§9).
 
 ---
 
@@ -216,14 +218,14 @@ primary_region = "iad"
 
 ## 5. Exact deploy sequence
 
-Run from the repo root only after choosing the public app name and Fly slug.
+Run from the repo root only after choosing the Fly slug for MyMeridian.
 Authentication, provisioning, secrets, deployment, and Partner Dashboard writes
 change external state and incur charges; none has been run from this repository.
 The task-specific shell variables below are deliberately blank decisions, not
 suggested production values.
 
 ```sh
-# 1. Fill these only after the public name/slug decision.
+# 1. Fill these only after the Fly slug decision.
 MERIDIAN_FLY_APP="<chosen-fly-app-slug>"
 MERIDIAN_FLY_DB="<chosen-managed-postgres-name>"
 MERIDIAN_FLY_DB_ID="<cluster-id returned by fly mpg create>"
@@ -233,6 +235,14 @@ MERIDIAN_PROD_ORIGIN="https://${MERIDIAN_FLY_APP}.fly.dev"
 # `fly secrets set` command.
 MERIDIAN_ENCRYPTION_KEY="<stable value retrieved from credential vault>"
 MERIDIAN_CUSTOMER_ERASURE_KEY="<stable value retrieved from credential vault>"
+# Generate these four once with:
+#   npm run operator:provision -- publisher@example.com
+# Enroll the printed authenticator URI, then retrieve every value from the
+# production credential vault. Never paste the URI or raw password into Git.
+MERIDIAN_OPERATOR_EMAIL="<publisher email>"
+MERIDIAN_OPERATOR_PASSWORD_HASH="<scrypt hash>"
+MERIDIAN_OPERATOR_TOTP_SECRET="<base32 TOTP secret>"
+MERIDIAN_OPERATOR_SESSION_KEY="<stable 256-bit session and audit HMAC key>"
 
 # 2. Authenticate, create the app shell, and provision managed Postgres.
 fly auth login
@@ -250,11 +260,15 @@ fly mpg attach "$MERIDIAN_FLY_DB_ID" --app "$MERIDIAN_FLY_APP"   # sets pooled D
 fly secrets set \
   SHOPIFY_API_KEY="<from Partner Dashboard>" \
   SHOPIFY_API_SECRET="<from Partner Dashboard>" \
-  SCOPES="read_orders,read_products,read_fulfillments,read_inventory,read_reports" \
+  SCOPES="read_orders,read_all_orders,read_products,read_fulfillments,read_inventory,read_reports" \
   SHOPIFY_APP_URL="$MERIDIAN_PROD_ORIGIN" \
   DIRECT_DATABASE_URL="<direct URL from the MPG Connect tab>" \
   MERIDIAN_ENCRYPTION_KEY="$MERIDIAN_ENCRYPTION_KEY" \
   MERIDIAN_CUSTOMER_ERASURE_KEY="$MERIDIAN_CUSTOMER_ERASURE_KEY" \
+  MERIDIAN_OPERATOR_EMAIL="$MERIDIAN_OPERATOR_EMAIL" \
+  MERIDIAN_OPERATOR_PASSWORD_HASH="$MERIDIAN_OPERATOR_PASSWORD_HASH" \
+  MERIDIAN_OPERATOR_TOTP_SECRET="$MERIDIAN_OPERATOR_TOTP_SECRET" \
+  MERIDIAN_OPERATOR_SESSION_KEY="$MERIDIAN_OPERATOR_SESSION_KEY" \
   MERIDIAN_SUPPORT_EMAIL="<Meridian's monitored inbox on its final domain>" \
   MERIDIAN_LEGAL_ENTITY="<Meridian's actual publishing entity>" \
   --app "$MERIDIAN_FLY_APP"
@@ -274,9 +288,10 @@ fi
 fly logs --app "$MERIDIAN_FLY_APP"          # expect no boot error
 
 # 6. Point the app config at it. This writes to the Partner Dashboard.
-#    Edit shopify.app.toml first (see below), validate, inspect the diff, then:
-npx shopify app config validate
-npx shopify app deploy --message "Real production origin"
+#    Validate the dedicated production config, inspect it, then only after the
+#    explicit Shopify-config authorization:
+npx shopify app config validate --config production
+npx shopify app deploy --config production --message "Real production origin"
 ```
 
 Charge mode has no operator override. Every production charge queries
@@ -293,13 +308,13 @@ PgBouncer `DATABASE_URL` used by the running app. Copy the separate
 to `DATABASE_URL` for `prisma migrate deploy`. Migrations and their advisory
 locks must not run through the pooled endpoint.
 
-### The `shopify.app.toml` edit in step 6
+### The production Shopify configuration in step 6
 
 ```toml
-application_url = "<production-origin>"
+application_url = "https://mymeridian.io"
 
 [auth]
-redirect_urls = [ "<production-origin>/auth/callback" ]
+redirect_urls = [ "https://mymeridian.io/auth/callback" ]
 ```
 
 `/auth/callback` and not `/api/auth` — `authPathPrefix` is `/auth`, and the
@@ -310,12 +325,11 @@ The webhook `uri` values are relative and need no edit at all. That is the whole
 point of them being relative, and it is why fixing `application_url` fixes all
 relative webhook destinations at once.
 
-**Change one more line in the production config at the same time, or this will
-come undone:**
+The production config also locks URL rewriting off:
 
 ```toml
 [build]
-automatically_update_urls_on_dev = false   # keep true until a production origin exists
+automatically_update_urls_on_dev = false
 ```
 
 While it is `true`, `shopify app dev` rewrites `application_url` and
@@ -326,11 +340,10 @@ Phase 2, is a second linked config — `shopify app config link` writes
 `shopify.app.<name>.toml` and `shopify app config use` switches between them —
 so the dev tunnel never touches the production file.
 
-For now the canonical config deliberately remains `true`: changing it while the
-URL is still the placeholder would break the convenient tunnel rewrite used by
-`shopify app dev` without protecting any real production URL. Once production
-exists, either turn it off in the production config or keep a separate linked
-development config.
+This split is now implemented: `shopify.app.toml` remains the development
+configuration with tunnel rewriting, and `shopify.app.production.toml` has the
+stable origin with rewriting disabled. Every production command must pass
+`--config production`; local development continues to use the default config.
 
 `include_config_on_deploy = true` is already set, which is what makes
 `shopify app deploy` publish `application_url` and the webhook subscriptions
@@ -343,12 +356,12 @@ with the version. There is no separate config-push step; see §8.
 None of this is code and none of it can be done from this repo. It needs a
 signed-in Partner account.
 
-**Precondition — decide the public app name.** The current `Meridian` value is a
-development working name, not an approved listing decision. A published Shopify
-app already uses Meridian, so the final name must start with a distinctive brand
-identifier and be checked for confusion before the Fly slug, logo, landing page,
-listing copy, and screenshots are finalized. Do not rename the linked development
-app piecemeal; make the config and asset changes together after the decision.
+**Public identity — decided: MyMeridian.** The repo config, app UI, landing page,
+legal pages and listing draft use MyMeridian because a published Shopify app
+already uses Meridian. The linked development app still displays the former
+dashboard name; change it only through the safe config-release path after the
+production origin exists, and keep the Fly slug and remaining brand assets on
+the chosen identity.
 
 **a. Opt into manual pricing (Billing API), not Shopify App Pricing.**
 Partner Dashboard → the app → Pricing. The app creates its own charges from
@@ -364,8 +377,8 @@ billing implementation that is already finished and gated. Re-verified against
 live shopify.dev docs on 6 August 2026; quotes and URLs are in `SUBMISSION.md`
 § "Billing". An earlier version of this paragraph said App Pricing plans could
 not be read from a merchant session at all, which is wrong. The three plans are
-Starter $49/mo or $490/yr, Growth $149/mo or $1,490/yr, and Scale $399/mo or
-$3,990/yr, all USD with a 14-day trial.
+Starter $49/mo or $490/yr, Growth $129/mo or $1,290/yr, and Scale $299/mo or
+$2,990/yr, all USD with a 14-day trial.
 
 **b. Protected Customer Data request, Level 2 — gates `read_orders`, not just
 `read_customers`. This is a hard gate, and it is the single longest-lead item
@@ -404,11 +417,18 @@ limits and an access log, strong staff passwords, an incident response
 policy). Requesting Level 1 and discovering the gap later costs another round
 of Shopify's clock.
 
-**c. `read_all_orders` access request.**
-Same screen, separate request, same reasoning. Without it Shopify caps order
-history at 60 days, which is a real limitation for a profitability tool — the
-app detects the cap and shows a persistent banner about it. Worth requesting
-even if submission proceeds without it.
+ShopifyQL adds a separate, broader platform gate for the `shipping_labels`
+report: Shopify requires the Level 2 request to cover **name, address, phone and
+email** before it exposes that aggregate report. MyMeridian does not query or
+persist shopper name, address or phone. Requesting those three additional field
+approvals is therefore necessary to unlock Shopify Shipping costs, but it does
+not authorize adding those fields to MyMeridian's queries or storage.
+
+**c. `read_all_orders` access request — approved 2026-08-11.**
+Shopify granted the separate request. The scope is now present in the app config,
+and a real development-store install verified that a zero-order store is still
+correctly recognized as having complete history rather than falsely showing the
+60-day-limit warning.
 
 **d. Emergency developer contact.**
 Partner Dashboard → the app → App setup. Email **and phone**, and it is a
@@ -429,40 +449,37 @@ data to click through. Depends on Phase 2.
 
 ## 7. Listing
 
-Copy exists in **`listing/copy.md`** and its reviewer instructions now include
-monthly and annual Billing API prices. It is not paste-ready because the public
-name is unresolved and the demo-store, storefront-password and Meridian support
-email placeholders still need owner values. Re-measure every bounded field
-after the name is changed.
+Copy exists in **`listing/copy.md`** under the chosen MyMeridian identity, and
+its reviewer instructions include monthly and annual Billing API prices. It is
+not paste-ready because the demo-store URL, storefront password and monitored
+MyMeridian support email still need owner values.
 
 Assets state:
 
-| Item                                      | State                                                                                                                                            |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| App icon 1200×1200                        | File exists, but re-check after the name/brand decision                                                                                          |
-| Screenshots 1600×900                      | **Stale.** The five files predate the 2026-08-09/10 broadsheet and chart redraw; re-shoot all of them from the final UI and a real review store. |
-| Privacy policy URL                        | Done — `/privacy`, public                                                                                                                        |
-| Support page                              | Done — `/support`, public                                                                                                                        |
-| Name / intro / details / features         | **Needs revision** — final name is not reflected; annual pricing is current                                                                      |
-| Meridian domain, publisher + support email | **Owner** — §6e; must belong to Meridian, not another product                                                                                |
-| Feature media (1600×900 or 2–3 min video) | **Missing**                                                                                                                                      |
-| Demo store URL                            | **Missing** — §6f                                                                                                                                |
-| Setup screencast                          | **Missing — automatic bounce without it**                                                                                                        |
+| Item                                       | State                                                                                                                                                                        |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| App icon 1200×1200                         | File exists; verify it matches the final MyMeridian wordmark before upload                                                                                                   |
+| Screenshots 1600×900                       | **Locally refreshed.** Six current files were captured and visually checked on 2026-08-11. Re-capture from the final real review store only if its data or identity differs. |
+| Privacy policy URL                         | Done — `/privacy`, public                                                                                                                                                    |
+| Support page                               | Done — `/support`, public                                                                                                                                                    |
+| Name / intro / details / features          | **Drafted and measured** under MyMeridian; re-check after any copy edit                                                                                                      |
+| Meridian domain, publisher + support email | **Owner** — §6e; must belong to Meridian, not another product                                                                                                                |
+| Feature media (1600×900 or 2–3 min video)  | **Done locally** — `listing/feature-media-1600x900.png`; dimensions are enforced by the listing test                                                                                                 |
+| Demo store URL                             | **Missing** — §6f                                                                                                                                                            |
+| Setup screencast                           | **Missing — automatic bounce without it**                                                                                                                                    |
 
-The screencast is the one that cannot be worked around. It has to show a real
-OAuth install through to a first dashboard view; the app has never been
-installed on any store, and it cannot be filmed against the demo bypass because
-that bypass is precisely what the recording exists to prove is not being used.
-Record it during Phase 2's real install rather than staging the whole flow twice.
+The screencast is the one that cannot be worked around. A real development-store
+install and first dashboard view now work, so the technical prerequisite is
+met. The final recording still needs the chosen public identity, populated
+reviewer store and production-like setup; it cannot use the demo bypass.
 
 The Scale cohort claim has been removed without expanding access:
 `read_customers` remains absent and no paid plan promises LTV/payback. Scale is
-still **not commercially resolved**, however: at $399/month its only incremental
-promise is priority support, while no support address, plan-aware routing or SLA
-has been configured. The owner must remove/reprice Scale or define and staff that
-support promise before submission. No live ad-platform OAuth exists, so the
-listing must also continue avoiding ad-attribution claims until a real connector
-ships.
+now differentiated by scheduled weekly profit summaries, advanced CSV exports
+and multi-store portfolio access at $299/month or $2,990/year. Growth includes
+self-service Meta, Google and TikTok connections plus anomaly alerts. Provider
+application approval and production credentials remain deployment activation
+work, not missing product code.
 
 The remaining catalogue is also scoped to what the runtime enforces. Plan copy
 does not claim order-volume limits, because billing never counts or blocks
@@ -470,7 +487,7 @@ monthly orders; Scale does not claim location-specific capacity, because the
 capacity rebuild currently writes one store-wide `primary` series; and public
 copy does not expose the dormant customer-lifecycle product classifier. Prices
 are unchanged. The redesigned Acquisition page is now useful without spend, so
-a fresh screenshot may be included in the required full re-shoot; only the old
+a fresh screenshot is included in the refreshed six-image set; only the old
 fabricated-spend image remains held as provenance.
 
 ---
@@ -487,9 +504,9 @@ them because the work landed:
    `include_config_on_deploy = true`. Following v1 literally would have failed
    at the last and most important step.
 2. **Test count.** v1 said 178 tests in 16 files and this section previously
-   recorded the intermediate 212-in-20 milestone. The current baseline is the
-   §1 result: **907 collected, 850 passed, 57 skipped**; the explicit
-   real-PostgreSQL integration run passes **57/57**.
+   recorded intermediate milestones. The current baseline is the §1 result:
+   **1,173 passed and 74 skipped** in the default run; the explicit
+   real-PostgreSQL integration run passes **72/72** after all 34 migrations.
 3. **`Shop.syncCursor` is no longer write-only.** v1 listed "written but never
    read" as a fast-follow. Commit `200a350` reads it; an interrupted import now
    resumes from the cursor instead of restarting.
@@ -507,13 +524,9 @@ runtime is now memory-bounded and whole-history recompute is month-sliced; see
 
 ### Must happen before submission
 
-- **Decide the public app name** (§6 precondition). Do this before finalizing the
-  Fly slug, logo, landing page, copy, or screenshots.
 - **Protected Customer Data request, Level 2** (§6b). The longest-lead item on
   this page and a hard gate — start it first, everything else can proceed in
   parallel while it's on Shopify's clock.
-- **Request `read_all_orders` access** (§6c). Do not add the scope to the config
-  until Shopify approves it.
 - **Authenticate to Fly, provision Managed Postgres, deploy, and set the real
   `application_url`** (§2–§5). Cannot exercise OAuth or webhooks without it.
 - **Partner Dashboard items** (§6a, §6d) and the refreshed listing assets in §7.
@@ -521,6 +534,12 @@ runtime is now memory-bounded and whole-history recompute is month-sliced; see
   or a reviewer sees the explicit pre-launch configuration gap.
 
 ### Done this session, previously on this list
+
+- **`read_all_orders`.** Shopify approved the request, the scope is in config,
+  and the full-history path was exercised in a real development-store install.
+- **Core development-store acceptance.** Embedded install, onboarding, monthly
+  and annual pricing, test-billing approval/return and zero-order full-history
+  completion were verified in Shopify Admin.
 
 - **Dashboard loaders.** Two of the three costs named in `SUBMISSION.md`
   blocker 4 are fixed. `loadEngineOrders` no longer hydrates every fulfilment
@@ -532,40 +551,28 @@ runtime is now memory-bounded and whole-history recompute is month-sliced; see
   Both were proved number-for-number: 15 new tests, and `verify-data.ts` output
   byte-identical against live Postgres.
 
-### Still open
+### Current supported-volume state
 
-- **One accepted analytics window or merchant-local recompute month is capped
-  at 60,000 orders.** `loadEngineOrders` deliberately has no `take`: truncating
-  P&L, ad attribution or overhead would create a confidently wrong answer.
-  Instead, an index-backed count refuses a larger window before hydration, all
-  heavy builds share a process-wide admission gate, and whole-history recompute
-  preflights then processes exact merchant-local months. A real-Postgres
-  differential proves the chunked result against the one-shot engine. The SQL
-  roll-up is now the work required to support more than 60,000 orders in one
-  selected window or one local month, not an unbounded-memory optimization.
-- **Orders table pages a materialised array.** `PAGE_SIZE = 60` slices in
-  memory, so the database work is identical on page 1 and page 40. Same root
-  cause as above. **Partially addressed 2026-08-07:** page 2+ was previously
-  unreachable at all — there was no `page` param, so the table silently
-  dropped every order past the 60th in the current sort. That's fixed
-  (`paginateOrders` in `app/routes/app.orders.tsx`, with Previous/Next
-  controls and out-of-range clamping); a store can now actually see every
-  order in an accepted window. What's still open is the underlying cost: the
-  full accepted period is fetched from Postgres and sorted in memory on every
-  page request — reaching page 40 works, but it is not cheaper than page 1.
-  The real fix is the same SQL-side roll-up work.
-- **Backfill and recompute still execute in-process.** Backfill now has a
-  database-backed owner token, five-minute lease, heartbeat, owner-fenced
-  progress writes and cursor-preserving takeover; recompute preflights and runs
-  one merchant-local month at a time. That makes process death recoverable on
-  the selected long-lived Fly host, but moving to a serverless host would still
-  require a durable job queue.
+- **Large accepted analytics windows use the materialized profit ledger.** The
+  engine still refuses to truncate an order window. Above its full-hydration
+  threshold, analytics switch to exact materialized order fields and SQL
+  product roll-ups, validate that every order was computed, and fail visibly if
+  the ledger is incomplete. This removes the former 60,000-order refusal without
+  inventing partial P&L.
+- **Orders paging is closed in code.** `loadOrderPage` uses PostgreSQL keyset
+  cursors for recent, best and worst sorts, binds cursors to range/channel/sort,
+  fetches at most 61 rows, and falls back to the exact live engine while the
+  materialized ledger is incomplete. Forward/backward and concurrency-safe
+  behavior is covered against real PostgreSQL.
+- **Backfill and recompute request ownership is closed.** Both are deduplicated
+  `RecalcJob` kinds persisted before the request returns, claimed with leases,
+  retried with backoff and recovered after restart. A production deployment
+  still needs an always-available worker, which Fly provides in the chosen
+  topology.
 - **Real-Shopify import coverage remains the missing proof.** Backfill has 29
   direct orchestration tests plus pagination, resume, field-access and real-
   PostgreSQL claim suites. What those cannot prove is the first historical walk
   against Shopify's live GraphQL responses; Phase 2 remains that acceptance run.
-- **Order-level stored profit is a write-only cache**, and **ad connectors have
-  no live OAuth** (§7). Neither affects OAuth, webhook or billing compliance.
 
 ---
 
@@ -573,8 +580,9 @@ runtime is now memory-bounded and whole-history recompute is month-sliced; see
 
 ```
 Phase 0 — Decisions and access requests (start immediately)
-  0a. Decide the non-confusable public app name
-  0b. Submit Protected Customer Data Level 2 and read_all_orders requests
+  0a. DONE: MyMeridian is the non-confusable public identity
+  0b. Expand the saved PCD request to ShopifyQL's required name/address/phone/
+      email coverage; read_all_orders is already approved
 
 Phase 1 — A real origin
   1a. fly auth login; choose the Fly app slug after Phase 0a
@@ -588,20 +596,17 @@ Phase 1 — A real origin
 
 Phase 2 — Exercise it for real
   2a. A Partner development store
-  2b. Install for real. First live test of session storage, token exchange
-      and the backfill — given the session-storage defect this session fixed,
-      it is likely no install has ever succeeded, so treat this as a first
-      test rather than a regression check
-  2c. Watch the backfill finish on real volume; this is what validates §3
+  2b. DONE on the development store: install, session storage and token exchange
+  2c. Zero-order full-history completion is verified; repeat on representative
+      order volume after a populated reviewer store is available
   2d. Fire each webhook for real: place an order, request and redact customer
       data, uninstall and reinstall
-  2e. Walk billing.request end to end — approval screen, return redirect,
-      and billing.check gating Pricing, Fulfilment and Acquisition
+  2e. DONE with a Shopify test charge: approval, return redirect and active plan
   2f. Record the setup screencast during this pass
   -> Unblocks the screencast, and confidence in everything above
 
 Phase 3 — Partner Dashboard        Phase 4 — Listing
-  §6a manual pricing                 4a. Update copy for final name + annual plans
+  §6a manual pricing                 4a. DONE: MyMeridian + annual-plan copy
   §6b protected customer data        4b. Feature media
   §6c read_all_orders                4c. Re-shoot every screenshot from final UI
   §6d emergency contact              4d. Attach the Phase 2 screencast
@@ -622,17 +627,19 @@ blocks knowing the backfill survives real data. Phases 3 and 4 run alongside.
 
 ## Where this leaves it
 
-The local code gate is green: `npm run ci` passes, with 907 tests collected (850
-passed and 57 opt-in integration tests skipped), coverage thresholds met, and a
-clean production build. All ten real-PostgreSQL integration files pass 57/57
-against a fresh database after all 21 migrations. Billing is enforced in code
-rather than merely declared.
+The local code gate is green: `npm run ci` passes, with 1,173 unit tests passing
+and 72 opt-in integration tests skipped, coverage thresholds met, and a clean
+production build. The explicit real-PostgreSQL integration run passes 72/72
+against a fresh database after all 34 migrations. Billing is enforced in code
+and its Shopify test-charge approval/return flow has been exercised.
 
 What remains before submission is infrastructure, external approval, business
 decisions, assets, and real-platform proof:
 
-- Shopify Shipping reconciliation additionally needs `read_reports` granted
-  and the `shipping_labels` dataset's Level 2 Protected Customer Data approval.
+- Shopify Shipping reconciliation has `read_reports`, but the `shipping_labels`
+  dataset still needs Level 2 Protected Customer Data approval covering name,
+  address, phone and email. MyMeridian does not query or persist name, address
+  or phone; this is ShopifyQL's access gate.
 - ShipStation's immediate reconciliation webhook is registered only after
   `SHOPIFY_APP_URL` becomes the real public HTTPS origin; until then its tested
   five-minute reconciliation fallback is the only reachable path.
@@ -641,17 +648,15 @@ decisions, assets, and real-platform proof:
    §4 files are built and booted rather than merely written (§11). What is left
    is a final app/Fly name, Fly authentication, Managed Postgres, and the
    production sequence in §5. flyctl is installed but not authenticated.
-2. **No real Shopify app flow has run.** The CLI is linked to the development
-   app. A 2026-08-10 `shopify app dev` attempt reached dev-preview preparation,
-   then Shopify rejected the protected-customer-data webhook subscriptions
-   because this app is not approved for that data; the failed preview was
-   cleaned and the active app version restored. Phase 2 is therefore still the
-   first trial by fire for OAuth, session storage, backfill, live webhook
-   delivery and billing after PCD approval.
-3. **Owner/Partner decisions remain:** final public name, Protected Customer Data
-   Level 2 and `read_all_orders` requests, Meridian domain/support identity,
-   emergency contact, real-store install, refreshed
-   screenshots, feature media, demo-store details, and the setup screencast.
+2. **The core development-store path has run.** Embedded installation,
+   onboarding, session storage, the zero-order full-history path and a Shopify
+   test billing approval/return were verified. Representative order-volume
+   backfill, production webhook delivery and production billing remain unproven.
+3. **Owner/Partner decisions remain:** expanded Protected Customer Data Level 2
+   coverage, MyMeridian domain/support identity, App Store
+   registration attestations and payment, emergency contact, demo-store
+   details, and the setup screencast. Screenshots and 1600×900 feature media are
+   ready locally.
 
 ---
 
@@ -675,8 +680,8 @@ never installed and Colima needs no license and no GUI. Docker daemon 29.5.2,
 | Server boots                                    | **Yes.** `react-router-serve` comes up and is serving in about two seconds, so fly.toml's 20s `grace_period` is comfortable.                                                                                              |
 | `GET /privacy`                                  | **200.** The health check path in fly.toml is right.                                                                                                                                                                      |
 | `GET /support`                                  | **200.**                                                                                                                                                                                                                  |
-| `release_command` — `npx prisma migrate deploy` | **Runs from inside the image** against a real Postgres. The current migration-set proof is repeated in the release verification below; the Prisma CLI reinstalled after the prune resolves without a network fetch.        |
-| `/privacy` and `/support` contact block         | Both show an explicit pre-launch configuration gap while Meridian's domain, publisher and monitored inbox are unset.                                                                                                  |
+| `release_command` — `npx prisma migrate deploy` | **Runs from inside the image** against a real Postgres. The current migration-set proof is repeated in the release verification below; the Prisma CLI reinstalled after the prune resolves without a network fetch.       |
+| `/privacy` and `/support` contact block         | Both show an explicit pre-launch configuration gap while Meridian's domain, publisher and monitored inbox are unset.                                                                                                      |
 | `fly.toml`                                      | Parses, and every key lands where Fly's schema expects it. `fly config validate` itself needs an account and was not run.                                                                                                 |
 | `npx vitest run`                                | **Historical 2026-08-06 result:** 290 tests in 24 files, all passing. The current baseline is in §1.                                                                                                                      |
 
@@ -719,8 +724,10 @@ Two further things were confirmed while the image was up, both of which back
 claims made elsewhere in this file: the container idles at **51 MiB** serving
 requests, so §4's 1024 MB VM has room, and booting with
 `MERIDIAN_DEMO_MODE=true` while `NODE_ENV=production` **does** abort the
-process — `Error: MERIDIAN_DEMO_MODE must not be enabled when
-NODE_ENV=production` — so §4's comment on that line is accurate.
+process. This is now defense in depth rather than the only boundary: production
+builds alias the demo lookup to a fail-closed stub, and the build scans every
+emitted server file for the demo domain and seeded-authentication signature.
+The build fails if either survives bundling, regardless of runtime `NODE_ENV`.
 
 ### Two things that still cannot be checked here
 
@@ -780,14 +787,13 @@ Three things drove it, in order of weight.
    nothing backed the database up at all. Managed Postgres gives automated
    backups and point-in-time recovery as a property of the service.
 
-3. **Nothing here needs a BaaS.** The app is plain Postgres — no extensions,
-   and the eleven raw-SQL sites use only standard features (`AT TIME ZONE`,
-   `date_trunc`, casts), so it is portable to any provider. Tenant isolation is
-   done in application code and every query is shop-scoped, so row-level
-   security would be redundant machinery to maintain. Supabase and Neon were
-   both considered and would both work; Neon's branching is the one feature
-   with real pull here, because it would give the integration tests a database
-   to run against. Revisit if leaving Fly.
+3. **Nothing here needs a BaaS.** The app is plain Postgres and its raw SQL uses
+   portable PostgreSQL features. Tenant isolation is defense in depth: every
+   merchant query is shop-scoped in application code, while forced RLS runs
+   merchant routes through a separate `NOBYPASSRLS` login and transaction-local
+   shop/user context. The privileged migration/worker/operator identity is not
+   exposed to merchant routes. Supabase and Neon would both work, but neither is
+   required; see `docs/DATABASE_SECURITY.md` for provisioning and verification.
 
 ### Provisioning
 
@@ -819,11 +825,11 @@ direct connection.
 
 State them honestly, because half the data is not reconstructible.
 
-|                                 | Value                                                                                                                                                                            |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|                                 | Value                                                                                                                                                                                                                     |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **RPO — Shopify-derived data**  | Backup interval. Source fields are re-fetchable only inside the history Shopify still exposes. Historical COGS snapshots, observed price changes and data older than the accessible order window are not reconstructible. |
-| **RPO — merchant-entered data** | **Backup interval, and nothing else.** Not reconstructible from Shopify at any price.                                                                                            |
-| **RTO**                         | Restore time of the managed snapshot, plus a redeploy. Minutes, not the previously-unbounded "recreate and hope every merchant notices the banner".                              |
+| **RPO — merchant-entered data** | **Backup interval, and nothing else.** Not reconstructible from Shopify at any price.                                                                                                                                     |
+| **RTO**                         | Restore time of the managed snapshot, plus a redeploy. Minutes, not the previously-unbounded "recreate and hope every merchant notices the banner".                                                                       |
 
 **What a restore must recover, because re-importing cannot:**
 
@@ -870,6 +876,11 @@ State them honestly, because half the data is not reconstructible.
    a configured diagnostic `MERIDIAN_MAX_BACKFILL_ORDERS` limit must be removed
    or raised before the run can complete.
 
-**Untested.** This procedure is written from the product's behaviour, not from
-a rehearsal. Do a restore drill on a throwaway cluster before relying on it;
-an unrehearsed restore procedure is a hypothesis, not a plan.
+**Locally rehearsed 2026-08-12.** A custom-format `pg_dump` restored into an
+isolated disposable PostgreSQL database; counts matched for migrations, shops,
+cost rules, price history, connectors, privacy requests/erasures, webhook
+events, orders and queued jobs, and Prisma reported no schema difference. The
+temporary database was dropped and the dump moved to Trash. This proves the
+repository/local PostgreSQL procedure, not Fly Managed Postgres point-in-time
+recovery, provider retention or production-key recovery; those remain mandatory
+production acceptance evidence.

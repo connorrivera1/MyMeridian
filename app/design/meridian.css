@@ -28,15 +28,16 @@
 /* --------------------------------------------------------------------- font */
 
 /*
- * Plus Jakarta Sans Variable, SIL OFL 1.1 — a licence that permits serving the
- * file, unlike the Fontshare FFL that governs Satoshi. `?url` imports resolve
- * these through Vite, so the woff2 is fingerprinted and cached like any other
- * asset.
+ * Satoshi is delivered directly by Fontshare under its web-font licence, so
+ * the intended brand face can be used without placing its binary in this
+ * repository. Plus Jakarta remains available as the resilient local fallback.
  *
  * `font-display: swap` on purpose: this is a dashboard whose first paint is a
  * splash screen, so a brief fallback face is invisible, and blocking the first
  * paint on a font download is not.
  */
+@import url("https://api.fontshare.com/v2/css?f[]=satoshi@300,400,500,600,700,800,900&display=swap");
+
 @font-face {
   font-family: "Plus Jakarta Sans Variable";
   src: url("../fonts/jakarta/PlusJakartaSans-Variable.woff2") format("woff2-variations");
@@ -69,10 +70,9 @@
   /*
    * Type, shared with the marketing site.
    *
-   * Space Grotesk sets the wordmark, every heading and every figure; Plus
-   * Jakarta sets running prose. A merchant clicking through from the page
-   * into the app should not be able to tell where one ends and the other
-   * begins, and type is most of what carries that.
+   * Satoshi sets the wordmark, interface, headings and figures. A merchant
+   * clicking through from the landing page into the app should not cross a
+   * type boundary.
    *
    * (These tokens were briefly missing, which is worth recording: `--font`
    * had been defined in the block this system replaced, so every rule below
@@ -80,9 +80,9 @@
    * silently fell back to the browser's default serif. An undefined custom
    * property fails at computed-value time and takes the declaration with it.)
    */
-  --font-display: "Space Grotesk Variable", ui-sans-serif, -apple-system,
+  --font-display: "Satoshi", "Space Grotesk Variable", ui-sans-serif, -apple-system,
     BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font: "Plus Jakarta Sans Variable", ui-sans-serif, -apple-system,
+  --font: "Satoshi", "Plus Jakarta Sans Variable", ui-sans-serif, -apple-system,
     BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 
   /*
@@ -194,14 +194,14 @@
   --series-8: #4a4a4a;
 
   /* legacy hue names, re-aimed at the ramp; routes still address these */
-  --viz-mint: var(--accent);
+  --viz-mint: var(--pos);
   --viz-teal: #9b9b9b;
   --viz-blue: #7d7d7d;
   --viz-violet: #b9b9b9;
   --viz-pink: #d7d7d7;
-  --viz-amber: #e8e8e8;
+  --viz-amber: var(--caution);
   --viz-orange: #8a8a8a;
-  --viz-rose: #616161;
+  --viz-rose: var(--neg);
 
   /* Inset for type in a full-bleed ledger; the rules ignore it. */
   --ledger-gutter: 22px;
@@ -312,14 +312,14 @@
   --series-7: #363636;
   --series-8: #a8a8a8;
 
-  --viz-mint: var(--accent);
+  --viz-mint: var(--pos);
   --viz-teal: #757575;
   --viz-blue: #9a9a9a;
   --viz-violet: #575757;
   --viz-pink: #2e2e2e;
-  --viz-amber: #414141;
+  --viz-amber: var(--caution);
   --viz-orange: #8a8a8a;
-  --viz-rose: #b5b5b5;
+  --viz-rose: var(--neg);
 
   --shadow:
     0 1px 3px rgba(10, 10, 10, 0.06),
@@ -596,7 +596,7 @@ code {
 
 /*
  * Opening sequence: the globe spins up against the dusk sky, then the wordmark
- * reveals a letter at a time, then it clears. Total ~1.24s.
+ * reveals a letter at a time, then it clears. Total ~1.32s.
  *
  * It is rendered on the server too, so the first paint is the splash rather
  * than a flash of dashboard underneath it.
@@ -695,6 +695,8 @@ code {
   .splash-word span:nth-child(6) { animation-delay: 0.53s; }
   .splash-word span:nth-child(7) { animation-delay: 0.568s; }
   .splash-word span:nth-child(8) { animation-delay: 0.606s; }
+  .splash-word span:nth-child(9) { animation-delay: 0.644s; }
+  .splash-word span:nth-child(10) { animation-delay: 0.682s; }
 }
 
 /* Reduced motion still gets the mark and wordmark, just without movement. */
@@ -905,7 +907,7 @@ code {
   font-weight: 440;
   color: var(--ink-muted);
   margin-top: 3px;
-  overflow: hidden;
+  overflow: visible;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1847,6 +1849,130 @@ a.chip.solid:hover,
   background: #ffffff;
 }
 
+/* In-app calendar: the browser's date popup cannot inherit Meridian's type or
+   palette, so date selection stays inside the same visual system as the form. */
+.meridian-date-field { position: relative; }
+
+.meridian-date-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 40px;
+  width: 100%;
+  cursor: pointer;
+  text-align: left;
+}
+
+.meridian-date-trigger svg { width: 16px; height: 16px; stroke-width: 1.8; }
+
+.meridian-date-trigger:hover {
+  border-color: var(--accent);
+  background: rgba(var(--ink-rgb), 0.07);
+}
+
+.meridian-calendar {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 7px);
+  left: 0;
+  width: 268px;
+  padding: 12px;
+  color: var(--ink-primary);
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.16);
+  font: inherit;
+}
+
+.meridian-calendar-head {
+  display: grid;
+  grid-template-columns: 32px 1fr 32px;
+  align-items: center;
+  min-height: 30px;
+  margin-bottom: 8px;
+  text-align: center;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.meridian-calendar-head button,
+.meridian-calendar-grid button,
+.meridian-calendar-today {
+  appearance: none;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.meridian-calendar-head button {
+  width: 30px;
+  height: 30px;
+  color: var(--ink-secondary);
+  font-size: 25px;
+  font-weight: 300;
+  line-height: 1;
+}
+
+.meridian-calendar-head button:hover,
+.meridian-calendar-today:hover { color: var(--accent); }
+
+.meridian-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  align-items: center;
+}
+
+.meridian-calendar-weekday {
+  display: grid;
+  height: 28px;
+  place-items: center;
+  color: var(--ink-muted);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+}
+
+.meridian-calendar-grid button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  color: var(--ink-secondary);
+  font-size: 12px;
+  font-weight: 570;
+}
+
+.meridian-calendar-grid button:hover {
+  color: var(--ink-primary);
+  background: rgba(var(--ink-rgb), 0.09);
+}
+
+.meridian-calendar-grid button.today { box-shadow: inset 0 0 0 1px var(--accent); }
+
+.meridian-calendar-grid button.selected,
+.meridian-calendar-grid button.selected:hover {
+  color: var(--pill-ink);
+  background: var(--accent);
+}
+
+.meridian-calendar-today {
+  width: 100%;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--rule) !important;
+  color: var(--ink-secondary);
+  font-size: 11px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0.08em;
+  text-align: right;
+  text-transform: uppercase;
+}
+
 /* segmented — the range chips. The active window is the solid pill. */
 /*
  * The range control, with a pill that travels between segments.
@@ -2218,6 +2344,36 @@ table.data .primary-cell { font-weight: 510; color: var(--ink-primary); letter-s
   border: 1px solid var(--border);
   border-radius: 28px;
   box-shadow: inset 0 1px 0 var(--glass-edge), var(--shadow);
+  overflow: hidden;
+}
+
+/* The public legal route shares the same continuous line language as the
+   static Privacy and Terms documents without borrowing the dashboard chrome. */
+.legal-contour-field {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100vh;
+  color: var(--accent);
+  pointer-events: none;
+}
+
+.legal-contour-field path,
+.legal-contour-field ellipse,
+.legal-contour-field circle {
+  fill: none;
+  stroke: currentColor;
+  vector-effect: non-scaling-stroke;
+}
+
+.legal-contour-field .contour-major { stroke-width: 1.1; opacity: 0.13; }
+.legal-contour-field .contour-minor { stroke-width: 1; opacity: 0.07; }
+.legal-contour-field .contour-axis { stroke-width: 0.9; opacity: 0.055; }
+
+.legal > :not(.legal-contour-field) {
+  position: relative;
+  z-index: 1;
 }
 
 .legal-head { margin-bottom: 36px; }
@@ -3211,14 +3367,51 @@ table.data .right { font-variant-numeric: tabular-nums lining-nums; }
   --mark-cost: #6d6d6d;
   --mark-result: #ffffff;
 
+/*
+ * Categorical identity — the one place hue is the point.
+ *
+ * These are `--channel-*`, deliberately not `--series-*`. The series ramp is
+ * the generic value ladder and routes spend it on things that are not
+ * categories at all — the six KPI tiles on Overview tint their sparkline with
+ * it. Putting the hues there turned that row into a rainbow, which is the
+ * opposite of what a restrained palette is for. Channels get identity; the
+ * ramp stays monochrome.
+ *
+ * These are channels, and `seriesColor` pins each to a fixed key order, so
+ * "Facebook is blue" holds on Acquisition, on Profit per order, and anywhere
+ * else a channel is drawn. A merchant reading two screens side by side should
+ * not have to re-learn the legend on each.
+ *
+ * They are still a luminance ladder underneath. The rungs were solved for, not
+ * eyeballed: each colour's OKLCH lightness was binary-searched until it landed
+ * on its target CIE L*, because equal OKLCH lightness across different hues
+ * does *not* give equal perceived value — an ochre and a green both set to
+ * 0.80 measured 0.6 L* apart, which is invisible in greyscale. Solved this way
+ * no pair sits closer than ~4 L*, so the set survives having its hue removed,
+ * which is what makes it legible to every form of colour vision deficiency.
+ * Direct labelling stays mandatory regardless; the swatch reinforces the name,
+ * it does not replace it.
+ *
+ * DIRECT carries almost no chroma on purpose. It is the "we could not tell"
+ * bucket, and dressing an absence of attribution in a brand colour would give
+ * it a confidence it has not earned.
+ */
   --series-1: #ffffff;
+  --channel-1: oklch(0.704 0.13 258);  /* facebook */
   --series-2: #c9c9c9;
+  --channel-2: oklch(0.786 0.11 70);  /* google */
   --series-3: #9a9a9a;
+  --channel-3: oklch(0.846 0.10 190);  /* tiktok */
   --series-4: #e2e2e2;
+  --channel-4: oklch(0.680 0.13 320);  /* email */
   --series-5: #b0b0b0;
+  --channel-5: oklch(0.810 0.11 130);  /* organic */
   --series-6: #808080;
+  --channel-6: oklch(0.894 0.035 220);  /* direct */
   --series-7: #f0f0f0;
+  --channel-7: oklch(0.757 0.13 25);  /* referral */
   --series-8: #666666;
+  --channel-8: oklch(0.633 0.12 285);  /* affiliate */
 
   /*
    * Two families under one set of legacy names, and the split is deliberate.
@@ -3250,13 +3443,21 @@ table.data .right { font-variant-numeric: tabular-nums lining-nums; }
   --mark-result: #0a0a0a;
 
   --series-1: #0a0a0a;
+  --channel-1: oklch(0.427 0.13 258);  /* facebook */
   --series-2: #4a4a4a;
+  --channel-2: oklch(0.549 0.11 70);  /* google */
   --series-3: #7d7d7d;
+  --channel-3: oklch(0.608 0.10 190);  /* tiktok */
   --series-4: #262626;
+  --channel-4: oklch(0.395 0.13 320);  /* email */
   --series-5: #616161;
+  --channel-5: oklch(0.574 0.11 130);  /* organic */
   --series-6: #949494;
+  --channel-6: oklch(0.656 0.035 220);  /* direct */
   --series-7: #363636;
+  --channel-7: oklch(0.514 0.13 25);  /* referral */
   --series-8: #a8a8a8;
+  --channel-8: oklch(0.355 0.12 285);  /* affiliate */
 }
 
 /* Direct labels at the end of a line. Set in the series' own colour because
@@ -3418,6 +3619,47 @@ table.data .right { font-variant-numeric: tabular-nums lining-nums; }
 
 .grid { gap: var(--s-4); }
 
+/* ----------------------------------------------------- decision system */
+
+.action-center-list { display: grid; gap: var(--s-3); }
+.action-center-item {
+  padding: var(--s-4);
+  border: 1px solid var(--panel-line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.action-center-heading { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); }
+.action-center-heading h3 { margin: 0; font-size: 16px; }
+.action-center-impact { margin-left: auto; color: var(--ink-muted); font-size: 12px; }
+.action-center-copy { display: grid; gap: 8px; margin: var(--s-3) 0; }
+.action-center-copy div { display: grid; grid-template-columns: 142px minmax(0, 1fr); gap: var(--s-3); }
+.action-center-copy dt { color: var(--ink-muted); font-size: 12px; font-weight: 600; }
+.action-center-copy dd { margin: 0; font-size: 13px; line-height: 1.5; }
+.action-center-footer { display: flex; align-items: center; gap: var(--s-3); color: var(--ink-muted); font-size: 12px; }
+.action-center-footer details { margin-right: auto; }
+.action-center-footer summary { cursor: pointer; color: var(--ink-primary); }
+.action-center-footer ul { margin: 8px 0 0; padding-left: 18px; }
+.action-center-footer form { margin: 0; }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--ink-muted); }
+.btn.ghost:hover { background: var(--surface-hover); color: var(--ink-primary); }
+
+.confidence-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-4); }
+.confidence-column { min-width: 0; }
+.confidence-column h3 { margin: 0 0 var(--s-2); font-size: 13px; }
+.confidence-column p { color: var(--ink-muted); font-size: 13px; margin: 0; }
+.confidence-column ul { display: grid; gap: 8px; list-style: none; padding: 0; margin: 0; }
+.confidence-column li { display: grid; gap: 2px; font-size: 13px; }
+.confidence-column li span { color: var(--ink-muted); line-height: 1.45; }
+.confidence-next-step { margin: var(--s-4) 0 0; padding-top: var(--s-3); border-top: 1px solid var(--panel-line); font-size: 13px; }
+
+@media (max-width: 760px) {
+  .confidence-grid { grid-template-columns: 1fr; }
+  .action-center-copy div { grid-template-columns: 1fr; gap: 2px; }
+  .action-center-impact { width: 100%; margin-left: 0; }
+  .action-center-footer { align-items: flex-start; flex-wrap: wrap; }
+  .action-center-footer details { width: 100%; }
+}
+
 /* --------------------------------------------------------------- actions */
 
 /*
@@ -3476,6 +3718,10 @@ button.chip:active { transform: scale(0.98); }
 /* Small marks read as squares only by accident of the editorial pass. */
 .legend-swatch { border-radius: 3px; width: 9px; height: 9px; }
 .estimate-flag { border-radius: 50%; width: 5px; height: 5px; }
+
+/* A flush chart card still needs its legend to align with the plot, rather
+   than beginning against the card rule. */
+.chart-legend-inset { padding-inline: var(--s-4); }
 
 /* Inputs and selects share the field radius so a form reads as one object. */
 input,
@@ -4010,6 +4256,15 @@ table td,
  * Stacked, eleven navigation links push the actual page a full screen down.
  * A horizontally scrolling strip keeps them one thumb-reach away — and the
  * scroll is inside the rail, so the page itself still only moves vertically.
+ *
+ * Several of the declarations below are re-statements rather than new ideas.
+ * The redesign that turned the sidebar into a column rule and the topbar into
+ * a floating HUD set `flex-direction: column` and `margin-bottom: -52px`
+ * unconditionally, *after* the small-screen media query that had already
+ * handled both — so on a phone the brand and the nav stacked into two rows and
+ * the range chips were drawn straight through the date caption. Restating them
+ * here, in the last block that touches these elements, is what actually makes
+ * the breakpoint hold.
  */
 @media (max-width: 760px) {
   .sidebar {
@@ -4017,34 +4272,54 @@ table td,
     top: 0;
     z-index: 40;
     display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
     align-items: center;
-    gap: 12px;
-    padding: 10px 12px;
+    gap: var(--s-3);
+    height: auto;
+    padding: var(--s-2) var(--s-3);
     border-right: none;
     border-bottom: 1px solid var(--rule);
+    background: var(--plane);
   }
 
   .brand { flex: none; margin: 0; padding: 0; }
   .brand-shop { display: none; }
 
   .nav {
-    flex: 1;
+    flex: 1 1 0;
     min-width: 0;
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: 4px;
+    gap: 2px;
     overflow-x: auto;
+    overscroll-behavior-x: contain;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
   }
   .nav::-webkit-scrollbar { display: none; }
 
-  .nav-link { white-space: nowrap; flex: none; padding: 7px 11px; }
+  .nav-link {
+    white-space: nowrap;
+    flex: none;
+    padding: 7px 11px;
+    font-size: 12px;
+  }
   /* The active marker is a left edge on the rail; on a row it belongs under. */
   .nav-link::before { inset: auto 0 0 0; width: auto; height: 2px; }
-  .nav-section { display: none; }
+  .nav-section,
   .sidebar-footer { display: none; }
+
+  /* The HUD stops floating, so it must stop pulling the page up under itself. */
+  .topbar {
+    position: static;
+    margin-bottom: 0;
+    padding: var(--s-3) var(--s-4) 0;
+    justify-content: flex-start;
+  }
+
+  .content { padding-top: var(--s-3); }
 }
 
 /* =========================================================================
@@ -4126,3 +4401,585 @@ td.muted .money.neg,
  */
 .chart .mark-result.pos { stroke: var(--pos); }
 .chart .mark-result.neg { stroke: var(--neg); }
+
+/*
+ * Empty states line up with the content they replace.
+ *
+ * `.empty` carried `padding: 40px 0`, which is right inside a padded card body
+ * and wrong inside a flush one — and the flush bodies are exactly the ones that
+ * hold tables, so every "no data yet" message on the app sat 1px off the card's
+ * left wall while the heading above it sat 30px in. Two different left edges in
+ * one card is what reads as unfinished.
+ *
+ * The gutter is applied only where the body does not already provide it, so
+ * both cases land on the same line. The vertical is trimmed to the scale: 80px
+ * of stacked padding around a single sentence was a hole, not breathing room.
+ */
+.empty { padding-block: var(--s-6); }
+.card-body.flush .empty { padding-inline: var(--ledger-gutter); }
+
+/*
+ * A column header's qualifier, on its own line.
+ *
+ * "Profit before paid marketing" spelled out inline made that header the
+ * widest column in the orders table — wider than the figures it labels — and
+ * the two of them together took better than a third of the table. Everything
+ * else then had to give: the channel name wrapped, the order reference wrapped,
+ * and a row that holds one line of data stood three lines tall.
+ *
+ * Dropping the qualifier to a second line keeps the disclosure where it is
+ * read — beside the number, not only in the card hint above — while letting the
+ * column size to its content. Deliberately not uppercase or tracked like the
+ * header above it: it is an aside, and it should read as one.
+ */
+.th-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 9.5px;
+  font-weight: 450;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  color: var(--ink-muted);
+  white-space: normal;
+}
+
+/*
+ * Tile labels reserve two lines, so the figures line up.
+ *
+ * The labels in a row are not the same length — "AVERAGE ORDER VALUE" fits on
+ * one line where "PROFIT PER ORDER BEFORE PAID MARKETING" needs two — and the
+ * tile is a flex column, so a longer label pushed its own number down. Measured
+ * on Profit per order, that put two of the four headline figures 15px lower
+ * than the other two: a row of instruments where nothing sits on a common
+ * baseline, which is most of what reads as "warped".
+ *
+ * Reserving the taller of the two heights fixes it for any label rather than
+ * for the ones that happen to be long today, and it survives a copy change or
+ * a narrower column, which shortening the words would not.
+ */
+.tile-label {
+  /* Exactly two line boxes. `lh` tracks the label's own line-height, so this
+     stays correct if the type scale moves; the em value is the fallback for
+     engines without it. */
+  min-height: 3.1em;
+  min-height: 2lh;
+  display: flex;
+  align-items: flex-start;
+}
+
+/*
+ * The same argument one row down: a tile whose meta runs to two lines must not
+ * drag its neighbours' baselines around either. The meta is pinned to the
+ * bottom of the tile, and the space between figure and meta absorbs the
+ * difference.
+ */
+.tile { justify-content: flex-start; }
+.tile-meta { margin-top: auto; }
+
+/*
+ * Plan cards present one row of actions.
+ *
+ * The three tiers do not have the same number of features — Scale lists two
+ * where Starter lists three — and the card was a plain block, so each call to
+ * action sat wherever its own list happened to end. The grid stretched all
+ * three cards to the same height anyway, so the shortest one simply carried
+ * 42px of dead space under a button that had floated 20px above its
+ * neighbours': three prices, three lists, and no shared line to compare along.
+ *
+ * The body is a column and the last child is pushed to the floor, so the
+ * actions line up however long the feature lists get. Padding comes from the
+ * gutter rather than the hardcoded 16px it replaced, so these cards breathe
+ * with everything else.
+ */
+.plan-card { display: flex; flex-direction: column; }
+
+/* Plan cards are self-contained panels, not flush ledger sections. The plan
+   name, price, features and action all share the same inset so none starts
+   against a card edge. */
+.plan-card .stat {
+  padding: var(--s-6) var(--ledger-gutter) 0;
+  gap: var(--s-3);
+}
+
+.plan-card .stat-label { margin: 0; }
+.plan-card .stat-meta { min-height: 2.8em; }
+
+.plan-card-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding: var(--s-5) var(--ledger-gutter) var(--ledger-gutter);
+}
+
+.plan-features { margin: 0 0 var(--s-5); }
+
+/* Pushed to the floor, but sized to its own content: a flex column stretches
+   its children, which turned the "Current plan" badge into a full-width bar
+   sitting where the other two cards show a pill. */
+.plan-card-body > :last-child {
+  margin-top: auto;
+  align-self: flex-start;
+}
+
+.plan-change-note {
+  margin: var(--s-2) 0 0;
+}
+
+/* --------------------------------------------------------------- accounts
+   Sign-in, sign-up and store connection. These are the only screens a
+   merchant sees before there is a shop to render, so they reuse the auth
+   panel rather than the dashboard shell. */
+
+.account-panel {
+  position: relative;
+  padding: 40px 36px 34px;
+  text-align: left;
+}
+
+.account-back {
+  position: absolute;
+  top: 20px;
+  left: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 560;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.16s var(--ease-out), transform 0.16s var(--ease-out);
+}
+
+.account-back svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.account-back:hover {
+  color: var(--ink-primary);
+  transform: translateX(-2px);
+}
+
+.account-back:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.account-mark {
+  display: flex;
+  justify-content: center;
+  color: var(--ink-primary);
+}
+
+.account-panel .auth-word {
+  text-align: center;
+  font-size: 26px;
+  margin: 18px 0 6px;
+}
+
+.account-panel .auth-tag {
+  text-align: center;
+  margin-bottom: 22px;
+}
+
+.account-providers {
+  display: grid;
+  gap: 8px;
+}
+
+.account-provider {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--ink-primary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.16s var(--ease-out), border-color 0.16s var(--ease-out);
+}
+
+.account-provider:hover {
+  background: rgba(var(--ink-rgb), 0.06);
+  border-color: rgba(var(--ink-rgb), 0.28);
+}
+
+/* A rule with the word sitting in a gap in it, rather than a word floating
+   over an unbroken line. */
+.account-divider {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0;
+  color: var(--ink-secondary);
+  font-size: 12px;
+}
+
+.account-divider::before,
+.account-divider::after {
+  content: "";
+  height: 1px;
+  background: var(--border);
+}
+
+.account-form {
+  display: grid;
+  gap: 14px;
+}
+
+.account-field {
+  display: grid;
+  gap: 6px;
+}
+
+.account-label {
+  font-size: 12.5px;
+  font-weight: 560;
+  color: var(--ink-secondary);
+}
+
+.account-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(var(--ink-rgb), 0.04);
+  color: var(--ink-primary);
+  font: inherit;
+  font-size: 14px;
+}
+
+.account-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+
+.account-hint {
+  font-size: 11.5px;
+  color: var(--ink-secondary);
+}
+
+.account-submit {
+  margin-top: 4px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: none;
+  background: var(--ink-primary);
+  color: var(--glass);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.account-submit:hover { opacity: 0.9; }
+
+/* Carries its own icon-free colour, because the panel is glass and a tinted
+   background block would read as a second card. */
+.account-error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--neg, #d9534f);
+}
+
+.account-footer {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.account-alt,
+.account-fineprint {
+  margin: 0;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--ink-secondary);
+  line-height: 1.6;
+}
+
+.account-fineprint { margin-top: 18px; }
+
+@media (max-width: 480px) {
+  .account-back {
+    top: 18px;
+    left: 18px;
+  }
+}
+
+/* ---------------------------------------------------------------- welcome
+   Shown once, immediately after an account is created. Same sky, same mark
+   and the same entrance timings as the opening splash, stacked vertically
+   because this one is a sentence rather than a wordmark. */
+
+.welcome-splash { z-index: 1000; }
+
+.welcome-inner {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+  padding: 0 24px;
+  text-align: center;
+}
+
+.welcome-word {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0 0.32em;
+  margin: 0;
+  font-size: clamp(28px, 5.2vw, 52px);
+  font-weight: 340;
+  letter-spacing: -0.028em;
+  color: var(--ink-primary);
+  line-height: 1.1;
+}
+
+/* Word at a time rather than letter at a time: "Welcome to MyMeridian" is
+   21 characters, and the per-letter cadence that suits a wordmark would run
+   most of a second before the sentence was readable. */
+.welcome-word span { opacity: 0; }
+
+.welcome-sub {
+  margin: 0;
+  max-width: 30ch;
+  font-size: clamp(13px, 1.6vw, 15px);
+  font-weight: 440;
+  color: var(--ink-secondary);
+  line-height: 1.6;
+  opacity: 0;
+}
+
+.welcome-skip {
+  margin-top: 6px;
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--ink-secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.welcome-skip:hover { color: var(--ink-primary); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .welcome-word span { animation: splash-letter-in 0.42s var(--ease-out) both; }
+  .welcome-sub { animation: splash-letter-in 0.5s var(--ease-out) 0.78s both; }
+  .welcome-skip { animation: splash-letter-in 0.5s var(--ease-out) 1.15s both; }
+}
+
+/* Without motion the three still have to become visible; the animation above
+   is what was setting opacity, so they need it back explicitly. */
+@media (prefers-reduced-motion: reduce) {
+  .welcome-word span,
+  .welcome-sub,
+  .welcome-skip { opacity: 1; }
+}
+
+/* ------------------------------------------------------- password reset
+   The code screen borrows the welcome splash rather than the account panel:
+   it is the app speaking directly, and the form sits on that screen so the
+   code is typed where it was announced. */
+
+.reset-inner {
+  gap: 14px;
+  width: min(420px, 92vw);
+}
+
+/* Three short lines rather than one long one. The headline is a sentence,
+   and at splash size a single line of it wraps arbitrarily against the
+   viewport instead of where the meaning breaks. */
+.reset-word {
+  flex-direction: column;
+  gap: 0;
+  font-size: clamp(22px, 3.4vw, 34px);
+  line-height: 1.22;
+}
+
+.reset-form {
+  width: 100%;
+  margin-top: 6px;
+  text-align: left;
+  opacity: 0;
+}
+
+/* Wide tracking and a tabular face: six digits read as six separate things
+   to check against the email, not as one number. */
+.reset-code {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.34em;
+  text-align: center;
+  font-size: 19px;
+  padding-block: 12px;
+}
+
+.reset-code::placeholder {
+  letter-spacing: 0.34em;
+  opacity: 0.35;
+}
+
+.reset-restart {
+  opacity: 0;
+}
+
+.account-forgot {
+  margin: -4px 0 0;
+  text-align: right;
+  font-size: 12.5px;
+}
+
+.account-forgot a {
+  color: var(--ink-secondary);
+}
+
+.account-forgot a:hover {
+  color: var(--ink-primary);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .reset-form { animation: splash-letter-in 0.5s var(--ease-out) 0.8s both; }
+  .reset-restart { animation: splash-letter-in 0.5s var(--ease-out) 1s both; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reset-form,
+  .reset-restart { opacity: 1; }
+}
+
+/*
+ * Direct line labels get knocked out of the plot behind them.
+ *
+ * The labels sit inside the plot, right-aligned, a little above each line's
+ * final point — which is correct, and is what lets "Profit before paid
+ * marketing" be written out in full rather than abbreviated to a "PROFIT" this
+ * product will not claim. But the label is 182px wide and the line runs the
+ * whole width beneath it, so on a flat right-hand tail the text lies directly
+ * along its own series: two greys crossing, and neither readable.
+ *
+ * `paint-order: stroke fill` paints a fat stroke in the panel colour first and
+ * the glyphs over it, so the label carries its own clearance wherever it lands.
+ * This is the standard fix for direct labelling on a dense plot, and unlike
+ * moving the text it cannot collide with the *other* series either.
+ *
+ * `--panel`, not `--plane`: these sit on a card, which is two shades lighter
+ * than the page behind it.
+ */
+.chart .series-end-label {
+  paint-order: stroke fill;
+  stroke: var(--panel);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  /* The halo is decoration; it must never be read as a mark on the plot. */
+  stroke-opacity: 1;
+}
+
+/*
+ * The same treatment for the forecast caption and for a rule's own label — the
+ * capacity ceiling names the very dashed line it sits on, so it is guaranteed
+ * to cross it.
+ */
+.chart .forecast-label,
+.chart .chart-rule-label {
+  paint-order: stroke fill;
+  stroke: var(--panel);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+/*
+ * Chart labels are knocked out of whatever they cross.
+ *
+ * A direct label sits inside the plot so it can be written out in full —
+ * "Profit before paid marketing" rather than a "PROFIT" this product will not
+ * claim. Placement keeps each label clear of its *own* line (see charts.tsx),
+ * but nothing can keep it clear of every other mark, and the capacity ceiling
+ * names the very dashed rule it sits on.
+ *
+ * `paint-order: stroke fill` paints a fat stroke in the panel colour first and
+ * the glyphs over it, so a label carries its own clearance wherever it lands.
+ *
+ * `--panel`, not `--plane`: these sit on a card, two shades lighter than the
+ * page behind it.
+ */
+.chart .series-end-label,
+.chart .forecast-label,
+.chart .chart-rule-label {
+  paint-order: stroke fill;
+  stroke: var(--panel);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+/* The Overview time-series card is intentionally flush so the plot can use
+   its full width. Its legend and chart still need the same reading gutter as
+   the title above them; otherwise the first legend label touches the card
+   rule and makes the section feel unfinished. */
+.overview-time-series .legend {
+  padding-inline: var(--ledger-gutter);
+}
+
+.overview-time-series-chart {
+  padding: var(--s-1) var(--ledger-gutter) var(--s-4);
+}
+
+/* Orders filters live inside the card's reading gutter instead of beginning
+   flush against its edge. A native select keeps switching filters immediate
+   and gives every available channel, including the All state, one target. */
+.channel-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 0 var(--s-6) var(--s-4);
+  border-bottom: 1px solid var(--panel-line);
+}
+
+/* The filter is the first control in this card, so the header does not need a
+   second rule immediately above it. */
+.card:has(.channel-filter) .card-head { border-bottom: none; }
+
+.channel-filter label {
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.channel-filter select {
+  min-width: 180px;
+  cursor: pointer;
+}
+
+@media (max-width: 560px) {
+  .channel-filter {
+    align-items: stretch;
+    flex-direction: column;
+    gap: var(--s-2);
+  }
+
+  .channel-filter select { min-width: 0; width: 100%; }
+}
+
+/* Metric colour is strictly semantic: green only for a good result, red only
+   for a bad one. Tile surfaces stay neutral so the figures carry the signal. */
+.tile.value-positive .tile-value { color: var(--pos); }
+.tile.value-negative .tile-value { color: var(--neg); }

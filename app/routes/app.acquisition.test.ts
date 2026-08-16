@@ -4,8 +4,13 @@ import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const loadDashboard = vi.fn();
+const loadShopCampaignsSource = vi.fn();
 vi.mock("~/lib/route-data.server", () => ({
   loadDashboard: (...args: unknown[]) => loadDashboard(...args),
+}));
+vi.mock("~/lib/shop-campaigns-status.server", () => ({
+  loadShopCampaignsSource: (...args: unknown[]) =>
+    loadShopCampaignsSource(...args),
 }));
 
 const { AcquisitionView, loader } = await import("./app.acquisition");
@@ -75,15 +80,16 @@ async function render() {
 beforeEach(() => {
   vi.clearAllMocks();
   loadDashboard.mockResolvedValue(dashboard());
+  loadShopCampaignsSource.mockResolvedValue("unavailable");
 });
 
 describe("Acquisition", () => {
   it("keeps order-derived channel revenue and profit visible with the requested scopes", async () => {
     const html = await render();
 
-    expect(html).toContain("Revenue and profit by channel");
-    expect(html).toContain("Net revenue");
-    expect(html).toContain("Contribution profit");
+    expect(html).toContain("Revenue And Profit By Channel");
+    expect(html).toContain("Net Revenue");
+    expect(html).toContain("Contribution Profit");
     expect(html).toContain("Direct");
     expect(html).toContain("$1,250");
     expect(html).toContain("$430");
@@ -91,7 +97,7 @@ describe("Acquisition", () => {
       "Customer-level acquisition metrics are unavailable",
     );
     expect(html).toContain("fall back to Direct");
-    expect(html).toContain("No ad-spend source is connected in this release");
+    expect(html).toContain("No ad-spend source has completed a sync");
     expect(html).not.toContain("See plans");
   });
 
@@ -138,7 +144,7 @@ describe("Acquisition", () => {
 
     const html = await render();
 
-    expect(html).toContain("Paid acquisition detail");
+    expect(html).toContain("Paid Acquisition Detail");
     expect(html).toContain("Payback — Facebook Ads");
     expect(html).not.toContain("part of Scale");
     expect(html).not.toContain("See plans");
@@ -164,8 +170,76 @@ describe("Acquisition", () => {
     const html = await render();
 
     expect(html).toContain("Channel profit contains non-measured cost inputs");
-    expect(html).toContain("missing COGS · modeled costs");
+    expect(html).toContain("Missing COGS · Configured Estimates");
     expect(html).toContain("Needs COGS");
     expect(html).not.toContain(">Profitable</span>");
+  });
+
+  it("shows Shop Campaigns as unavailable rather than a false zero", async () => {
+    const html = await render();
+
+    expect(html).toContain("Shop Campaigns");
+    expect(html).toContain("This store has no Shop Campaigns source yet");
+    expect(html).toContain("not use MyMeridian’s own Shopify App Store advertising");
+  });
+
+  it("keeps Shopify-reported Shop Campaign figures separate from order attribution", async () => {
+    loadShopCampaignsSource.mockResolvedValue("measured");
+    loadDashboard.mockResolvedValue(
+      dashboard({
+        capabilities: { customers: true },
+        analytics: {
+          period: { netRevenueCents: 125_000 },
+          channels: [
+            channel({
+              channel: "SHOP_CAMPAIGNS",
+              spendCents: 12_500,
+              orders: 0,
+              platformRevenueCents: 52_000,
+              platformConversions: 9,
+              platformRoas: 4.16,
+            }),
+          ],
+          campaigns: [],
+        },
+      }),
+    );
+
+    const html = await render();
+
+    expect(html).toContain("Measured By Shopify");
+    expect(html).toContain("Shopify-Reported Sales");
+    expect(html).toContain("Shopify-Reported Customers");
+    expect(html).toContain("Not Meridian New-Customer Count");
+    expect(html).toContain("cannot double-count an order already attributed");
+    expect(html).toContain("does not combine that aggregate spend with order-derived CAC");
+    expect(html).not.toContain("Blended CAC");
+  });
+
+  it("shows approval and completed-zero states distinctly", async () => {
+    loadShopCampaignsSource.mockResolvedValueOnce("needs_approval");
+    const blocked = await render();
+    expect(blocked).toContain("Shopify Approval Needed");
+    expect(blocked).toContain("Shop Campaign spend is unavailable");
+
+    loadShopCampaignsSource.mockResolvedValueOnce("zero");
+    loadDashboard.mockResolvedValue(
+      dashboard({
+        analytics: {
+          period: { netRevenueCents: 125_000 },
+          channels: [
+            channel({
+              channel: "SHOP_CAMPAIGNS",
+              platformRevenueCents: 0,
+              platformConversions: 0,
+            }),
+          ],
+          campaigns: [],
+        },
+      }),
+    );
+    const zero = await render();
+    expect(zero).toContain("Measured Zero");
+    expect(zero).toContain("$0");
   });
 });

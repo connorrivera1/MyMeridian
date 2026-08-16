@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>MyMeridian — v5 style frames</title>
+<style>
+  @import url("https://api.fontshare.com/v2/css?f[]=satoshi@300,400,500,600,700,800,900&display=swap");
+  @font-face {
+    font-family: "Space Grotesk Variable";
+    src: url("/fonts/SpaceGrotesk-Variable.woff2") format("woff2-variations");
+    font-weight: 300 700; font-style: normal; font-display: block;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: #000; }
+  :root {
+    --font: "Satoshi", ui-sans-serif, sans-serif;
+    --figures: "Space Grotesk Variable", "Satoshi", sans-serif;
+    --green: #7fe0a7;
+    --ember: #e97c6c;
+    --blue: #0a84ff;
+  }
+  #root { position: fixed; inset: 0; width: 1920px; height: 1080px; overflow: hidden;
+          font-family: var(--font); color: #f5f5f5; }
+  .frame { position: absolute; inset: 0; display: none; }
+  .frame.on { display: block; }
+
+  .noise { position: absolute; inset: 0; opacity: 0.05; pointer-events: none; mix-blend-mode: overlay; }
+  .vig { position: absolute; inset: -2px; pointer-events: none;
+         background: radial-gradient(115% 88% at 50% 44%, transparent 52%, rgba(0,0,0,0.5) 100%); }
+
+  /* ============================================================ F1 · hook */
+  .f1 { background:
+        radial-gradient(52% 42% at 68% 66%, rgba(10,132,255,0.20), transparent 70%),
+        radial-gradient(80% 60% at 30% 10%, rgba(10,132,255,0.05), transparent 60%),
+        linear-gradient(#060607, #050506); }
+  .f1 .gray {
+    position: absolute; left: 250px; top: 168px; max-width: 780px;
+    background: #232327; color: #e9e9ee; font-size: 44px; font-weight: 500;
+    line-height: 1.3; letter-spacing: -0.01em;
+    padding: 30px 44px; border-radius: 40px; border-bottom-left-radius: 12px;
+    transform: rotate(-1.2deg); filter: blur(1.4px); opacity: 0.82;
+    box-shadow: 0 30px 60px rgba(0,0,0,0.5);
+  }
+  .f1 .blue {
+    position: absolute; left: 420px; top: 428px; width: 1130px;
+    background: linear-gradient(180deg, #1a91ff, #0a7ae8);
+    color: #fff; font-size: 74px; font-weight: 560; letter-spacing: -0.025em; line-height: 1.22;
+    padding: 54px 70px; border-radius: 64px; border-bottom-right-radius: 18px;
+    transform: rotate(1.1deg);
+    box-shadow: 0 26px 0 rgba(4,52,104,0.55), 0 60px 140px rgba(10,132,255,0.35),
+                inset 0 2px 0 rgba(255,255,255,0.25);
+    -webkit-box-reflect: below 26px linear-gradient(transparent 55%, rgba(0,0,0,0.35));
+  }
+  .f1 .blue b { font-weight: 800; }
+  .f1 .delivered { position: absolute; left: 1400px; top: 750px; font-size: 24px; font-weight: 500;
+                   color: rgba(245,245,245,0.55); }
+  .f1 .kicker { position: absolute; left: 250px; top: 96px; font-size: 20px; font-weight: 600;
+                letter-spacing: 0.34em; text-transform: uppercase; color: rgba(245,245,245,0.4); }
+  .f1 .typing { position: absolute; left: 250px; top: 356px; background: #232327;
+                border-radius: 34px; border-bottom-left-radius: 10px; padding: 26px 32px;
+                display: flex; gap: 12px; opacity: 0.5; filter: blur(1px); transform: rotate(-0.6deg); }
+  .f1 .typing i { width: 14px; height: 14px; border-radius: 50%; background: #8e8e93; display: block; }
+  .f1 .typing i:nth-child(2) { opacity: 0.7; } .f1 .typing i:nth-child(3) { opacity: 0.4; }
+
+  /* ====================================================== F2 · hero number */
+  .f2 { background:
+        radial-gradient(60% 45% at 50% 26%, rgba(245,245,245,0.10), transparent 72%),
+        radial-gradient(90% 70% at 50% 112%, rgba(20,20,20,0.9), transparent 70%),
+        linear-gradient(180deg, #060606, #0a0a0a 58%, #050505); }
+  .f2 .ghost {
+    position: absolute; left: 50%; top: 470px; transform: translateX(-50%);
+    font-family: var(--figures); font-weight: 700; font-size: 430px; letter-spacing: -0.02em;
+    color: transparent; -webkit-text-stroke: 2px rgba(245,245,245,0.06);
+  }
+  .f2 .num {
+    position: absolute; left: 50%; top: 210px; transform: translateX(-50%);
+    font-family: var(--figures); font-weight: 500; font-size: 344px; letter-spacing: -0.045em;
+    background: linear-gradient(100deg, #d9d9d9 18%, #ffffff 40%, #9d9d9d 52%, #ffffff 66%, #dcdcdc 84%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    text-shadow: 0 0 90px rgba(245,245,245,0.22);
+    -webkit-box-reflect: below -70px linear-gradient(transparent 76%, rgba(0,0,0,0.3));
+  }
+  .f2 .chip35 {
+    position: absolute; right: 236px; top: 208px; transform: rotate(-4deg);
+    background: #161616; border: 2px solid rgba(245,245,245,0.55); color: #fff;
+    font-family: var(--figures); font-weight: 600; font-size: 54px; letter-spacing: -0.01em;
+    padding: 18px 34px; border-radius: 26px;
+    box-shadow: 0 16px 0 rgba(0,0,0,0.85), 0 40px 90px rgba(0,0,0,0.5);
+  }
+  .f2 .kept {
+    position: absolute; left: 50%; top: 640px; transform: translateX(-50%);
+    font-size: 92px; letter-spacing: -0.03em; white-space: nowrap;
+  }
+  .f2 .kept .a { font-weight: 300; color: rgba(245,245,245,0.72); }
+  .f2 .kept .b { font-weight: 800; color: #fff; }
+  .f2 .meta { position: absolute; left: 50%; top: 790px; transform: translateX(-50%);
+              font-size: 21px; font-weight: 600; letter-spacing: 0.3em; text-transform: uppercase;
+              color: rgba(245,245,245,0.48); }
+  .f2 .chips { position: absolute; left: 50%; top: 878px; transform: translateX(-50%);
+               display: flex; gap: 34px; }
+  .f2 .chips .c { border-radius: 18px; overflow: hidden; position: relative;
+                  box-shadow: 0 12px 0 rgba(0,0,0,0.55), 0 30px 70px rgba(0,0,0,0.5),
+                              inset 0 0 0 1px rgba(245,245,245,0.1); }
+  .f2 .chips .c img { display: block; position: absolute; filter: brightness(1.4); }
+  .f2 .chips .c:nth-child(1) { transform: rotate(-1.6deg); }
+  .f2 .chips .c:nth-child(2) { transform: rotate(1.1deg) translateY(8px); }
+  .f2 .chips .c:nth-child(3) { transform: rotate(-0.8deg); }
+
+  /* ======================================================== F3 · the bridge */
+  .f3 { background:
+        radial-gradient(70% 45% at 24% 16%, rgba(245,245,245,0.055), transparent 65%),
+        linear-gradient(180deg, #0b0a09, #080807 70%, #060606); }
+  .f3 .line1 { position: absolute; left: 150px; top: 128px; font-size: 108px; font-weight: 300;
+               letter-spacing: -0.035em; color: rgba(245,245,245,0.8); z-index: 1; }
+  .f3 .line2 { position: absolute; left: 150px; top: 254px; font-size: 108px; font-weight: 800;
+               letter-spacing: -0.035em; color: #fff; z-index: 3; }
+  .f3 .line2 u { text-decoration: none; box-shadow: inset 0 -18px 0 rgba(245,245,245,0.28); }
+  .f3 .bars { position: absolute; left: 0; right: 0; top: 0; bottom: 0; z-index: 2; }
+  .f3 .bar { position: absolute; border-radius: 16px;
+             background: linear-gradient(180deg, #191919, #101010);
+             box-shadow: 0 16px 0 rgba(0,0,0,0.9), 0 50px 110px rgba(0,0,0,0.55),
+                         inset 0 1px 0 rgba(245,245,245,0.14), inset 0 0 0 1px rgba(245,245,245,0.07);
+             -webkit-box-reflect: below 12px linear-gradient(transparent 78%, rgba(0,0,0,0.35)); }
+  .f3 .bar.rev { background: linear-gradient(180deg, #efefef, #cfcfcf); }
+  .f3 .bar.profit { background: linear-gradient(180deg, #ffffff, #d8d8d8);
+                    box-shadow: 0 16px 0 rgba(0,0,0,0.9), 0 0 130px rgba(245,245,245,0.35),
+                    0 50px 110px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.8); }
+  .f3 .bar .val { position: absolute; left: 50%; transform: translateX(-50%); top: -74px;
+                  font-family: var(--figures); font-weight: 600; font-size: 40px;
+                  letter-spacing: -0.02em; color: #fff; white-space: nowrap; }
+  .f3 .bar.neg .val { color: rgba(245,245,245,0.62); }
+  .f3 .bar.profit .val { color: #fff; text-shadow: 0 0 34px rgba(245,245,245,0.6); font-size: 46px; top: -84px; }
+  .f3 .bar .lab { position: absolute; left: 50%; transform: translateX(-50%); bottom: -56px;
+                  font-size: 20px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase;
+                  color: rgba(245,245,245,0.42); white-space: nowrap; }
+  .f3 .bar.rev .val { color: #fff; }
+  .f3 .tag { position: absolute; right: 168px; top: 208px; transform: rotate(2deg);
+             font-family: var(--figures); font-size: 30px; font-weight: 600; color: #0b0b0b;
+             background: #f5f5f5; padding: 14px 26px; border-radius: 999px;
+             box-shadow: 0 12px 0 rgba(0,0,0,0.9); letter-spacing: -0.01em; }
+
+  /* ========================================================== F4 · end card */
+  .f4 { background:
+        radial-gradient(46% 40% at 50% 44%, rgba(245,245,245,0.075), transparent 70%),
+        #000; }
+  .f4 .rings { position: absolute; left: 50%; top: 44%; transform: translate(-50%, -50%); }
+  .f4 .rings i { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+                 border: 1.5px solid rgba(245,245,245,0.05); border-radius: 50%; display: block; }
+  .f4 .rings i:nth-child(1) { width: 780px; height: 780px; }
+  .f4 .rings i:nth-child(2) { width: 1150px; height: 1150px; border-color: rgba(245,245,245,0.035); }
+  .f4 .rings i:nth-child(3) { width: 1560px; height: 1560px; border-color: rgba(245,245,245,0.02); }
+  .f4 .lockup { position: absolute; left: 50%; top: 400px; transform: translate(-50%, -50%);
+                display: flex; align-items: center; gap: 30px;
+                filter: drop-shadow(0 0 44px rgba(245,245,245,0.16));
+                -webkit-box-reflect: below 30px linear-gradient(transparent 64%, rgba(0,0,0,0.32)); }
+  .f4 .lockup svg { width: 128px; height: 128px; color: #f5f5f5; }
+  .f4 .word { font-size: 96px; font-weight: 560; letter-spacing: -0.05em; }
+  .f4 .tag { position: absolute; left: 50%; top: 600px; transform: translateX(-50%);
+             font-size: 46px; letter-spacing: -0.02em; white-space: nowrap; }
+  .f4 .tag .a { font-weight: 700; color: #fff; }
+  .f4 .tag .b { font-weight: 300; color: rgba(245,245,245,0.68); }
+  .f4 .soon { position: absolute; left: 50%; top: 724px; transform: translateX(-50%);
+              font-size: 22px; font-weight: 600; letter-spacing: 0.5em; text-transform: uppercase;
+              color: rgba(245,245,245,0.5); padding-left: 0.5em; }
+  .f4 .url { position: absolute; left: 50%; top: 786px; transform: translateX(-50%);
+             font-family: var(--figures); font-size: 27px; font-weight: 500;
+             color: rgba(245,245,245,0.66); }
+</style>
+</head>
+<body>
+<div id="root">
+
+  <section class="frame f1" id="f1">
+    <div class="kicker">Tonight · 9:47 PM</div>
+    <div class="gray">Ugh, I can’t keep track of everything!</div>
+    <div class="typing"><i></i><i></i><i></i></div>
+    <div class="blue">You should try <b>MyMeridian</b>!</div>
+    <div class="delivered">Delivered</div>
+    <div class="vig"></div>
+  </section>
+
+  <section class="frame f2" id="f2">
+    <div class="ghost">KEPT</div>
+    <div class="num">$207,749</div>
+    <div class="chip35">↑ 35%</div>
+    <div class="kept"><span class="a">That’s what you </span><span class="b">kept.</span></div>
+    <div class="meta">Profit · before paid marketing · last 30 days</div>
+    <div class="chips">
+      <div class="c" data-r="283,280,610,324" data-s="1.35"></div>
+      <div class="c" data-r="610,280,784,324" data-s="1.35"></div>
+      <div class="c" data-r="784,280,957,324" data-s="1.35"></div>
+    </div>
+    <div class="vig"></div>
+  </section>
+
+  <section class="frame f3" id="f3">
+    <div class="line1">See where</div>
+    <div class="line2"><u>every dollar</u> goes.</div>
+    <div class="tag">$207.7K kept</div>
+    <div class="bars" id="bars"></div>
+    <div class="vig"></div>
+  </section>
+
+  <section class="frame f4" id="f4">
+    <div class="rings"><i></i><i></i><i></i></div>
+    <div class="lockup">
+      <svg viewBox="0 0 96 96" fill="none">
+        <g stroke="currentColor" stroke-width="2" opacity="0.8" stroke-linecap="round">
+          <circle cx="48" cy="48" r="34" />
+          <ellipse cx="48" cy="48" rx="24.5" ry="34" />
+          <ellipse cx="48" cy="48" rx="13.5" ry="34" />
+          <path d="M48 14v68" />
+        </g>
+        <path d="M48 14 A 15 34 0 0 1 48 82" stroke="#fff" stroke-width="2.5" stroke-linecap="round" />
+      </svg>
+      <div class="word">MyMeridian</div>
+    </div>
+    <div class="tag"><span class="a">Know what you kept.</span> <span class="b">Know what to fix.</span></div>
+    <div class="soon">Coming soon</div>
+    <div class="url">mymeridian.io</div>
+    <div class="vig"></div>
+  </section>
+
+  <svg class="noise" width="1920" height="1080">
+    <filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7"/></filter>
+    <rect width="1920" height="1080" filter="url(#n)"/>
+  </svg>
+</div>
+
+<script>
+const D = 0.96;
+/* stat chips from the real overview plate */
+for (const c of document.querySelectorAll('.f2 .chips .c')) {
+  const [x0, y0, x1, y1] = c.dataset.r.split(',').map(Number);
+  const s = Number(c.dataset.s);
+  const w = (x1 - x0) * D * s, h = (y1 - y0) * D * s;
+  c.style.width = w + 'px'; c.style.height = h + 'px';
+  const img = new Image();
+  img.src = '/stills/app-overview-dark-1920x1080.png';
+  img.style.width = 1920 * s + 'px'; img.style.height = 1080 * s + 'px';
+  img.style.left = -x0 * D * s + 'px'; img.style.top = -y0 * D * s + 'px';
+  c.appendChild(img);
+}
+/* the money bridge as a designed waterfall — real values, brand type */
+const BARS = [
+  { v: '$521K', lab: 'Net revenue', h: 340, w: 250, cls: 'rev', rot: -0.8 },
+  { v: '−$208.4K', lab: 'COGS', h: 196, w: 210, cls: 'neg', rot: 0.7 },
+  { v: '−$32K', lab: 'Shipping', h: 96, w: 190, cls: 'neg', rot: -0.6 },
+  { v: '−$6.7K', lab: 'Pick & pack', h: 62, w: 185, cls: 'neg', rot: 0.5 },
+  { v: '−$17.7K', lab: 'Fees', h: 78, w: 185, cls: 'neg', rot: -0.5 },
+  { v: '−$48.5K', lab: 'Overhead', h: 120, w: 195, cls: 'neg', rot: 0.6 },
+  { v: '$207.7K', lab: 'Kept', h: 300, w: 260, cls: 'profit', rot: -0.7 },
+];
+const holder = document.getElementById('bars');
+const BASE = 860;
+let xc = 150;
+for (const b of BARS) {
+  const el = document.createElement('div');
+  el.className = 'bar ' + b.cls;
+  el.style.width = b.w + 'px'; el.style.height = b.h + 'px';
+  el.style.left = xc + 'px'; el.style.top = (BASE - b.h) + 'px';
+  el.style.transform = `rotate(${b.rot}deg)`;
+  el.innerHTML = `<div class="val">${b.v}</div><div class="lab">${b.lab}</div>`;
+  holder.appendChild(el);
+  xc += b.w + 32;
+}
+
+function SEEK(t) {
+  const n = Math.max(1, Math.min(4, Math.round(t)));
+  document.querySelectorAll('.frame').forEach((f, i) => f.classList.toggle('on', i === n - 1));
+  return 'ok';
+}
+Promise.all([document.fonts.ready,
+  ...Array.from(document.images).map(im => im.decode().catch(() => null))
+]).then(() => { SEEK(1); window.__READY = true; window.__FONTS = { ok: true }; });
+window.SEEK = SEEK;
+window.FILM = { duration: 4, fps: 1, chunks: [0, 4] };
+window.MARKERS = {};
+</script>
+</body>
+</html>

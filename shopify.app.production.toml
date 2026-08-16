@@ -1,0 +1,81 @@
+# Production-only Shopify application configuration.
+#
+# The default shopify.app.toml remains the tunnel-rewritten development
+# configuration. Always pass `--config production` for a production validation
+# or release so local development cannot rewrite the live app URL.
+
+name = "MyMeridian"
+# Shopify assigned this unique handle when the separately issued production
+# app draft was created. It must not point at the existing staging app.
+handle = "mymeridian-1"
+application_url = "https://mymeridian.io"
+embedded = true
+client_id = "5faafd595d33ede4b01419b5b2073e37"
+
+[access_scopes]
+scopes = "read_orders,read_all_orders,read_products,read_fulfillments,read_inventory,read_reports"
+
+[auth]
+redirect_urls = [ "https://mymeridian.io/auth/callback" ]
+
+[webhooks]
+api_version = "2026-07"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = [ "customers/data_request" ]
+  uri = "/webhooks/gdpr/customers-data-request"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = [ "customers/redact" ]
+  uri = "/webhooks/gdpr/customers-redact"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = [ "shop/redact" ]
+  uri = "/webhooks/gdpr/shop-redact"
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/uninstalled"
+  topics = [ "app/uninstalled" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/shop/update"
+  topics = [ "shop/update" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/scopes-update"
+  topics = [ "app/scopes_update" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/orders/create"
+  topics = [ "orders/create", "orders/updated", "refunds/create" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/checkouts/create"
+  topics = [ "checkouts/create", "checkouts/update" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/products/update"
+  topics = [ "products/update", "products/create" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/inventory-items/update"
+  topics = [ "inventory_items/update" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/fulfillments/create"
+  topics = [ "fulfillments/create", "fulfillments/update" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app-subscriptions/update"
+  topics = [ "app_subscriptions/update" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app-subscriptions/update"
+  topics = [ "app_subscriptions/approaching_capped_amount" ]
+
+[pos]
+embedded = false
+
+[build]
+include_config_on_deploy = true
+automatically_update_urls_on_dev = false

@@ -21,7 +21,7 @@ import {
  * an auth failure *after* a refresh is a real revocation, not staleness.
  */
 
-const API_VERSION = "v18";
+const API_VERSION = "v25";
 /** Overridable so staging and local debugging can point at a mock platform. */
 const ADS_BASE =
   process.env.MERIDIAN_GOOGLE_ADS_API_BASE ??
@@ -173,16 +173,22 @@ async function googleAdsSearch(
   const devToken = developerToken();
   let response: Response;
   try {
+    const headers: Record<string, string> = {
+      authorization: `Bearer ${auth.accessToken}`,
+      "developer-token": devToken,
+      "content-type": "application/json",
+    };
+    // Google requires this only when a merchant reaches the selected client
+    // through an MCC. A directly authorized client must not be presented as
+    // its own manager.
+    if (auth.loginCustomerId) {
+      headers["login-customer-id"] = auth.loginCustomerId.replace(/-/g, "");
+    }
     response = await fetcher(
       `${ADS_BASE}/customers/${customerId}/googleAds:searchStream`,
       {
         method: "POST",
-        headers: {
-          authorization: `Bearer ${auth.accessToken}`,
-          "developer-token": devToken,
-          "login-customer-id": customerId,
-          "content-type": "application/json",
-        },
+        headers,
         body: JSON.stringify({ query }),
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       },

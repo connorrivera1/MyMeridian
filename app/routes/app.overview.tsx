@@ -1,4 +1,9 @@
-import { Link, useLoaderData } from "react-router";
+import {
+  isRouteErrorResponse,
+  Link,
+  useLoaderData,
+  useRouteError,
+} from "react-router";
 import type { LoaderFunctionArgs } from "react-router";
 
 import {
@@ -7,7 +12,6 @@ import {
   type BridgeStep,
 } from "~/design/charts";
 import {
-  Alert,
   AnimatedInt,
   AnimatedMoney,
   Badge,
@@ -22,14 +26,19 @@ import {
   IconProducts,
   Legend,
   Money,
+  Stat,
   Tile,
   seriesColor,
 } from "~/design/components";
 import { formatPercent, ratio } from "~/engine/money";
+import { buildActionCenter } from "~/engine/action-center";
 import { CHANNEL_LABELS, type Channel } from "~/engine/types";
+import { withShopContext } from "~/lib/auth.server";
+import { requireRecentReauthentication } from "~/lib/reauth.server";
 import { planAllows } from "~/lib/plan.server";
 import { change, loadDashboard } from "~/lib/route-data.server";
 import { bucketWeekly, dailySeries } from "~/lib/series";
+import prisma from "~/db.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const dashboard = await loadDashboard(request);
@@ -42,6 +51,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
     capabilities,
     plan,
     adSpendCoverage,
+    profitConfidence,
+    isDemo,
   } = dashboard;
 
   const p = analytics.period;
@@ -91,16 +102,16 @@ export async function loader({ request }: LoaderFunctionArgs) {
   };
 
   const bridge: BridgeStep[] = [
-    { label: "Net revenue", value: p.netRevenueCents, kind: "start" },
+    { label: "Net Revenue", value: p.netRevenueCents, kind: "start" },
     { label: "COGS", value: -p.cogsCents, kind: "cost" },
     { label: "Shipping", value: -p.shippingCostCents, kind: "cost" },
-    { label: "Pick & pack", value: -p.pickPackCents, kind: "cost" },
-    { label: "Payment fees", value: -p.paymentFeeCents, kind: "cost" },
+    { label: "Pick & Pack", value: -p.pickPackCents, kind: "cost" },
+    { label: "Payment Fees", value: -p.paymentFeeCents, kind: "cost" },
     ...(adSpendCoverage.mode === "unavailable" && p.totalAdCostCents === 0
       ? []
       : ([
           {
-            label: "Recorded ad spend",
+            label: "Recorded Ad Spend",
             value: -p.totalAdCostCents,
             kind: "cost",
           },
@@ -125,14 +136,29 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   const missingCogsOrders = p.orders.filter((o) => o.hasMissingCogs).length;
   const modeledCostOrders = p.orders.filter((o) => o.usesModeledCosts).length;
+  const actionCenter = buildActionCenter({
+    period: p,
+    products: analytics.products,
+    channels: analytics.channels,
+    capacity: analytics.capacity,
+    confidence: profitConfidence,
+    includeDecisionIntelligence: planAllows(plan, "anomalyAlerts"),
+    range: preset,
+    dismissedKeys: new Set(dashboard.dismissedActionKeys),
+  });
 
   return {
+    isDemo,
+    awaitingFirstOrder:
+      !isDemo && shop.syncStatus === "COMPLETE" && p.orderCount === 0,
     rangeLabel,
     preset,
     currency: shop.currency,
     timezone: shop.timezone,
     capabilities,
     adSpendCoverage,
+    profitConfidence,
+    actionCenter,
     greeting,
     kickerDate,
     shopName: shop.name,
@@ -191,13 +217,27 @@ export async function loader({ request }: LoaderFunctionArgs) {
         newCustomers: channel.newCustomers,
         verdict: channel.verdict,
       })),
-    // Capacity is a Growth feature, so its alerts do not leak onto the
-    // overview of a Starter store — the "View capacity" link beside them would
-    // land on an upgrade notice.
-    alerts: planAllows(plan, "capacity")
-      ? analytics.capacity.alerts.slice(0, 2)
-      : [],
   };
+}
+
+export async function action({ request }: LoaderFunctionArgs) {
+  return withShopContext(request, async (ctx) => {
+    await requireRecentReauthentication(request, ctx.user);
+    const form = await request.formData();
+    if (form.get("intent") !== "dismiss-action") {
+      return { ok: false, message: "Unrecognised action." };
+    }
+    const key = String(form.get("key") ?? "");
+    if (!/^[-a-zA-Z0-9_:|]+$/.test(key) || key.length > 200) {
+      return { ok: false, message: "That action could not be dismissed." };
+    }
+    await prisma.actionDismissal.upsert({
+      where: { shopId_key: { shopId: ctx.shop.id, key } },
+      create: { shopId: ctx.shop.id, key },
+      update: { dismissedAt: new Date() },
+    });
+    return { ok: true, message: "Dismissed until the evidence materially changes." };
+  });
 }
 
 function compactProduct(product: {
@@ -222,6 +262,7 @@ const CHANNEL_ORDER: Channel[] = [
   "FACEBOOK",
   "GOOGLE",
   "TIKTOK",
+  "SHOP_CAMPAIGNS",
   "EMAIL",
   "ORGANIC_SEARCH",
   "DIRECT",
@@ -235,14 +276,32 @@ export default function Overview() {
   return <OverviewView data={data} />;
 }
 
+export function ErrorBoundary() {
+  const error = useRouteError();
+  const detail = isRouteErrorResponse(error)
+    ? error.status === 403
+      ? "You no longer have access to this store’s overview."
+      : "The overview could not be loaded right now."
+    : "The overview could not be loaded right now. No data was changed.";
+
+  return (
+    <Card title="Overview Unavailable">
+      <p className="muted" style={{ margin: 0 }}>{detail}</p>
+      <p style={{ marginBottom: 0 }}>
+        <a className="btn sm" href="/app">Try Again</a>
+      </p>
+    </Card>
+  );
+}
+
 type OverviewData = Awaited<ReturnType<typeof loader>>;
 
 export function OverviewView({ data }: { data: OverviewData }) {
   const { kpi } = data;
   const adSpendMeasured = data.adSpendCoverage.mode !== "unavailable";
-  const profitBasis = adSpendMeasured
-    ? "after available costs"
-    : "before paid marketing";
+  const profitBasisTitle = adSpendMeasured
+    ? "After Available Costs"
+    : "Before Paid Marketing";
 
   const seriesPoints = data.series.map((point) => ({
     date: new Date(point.date),
@@ -251,14 +310,26 @@ export function OverviewView({ data }: { data: OverviewData }) {
 
   return (
     <>
+      {data.awaitingFirstOrder && (
+        <Card
+          title="Demo Preview While You Await Your First Order"
+          hint="These example values are illustrative only. They are not included in your store’s profit, margin or trend calculations."
+        >
+          <div className="grid cols-3">
+            <Stat small label="Example Revenue" value={<Money cents={128_000} currency={data.currency} />} />
+            <Stat small label="Example COGS" value={<Money cents={49_000} currency={data.currency} />} />
+            <Stat small label="Example Contribution" value={<Money cents={38_500} currency={data.currency} />} />
+          </div>
+        </Card>
+      )}
       {/* The opening move, straight on the sky: the merchant is greeted by
           name, and the number they came for stands under it in sunlight. */}
       <section
         className="greet sky-text"
-        aria-label={`Profit ${profitBasis} summary`}
+        aria-label={`Profit ${profitBasisTitle} Summary`}
       >
         <p className="greet-kicker">
-          {data.kickerDate} · last {data.rangeLabel}
+          {data.kickerDate} · Last {data.rangeLabel}
         </p>
         {/* The overview suppresses RouteTitle's h1 in favour of the greeting,
             so the greeting has to BE the h1 — otherwise this page starts at h2
@@ -276,24 +347,23 @@ export function OverviewView({ data }: { data: OverviewData }) {
           </div>
           <Delta value={kpi.netProfitChange} />
           <span className="greet-caption">
-            profit {profitBasis}
-            , vs previous {data.rangeLabel}
+            Profit {profitBasisTitle}, vs. Previous {data.rangeLabel}
           </span>
         </div>
         <div className="greet-meta">
           <span className="chip">
             {kpi.netMarginPct === null ? "—" : formatPercent(kpi.netMarginPct)}{" "}
-            margin {profitBasis}
+            Margin {profitBasisTitle}
           </span>
           <span className="chip">
-            <AnimatedInt value={kpi.orderCount} /> orders
+            <AnimatedInt value={kpi.orderCount} /> Orders
           </span>
           <span className="chip">
-            <Money cents={kpi.aovCents} currency={data.currency} /> average
-            order
+            <Money cents={kpi.aovCents} currency={data.currency} /> Average
+            Order
           </span>
           <a className="chip solid" href="#bridge">
-            Where the money went
+            Where The Money Went
           </a>
         </div>
       </section>
@@ -353,39 +423,122 @@ export function OverviewView({ data }: { data: OverviewData }) {
         </Banner>
       )}
 
-      {data.alerts.length > 0 && (
-        <Card
-          title="Needs attention"
-          actions={
-            <Link
-              className="btn sm"
-              to={`/app/fulfilment?range=${data.preset}`}
-            >
-              View capacity
-            </Link>
-          }
-          flush
-        >
-          {data.alerts.map((alert) => (
-            <Alert
-              key={alert.id}
-              severity={alert.severity}
-              title={alert.title}
-              daysUntil={alert.daysUntil}
-            >
-              {alert.detail}
-            </Alert>
-          ))}
-        </Card>
-      )}
+      <Card
+        title="What Should I Do?"
+        hint="Ranked from current aggregate evidence. Meridian separates what it observed from what it suggests you investigate."
+      >
+        {data.actionCenter.length === 0 ? (
+          <Empty>
+            No high-confidence issue or opportunity needs attention in this
+            period. Data confidence remains visible below.
+          </Empty>
+        ) : (
+          <div className="action-center-list">
+            {data.actionCenter.map((item) => (
+              <article className="action-center-item" key={item.key}>
+                <div className="action-center-heading">
+                  <Badge
+                    tone={
+                      item.severity === "CRITICAL"
+                        ? "critical"
+                        : item.severity === "OPPORTUNITY"
+                          ? "good"
+                          : item.severity === "DATA"
+                            ? "neutral"
+                            : "warning"
+                    }
+                  >
+                    {item.severity === "DATA"
+                      ? "Data Quality"
+                      : item.severity[0] + item.severity.slice(1).toLowerCase()}
+                  </Badge>
+                  <h3>{item.title}</h3>
+                  {item.impactLabel && (
+                    <span className="action-center-impact">
+                      {item.impactCents !== null && (
+                        <Money
+                          cents={item.impactCents}
+                          currency={data.currency}
+                          decimals={false}
+                        />
+                      )}{" "}
+                      {item.impactLabel}
+                    </span>
+                  )}
+                </div>
+                <dl className="action-center-copy">
+                  <div>
+                    <dt>Observed Fact</dt>
+                    <dd>{item.observedFact}</dd>
+                  </div>
+                  {item.likelyExplanation && (
+                    <div>
+                      <dt>Likely Explanation</dt>
+                      <dd>{item.likelyExplanation}</dd>
+                    </div>
+                  )}
+                  <div>
+                  <dt>Suggested Next Step</dt>
+                    <dd>{item.suggestedAction}</dd>
+                  </div>
+                </dl>
+                <div className="action-center-footer">
+                  <span>Confidence: {item.confidence}</span>
+                  <details>
+                    <summary>Why Am I Seeing This?</summary>
+                    <ul>
+                      {item.evidence.map((evidence) => (
+                        <li key={evidence}>{evidence}</li>
+                      ))}
+                    </ul>
+                  </details>
+                  <Link className="btn sm" to={item.href}>
+                    Review
+                  </Link>
+                  <form method="post">
+                    <input type="hidden" name="intent" value="dismiss-action" />
+                    <input type="hidden" name="key" value={item.key} />
+                    <button className="btn sm ghost" type="submit">
+                      Dismiss
+                    </button>
+                  </form>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card
+        title={`Profit Data Quality: ${data.profitConfidence.label}`}
+        hint="Measured values come from an authoritative source. Configured estimates remain estimates. Missing inputs are never shown as zero."
+      >
+        <div className="confidence-grid">
+          <ConfidenceColumn title="Measured" items={data.profitConfidence.measured} />
+          <ConfidenceColumn title="Configured Estimate" items={data.profitConfidence.configured} />
+          <ConfidenceColumn title="Missing" items={data.profitConfidence.missing} />
+        </div>
+        {data.profitConfidence.nextStep && (
+          <p className="confidence-next-step">
+            <strong>Suggested Next Step:</strong> {data.profitConfidence.nextStep}
+          </p>
+        )}
+      </Card>
 
       {/* Six instruments in glass, three to a row. The headline profit lives
           in the greeting above, so no tile has to shout over the others. */}
       <div className="grid cols-3">
         <Tile
           tone="var(--mark-structure)"
+          valueTone={
+            kpi.netRevenueCents > 0
+              ? "positive"
+              : kpi.netRevenueCents < 0
+                ? "negative"
+                : "neutral"
+          }
           icon={<IconOrders />}
-          label="Net revenue"
+          label="Net Revenue"
           value={
             <AnimatedMoney
               cents={kpi.netRevenueCents}
@@ -399,8 +552,15 @@ export function OverviewView({ data }: { data: OverviewData }) {
         />
         <Tile
           tone="var(--series-2)"
+          valueTone={
+            kpi.profitPerOrderCents > 0
+              ? "positive"
+              : kpi.profitPerOrderCents < 0
+                ? "negative"
+                : "neutral"
+          }
           icon={<IconPricing />}
-          label="Profit per order"
+          label="Profit Per Order"
           value={
             <AnimatedMoney
               cents={kpi.profitPerOrderCents}
@@ -412,8 +572,15 @@ export function OverviewView({ data }: { data: OverviewData }) {
         />
         <Tile
           tone="var(--series-4)"
+          valueTone={
+            kpi.contributionProfitCents > 0
+              ? "positive"
+              : kpi.contributionProfitCents < 0
+                ? "negative"
+                : "neutral"
+          }
           icon={<IconProducts />}
-          label="Contribution profit"
+          label="Contribution Profit"
           value={
             <AnimatedMoney
               cents={kpi.contributionProfitCents}
@@ -428,7 +595,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
         <Tile
           tone="var(--series-3)"
           icon={<IconChannels />}
-          label={adSpendMeasured ? "Recorded ad spend" : "Ad spend"}
+          label={adSpendMeasured ? "Recorded Ad Spend" : "Ad Spend"}
           value={
             adSpendMeasured ? (
               <AnimatedMoney
@@ -446,7 +613,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
             adSpendMeasured ? (
               <Delta value={kpi.adCostChange} invert />
             ) : (
-              <span>no synced source</span>
+              <span>No Synced Source</span>
             )
           }
         />
@@ -461,19 +628,19 @@ export function OverviewView({ data }: { data: OverviewData }) {
         <Tile
           tone="var(--series-6)"
           icon={<IconFulfilment />}
-          label="Average order value"
+          label="Average Order Value"
           value={
             <AnimatedMoney cents={kpi.aovCents} currency={data.currency} />
           }
           spark={data.spark.aov}
-          meta={<span>net of discounts and refunds</span>}
+          meta={<span>Net of Discounts and Refunds</span>}
         />
       </div>
 
       <Card
         id="bridge"
-        title="Where the money went"
-        hint="Available recorded and modeled costs between booked revenue and the profit shown above. Missing inputs and unconnected paid-marketing spend are excluded."
+        title="Where The Money Went"
+        hint="Available measured costs and configured estimates between booked revenue and the profit shown above. Missing inputs and unconnected paid-marketing spend are excluded."
       >
         <ProfitBridge steps={data.bridge} />
         {(kpi.unattributedAdCents > 0 || kpi.modeledCostOrders > 0) && (
@@ -495,9 +662,9 @@ export function OverviewView({ data }: { data: OverviewData }) {
                 {kpi.modeledCostOrders.toLocaleString()} orders use at least one
                 configured fee, fulfilment fallback or overhead allocation.{" "}
                 <Link to={`/app/settings?range=${data.preset}`}>
-                  Review modeled inputs
+                  Review configured estimates
                 </Link>{" "}
-                to acknowledge them. Review does not turn a model into measured
+                to confirm they are current. Confirmation does not turn an estimate into measured
                 order-level cost, so those orders remain marked amber.
               </>
             )}
@@ -505,41 +672,43 @@ export function OverviewView({ data }: { data: OverviewData }) {
         )}
       </Card>
 
-      <Card title="Profit and revenue over time" flush>
-        <Legend
-          items={[
-            {
-              label: `Profit ${profitBasis}`,
-              color: "var(--mark-result)",
-            },
-            { label: "Net revenue", color: "var(--mark-structure)" },
-          ]}
-        />
-        <div style={{ padding: "4px 16px 14px" }}>
-          <TimeSeriesChart
-            data={seriesPoints}
-            timeZone={data.timezone}
-            zeroLine
-            series={[
+      <Card title="Profit And Revenue Over Time" flush>
+        <div className="overview-time-series">
+          <Legend
+            items={[
               {
-                key: "profit",
-                label: `Profit ${profitBasis}`,
+                label: `Profit ${profitBasisTitle}`,
                 color: "var(--mark-result)",
-                area: true,
               },
-              {
-                key: "revenue",
-                label: "Net revenue",
-                color: "var(--mark-structure)",
-              },
+              { label: "Net Revenue", color: "var(--mark-structure)" },
             ]}
           />
+          <div className="overview-time-series-chart">
+            <TimeSeriesChart
+              data={seriesPoints}
+              timeZone={data.timezone}
+              zeroLine
+              series={[
+                {
+                  key: "profit",
+                  label: `Profit ${profitBasisTitle}`,
+                  color: "var(--mark-result)",
+                  area: true,
+                },
+                {
+                  key: "revenue",
+                  label: "Net Revenue",
+                  color: "var(--mark-structure)",
+                },
+              ]}
+            />
+          </div>
         </div>
       </Card>
 
       <div className="grid cols-2">
         <Card
-          title="Carrying the business"
+          title="Carrying The Business"
           hint="Highest non-negative contribution after available product-level costs. Overhead and unconnected spend are excluded."
           flush
         >
@@ -547,12 +716,12 @@ export function OverviewView({ data }: { data: OverviewData }) {
         </Card>
 
         <Card
-          title="Losing money"
+          title="Losing Money"
           hint="Negative contribution after available product-level costs; overhead is excluded. Products with missing COGS receive no verdict."
           flush
         >
           {data.losers.length === 0 ? (
-            <Empty>No product is losing money in this period.</Empty>
+            <Empty>No Product Is Losing Money In This Period.</Empty>
           ) : (
             <ProductList items={data.losers} currency={data.currency} />
           )}
@@ -560,7 +729,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
       </div>
 
       <Card
-        title="Customer acquisition metrics"
+        title="Customer Acquisition Metrics"
         hint={
           data.capabilities.customers
             ? "Customer value is evaluated only at cohort ages old enough to answer."
@@ -568,7 +737,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
         }
         actions={
           <Link className="btn sm" to={`/app/acquisition?range=${data.preset}`}>
-            Full breakdown
+            Full Breakdown
           </Link>
         }
         flush
@@ -591,7 +760,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
                 <tr>
                   <th>Channel</th>
                   <th className="right">Spend</th>
-                  <th className="right">New customers</th>
+                  <th className="right">New Customers</th>
                   <th className="right">CAC</th>
                   <th
                     className="right"
@@ -695,6 +864,32 @@ function ProductList({
   );
 }
 
+function ConfidenceColumn({
+  title,
+  items,
+}: {
+  title: string;
+  items: Array<{ label: string; detail: string }>;
+}) {
+  return (
+    <section className="confidence-column">
+      <h3>{title}</h3>
+      {items.length === 0 ? (
+        <p>None in this period.</p>
+      ) : (
+        <ul>
+          {items.map((item) => (
+            <li key={`${item.label}:${item.detail}`}>
+              <strong>{item.label}</strong>
+              <span>{item.detail}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 export function VerdictBadge({ verdict }: { verdict: string }) {
   switch (verdict) {
     case "PROFITABLE":
@@ -702,8 +897,8 @@ export function VerdictBadge({ verdict }: { verdict: string }) {
     case "MARGINAL":
       return <Badge tone="warning">Marginal</Badge>;
     case "UNPROFITABLE":
-      return <Badge tone="critical">Losing money</Badge>;
+      return <Badge tone="critical">Losing Money</Badge>;
     default:
-      return <Badge tone="neutral">No spend</Badge>;
+      return <Badge tone="neutral">No Spend</Badge>;
   }
 }

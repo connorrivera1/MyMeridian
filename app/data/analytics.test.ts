@@ -33,8 +33,12 @@ vi.mock("./queries.server", () => ({
 
 vi.mock("~/db.server", () => ({ default: {} }));
 
-const { invalidateAnalyticsCache, loadPeriodProfit, loadShopAnalytics } =
-  await import("./analytics.server");
+const {
+  invalidateAnalyticsCache,
+  loadPeriodProfit,
+  loadShopAnalytics,
+  resolveRange,
+} = await import("./analytics.server");
 
 const RANGE = {
   from: new Date("2026-07-01T00:00:00.000Z"),
@@ -154,6 +158,28 @@ beforeEach(() => {
   loadProductMeta.mockResolvedValue(new Map());
   loadCapacityDays.mockResolvedValue([]);
   loadCohortRows.mockResolvedValue([]);
+});
+
+describe("live reporting range cache buckets", () => {
+  it("gives requests in the same minute the same cacheable window", () => {
+    const clock = vi.spyOn(Date, "now");
+    clock.mockReturnValue(new Date("2026-08-11T22:30:01.100Z").getTime());
+    const first = resolveRange(SHOP, "30d");
+    clock.mockReturnValue(new Date("2026-08-11T22:30:59.900Z").getTime());
+    const second = resolveRange(SHOP, "30d");
+    clock.mockRestore();
+
+    expect(second).toEqual(first);
+    expect(first.to.toISOString()).toBe("2026-08-11T22:30:00.000Z");
+  });
+
+  it("preserves the demo data anchor exactly", () => {
+    const lastSyncedAt = new Date("2026-07-31T13:14:15.678Z");
+    const range = resolveRange({ ...SHOP, lastSyncedAt } as Shop, "30d", {
+      anchorToData: true,
+    });
+    expect(range.to).toEqual(lastSyncedAt);
+  });
 });
 
 describe("loadPeriodProfit", () => {

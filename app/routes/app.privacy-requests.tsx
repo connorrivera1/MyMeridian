@@ -3,7 +3,7 @@ import { Link, useLoaderData, useRevalidator } from "react-router";
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
 
 import { Badge, Banner, Card, Empty } from "~/design/components";
-import { requireShopContext } from "~/lib/auth.server";
+import { withShopContext } from "~/lib/auth.server";
 import {
   DATA_REQUEST_RETENTION_DAYS,
   listDataRequests,
@@ -23,19 +23,20 @@ export const headers: HeadersFunction = () => ({
  * shop scoping still apply, but this route deliberately has no plan gate.
  */
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { shop } = await requireShopContext(request);
-  const requestedPage = Number.parseInt(
-    new URL(request.url).searchParams.get("historyPage") ?? "1",
-    10,
-  );
+  return withShopContext(request, async ({ shop }) => {
+    const requestedPage = Number.parseInt(
+      new URL(request.url).searchParams.get("historyPage") ?? "1",
+      10,
+    );
 
-  return {
-    requests: await listDataRequests(shop.id, {
-      historyPage: Number.isSafeInteger(requestedPage) ? requestedPage : 1,
-    }),
-    timezone: shop.timezone,
-    retentionDays: DATA_REQUEST_RETENTION_DAYS,
-  };
+    return {
+      requests: await listDataRequests(shop.id, {
+        historyPage: Number.isSafeInteger(requestedPage) ? requestedPage : 1,
+      }),
+      timezone: shop.timezone,
+      retentionDays: DATA_REQUEST_RETENTION_DAYS,
+    };
+  });
 }
 
 type LoadedDataRequest = Awaited<
@@ -49,7 +50,7 @@ export default function PrivacyRequests() {
 
   return (
     <Card
-      title="Customer data requests"
+      title="Customer Data Requests"
       hint={`When a shopper asks what your store holds on them, Shopify sends the request here and Meridian assembles the export for you to hand over. You are the controller and reply to the shopper; Meridian never contacts them. Exports expire ${data.retentionDays} days after the request and are removed by the hourly privacy sweep. This page remains available even without an active subscription.`}
       flush
     >
@@ -75,7 +76,7 @@ export default function PrivacyRequests() {
         <>
           {outstanding.length > 0 && (
             <RequestTable
-              label="Awaiting collection"
+              label="Awaiting Collection"
               requests={outstanding}
               timeZone={data.timezone}
             />
@@ -83,7 +84,7 @@ export default function PrivacyRequests() {
           {data.requests.collectedTotal > 0 && (
             <>
               <RequestTable
-                label="Collected history"
+                label="Collected History"
                 requests={history}
                 timeZone={data.timezone}
               />
@@ -156,7 +157,7 @@ function HistoryPagination({
 
   return (
     <nav
-      aria-label="Collected request history"
+      aria-label="Collected Request History"
       style={{
         alignItems: "center",
         display: "flex",
@@ -171,8 +172,8 @@ function HistoryPagination({
         </Link>
       )}
       <span className="tiny muted">
-        Page {page.toLocaleString()} of {pageCount.toLocaleString()} ·{" "}
-        {total.toLocaleString()} collected
+        Page {page.toLocaleString()} Of {pageCount.toLocaleString()} ·{" "}
+        {total.toLocaleString()} Collected
       </span>
       {page < pageCount && (
         <Link className="btn sm" to={`?historyPage=${page + 1}`}>
@@ -280,7 +281,7 @@ function DataRequestRow({
         {request.collectedAt ? (
           <Badge tone="good">Collected</Badge>
         ) : (
-          <Badge tone="warning">Awaiting collection</Badge>
+          <Badge tone="warning">Awaiting Collection</Badge>
         )}
         {error && <div className="cell-sub">{error}</div>}
       </td>

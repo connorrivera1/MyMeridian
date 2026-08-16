@@ -2,9 +2,10 @@
 
 A unified profitability dashboard for Shopify stores. Revenue, COGS,
 fulfilment, payment fees and overhead resolved into one number a merchant can
-act on. That number is calculated from available recorded and modeled inputs: this release has no live
-ad-spend connector, so ad spend is disclosed as unavailable and the result must
-not be marketed as complete net profit.
+act on. That number is calculated from available recorded and modeled inputs.
+Merchants can connect Meta Ads, Google Ads and TikTok Ads; until a connector
+is healthy and synced, ad spend is disclosed as unavailable and the result is
+qualified rather than marketed as complete net profit.
 
 Built as a real embedded Shopify app: React Router 7, Prisma/PostgreSQL,
 read-only Shopify scopes and the mandatory GDPR webhooks. Billing is enforced:
@@ -12,16 +13,23 @@ the app resolves the active Billing API subscription, redirects an unsubscribed
 store to the plan screen, gates paid features, and re-checks the plan before a
 protected pricing mutation.
 
-**Release status (verified 2026-08-11):** `npm run ci` passes with 930 unit
-tests, while the explicit real-PostgreSQL run passes all 987 tests (including
-57 opt-in integration tests) after all 23 migrations apply from empty. The app has
-still never been installed on a real Shopify store, so OAuth, Shopify-delivered
-webhooks, and a real billing approval/return flow remain unproved. Submission is
-also waiting on external decisions and accounts: a non-confusable app name, a
-Fly production origin and managed database, Shopify's Protected Customer Data
-Level 2 and `read_all_orders` requests, MyMeridian's own domain/publisher/support
-identity, and the review assets that require a real install. See `DEPLOY_PLAN.md` and
-`SUBMISSION.md` for the ordered checklist.
+The seeded local demo is development-only. Production builds resolve its shop
+lookup to a fail-closed stub and scan every emitted server file; the build fails
+if the demo domain or seeded-authentication implementation survives bundling.
+
+Publisher operations live under a separate `/operator` security boundary with
+dedicated scrypt credentials, mandatory TOTP MFA, one-time-code replay
+protection, short-lived Strict sessions and append-only access auditing. Its
+business/system dashboard and store-support view expose aggregate status only;
+they deliberately exclude customer/order detail, merchant contact data, tokens,
+payloads and raw provider errors, and provide no arbitrary database editor. See
+[`docs/OPERATOR_SECURITY.md`](docs/OPERATOR_SECURITY.md).
+
+**Release status:** [`docs/LAUNCH_READINESS.md`](docs/LAUNCH_READINESS.md) is
+the sole current release record. It names verified local evidence separately
+from production, legal, payment, provider-approval and Shopify-review gates.
+The dated deployment and submission files are implementation history and
+runbooks, not a substitute for that matrix.
 
 ---
 
@@ -34,8 +42,8 @@ Dashboard decisions and access requests listed above.
 **1. Prerequisites** — a free [Shopify Partner account](https://partners.shopify.com),
 and local Postgres.
 
-**2. Create a development store.** Partner Dashboard → *Stores* → *Add store* →
-*Development store*. Any plan.
+**2. Create a development store.** Partner Dashboard → _Stores_ → _Add store_ →
+_Development store_. Any plan.
 
 **3. Set up locally.**
 
@@ -82,18 +90,18 @@ importing immediately — progress shows at the top of every page.
 A brand-new dev store has no data, so the import will finish with nothing to
 analyse. Two things are worth doing in the store's admin first:
 
-**Set "Cost per item" on your products.** Products → variant → *Cost per item*.
+**Set "Cost per item" on your products.** Products → variant → _Cost per item_.
 This is the single most important field in the whole setup — it is what the
 import reads as COGS via `inventoryItem.unitCost`. Without it every margin in
 the app is fiction, and variants missing it are recorded as `ESTIMATED` rather
 than silently treated as free.
 
-**Create some orders.** Admin → Orders → *Create order*, add products, then
-*Mark as paid*. A dozen orders across a couple of weeks is enough for the profit,
+**Create some orders.** Admin → Orders → _Create order_, add products, then
+_Mark as paid_. A dozen orders across a couple of weeks is enough for the profit,
 product and fulfilment screens to be meaningful. Mark some as fulfilled so the
 capacity model has throughput to learn from.
 
-Then hit **Re-import** in *Costs & connections*, or just place an order — the
+Then hit **Re-import** in _Costs & connections_, or just place an order — the
 webhooks keep everything current from that point on.
 
 ### Compliance webhooks
@@ -104,11 +112,11 @@ against `application_url`, so they follow the dev tunnel and the production host
 automatically — there is no hostname to remember to change, which is what the
 old absolute-URL block kept getting wrong.
 
-| Topic | Handler |
-|---|---|
-| `customers/data_request` | `app/routes/webhooks.gdpr.data-request.tsx` |
-| `customers/redact` | `app/routes/webhooks.gdpr.customers-redact.tsx` |
-| `shop/redact` | `app/routes/webhooks.gdpr.shop-redact.tsx` |
+| Topic                    | Handler                                         |
+| ------------------------ | ----------------------------------------------- |
+| `customers/data_request` | `app/routes/webhooks.gdpr.data-request.tsx`     |
+| `customers/redact`       | `app/routes/webhooks.gdpr.customers-redact.tsx` |
+| `shop/redact`            | `app/routes/webhooks.gdpr.shop-redact.tsx`      |
 
 Each verifies HMAC before touching the database, answers an unverified request
 `401`, a valid one `200`, and a `GET` `405`. `app/routes/webhooks.gdpr.test.ts`
@@ -126,36 +134,33 @@ resolve to somewhere Shopify cannot reach.
 
 Scopes are not all-or-nothing. MyMeridian records what the store actually granted
 and gates its GraphQL fields on it, because requesting an unauthorised field
-fails the *entire* query rather than returning null for that field.
+fails the _entire_ query rather than returning null for that field.
 
-| Scope | Without it |
-|---|---|
-| `read_orders` | Nothing works. Essential, and itself gated by an approved Protected Customer Data request. |
-| `read_products` | No catalogue or pricing analysis. Essential. |
-| `read_inventory` | **No COGS.** Margins read as ~100% and every profit figure is overstated. Requested by default; not protected data. |
-| `read_customers` | No CAC, LTV, payback or customer-lifecycle product classification. **Protected customer data** — needs an approved request in the Partner Dashboard, not just the scope. |
-| `read_fulfillments` | No capacity forecasting. MyMeridian writes no capacity data at all rather than inferring a backlog that only ever grows. |
-| `read_reports` | No Shopify Shipping label-cost reconciliation. The `shipping_labels` ShopifyQL schema also requires Level 2 Protected Customer Data approval. |
+| Scope               | Without it                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `read_orders`       | Nothing works. Essential, and itself gated by an approved Protected Customer Data request.                                                                                                                                                                                                                                                                                         |
+| `read_products`     | No catalogue or pricing analysis. Essential.                                                                                                                                                                                                                                                                                                                                       |
+| `read_inventory`    | **No confirmed COGS.** Affected margins and profit results are labelled incomplete or need COGS rather than presented as 100% or as if the cost were $0. Requested by default; not protected data.                                                                                                                                                                               |
+| `read_customers`    | No CAC, LTV, payback or customer-lifecycle product classification. **Protected customer data** — needs an approved request in the Partner Dashboard, not just the scope.                                                                                                                                                                                                           |
+| `read_fulfillments` | No capacity forecasting. MyMeridian writes no capacity data at all rather than inferring a backlog that only ever grows.                                                                                                                                                                                                                                                           |
+| `read_reports`      | No Shopify Shipping label-cost reconciliation or Shop Campaigns reporting. ShopifyQL also requires Level 2 Protected Customer Data approval covering name, address, phone and email before it exposes either aggregate schema. MyMeridian does not query or persist shopper identity for these reports; that approval is a ShopifyQL platform gate, not additional collection by the app. |
 
-Missing permissions surface in *Costs & connections → Data access*, and the
+Missing permissions surface in _Costs & connections → Data access_, and the
 affected screens explain what is unavailable instead of rendering a zero.
 
 ### Two things that will surprise you
 
-- **Order history is capped at 60 days.** `read_orders` only returns the last 60
-  days; anything older needs the `read_all_orders` scope, which Shopify grants on
-  request (Partner Dashboard → your app → *API access* → *Access requests*). The
-  app detects this and says so in a banner rather than implying the store had no
-  earlier trading. Add the scope to `shopify.app.toml` only once it is approved —
-  requesting an ungranted scope fails OAuth.
-- **Ad spend has no live connector yet.** Facebook/Google/TikTok are modelled but
-  not wired to OAuth, so CAC, ROAS, payback and marketing efficiency are
-  unavailable rather than zero. Acquisition still shows order-derived channel
-  revenue and contribution profit. Historical imports without customer access
+- **Full order history depends on Shopify approval and the installed scope.**
+  `read_all_orders` is requested with `read_orders`, but MyMeridian only
+  backfills beyond Shopify's default 60-day window when Shopify has approved
+  that access and the shop granted it. Otherwise it records the actual history
+  window and marks the limitation instead of implying a complete record.
+- **Ad spend requires an explicit merchant connection.** Growth and Scale
+  merchants can connect Meta, Google or TikTok from inside the embedded app.
+  CAC, ROAS and marketing efficiency stay unavailable rather than zero until a
+  selected account has synced. Historical imports without customer access
   cannot read journey attribution and fall back to Direct; new-order webhooks
-  retain landing/referring signals when Shopify supplies them. Operator-provisioned
-  credentials are health-checked, refreshed or failed over as described below;
-  that operational monitoring does not pretend MyMeridian has imported ad spend.
+  retain landing/referring signals when Shopify supplies them.
 
 ### Tax and carrier reconciliation
 
@@ -168,7 +173,10 @@ one-cent rounding differences. Unknown detail is retained as an explicit
 `UNALLOCATED` component instead of being guessed.
 
 Shopify Shipping costs are read from the ShopifyQL `shipping_labels` report when
-`read_reports` is granted. ShipStation uses its v2 label feed. Both sources are
+`read_reports` is granted and Shopify has approved Level 2 protected-customer-data
+access covering name, address, phone and email. That four-field approval is a
+ShopifyQL platform gate: MyMeridian does not query or persist shopper name,
+address or phone. ShipStation uses its v2 label feed. Both sources are
 retained as observations and matched by Shopify order GID, numeric ID or order
 name. Equal totals corroborate each other; conflicting totals remain auditable
 and only the most complete, newest source is applied. Voids, refunds and currency
@@ -180,7 +188,7 @@ random per-connector authentication header; the poll remains the recovery path
 for missed events and late label voids. Database leases prevent two app
 instances from duplicating a provider read or alert.
 
-### Connector health and operator provisioning
+### Self-service connections and connector health
 
 Ad credentials are encrypted at rest. A five-minute health routine validates
 Meta through token debugging plus live ad-account access, Google Ads through
@@ -195,9 +203,13 @@ receiver is configured. Other failures use exponential backoff and alert on the
 third consecutive check. Alert delivery failures are retained as health events
 instead of being silently swallowed.
 
-There is deliberately no merchant-facing OAuth screen yet. An operator can
-bootstrap ShipStation or an ad credential without placing the secret in command
-history:
+Merchants connect and disconnect Meta Ads, Google Ads and TikTok Ads through
+provider OAuth from _Costs & connections_. The callback uses a one-use, hashed,
+expiring state value; tokens are encrypted at rest, and merchants choose the
+account MyMeridian should sync. ShipStation is connected with an API key in the
+same screen and registers an authenticated webhook when the app has a public
+HTTPS origin. The operator command below remains only as a recovery and support
+tool; it is not the normal merchant onboarding path:
 
 ```bash
 MERIDIAN_CONNECTOR_TOKEN='<secret>' npm run connector:configure -- \
@@ -240,28 +252,27 @@ an App Bridge bearer token — goes through `authenticate.admin` instead. Demo m
 **throws at boot** if `NODE_ENV=production`: it bypasses session authentication
 and must never be reachable there.
 
-| Command | |
-|---|---|
-| `npm run shopify:dev` | Run against a real store via the Shopify CLI |
-| `npm run dev` | Dev server (demo / no Shopify) |
-| `npm run db:migrate` | Apply migrations |
-| `npm test` | Test suite (930 unit tests; 57 PostgreSQL tests are opt-in) |
-| `npm run test:coverage` | Tests with coverage thresholds enforced |
-| `npm run ci` | Everything CI runs: typecheck, coverage, build |
-| `npm run typecheck` | Types |
-| `npm run db:reset` | Drop, migrate, re-seed |
-| `npm run db:seed` | Re-seed the demo store |
-| `npx tsx scripts/verify-data.ts` | Print the full P&L, products, channels, capacity |
-| `npx tsx scripts/elasticity-accuracy.ts --sweep` | Elasticity recovery vs the seed's known values |
+| Command                                          |                                                             |
+| ------------------------------------------------ | ----------------------------------------------------------- |
+| `npm run shopify:dev`                            | Run against a real store via the Shopify CLI                |
+| `npm run dev`                                    | Dev server (demo / no Shopify)                              |
+| `npm run db:migrate`                             | Apply migrations                                            |
+| `npm test`                                       | Test suite; PostgreSQL integration checks are opt-in         |
+| `npm run test:coverage`                          | Tests with coverage thresholds enforced                     |
+| `npm run ci`                                     | Everything CI runs: typecheck, coverage, build              |
+| `npm run typecheck`                              | Types                                                       |
+| `npm run db:reset`                               | Drop, migrate, re-seed                                      |
+| `npm run db:seed`                                | Re-seed the demo store                                      |
+| `npx tsx scripts/verify-data.ts`                 | Print the full P&L, products, channels, capacity            |
+| `npx tsx scripts/elasticity-accuracy.ts --sweep` | Elasticity recovery vs the seed's known values              |
 
 ---
 
 ## Guarding main
 
-This repository has **no git remote**, so there is no CI service and no
-pull-request review — and it has more than one writer, since an agent system
-also commits here. The gate that actually protects `main` is a pre-commit hook,
-and hooks are not cloned. Enable it once per checkout:
+This repository has more than one writer, including automated contributors.
+The local gate that protects commits is a pre-commit hook, and hooks are not
+cloned. Enable it once per checkout:
 
 ```bash
 git config core.hooksPath .githooks
@@ -273,17 +284,18 @@ it. To bypass deliberately: `git commit --no-verify`.
 
 `.github/workflows/ci.yml` runs the fuller set — typecheck, coverage
 thresholds, build, a from-empty migration apply against a real Postgres, and a
-dependency audit. **Nothing runs it yet**; it is committed ready for the day a
-remote exists.
+dependency audit. The feature branch is connected to GitHub and these checks
+run on its draft pull request.
 
 Coverage is measured over `app/engine`, `app/lib` and `app/data` — the code the
 suite targets most deeply. Route and design-system `.tsx` files remain outside
 the coverage denominator, but server-rendered regressions now cover Overview,
 Orders, Products, Acquisition, Pricing, Settings, Plan, the app layout, Privacy
-requests and chart date labels. Fulfilment, auth/home and the legal wrappers do
-not yet have dedicated route tests, and the browser-level Shopify install flow
-still needs end-to-end coverage. Thresholds are floors set just under the
-current measurement, so the build fails on regression rather than on ambition.
+requests, Fulfilment, the embedded Shopify login entry, the marketing-home
+resource route, both legal wrappers and chart date labels. The browser-level
+Shopify install flow still needs production end-to-end coverage. Thresholds are
+floors set just under the current measurement, so the build fails on regression
+rather than on ambition.
 
 ## Architecture
 
@@ -293,7 +305,7 @@ app/
   data/       Prisma -> engine input translation, and the assembled picture.
   lib/        Auth boundary, webhooks, sync, recompute, crypto.
   design/     Tokens, primitives, hand-built SVG charts.
-  routes/     Ten app screens and thirteen webhook endpoints.
+  routes/     Merchant screens, public pages and webhook endpoints.
 ```
 
 **The engine is the product.** `app/engine/` holds pure functions with no
@@ -325,7 +337,7 @@ Decisions worth knowing about:
   throughout. Refunds are reduced to their ex-tax share before being netted off,
   or a fully refunded order drives revenue negative.
 - **Processor fees are charged on the original total**, including tax and
-  shipping, and are *not* returned on refunds — which is what Stripe and Shopify
+  shipping, and are _not_ returned on refunds — which is what Stripe and Shopify
   Payments actually do.
 - **COGS is snapshotted onto the line item** at order time. A supplier price rise
   next month must not retroactively change what last quarter earned.
@@ -348,11 +360,21 @@ or bleeding verdict; modeled inputs stay visibly qualified.
 ### Acquisition
 
 The current release attributes order-derived revenue and qualified contribution
-to channels from UTM and referring signals. It has no live ad-platform connector,
-so spend, CAC, ROAS and marketing efficiency remain unavailable rather than
-becoming zero. The dormant cohort engine is also hidden because the requested
-scope set does not include `read_customers`; unmeasurable cohort checkpoints
-remain represented as “not yet”, never `0.00×`.
+to channels from UTM and referring signals and can import spend from a
+merchant-selected Meta, Google or TikTok account. It also ingests a merchant's
+Shop Campaigns through ShopifyQL's `shop_campaign_insights` dataset when
+`read_reports` and Shopify Level 2 protected-customer-data approval are both
+available. Shopify's campaign sales/customers are source-reported aggregates:
+they are never added to Meridian order-derived revenue, orders, or CAC, and an
+order moves to Shop Campaigns only when Shopify supplied an explicit paid Shop
+Campaign UTM. This prevents a Shopify campaign aggregate from double-counting a
+sale already attributed to another channel. Shopify reports that campaign sales
+exclude refunds; Meridian's own stored-order revenue remains refund-aware.
+Until a connector is healthy and synced, spend, CAC, ROAS and marketing
+efficiency remain unavailable rather than becoming zero. The dormant cohort
+engine is also hidden because the requested scope set does not include
+`read_customers`; unmeasurable cohort checkpoints remain represented as “not
+yet”, never `0.00×`.
 
 ### Pricing
 
@@ -386,7 +408,7 @@ estimator is verified exact against clean synthetic demand in the test suite.
 
 ### Capacity
 
-Built on *observed* throughput, not a number typed in at onboarding. Trailing
+Built on _observed_ throughput, not a number typed in at onboarding. Trailing
 14-day fulfilment rate, day-of-week demand factors, and a 14-day forward
 simulation where overflow rolls into the next day. Alerts fire before the SLA
 breaks, not after.
@@ -408,11 +430,11 @@ backoff, a resumable cursor, and a capability probe for
 `customerJourneySummary`, which is not readable on every store and degrades to
 referrer-based attribution instead of failing the run.
 
-`afterAuth` waits only for an atomic database claim, then the import continues in
-the background because Shopify's OAuth redirect cannot wait for store history.
-A five-minute lease is renewed every minute; owner-fenced progress and terminal
-writes, plus a saved cursor, make interruption visible and safely resumable.
-There is still no external queue that restarts an abandoned run automatically.
+`afterAuth` persists a deduplicated `HISTORICAL_BACKFILL` job before returning,
+then wakes the durable worker because Shopify's OAuth redirect cannot wait for
+store history. A five-minute lease is renewed every minute; owner-fenced
+progress and terminal writes, plus a saved cursor, make interruption visible and
+safely resumable after a process restart.
 
 ### Cost history and restatement
 
@@ -465,8 +487,10 @@ a profit tool must not make quietly.
 
 ### Ad-spend ingestion
 
-Meta, Google, and TikTok spend polling is optional and uses BullMQ/Redis only
-as a scheduler. The `AdSyncWindow` Postgres ledger is the source of truth: a
+Meta, Google, TikTok, and Shopify Shop Campaign spend polling is optional and
+uses BullMQ/Redis only as a scheduler. Shop Campaigns uses the store's existing
+Shopify session — it does not use a publisher ad account or MyMeridian's own
+Shopify App Store advertising. The `AdSyncWindow` Postgres ledger is the source of truth: a
 flushed queue, stopped worker, or delayed platform restatement is reconciled on
 the next polling cycle. Foreign-currency spend is converted against immutable
 daily `ExchangeRate` rows, and workers may run in the web process or through
@@ -486,7 +510,8 @@ action. Restating a quarter rewrites line items across months and then recompute
 the shop — minutes on a large store, and an in-process promise would leave half a
 quarter rewritten if a deploy landed mid-run.
 
-The claim/lease/backoff shape is lifted from the webhook outbox rather than
+Historical backfills, full-store recomputes, restatements and bundle rollups all
+use this queue. The claim/lease/backoff shape is lifted from the webhook outbox rather than
 invented again: same fencing token, same compare-and-set on the lease, same
 exponential retry, so there is one durable-work pattern in this codebase to
 reason about instead of two that drift apart. Finished rows are pruned after 30
@@ -529,19 +554,19 @@ and fought with over mark geometry.
 
 ## Known gaps
 
-- Ad platform connectors are modelled but not wired to live
-  Facebook/Google/TikTok OAuth. The Acquisition screen therefore leaves spend,
-  CAC and ROAS unavailable while keeping order-derived channel revenue and
-  contribution profit visible.
+- Provider credentials, reviewed OAuth apps and a durable Redis worker are
+  deployment configuration, so ad spend remains unavailable in an environment
+  where those external dependencies have not been activated.
 - Historical COGS is not retrievable from Shopify. The import snapshots each
-  variant's *current* landed cost onto its line items, which is the best
+  variant's _current_ landed cost onto its line items, which is the best
   available basis; from then on webhooks snapshot the cost in force at the time.
 - Accepted price changes are recorded, not pushed to Shopify (requires
   `write_products`, deliberately not requested).
-- Billing is implemented and enforced with the Billing API, but its real Shopify
-  approval screen, return redirect, subscription lookup, and webhook delivery
-  have never been exercised. That is a deployment acceptance test, not a
-  missing gate in the code.
-- The backfill and recompute both run in-process. That is correct on a
-  long-lived server and wrong on a serverless platform, where the process may
-  not outlive the response — both belong in a job queue before deploying there.
+- Billing is implemented and enforced with the Billing API. Its Shopify test
+  approval screen, return redirect and active subscription lookup have been
+  exercised on the development store without moving money. Production charging
+  and webhook delivery remain deployment acceptance tests.
+- Backfill and recompute execution still needs a running worker, but requests no
+  longer own the work: both are durable, deduplicated Postgres jobs with leased
+  claims, retries and restart recovery. A production host must keep at least one
+  worker available or run the same worker as a separate process.

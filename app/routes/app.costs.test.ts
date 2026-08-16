@@ -22,6 +22,10 @@ const removeBundleComponent = vi.fn();
 const upsertBundleComponent = vi.fn();
 const enqueueBundleDetection = vi.fn();
 const variantFindFirst = vi.fn();
+const variantFindMany = vi.fn();
+const transaction = vi.fn(async (work: (tx: unknown) => unknown) =>
+  work({ variant: { findMany: (...args: unknown[]) => variantFindMany(...args) } }),
+);
 
 vi.mock("~/lib/cost-history.server", () => ({
   recordVariantCost: (...args: unknown[]) => recordVariantCost(...args),
@@ -32,26 +36,36 @@ vi.mock("~/lib/restatement.server", () => ({
   reopenPeriod: (...args: unknown[]) => reopenPeriod(...args),
 }));
 vi.mock("~/lib/bundles.server", () => ({
-  confirmBundleComponent: (...args: unknown[]) => confirmBundleComponent(...args),
+  confirmBundleComponent: (...args: unknown[]) =>
+    confirmBundleComponent(...args),
   removeBundleComponent: (...args: unknown[]) => removeBundleComponent(...args),
   upsertBundleComponent: (...args: unknown[]) => upsertBundleComponent(...args),
-  enqueueBundleDetection: (...args: unknown[]) => enqueueBundleDetection(...args),
+  enqueueBundleDetection: (...args: unknown[]) =>
+    enqueueBundleDetection(...args),
 }));
-vi.mock("~/lib/auth.server", () => ({
-  requireShopContext: async () => ({
+vi.mock("~/lib/auth.server", () => {
+  const context = {
     shop: { id: "shop_1", currency: "USD", timezone: "America/New_York" },
-  }),
-}));
+  };
+  return {
+    requireShopContext: async () => context,
+    withShopContext: async (
+      _request: Request,
+      work: (value: unknown) => unknown,
+    ) => work(context),
+  };
+});
 vi.mock("~/lib/plan.server", () => ({
   requireActivePlan: async () => ({ planId: "growth", status: "active" }),
 }));
 vi.mock("~/db.server", () => ({
   default: {
     variant: {
-      findMany: async () => [],
+      findMany: (...args: unknown[]) => variantFindMany(...args),
       count: async () => 0,
       findFirst: (...args: unknown[]) => variantFindFirst(...args),
     },
+    $transaction: (work: (tx: unknown) => unknown) => transaction(work),
     bundleComponent: { findMany: async () => [] },
     periodSnapshot: { findMany: async () => [] },
     periodRestatement: { findMany: async () => [] },
@@ -59,7 +73,7 @@ vi.mock("~/db.server", () => ({
   },
 }));
 
-const { CostsView, action } = await import("./app.costs");
+const { CostsView, action, parseCogsCsv } = await import("./app.costs");
 
 function data(overrides: Record<string, unknown> = {}) {
   return {
@@ -164,12 +178,18 @@ function render(overrides: Record<string, unknown> = {}, result = null) {
 const form = (fields: Record<string, string>) => {
   const body = new FormData();
   for (const [key, value] of Object.entries(fields)) body.append(key, value);
-  return { request: new Request("https://example.com/app/costs", { method: "POST", body }) } as never;
+  return {
+    request: new Request("https://example.com/app/costs", {
+      method: "POST",
+      body,
+    }),
+  } as never;
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
   variantFindFirst.mockResolvedValue({ id: "v1" });
+  variantFindMany.mockResolvedValue([]);
   recordVariantCost.mockResolvedValue({
     divergedFrom: null,
     changedCurrentCost: true,
@@ -190,6 +210,14 @@ describe("Costs page", () => {
     expect(html).toContain("Bundle rollup");
   });
 
+  it("keeps restatement date selection and its optional reason directly editable", () => {
+    const html = render();
+    expect(html).toContain('type="date"');
+    expect(html).toContain("Reason (Optional)");
+    expect(html).toContain('type="text" maxLength="200"');
+    expect(html).not.toContain('name="reason" disabled');
+  });
+
   it("renders a four-decimal cost without rounding it away", () => {
     const html = render({
       variants: [
@@ -207,7 +235,7 @@ describe("Costs page", () => {
 
   it("shows a proposal with the evidence behind it, and does not present it as applied", () => {
     const html = render();
-    expect(html).toContain("Proposed bundle");
+    expect(html).toContain("Proposed Bundle");
     expect(html).toContain("matches &quot;WIDGET&quot; ×3");
     expect(html).toContain("Confirm");
   });
@@ -238,7 +266,7 @@ describe("Costs page", () => {
   it("offers an empty state rather than a bare table", () => {
     const html = render({ periods: [], restatements: [], variants: [] });
     expect(html).toContain("No month has been frozen yet");
-    expect(html).toContain("No history has been restated");
+    expect(html).toContain("No History Has Been Restated");
   });
 
   it("renders every control in the app's own chrome", () => {
@@ -247,6 +275,23 @@ describe("Costs page", () => {
     expect(html).toContain('class="field-input"');
     expect(html).toContain('class="btn primary"');
     expect(html).not.toContain("settings-form");
+  });
+});
+
+describe("COGS CSV parsing", () => {
+  it("accepts the documented two-column file, including quoted SKUs", () => {
+    expect(
+      parseCogsCsv('sku,cogs_usd\nWIDGET,5.25\n"BUNDLE, BLUE",15.7500\n'),
+    ).toEqual([
+      { sku: "WIDGET", cogsUsd: 5.25, line: 2 },
+      { sku: "BUNDLE, BLUE", cogsUsd: 15.75, line: 3 },
+    ]);
+  });
+
+  it("rejects malformed headers, duplicate SKUs, and non-positive costs", () => {
+    expect(() => parseCogsCsv("sku,cost\nWIDGET,5.25")).toThrow("sku,cogs_usd");
+    expect(() => parseCogsCsv("sku,cogs_usd\nWIDGET,5\nWIDGET,6")).toThrow("more than once");
+    expect(() => parseCogsCsv("sku,cogs_usd\nWIDGET,0")).toThrow("positive");
   });
 });
 
@@ -282,7 +327,7 @@ describe("Costs actions", () => {
     )) as { ok: boolean; message: string };
 
     expect(result.message).toContain("2026-01-15");
-    expect(result.message).toContain("Restate history");
+    expect(result.message).toContain("Restate History");
     expect(enqueueRestatement).not.toHaveBeenCalled();
   });
 
@@ -314,6 +359,26 @@ describe("Costs actions", () => {
 
     expect(result.ok).toBe(false);
     expect(recordVariantCost).not.toHaveBeenCalled();
+  });
+
+  it("writes a bulk missing-COGS repair atomically", async () => {
+    variantFindMany.mockResolvedValue([{ id: "v1", unitCost: null }]);
+
+    const result = (await action(
+      form({
+        intent: "bulk-assign-missing-cogs",
+        variantIds: "v1",
+        unitCost: "6.50",
+        effectiveAt: "2026-06-01",
+      }),
+    )) as { ok: boolean };
+
+    expect(result.ok).toBe(true);
+    expect(transaction).toHaveBeenCalledOnce();
+    expect(recordVariantCost).toHaveBeenCalledWith(
+      expect.objectContaining({ variantId: "v1", unitCostMicros: 65_000 }),
+      expect.anything(),
+    );
   });
 
   it("rejects an unparseable effective date", async () => {
@@ -354,7 +419,9 @@ describe("Costs actions", () => {
       }),
     );
 
-    expect(enqueueRestatement.mock.calls[0]![0].includeClosedPeriods).toBe(true);
+    expect(enqueueRestatement.mock.calls[0]![0].includeClosedPeriods).toBe(
+      true,
+    );
   });
 
   it("will not restate from a date it cannot read", async () => {

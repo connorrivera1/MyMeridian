@@ -28,7 +28,7 @@ describe("parseScopes", () => {
     ]);
   });
 
-  it("declares five comma-delimited scopes in the Shopify CLI config", () => {
+  it("declares six comma-delimited scopes in the Shopify CLI config", () => {
     const toml = readFileSync(
       new URL("../../shopify.app.toml", import.meta.url),
       "utf8",
@@ -37,6 +37,7 @@ describe("parseScopes", () => {
     expect(configured).toBeDefined();
     expect(configured?.split(",").map((scope) => scope.trim())).toEqual([
       "read_orders",
+      "read_all_orders",
       "read_products",
       "read_fulfillments",
       "read_inventory",

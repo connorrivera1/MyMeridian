@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <style>
+    @import url("https://api.fontshare.com/v2/css?f[]=satoshi@300,400,500,600,700,800,900&display=swap");
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 1600px; height: 900px; overflow: hidden; }
+    body { background: #070707; color: #f5f5f5; font-family: "Satoshi", sans-serif; }
+    .field { width: 1600px; height: 900px; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at 50% 50%, #171717 0%, #0d0d0d 30%, #070707 72%); }
+    .lockup { display: flex; align-items: center; gap: 64px; transform: translateY(-2px); }
+    .mark { width: 184px; height: 184px; color: #f4f4f4; filter: drop-shadow(0 0 9px rgba(255,255,255,.16)); }
+    .wordmark { font-size: 122px; font-weight: 500; letter-spacing: -6.8px; line-height: 1; }
+    body.globe { width: 1200px; height: 1200px; }
+    body.globe .field { width: 1200px; height: 1200px; }
+    body.globe .mark { width: 660px; height: 660px; }
+  </style>
+</head>
+<body>
+  <main class="field"><div class="lockup">
+    <svg class="mark" viewBox="0 0 96 96" fill="none" aria-hidden="true"><g stroke="currentColor" stroke-width="2.6" opacity=".9" stroke-linecap="round"><circle cx="48" cy="48" r="34"/><ellipse cx="48" cy="48" rx="24.5" ry="34"/><ellipse cx="48" cy="48" rx="13.5" ry="34"/><path d="M48 14v68"/></g></svg>
+    <span class="wordmark">MyMeridian</span>
+  </div></main>
+  <script>if (new URLSearchParams(location.search).has("globe")) { document.body.className = "globe"; document.querySelector(".lockup").innerHTML = document.querySelector(".mark").outerHTML; }</script>
+</body>
+</html>

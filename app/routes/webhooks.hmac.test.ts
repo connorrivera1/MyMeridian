@@ -36,7 +36,9 @@ const shopFindUnique = vi.fn();
 const shopUpdate = vi.fn();
 const shopUpdateMany = vi.fn();
 const sessionDeleteMany = vi.fn();
+const subscriptionFindUnique = vi.fn();
 const subscriptionUpsert = vi.fn();
+const subscriptionUpdate = vi.fn();
 const subscriptionUpdateMany = vi.fn();
 const subscriptionEventUpsert = vi.fn();
 const usageMeterUpdateMany = vi.fn();
@@ -64,7 +66,9 @@ vi.mock("~/db.server", () => ({
       delete: vi.fn(),
     },
     subscription: {
+      findUnique: (...args: unknown[]) => subscriptionFindUnique(...args),
       upsert: (...args: unknown[]) => subscriptionUpsert(...args),
+      update: (...args: unknown[]) => subscriptionUpdate(...args),
       updateMany: (...args: unknown[]) => subscriptionUpdateMany(...args),
     },
     subscriptionEvent: {
@@ -83,6 +87,7 @@ vi.mock("~/db.server", () => ({
       updateMany: (...args: unknown[]) => webhookEventUpdateMany(...args),
     },
     connector: {
+      findUnique: vi.fn().mockResolvedValue(null),
       upsert: vi.fn().mockResolvedValue({}),
     },
   },
@@ -344,7 +349,9 @@ beforeEach(() => {
   shopUpdate.mockResolvedValue({});
   shopUpdateMany.mockResolvedValue({ count: 1 });
   sessionDeleteMany.mockResolvedValue({ count: 1 });
+  subscriptionFindUnique.mockResolvedValue(null);
   subscriptionUpsert.mockResolvedValue({});
+  subscriptionUpdate.mockResolvedValue({});
   subscriptionEventUpsert.mockResolvedValue({});
   usageMeterUpdateMany.mockResolvedValue({ count: 1 });
   checkoutFindUnique.mockResolvedValue(null);
@@ -611,7 +618,9 @@ describe("verified delivery handling", () => {
     expect(response.status).toBe(200);
     expect(webhookEventUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ error: "database is down" }),
+        data: expect.objectContaining({
+          error: "Operation failed (Error).",
+        }),
       }),
     );
     consoleError.mockRestore();

@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privacy Policy — MyMeridian</title>
+    <meta
+      name="description"
+      content="What MyMeridian reads from a Shopify store, what it stores, how long it keeps it, and how access and erasure requests are answered."
+    />
+    <meta name="robots" content="index, follow" />
+    <link rel="icon" href="favicon-globe.svg?v=20260812" type="image/svg+xml" />
+    <link rel="stylesheet" href="legal.css" />
+  <script>
+document.documentElement.classList.add("js");
+(function () {
+  var saved = null;
+  try { saved = localStorage.getItem("meridian-theme"); } catch (e) {}
+  var dark = saved ? saved === "dark"
+                   : window.matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+})();
+</script>
+  </head>
+  <body>
+    <svg class="legal-contour-field" viewBox="0 0 1440 1000" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+      <g transform="translate(1590 500)">
+        <circle class="contour-major" r="740" />
+        <ellipse class="contour-major" rx="533" ry="740" />
+        <ellipse class="contour-minor" rx="294" ry="740" />
+        <path class="contour-axis" d="M0 -740V740" />
+      </g>
+    </svg>
+    <header class="header">
+      <div class="header-inner">
+        <a class="brand" href="/" aria-label="MyMeridian">
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 96 96"
+            fill="none"
+            aria-hidden="true"
+          >
+            <g
+              stroke="currentColor"
+              stroke-width="2.6"
+              opacity="0.85"
+              stroke-linecap="round"
+            >
+              <circle cx="48" cy="48" r="34" />
+              <ellipse cx="48" cy="48" rx="24.5" ry="34" />
+              <ellipse cx="48" cy="48" rx="13.5" ry="34" />
+              <path d="M48 14v68" />
+            </g>
+            <path
+              d="M48 14 A 15 34 0 0 1 48 82"
+              stroke="currentColor"
+              stroke-width="3.2"
+              stroke-linecap="round"
+            />
+          </svg>
+          MyMeridian
+        </a>
+        <nav class="header-nav">
+          <a href="/">Home</a>
+          <a href="/privacy" aria-current="page">Privacy</a>
+          <a href="terms.html">Terms</a>
+          <a href="/support">Support</a>
+        <button class="theme-switch" type="button" id="theme-switch"
+                aria-label="Switch Between Light And Dark" aria-pressed="false">
+          <span class="theme-switch-track" aria-hidden="true">
+            <span class="theme-switch-thumb">
+              <svg class="theme-icon theme-icon-sun" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <circle cx="10" cy="10" r="3.4" stroke="currentColor" stroke-width="1.6" />
+                <g stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+                  <path d="M10 2.6v2M10 15.4v2M2.6 10h2M15.4 10h2M4.8 4.8l1.4 1.4M13.8 13.8l1.4 1.4M15.2 4.8l-1.4 1.4M6.2 13.8l-1.4 1.4" />
+                </g>
+              </svg>
+              <svg class="theme-icon theme-icon-moon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path d="M16 12.4A6.8 6.8 0 0 1 7.6 4a6.8 6.8 0 1 0 8.4 8.4Z"
+                      stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+              </svg>
+            </span>
+          </span>
+        </button>
+
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="wrap">
+        <a class="legal-brand" href="/" aria-label="MyMeridian Home">
+          <svg class="legal-brand-mark" width="30" height="30" viewBox="0 0 96 96" fill="none" aria-hidden="true">
+            <g stroke="currentColor" stroke-width="2.6" opacity="0.85" stroke-linecap="round">
+              <circle cx="48" cy="48" r="34" />
+              <ellipse cx="48" cy="48" rx="24.5" ry="34" />
+              <ellipse cx="48" cy="48" rx="13.5" ry="34" />
+              <path d="M48 14v68" />
+            </g>
+            <path d="M48 14 A 15 34 0 0 1 48 82" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" />
+          </svg>
+          <span>MyMeridian</span>
+        </a>
+        <h1>Privacy Policy</h1>
+        <p class="doc-meta">
+          Last updated 12 August 2026
+        </p>
+
+        <p class="lede">
+          MyMeridian is a pre-launch profitability dashboard for Shopify
+          merchants. This policy describes the data handling implemented in the
+          current product and the production service MyMeridian is preparing to
+          operate. The waitlist portions apply when the public flow is
+          available; merchant-store portions apply when the service is made
+          available to merchants.
+        </p>
+
+        <div class="note">
+          <strong>Roles.</strong> The merchant who installs MyMeridian is the
+          <strong>controller</strong> of their store&rsquo;s data and of any
+          shopper data within it. MyMeridian&rsquo;s individual publisher will
+          operate the app as a <strong>processor</strong> acting on that
+          merchant&rsquo;s instructions. Shoppers who want their data accessed or
+          erased should contact the store they bought from; MyMeridian answers
+          those requests through Shopify on the merchant&rsquo;s behalf, as
+          described below.
+        </div>
+
+        <h2>Publisher And Contact</h2>
+        <div class="note">
+          MyMeridian will be published by its founder as an individual. The
+          production address is
+          <strong>https://mymeridian.io</strong>; the separate staging address
+          is <strong>https://staging.mymeridian.io</strong>. The public service
+          is not live yet, and staging remains a separate environment. The
+          general contact address is <strong>welcome@mymeridian.io</strong>;
+          merchant support is <strong>support@mymeridian.io</strong>; and
+          technical contact is <strong>eevee@mymeridian.io</strong>. Controlled
+          delivery and monitoring are verified. The final legal publisher name
+          and governing-law details will be supplied before Shopify submission.
+        </div>
+
+        <h2>What MyMeridian Reads From A Store</h2>
+        <p>
+          MyMeridian requests <strong>read-only</strong> Shopify access. It holds
+          no write permission of any kind and cannot change a price, an order, a
+          product or a customer record. Accepted pricing recommendations are
+          recorded inside MyMeridian only; applying one remains a manual action
+          the merchant takes in Shopify.
+        </p>
+        <p>The scopes requested are:</p>
+        <ul>
+          <li>
+            <code>read_orders</code> — orders, their line items, refunds and
+            money totals.
+          </li>
+          <li>
+            <code>read_all_orders</code> — extends that read-only order history
+            beyond Shopify&rsquo;s default 60-day window when Shopify approves it for
+            the production installation. It does not add any write access. Until
+            then, MyMeridian identifies the available history window rather than
+            implying that it has a complete record.
+          </li>
+          <li>
+            <code>read_products</code> — the catalogue, variants and prices.
+          </li>
+          <li>
+            <code>read_inventory</code> — cost per item, which is the basis of
+            every margin shown.
+          </li>
+          <li>
+            <code>read_fulfillments</code> — fulfilment records, for throughput
+            and capacity.
+          </li>
+          <li>
+            <code>read_reports</code> — Shopify Shipping label-cost reports by
+            order, carrier and service. Shopify separately gates those reports
+            behind Level 2 protected-customer-data approval covering name,
+            address, phone and email. This is a ShopifyQL access gate:
+            MyMeridian does not query or persist shopper name, address or phone,
+            and the connection stays paused until Shopify grants the approval.
+            MyMeridian has not submitted that expanded request yet and will not
+            query, retain or use those fields merely because approval is
+            available.
+          </li>
+        </ul>
+        <p>
+          <code>read_customers</code> is <strong>not</strong> requested.
+          Customer identity used by MyMeridian is limited to the id and email
+          carried on orders, as described below.
+        </p>
+
+        <h2>Shopper Personal Data</h2>
+        <p>
+          Shopper personal data does reach MyMeridian, through
+          <code>read_orders</code>. Exactly two fields are selected from
+          Shopify&rsquo;s customer object and stored:
+        </p>
+        <ul>
+          <li>
+            the <strong>Shopify customer id</strong> carried on the order — the
+            stable identifier used to link that store&rsquo;s repeat orders and to
+            match access or erasure requests; and
+          </li>
+          <li>
+            the <strong>email address</strong> on that customer record, stored
+            so that a request naming a shopper can be matched to the right rows
+            and answered, and included in the export handed to the merchant for
+            a data request.
+          </li>
+        </ul>
+        <p>
+          No other field from that customer object is kept. Shopify may include
+          more fields in an order webhook, but the authenticated payload is
+          projected onto the exact fields listed here before anything is
+          written. MyMeridian does not retain shopper <strong>names</strong>,
+          <strong>phone numbers</strong>,
+          <strong>billing or shipping addresses</strong>,
+          <strong>IP addresses</strong>, payment card details or passwords.
+        </p>
+        <p>
+          Because a shopper email address is among the fields stored,
+          MyMeridian&rsquo;s access to orders falls under Shopify&rsquo;s protected
+          customer data requirements at the level covering customer email. If
+          Shopify approves <code>read_all_orders</code>, it remains read-only;
+          MyMeridian continues to apply the applicable data-handling
+          undertakings and least-privilege limits described in this policy.
+        </p>
+
+        <h3>What Is Derived And Stored Alongside It</h3>
+        <p>
+          Per customer: the date of their first order, the channel and campaign
+          that acquired them, their order count, and their lifetime revenue and
+          profit. Per order: the order number, processed and Shopify
+          source-update timestamps, currency, money totals, financial and
+          fulfilment status, marketing channel, any UTM parameters and the
+          landing page of the attributed visit. Line items are stored as title,
+          SKU, quantity, price, discount, refunded quantity and the cost
+          snapshotted when the order was placed. Fulfilment records retain
+          shipment and Shopify source-update timestamps, carrier, service,
+          location, item count and configured costs; tracking numbers and
+          destination addresses are not retained. Marketing URLs can contain
+          personalized query values and are treated as potentially personal
+          data; matching landing, UTM and campaign values are cleared on
+          customer redaction.
+        </p>
+
+        <h2>What The Merchant Provides Directly</h2>
+        <p>
+          Cost assumptions shown in <em>Costs &amp; Connections</em> — payment
+          processing rates, shipping and pick-and-pack estimates, and fixed
+          monthly overhead. MyMeridian supplies visible install defaults until the
+          merchant reviews or replaces them; reviewing a fallback does not make
+          it measured. If a merchant chooses a configured Meta Ads, Google Ads,
+          TikTok Ads or ShipStation connection, MyMeridian receives the
+          selected account identifier, account label and currency plus the
+          minimum token or API credential needed to sync spend or shipping
+          costs. Provider tokens are encrypted at rest and can be disconnected
+          from inside the app. These provider connections are not yet
+          production-proven and will not be represented as such before their
+          complete lifecycle is tested in staging.
+        </p>
+
+        <h2>How Data Is Stored And Secured</h2>
+        <ul>
+          <li>
+            Data is held in a PostgreSQL database, isolated per store, and
+            reached only over TLS. The production database will use separate
+            credentials and row-level security for each environment.
+          </li>
+          <li>
+            Shopify session tokens are stored server-side and are never exposed
+            to the browser.
+          </li>
+          <li>
+            Every webhook Shopify sends is HMAC-verified before it is acted on.
+            An unverified request is rejected with <code>401</code> and nothing
+            is written.
+          </li>
+          <li>
+            Access to operational support tools is separately authenticated,
+            restricted to authorised publisher operators, and audit logged.
+            Those tools do not expose shopper personal data by default.
+          </li>
+          <li>
+            For crash recovery a verified webhook is reduced to the fields its
+            processor actually uses before being written, and that copy is
+            cleared as soon as processing succeeds. Names, addresses, phone
+            numbers, IP addresses and payment metadata never enter that queue.
+          </li>
+        </ul>
+
+        <h2>Who Else Sees It</h2>
+        <p>
+          MyMeridian does <strong>not</strong> sell store data, does not share it
+          with advertisers, and does not use it to train machine-learning
+          models. MyMeridian is currently pre-launch and has no production
+          merchant-data environment. The planned production architecture uses
+          Fly.io for application hosting, Fly Managed Postgres for the database
+          and Upstash for managed Redis; Shopify receives information required
+          to provide the app. Resend and Twilio Verify may process only the
+          email or phone information needed for merchant or operator security
+          communications after those services are configured. This policy will
+          be updated before launch if a production provider changes. When a
+          merchant chooses to connect Meta, Google, TikTok or ShipStation,
+          MyMeridian exchanges authorization details with that provider and
+          requests only the account and cost data needed for the selected
+          integration. MyMeridian does not send Shopify customer records to
+          advertising platforms.
+        </p>
+
+        <h2>Pre-Launch Waitlist</h2>
+        <p>
+          A visitor may join the MyMeridian waitlist with an email address and
+          an optional Shopify store URL. We retain campaign attribution passed
+          in the signup link (such as UTM source, medium and campaign) only to
+          understand which marketing generated interest. We do not request a
+          name, password, Shopify access token, customer data or other
+          unnecessary personal information for the waitlist.
+        </p>
+        <p>
+          A signup creates an email-bound Founding Merchant eligibility record
+          for the stated 15% first-year monthly-plan benefit if activated at
+          launch. It is not a public coupon. Transactional confirmation may be
+          sent once MyMeridian's sender is verified; product/newsletter mail is
+          sent only after separate consent and includes an unsubscribe link.
+          Transactional delivery receipts are retained for up to 90 days for
+          reliability and abuse troubleshooting. To request access, correction
+          or deletion of waitlist data, use the contact details on this page.
+        </p>
+
+        <h2>How Long It Is Kept</h2>
+        <ul>
+          <li>Store data is retained while the app is installed.</li>
+          <li>
+            On uninstall the store&rsquo;s Shopify sessions are deleted
+            immediately, and the remaining records are removed when Shopify
+            sends
+            <code>shop/redact</code>.
+          </li>
+          <li>
+            A failed minimized order-recovery payload is retried and then
+            irreversibly cleared after <strong>7 days</strong>. Mandatory
+            Shopify compliance work is retained only until it completes and is
+            never discarded merely because the ordinary recovery deadline has
+            passed.
+          </li>
+          <li>
+            A customer data export assembled for a request expires
+            <strong>31 days</strong> after that request, whether or not the
+            merchant has collected it, and is removed by a sweep that runs
+            hourly and again at startup after any downtime.
+          </li>
+        </ul>
+
+        <h2>Access And Erasure Requests</h2>
+        <p>
+          MyMeridian implements all three of Shopify&rsquo;s mandatory compliance
+          webhooks and acts on each automatically:
+        </p>
+        <ul>
+          <li>
+            <code>customers/data_request</code> — everything held about the
+            named customer is assembled into an export and made available to the
+            merchant, who is the controller and who responds to the shopper. The
+            merchant collects it from an authenticated screen inside the app,
+            which receives metadata only and always shows every uncollected
+            request. Collected history is paginated. The full report is returned
+            only by a shop-scoped, no-store download after an explicit click,
+            which also records the first collection time. This remains available
+            without an active subscription.
+          </li>
+          <li>
+            <code>customers/redact</code> — the customer record is deleted and
+            its link removed from every order. Landing URLs, UTM values and
+            campaign strings are also cleared from those linked orders and
+            matching pending order payloads. A different Shopify customer id is
+            left untouched even if it shares an email address. The orders keep
+            their own economic history but no customer link or Shopify customer
+            identifier, because deleting the orders outright would silently
+            rewrite the merchant&rsquo;s own historical revenue. Keyed one-way
+            digests are retained as pseudonymous erasure guards, solely to stop
+            a delayed webhook or a later import from recreating the customer;
+            they are deleted with the store.
+          </li>
+          <li>
+            <code>shop/redact</code> — the store&rsquo;s records are deleted,
+            including sessions, orders, products, customers, cost rules and
+            connector settings.
+          </li>
+        </ul>
+        <p>
+          A merchant may also request access or erasure directly, using the
+          contact address above, without going through Shopify.
+        </p>
+
+        <h2>International Transfers And Legal Basis</h2>
+        <p>
+          Data is processed on infrastructure that may be located outside the
+          merchant&rsquo;s country. Processing is carried out to perform the
+          contract with the merchant, and on their instruction in respect of any
+          shopper data.
+        </p>
+
+        <h2>Cookies</h2>
+        <p>
+          This marketing site runs no analytics or advertising trackers. If a
+          visitor changes the appearance, the selected light or dark theme is
+          stored locally in that browser. Inside the embedded app,
+          Shopify&rsquo;s own session mechanism is used to keep a merchant signed
+          in; no advertising or cross-site tracking cookie is set by
+          MyMeridian.
+        </p>
+
+        <h2>Changes To This Policy</h2>
+        <p>
+          Material changes will be reflected in the &ldquo;last updated&rdquo;
+          date above and, where the change affects what is collected or who it
+          is shared with, notified to installed merchants before it takes
+          effect.
+        </p>
+
+        <h2>Contact</h2>
+        <p>
+          For support, contact <strong>support@mymeridian.io</strong>. The
+          mailbox is monitored. MyMeridian is not accepting merchant
+          installations until public distribution begins.
+        </p>
+      </div>
+    </main>
+
+    <footer>
+      <div class="foot-inner">
+        <span>&copy; 2026 MyMeridian</span>
+        <nav class="foot-nav">
+          <a href="/">Home</a>
+          <a href="/privacy">Privacy</a>
+          <a href="terms.html">Terms</a>
+          <a href="/support">Support</a>
+        </nav>
+      </div>
+    </footer>
+  <script>
+(function () {
+  "use strict";
+  var root = document.documentElement;
+  var button = document.getElementById("theme-switch");
+  if (!button) return;
+  function sync() {
+    button.setAttribute("aria-pressed", root.getAttribute("data-theme") === "dark" ? "true" : "false");
+  }
+  button.addEventListener("click", function () {
+    var dark = root.getAttribute("data-theme") !== "dark";
+    root.setAttribute("data-theme", dark ? "dark" : "light");
+    try { localStorage.setItem("meridian-theme", dark ? "dark" : "light"); } catch (e) {}
+    sync();
+  });
+  sync();
+})();
+</script>
+</body>
+</html>

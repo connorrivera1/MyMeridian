@@ -2,15 +2,19 @@ import prisma from "~/db.server";
 import { invalidateAnalyticsCache } from "~/data/analytics.server";
 import { reconcileConnectedCarriersForShop } from "~/integrations/shipping.server";
 import { planIdForSubscriptionName } from "~/lib/billing.server";
+import { billingKeyInfo, billingKeyIsAnnual, PLANS } from "~/lib/plans";
+import { redeemFoundingMerchantEntitlement } from "~/lib/waitlist.server";
 import {
   buildCustomerExport,
   findPendingWebhookPersonalData,
   recordDataRequest,
 } from "~/lib/data-request.server";
 import { redactCustomerEverywhere } from "~/lib/customer-erasure.server";
-import { ANNUAL_SUFFIX } from "~/lib/plans";
-import { capabilitiesForShop } from "~/lib/scopes";
-import { synchroniseShopifyShippingConnector } from "~/lib/provision.server";
+import { capabilitiesForShop, parseScopes } from "~/lib/scopes";
+import {
+  synchroniseShopifyShippingConnector,
+  synchroniseShopifyShopCampaignsConnector,
+} from "~/lib/provision.server";
 import {
   adminClientForShop,
   hydrateInventoryItemProducts,
@@ -83,7 +87,11 @@ export async function processOrdersWebhook({
         // Soft overage must never turn a valid order delivery into a retry. The
         // meter remains visible and Shopify billing can be retried on the next
         // threshold batch.
-        console.error(`[billing] soft overage charge deferred for ${shopDomain}:`, error);
+        console.error(
+          "[billing] soft overage charge deferred for %s:",
+          shopDomain,
+          error,
+        );
       }
     }
   }
@@ -134,29 +142,41 @@ export async function processCheckoutsWebhook({
     create: {
       shopId: shop.id,
       token,
-      cartToken: typeof payload.cart_token === "string" ? payload.cart_token : null,
-      currency: typeof payload.currency === "string" ? payload.currency : shop.currency,
-      total: typeof payload.total_price === "string" || typeof payload.total_price === "number"
-        ? String(payload.total_price)
-        : "0",
+      cartToken:
+        typeof payload.cart_token === "string" ? payload.cart_token : null,
+      currency:
+        typeof payload.currency === "string" ? payload.currency : shop.currency,
+      total:
+        typeof payload.total_price === "string" ||
+        typeof payload.total_price === "number"
+          ? String(payload.total_price)
+          : "0",
       lineCount: lineItems.length,
       totalQuantity,
       status: payload.completed_at ? "completed" : "open",
       createdAt: dateOrNow(payload.created_at),
       shopifyUpdatedAt,
-      completedAt: payload.completed_at ? dateOrNow(payload.completed_at) : null,
+      completedAt: payload.completed_at
+        ? dateOrNow(payload.completed_at)
+        : null,
     },
     update: {
-      cartToken: typeof payload.cart_token === "string" ? payload.cart_token : null,
-      currency: typeof payload.currency === "string" ? payload.currency : shop.currency,
-      total: typeof payload.total_price === "string" || typeof payload.total_price === "number"
-        ? String(payload.total_price)
-        : "0",
+      cartToken:
+        typeof payload.cart_token === "string" ? payload.cart_token : null,
+      currency:
+        typeof payload.currency === "string" ? payload.currency : shop.currency,
+      total:
+        typeof payload.total_price === "string" ||
+        typeof payload.total_price === "number"
+          ? String(payload.total_price)
+          : "0",
       lineCount: lineItems.length,
       totalQuantity,
       status: payload.completed_at ? "completed" : "open",
       shopifyUpdatedAt,
-      completedAt: payload.completed_at ? dateOrNow(payload.completed_at) : null,
+      completedAt: payload.completed_at
+        ? dateOrNow(payload.completed_at)
+        : null,
     },
   });
 }
@@ -294,7 +314,7 @@ export async function processAppSubscriptionsWebhook({
     );
   }
 
-  const interval = (sub.name ?? "").trim().toLowerCase().endsWith(ANNUAL_SUFFIX)
+  const interval = billingKeyIsAnnual((sub.name ?? "").trim().toLowerCase())
     ? "annual"
     : "monthly";
   const data = {
@@ -304,13 +324,80 @@ export async function processAppSubscriptionsWebhook({
     shopifyChargeId: sub.admin_graphql_api_id ?? null,
     trialEndsAt: sub.trial_ends_on ? new Date(sub.trial_ends_on) : null,
     currentPeriodEnd: sub.billing_on ? new Date(sub.billing_on) : null,
+    pendingPlan: null,
+    pendingInterval: null,
+    pendingEffectiveAt: null,
   };
 
-  await prisma.subscription.upsert({
+  const current = await prisma.subscription.findUnique({
     where: { shopId: shop.id },
-    create: { shopId: shop.id, ...data },
-    update: data,
+    select: {
+      plan: true,
+      status: true,
+      shopifyChargeId: true,
+      currentPeriodEnd: true,
+      pendingPlan: true,
+      pendingInterval: true,
+      pendingEffectiveAt: true,
+    },
   });
+  const currentPlan =
+    current?.plan && current.plan in PLANS
+      ? (current.plan as keyof typeof PLANS)
+      : null;
+  const paidThrough = data.currentPeriodEnd ?? current?.currentPeriodEnd ?? null;
+  const retainsPaidAccess =
+    !isActive &&
+    current?.status.toLowerCase() === "active" &&
+    Boolean(paidThrough && paidThrough.getTime() > Date.now());
+  const downgradeInfo = billingKeyInfo((sub.name ?? "").trim().toLowerCase());
+  const defersLowerTier =
+    isActive &&
+    downgradeInfo?.kind === "downgrade" &&
+    Boolean(
+      currentPlan &&
+        planId &&
+        PLANS[planId].price < PLANS[currentPlan].price &&
+        current?.status.toLowerCase() === "active" &&
+        paidThrough &&
+        paidThrough.getTime() > Date.now(),
+    );
+  const keepsReplacement =
+    !isActive &&
+    current?.status.toLowerCase() === "active" &&
+    current.shopifyChargeId !== (sub.admin_graphql_api_id ?? null);
+
+  // Shopify can deliver the cancellation for a replaced charge after the
+  // activation for its replacement. The Subscription row is current state,
+  // not an event ledger, so an older cancellation must not erase the newer
+  // active entitlement. The immutable SubscriptionEvent below still records
+  // every signed delivery, including the old charge's cancellation.
+  if (defersLowerTier && planId && paidThrough) {
+    await prisma.subscription.update({
+      where: { shopId: shop.id },
+      data: {
+        pendingPlan: planId,
+        pendingInterval: interval,
+        pendingEffectiveAt: paidThrough,
+      },
+    });
+  } else if (keepsReplacement || retainsPaidAccess) {
+    // Preserve the current plan through its paid period. This covers both
+    // webhook orders for a deferred replacement and a merchant cancellation
+    // where Shopify still permits use through currentPeriodEnd.
+    if (retainsPaidAccess && paidThrough) {
+      await prisma.subscription.update({
+        where: { shopId: shop.id },
+        data: { currentPeriodEnd: paidThrough },
+      });
+    }
+  } else {
+    await prisma.subscription.upsert({
+      where: { shopId: shop.id },
+      create: { shopId: shop.id, ...data },
+      update: data,
+    });
+  }
   await prisma.subscriptionEvent.upsert({
     where: { webhookId },
     create: {
@@ -325,6 +412,17 @@ export async function processAppSubscriptionsWebhook({
     // already upserted above; immutable history must not append or mutate.
     update: {},
   });
+  const billingKey = billingKeyInfo((sub.name ?? "").trim().toLowerCase());
+  if (isActive && billingKey?.founding) {
+    // The benefit is not consumed when a request is made or a merchant opens
+    // Shopify's approval page. It becomes redeemed only on this durable,
+    // authenticated subscription event.
+    await redeemFoundingMerchantEntitlement({
+      shopId: shop.id,
+      billingKey: sub.name ?? "",
+      subscriptionId: sub.admin_graphql_api_id ?? null,
+    });
+  }
   console.info(
     `[billing] ${shopDomain}: subscription "${sub.name}" -> plan=${data.plan} status=${data.status}`,
   );
@@ -340,12 +438,33 @@ export async function processAppScopesUpdateWebhook({
   const current = (payload.current ?? []) as string[] | string;
   const granted = Array.isArray(current) ? current.join(",") : String(current);
   if (granted === (shop.grantedScopes ?? "")) return;
+  const orderHistoryAccessChanged =
+    parseScopes(granted).has("read_all_orders") !==
+    parseScopes(shop.grantedScopes).has("read_all_orders");
 
   await prisma.shop.update({
     where: { id: shop.id },
-    data: { grantedScopes: granted || null },
+    data: {
+      grantedScopes: granted || null,
+      ...(orderHistoryAccessChanged
+        ? {
+            syncStatus: "PENDING",
+            syncCompletedAt: null,
+            syncStage: "Order-history access changed",
+            hasAllOrdersScope: false,
+          }
+        : {}),
+    },
   });
   await synchroniseShopifyShippingConnector(shop.id, granted);
+  await synchroniseShopifyShopCampaignsConnector(shop.id, granted);
+  if (orderHistoryAccessChanged) {
+    // Managed installation grants this scope without reinstalling. Claim the
+    // new import from the webhook so a merchant does not need to discover and
+    // press Re-import before lifetime history becomes truthful.
+    const { requestBackfill } = await import("~/lib/backfill-queue.server");
+    await requestBackfill(shop.id);
+  }
   // Scope changes alter whether protected customer cohorts may be loaded, so
   // a warm analytics entry cannot survive the capability change.
   invalidateAnalyticsCache();

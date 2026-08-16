@@ -1,19 +1,24 @@
-import { CostRuleKind, SyncStatus } from "@prisma/client";
+import { Channel, ConnectorProvider, CostRuleKind, SyncStatus } from "@prisma/client";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const requireShopContext = vi.fn();
 const requireActivePlan = vi.fn();
-const startBackfill = vi.fn();
-const recomputeShopProfitability = vi.fn();
+const planAllows = vi.fn(() => true);
+const requestBackfill = vi.fn();
+const enqueueShopRecompute = vi.fn();
+const retryShopifyShippingConnector = vi.fn();
 const prismaMock = {
   costRule: {
     findMany: vi.fn(async () => []),
     findFirst: vi.fn(),
     update: vi.fn(),
   },
-  connector: { findMany: vi.fn(async () => []) },
+  connector: { findMany: vi.fn(async () => []), findFirst: vi.fn(), update: vi.fn() },
+  adSpend: { deleteMany: vi.fn() },
+  adSyncWindow: { deleteMany: vi.fn() },
+  $transaction: vi.fn(async (work: Promise<unknown>[]) => Promise.all(work)),
   order: { count: vi.fn(async () => 12_000) },
   product: { count: vi.fn(async () => 340) },
   shop: { findUniqueOrThrow: vi.fn(), updateMany: vi.fn() },
@@ -21,19 +26,28 @@ const prismaMock = {
 
 vi.mock("~/lib/auth.server", () => ({
   requireShopContext: (...args: unknown[]) => requireShopContext(...args),
+  withShopContext: async (
+    request: Request,
+    work: (context: unknown) => unknown,
+  ) => work(await requireShopContext(request)),
 }));
 vi.mock("~/lib/plan.server", () => ({
   requireActivePlan: (...args: unknown[]) => requireActivePlan(...args),
+  planAllows,
 }));
-vi.mock("~/lib/backfill.server", () => ({
-  startBackfill: (...args: unknown[]) => startBackfill(...args),
+vi.mock("~/lib/backfill-queue.server", () => ({
+  requestBackfill: (...args: unknown[]) => requestBackfill(...args),
 }));
-vi.mock("~/lib/recompute.server", () => ({
-  recomputeShopProfitability: (...args: unknown[]) =>
-    recomputeShopProfitability(...args),
+vi.mock("~/lib/recompute-queue.server", () => ({
+  enqueueShopRecompute: (...args: unknown[]) => enqueueShopRecompute(...args),
 }));
 vi.mock("~/data/analytics.server", () => ({
   invalidateAnalyticsCache: vi.fn(),
+}));
+vi.mock("~/integrations/shipping.server", () => ({
+  ensureShipStationWebhook: vi.fn(),
+  retryShopifyShippingConnector: (...args: unknown[]) =>
+    retryShopifyShippingConnector(...args),
 }));
 vi.mock("~/db.server", () => ({ default: prismaMock }));
 
@@ -68,7 +82,7 @@ beforeEach(() => {
 
 describe("Settings historical-import action", () => {
   it("reports a cursor resume after the server wins the stale claim", async () => {
-    startBackfill.mockResolvedValue({ started: true, resumed: true });
+    requestBackfill.mockResolvedValue({ started: true, resumed: true });
 
     await expect(
       action({ request: resyncRequest() } as never),
@@ -77,11 +91,11 @@ describe("Settings historical-import action", () => {
       message:
         "Interrupted import resumed from its saved order-history checkpoint.",
     });
-    expect(startBackfill).toHaveBeenCalledWith("shop_1", admin);
+    expect(requestBackfill).toHaveBeenCalledWith("shop_1");
   });
 
   it("rejects a duplicate start on the server even if a stale page submitted", async () => {
-    startBackfill.mockResolvedValue({ started: false, reason: "active" });
+    requestBackfill.mockResolvedValue({ started: false, reason: "active" });
 
     await expect(
       action({ request: resyncRequest() } as never),
@@ -90,6 +104,97 @@ describe("Settings historical-import action", () => {
       message:
         "An import is already active. This request did not start another one.",
     });
+  });
+});
+
+describe("Settings Shopify Shipping recovery", () => {
+  it("runs an authenticated retry for this shop", async () => {
+    retryShopifyShippingConnector.mockResolvedValue({
+      ok: true,
+      message: "Shopify Shipping cost reconciliation is active.",
+    });
+    const request = new Request("https://meridian.example/app/settings", {
+      method: "POST",
+      body: new URLSearchParams({ intent: "retry-shopify-shipping" }),
+    });
+
+    await expect(action({ request } as never)).resolves.toEqual({
+      ok: true,
+      message: "Shopify Shipping cost reconciliation is active.",
+    });
+    expect(retryShopifyShippingConnector).toHaveBeenCalledWith("shop_1");
+  });
+});
+
+describe("Settings ad-account selection", () => {
+  it("clears the prior account's channel rows and ledger before scheduling a clean import", async () => {
+    prismaMock.connector.findFirst.mockResolvedValue({
+      id: "connector_1",
+      provider: ConnectorProvider.GOOGLE_ADS,
+      externalAccountId: "111",
+      availableAccounts: [
+        { id: "111", name: "Old account", currency: "USD" },
+        { id: "222", name: "New account", currency: "CAD", loginCustomerId: "900" },
+      ],
+    });
+    prismaMock.adSpend.deleteMany.mockResolvedValue({ count: 3 });
+    prismaMock.adSyncWindow.deleteMany.mockResolvedValue({ count: 90 });
+    prismaMock.connector.update.mockResolvedValue({ id: "connector_1" });
+    enqueueShopRecompute.mockResolvedValue({ jobId: "recompute_1" });
+
+    const request = new Request("https://meridian.example/app/settings", {
+      method: "POST",
+      body: new URLSearchParams({
+        intent: "select-connector-account",
+        provider: ConnectorProvider.GOOGLE_ADS,
+        externalAccountId: "222",
+      }),
+    });
+
+    await expect(action({ request } as never)).resolves.toEqual({
+      ok: true,
+      message: "Ad account changed. Previous-account spend was cleared and a fresh sync is queued.",
+    });
+    expect(prismaMock.adSpend.deleteMany).toHaveBeenCalledWith({
+      where: { shopId: "shop_1", channel: Channel.GOOGLE },
+    });
+    expect(prismaMock.adSyncWindow.deleteMany).toHaveBeenCalledWith({
+      where: { connectorId: "connector_1" },
+    });
+    expect(prismaMock.connector.update).toHaveBeenCalledWith({
+      where: { id: "connector_1" },
+      data: expect.objectContaining({
+        externalAccountId: "222",
+        accountCurrency: "CAD",
+        lastSyncedAt: null,
+        lastDeepSyncAt: null,
+      }),
+    });
+    expect(enqueueShopRecompute).toHaveBeenCalledWith("shop_1", "ad_account_changed");
+  });
+
+  it("does not erase a channel when the submitted account is already selected", async () => {
+    prismaMock.connector.findFirst.mockResolvedValue({
+      id: "connector_1",
+      provider: ConnectorProvider.FACEBOOK_ADS,
+      externalAccountId: "act_42",
+      availableAccounts: [{ id: "act_42", name: "Current account", currency: "USD" }],
+    });
+    const request = new Request("https://meridian.example/app/settings", {
+      method: "POST",
+      body: new URLSearchParams({
+        intent: "select-connector-account",
+        provider: ConnectorProvider.FACEBOOK_ADS,
+        externalAccountId: "act_42",
+      }),
+    });
+
+    await expect(action({ request } as never)).resolves.toEqual({
+      ok: true,
+      message: "That ad account is already selected.",
+    });
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(enqueueShopRecompute).not.toHaveBeenCalled();
   });
 });
 
@@ -140,7 +245,7 @@ describe("Settings historical-import controls", () => {
         hasResumeCursor: true,
       }),
     ).toEqual({
-      buttonLabel: "Resume import",
+      buttonLabel: "Resume Import",
       statusLabel: "Interrupted",
       disabled: false,
       recoveryCopy:
@@ -182,7 +287,7 @@ describe("Settings historical-import controls", () => {
       createElement(BackfillButton, { control: active, busy: false }),
     );
 
-    expect(staleHtml).toContain(">Resume import</button>");
+    expect(staleHtml).toContain(">Resume Import</button>");
     expect(staleHtml).not.toContain("disabled");
     expect(activeHtml).toContain(">Importing…</button>");
     expect(activeHtml).toContain("disabled");
@@ -282,7 +387,7 @@ describe("Settings cost confirmation", () => {
       kind: CostRuleKind.SHIPPING_DEFAULT,
     });
     prismaMock.costRule.update.mockResolvedValue({ id: "shipping_rule" });
-    recomputeShopProfitability.mockResolvedValue({ ordersUpdated: 12 });
+    enqueueShopRecompute.mockResolvedValue({ jobId: "job_1" });
     const request = new Request("https://meridian.example/app/settings", {
       method: "POST",
       body: new URLSearchParams({
@@ -293,7 +398,7 @@ describe("Settings cost confirmation", () => {
 
     await expect(action({ request } as never)).resolves.toEqual({
       ok: true,
-      message: "Saved. Reprofiled 12 orders.",
+      message: "Saved. Profit recomputation is queued in the background.",
     });
 
     expect(prismaMock.costRule.findFirst).toHaveBeenCalledWith({
@@ -307,7 +412,28 @@ describe("Settings cost confirmation", () => {
     expect(update.data.fixedPerOrder).toBe("9.2500");
     expect(update.data.confirmedAt).toBeInstanceOf(Date);
     expect(update.data).not.toHaveProperty("origin");
-    expect(recomputeShopProfitability).toHaveBeenCalledWith("shop_1");
+    expect(enqueueShopRecompute).toHaveBeenCalledWith(
+      "shop_1",
+      "cost_rule_changed",
+    );
+  });
+
+  it("queues a whole-store recompute instead of holding the request open", async () => {
+    enqueueShopRecompute.mockResolvedValue({ jobId: "job_2" });
+    const request = new Request("https://meridian.example/app/settings", {
+      method: "POST",
+      body: new URLSearchParams({ intent: "recompute" }),
+    });
+
+    await expect(action({ request } as never)).resolves.toEqual({
+      ok: true,
+      message:
+        "Profit recomputation is queued and will continue in the background.",
+    });
+    expect(enqueueShopRecompute).toHaveBeenCalledWith(
+      "shop_1",
+      "merchant_requested",
+    );
   });
 
   it("does not treat a bare rule id as confirmation", async () => {

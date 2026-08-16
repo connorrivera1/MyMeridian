@@ -8,6 +8,10 @@ import {
 
 import prisma from "~/db.server";
 import { parseScopes } from "~/lib/scopes";
+import {
+  SHOP_CAMPAIGNS_PROTECTED_DATA_ERROR,
+  SHOP_CAMPAIGNS_REPORT_ACCESS_ERROR,
+} from "~/lib/shop-campaigns.server";
 
 /**
  * Default cost assumptions applied at install time.
@@ -20,7 +24,7 @@ import { parseScopes } from "~/lib/scopes";
 const DEFAULT_COST_RULES = [
   {
     kind: CostRuleKind.PAYMENT_FEE,
-    label: "Shopify Payments (US online rate)",
+    label: "Shopify Payments (US Online Rate)",
     percentRate: "0.029",
     fixedPerOrder: "0.30",
     fixedPerItem: null,
@@ -28,7 +32,7 @@ const DEFAULT_COST_RULES = [
   },
   {
     kind: CostRuleKind.SHIPPING_DEFAULT,
-    label: "Estimated outbound shipping",
+    label: "Estimated Outbound Shipping",
     percentRate: null,
     fixedPerOrder: "8.50",
     fixedPerItem: null,
@@ -36,7 +40,7 @@ const DEFAULT_COST_RULES = [
   },
   {
     kind: CostRuleKind.PICK_PACK,
-    label: "Pick, pack and materials",
+    label: "Pick, Pack And Materials",
     percentRate: null,
     fixedPerOrder: "1.75",
     fixedPerItem: "0.35",
@@ -44,7 +48,7 @@ const DEFAULT_COST_RULES = [
   },
   {
     kind: CostRuleKind.OVERHEAD_MONTHLY,
-    label: "Fixed monthly overhead",
+    label: "Fixed Monthly Overhead",
     percentRate: null,
     fixedPerOrder: null,
     fixedPerItem: null,
@@ -88,6 +92,10 @@ function initialConnectors(domain: string) {
       status: ConnectorStatus.NOT_CONFIGURED,
     },
     {
+      provider: ConnectorProvider.SHOPIFY_SHOP_CAMPAIGNS,
+      status: ConnectorStatus.NOT_CONFIGURED,
+    },
+    {
       provider: ConnectorProvider.STRIPE,
       status: ConnectorStatus.NOT_CONFIGURED,
     },
@@ -112,6 +120,18 @@ export async function synchroniseShopifyShippingConnector(
   grantedScopes: string | null | undefined,
 ) {
   const connected = parseScopes(grantedScopes).has("read_reports");
+  const current = await prisma.connector.findUnique({
+    where: {
+      shopId_provider: { shopId, provider: ConnectorProvider.SHOPIFY_SHIPPING },
+    },
+    select: { status: true, lastError: true },
+  });
+  const protectedDataBlocked =
+    connected &&
+    current?.status === ConnectorStatus.ERROR &&
+    current.lastError?.startsWith(
+      "Shopify has not approved protected customer data for Shipping reports yet.",
+    );
   return prisma.connector.upsert({
     where: {
       shopId_provider: { shopId, provider: ConnectorProvider.SHOPIFY_SHIPPING },
@@ -119,18 +139,89 @@ export async function synchroniseShopifyShippingConnector(
     create: {
       shopId,
       provider: ConnectorProvider.SHOPIFY_SHIPPING,
-      status: connected ? ConnectorStatus.CONNECTED : ConnectorStatus.NOT_CONFIGURED,
+      status: connected
+        ? ConnectorStatus.CONNECTED
+        : ConnectorStatus.NOT_CONFIGURED,
       displayName: "Shopify Shipping",
       lastError: connected
         ? null
         : "read_reports is not granted; shipping-label cost reconciliation is unavailable.",
     },
     update: {
-      status: connected ? ConnectorStatus.CONNECTED : ConnectorStatus.DISCONNECTED,
+      status: protectedDataBlocked
+        ? ConnectorStatus.ERROR
+        : connected
+          ? ConnectorStatus.CONNECTED
+          : ConnectorStatus.DISCONNECTED,
       displayName: "Shopify Shipping",
+      lastError: protectedDataBlocked
+        ? current.lastError
+        : connected
+          ? null
+          : "read_reports was revoked; shipping-label cost reconciliation is paused.",
+    },
+  });
+}
+
+/**
+ * Shop Campaigns reads ShopifyQL with the existing Shopify installation, not a
+ * merchant-provided ad credential. `read_reports` starts the connection; the
+ * first ShopifyQL call proves whether Shopify has also approved Level 2 data.
+ */
+export async function synchroniseShopifyShopCampaignsConnector(
+  shopId: string,
+  grantedScopes: string | null | undefined,
+) {
+  const connected = parseScopes(grantedScopes).has("read_reports");
+  const current = await prisma.connector.findUnique({
+    where: {
+      shopId_provider: {
+        shopId,
+        provider: ConnectorProvider.SHOPIFY_SHOP_CAMPAIGNS,
+      },
+    },
+    select: { status: true, lastError: true },
+  });
+  const approvalBlocked =
+    connected &&
+    current?.status === ConnectorStatus.ERROR &&
+    current.lastError?.startsWith(SHOP_CAMPAIGNS_PROTECTED_DATA_ERROR);
+  const reportsBlocked =
+    current?.status === ConnectorStatus.ERROR &&
+    current.lastError?.startsWith(SHOP_CAMPAIGNS_REPORT_ACCESS_ERROR);
+
+  return prisma.connector.upsert({
+    where: {
+      shopId_provider: {
+        shopId,
+        provider: ConnectorProvider.SHOPIFY_SHOP_CAMPAIGNS,
+      },
+    },
+    create: {
+      shopId,
+      provider: ConnectorProvider.SHOPIFY_SHOP_CAMPAIGNS,
+      status: connected
+        ? ConnectorStatus.CONNECTED
+        : ConnectorStatus.NOT_CONFIGURED,
+      displayName: "Shop Campaigns",
       lastError: connected
         ? null
-        : "read_reports was revoked; shipping-label cost reconciliation is paused.",
+        : "read_reports is not granted; Shop Campaigns reporting is unavailable.",
+    },
+    update: {
+      status:
+        approvalBlocked || reportsBlocked
+          ? ConnectorStatus.ERROR
+          : connected
+            ? ConnectorStatus.CONNECTED
+            : ConnectorStatus.DISCONNECTED,
+      displayName: "Shop Campaigns",
+      lastError:
+        approvalBlocked || reportsBlocked
+          ? current?.lastError
+          : connected
+            ? null
+            : "read_reports was revoked; Shop Campaigns reporting is paused.",
     },
   });
 }

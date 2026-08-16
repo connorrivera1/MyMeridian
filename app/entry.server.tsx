@@ -6,6 +6,7 @@ import { renderToPipeableStream } from "react-dom/server";
 import { ServerRouter, type EntryContext } from "react-router";
 
 import { addDocumentResponseHeaders } from "./shopify.server";
+import { addSecurityHeaders } from "./lib/http-security";
 import { validateCustomerErasureConfiguration } from "./lib/customer-erasure.server";
 import { startDataRetentionScheduler } from "./lib/data-retention.server";
 import { registerRecalcHandlers } from "./lib/recalc-handlers.server";
@@ -13,6 +14,10 @@ import { startRecalcWorker } from "./lib/recalc-queue.server";
 import { startWebhookDeliveryWorker } from "./lib/webhooks.server";
 import { startIntegrationScheduler } from "./integrations/scheduler.server";
 import { startAdIngestion } from "./queue/ads-queue.server";
+import { startMerchantNotificationScheduler } from "./lib/merchant-notifications.server";
+import { startWaitlistEmailScheduler } from "./lib/waitlist.server";
+import { logOperationalFailure } from "./lib/operational-errors.server";
+import { validateProductionShopifyClient } from "./lib/production-shopify-client.server";
 
 // This module is loaded with the server process, not when a merchant opens
 // Settings. Retention therefore advances even when the app receives no page
@@ -21,13 +26,16 @@ import { startAdIngestion } from "./queue/ads-queue.server";
 // missing would defer a deterministic configuration failure into the retry
 // queue and let an otherwise-broken deploy pass its health checks.
 validateCustomerErasureConfiguration();
+validateProductionShopifyClient();
 startDataRetentionScheduler();
 startWebhookDeliveryWorker();
 startIntegrationScheduler();
+startMerchantNotificationScheduler();
+startWaitlistEmailScheduler();
 // Optional by design: without MERIDIAN_REDIS_URL the web app remains usable;
 // only continuous ad ingestion is offline.
 void startAdIngestion().catch((error) =>
-  console.error("[ads] failed to start ingestion queues", error),
+  logOperationalFailure("ads ingestion startup", error),
 );
 // Handlers first: a worker that starts before its registry is populated would
 // lease a queued restatement and immediately fail it as unhandled.
@@ -53,11 +61,7 @@ const ABORT_DELAY = 5000;
  *    subdomains this deployment does not control would be a promise the
  *    operator cannot keep.
  */
-function addSecurityHeaders(headers: Headers) {
-  headers.set("Strict-Transport-Security", "max-age=31536000");
-  headers.set("X-Content-Type-Options", "nosniff");
-  headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-}
+export { addSecurityHeaders } from "./lib/http-security";
 
 export default function handleRequest(
   request: Request,
@@ -97,7 +101,7 @@ export default function handleRequest(
         },
         onError(error: unknown) {
           didError = true;
-          console.error(error);
+          logOperationalFailure("server render", error);
         },
       },
     );

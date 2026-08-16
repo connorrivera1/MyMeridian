@@ -29,7 +29,7 @@ export default function Support() {
       <h2>Contact</h2>
       <LegalContact contact={contact} />
 
-      <h2>Before you write in</h2>
+      <h2>Before You Write In</h2>
       <p>
         Most questions about {APP_NAME} turn out to be one of these, and each is
         answerable from inside the app.
@@ -39,16 +39,18 @@ export default function Support() {
           <strong>Margins look too high, or every product shows 100%.</strong>{" "}
           {APP_NAME} takes cost of goods from the unit cost recorded against
           each variant&rsquo;s inventory item in Shopify. A variant with no cost
-          set contributes nothing to COGS. Open <em>Products</em>: sold units
-          with missing COGS are labelled <em>Needs COGS</em>, and modeled fee or
+          set is not treated as a $0.00 cost. Open <em>Products</em>: sold
+          units with missing COGS are labelled <em>Needs COGS</em>, and the
+          resulting profitability is marked incomplete. Modeled fee or
           fulfilment inputs are marked separately from measured costs.
         </li>
         <li>
-          <strong>History only reaches back 60 days.</strong> Shopify caps order
-          reads at 60 days unless the app is granted{" "}
-          <code>read_all_orders</code>, which is an access request approved in
-          the Partner Dashboard rather than a scope the merchant can grant at
-          install.
+          <strong>History only reaches back 60 days.</strong> Shopify&rsquo;s
+          <code>read_all_orders</code> approval and the scope granted to this
+          installation determine whether older orders are available. Open
+          <em>Costs &amp; connections</em> to see the scopes this store granted;
+          MyMeridian labels a limited history window rather than treating it as
+          complete.
         </li>
         <li>
           <strong>Acquisition shows no customer acquisition cost.</strong> CAC,
@@ -60,20 +62,22 @@ export default function Support() {
           <strong>Numbers disagree with Shopify&rsquo;s own reports.</strong>{" "}
           They are measuring different things. Shopify reports gross sales;{" "}
           {APP_NAME} reports what is left after cost of goods, shipping, pick
-          and pack, payment fees and overhead. This release has no ad-spend
-          connector, so <em>Overview</em> labels the result as profit before
-          paid marketing and shows ad spend as unavailable rather than zero.
+          and pack, payment fees, overhead and any paid-marketing spend that a
+          connected Meta, Google or TikTok source has successfully synced. If
+          no source has completed a sync, <em>Overview</em> labels the result as
+          profit before paid marketing and shows ad spend as unavailable rather
+          than zero. It never treats an unconnected account as zero spend.
         </li>
         <li>
           <strong>A new product shows no cost.</strong> Set{" "}
           <em>Cost per item</em> on the variant in Shopify. Inventory updates
           keep the catalog current, and each new order snapshots the cost
-          available when Meridian ingests it; an unknown historical cost is
+          available when MyMeridian ingests it; an unknown historical cost is
           never invented.
         </li>
       </ul>
 
-      <h2>What to include in a support request</h2>
+      <h2>What To Include In A Support Request</h2>
       <p>
         Your <code>.myshopify.com</code> domain, the screen you were on, the
         date range selected, and what you expected the number to be. If a figure
@@ -81,10 +85,10 @@ export default function Support() {
         description of the whole dashboard.
       </p>
 
-      <h2>Data and deletion</h2>
+      <h2>Data And Deletion</h2>
       <p>
         Uninstalling {APP_NAME} from your Shopify admin ends all data collection
-        immediately. See the <a href="/privacy">privacy policy</a> for what is
+        immediately. See the <a href="/privacy">Privacy Policy</a> for what is
         held, for how long, and how to request erasure.
       </p>
     </LegalPage>

@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { formatMoney, formatPercent, type Cents } from "~/engine/money";
+import { APP_NAME } from "~/lib/brand";
 
 /* ------------------------------------------------------------- brand mark */
 
@@ -189,8 +190,16 @@ export function AnimatedInt({ value }: { value: number }) {
 
 /* --------------------------------------------------------------- splash */
 
-/** Total sequence length; must stay in step with the CSS delays. */
-const SPLASH_MS = 1240;
+/**
+ * Total sequence length; must stay in step with the CSS delays.
+ *
+ * The last letter of a ten-letter wordmark starts at 0.682s and takes 0.3s, so
+ * the word completes at ~0.98s. 1320ms leaves the same ~334ms of finished
+ * wordmark on screen that the eight-letter "Meridian" had at 1240ms — the pause
+ * after the word lands is what the sequence reads as, so it is held constant
+ * rather than absorbed by the rename.
+ */
+const SPLASH_MS = 1320;
 const SPLASH_FADE_MS = 260;
 
 /**
@@ -233,14 +242,14 @@ export function Splash() {
     <div
       className={leaving ? "splash out" : "splash"}
       role="status"
-      aria-label="Meridian"
+      aria-label={APP_NAME}
     >
       <div className="splash-inner">
         <div className="splash-globe">
           <BrandMark size={112} spin />
         </div>
         <div className="splash-word" aria-hidden="true">
-          {"Meridian".split("").map((letter, i) => (
+          {APP_NAME.split("").map((letter, i) => (
             <span key={`${letter}-${i}`}>{letter}</span>
           ))}
         </div>
@@ -335,6 +344,7 @@ export function Tile({
   icon,
   spark,
   hero = false,
+  valueTone = "neutral",
 }: {
   label: ReactNode;
   value: ReactNode;
@@ -343,10 +353,11 @@ export function Tile({
   icon?: ReactNode;
   spark?: number[];
   hero?: boolean;
+  valueTone?: "positive" | "negative" | "neutral";
 }) {
   return (
     <div
-      className={hero ? "tile hero" : "tile"}
+      className={`${hero ? "tile hero" : "tile"} value-${valueTone}`}
       style={{ ["--tile" as string]: tone }}
     >
       <div className="tile-head">
@@ -577,7 +588,7 @@ export function Delta({
   }
 
   const rounded = Math.abs(value) < 0.0005 ? 0 : value;
-  if (rounded === 0) return <span className="delta flat">no change</span>;
+  if (rounded === 0) return <span className="delta flat">No Change</span>;
 
   const rising = rounded > 0;
   const good = invert ? !rising : rising;
@@ -690,7 +701,7 @@ export function Alert({
           {title}
           {typeof daysUntil === "number" && (
             <Badge tone={severity === "CRITICAL" ? "critical" : "warning"}>
-              in {daysUntil} {daysUntil === 1 ? "day" : "days"}
+              In {daysUntil} {daysUntil === 1 ? "day" : "days"}
             </Badge>
           )}
         </h3>
@@ -737,15 +748,23 @@ export function Banner({
 }
 
 /** Series colours, by slot. Order is the colourblind-safety mechanism. */
+/*
+ * Channel identity, not the generic value ramp.
+ *
+ * `--series-*` is spent all over the app on things that are not categories —
+ * KPI tile tints, single-series plots — so hue cannot live there without
+ * colouring all of it. These eight are only ever handed out by `seriesColor`,
+ * which only ever receives a channel.
+ */
 export const SERIES_VARS = [
-  "var(--series-1)",
-  "var(--series-2)",
-  "var(--series-3)",
-  "var(--series-4)",
-  "var(--series-5)",
-  "var(--series-6)",
-  "var(--series-7)",
-  "var(--series-8)",
+  "var(--channel-1)",
+  "var(--channel-2)",
+  "var(--channel-3)",
+  "var(--channel-4)",
+  "var(--channel-5)",
+  "var(--channel-6)",
+  "var(--channel-7)",
+  "var(--channel-8)",
 ] as const;
 
 /**
@@ -785,7 +804,7 @@ export function UpgradeNotice({
   return (
     <div className="card">
       <div style={{ padding: "26px 24px", maxWidth: "68ch" }}>
-        <Badge tone="neutral">{planName} plan</Badge>
+        <Badge tone="neutral">{planName} Plan</Badge>
         <h2
           className="card-title"
           style={{ fontSize: 17, margin: "12px 0 8px" }}
@@ -808,6 +827,25 @@ export function UpgradeNotice({
 
 /* -------------------------------------------------------------- legal pages */
 
+function LegalContourField() {
+  return (
+    <svg
+      className="legal-contour-field"
+      viewBox="0 0 1440 1000"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <g transform="translate(1590 500)">
+        <circle className="contour-major" r="740" />
+        <ellipse className="contour-major" rx="533" ry="740" />
+        <ellipse className="contour-minor" rx="294" ry="740" />
+        <path className="contour-axis" d="M0 -740V740" />
+      </g>
+    </svg>
+  );
+}
+
 /**
  * Chrome for the public, unauthenticated documents Shopify's listing links to:
  * the privacy policy and the support page. Deliberately outside the app shell —
@@ -824,10 +862,11 @@ export function LegalPage({
 }) {
   return (
     <main className="legal">
+      <LegalContourField />
       <header className="legal-head">
         <a className="legal-brand" href="/">
           <BrandMark size={30} />
-          <span>Meridian</span>
+          <span>{APP_NAME}</span>
         </a>
         <h1>{title}</h1>
         {updated && <p className="legal-updated">Last updated {updated}</p>}

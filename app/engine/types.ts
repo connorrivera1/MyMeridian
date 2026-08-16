@@ -4,6 +4,7 @@ export type Channel =
   | "FACEBOOK"
   | "GOOGLE"
   | "TIKTOK"
+  | "SHOP_CAMPAIGNS"
   | "EMAIL"
   | "ORGANIC_SEARCH"
   | "DIRECT"
@@ -15,14 +16,16 @@ export const PAID_CHANNELS: readonly Channel[] = [
   "FACEBOOK",
   "GOOGLE",
   "TIKTOK",
+  "SHOP_CAMPAIGNS",
 ];
 
 export const CHANNEL_LABELS: Record<Channel, string> = {
   FACEBOOK: "Facebook Ads",
   GOOGLE: "Google Ads",
   TIKTOK: "TikTok Ads",
+  SHOP_CAMPAIGNS: "Shop Campaigns",
   EMAIL: "Email",
-  ORGANIC_SEARCH: "Organic search",
+  ORGANIC_SEARCH: "Organic Search",
   DIRECT: "Direct",
   REFERRAL: "Referral",
   AFFILIATE: "Affiliate",
@@ -39,6 +42,8 @@ export interface EngineLineItem {
   unitPriceCents: Cents;
   discountCents: Cents;
   unitCostMicros: Micros;
+  /** True when Shopify or a merchant explicitly supplied COGS, even if $0. */
+  cogsKnown?: boolean;
 }
 
 export interface EngineOrder {
@@ -158,6 +163,8 @@ export interface OrderProfit {
   hasMissingCogs: boolean;
   /** A configured fee, fulfilment fallback or overhead allocation was used. */
   usesModeledCosts: boolean;
+  /** True when a carrier or fulfilment source supplied this order's shipping cost. */
+  shippingCostMeasured?: boolean;
   /** Compatibility summary: either missing COGS or a modeled cost was used. */
   usesEstimatedCosts: boolean;
 }

@@ -5,6 +5,10 @@ const listDataRequests = vi.fn();
 
 vi.mock("~/lib/auth.server", () => ({
   requireShopContext: (...args: unknown[]) => requireShopContext(...args),
+  withShopContext: async (
+    request: Request,
+    work: (context: unknown) => unknown,
+  ) => work(await requireShopContext(request)),
 }));
 vi.mock("~/lib/data-request.server", () => ({
   DATA_REQUEST_RETENTION_DAYS: 31,

@@ -2,6 +2,7 @@ import prisma from "~/db.server";
 import { redirect } from "react-router";
 import type { ShopContext } from "~/lib/auth.server";
 import { planIdForSubscriptionName } from "~/lib/billing.server";
+import { logOperationalFailure } from "~/lib/operational-errors.server";
 import { PLANS, type PlanId } from "~/lib/plans";
 import { refreshShopPlanSignal } from "~/lib/shop-plan.server";
 
@@ -68,6 +69,18 @@ export const FEATURE_MIN_PLAN = {
   pricing: "growth",
   /** Fulfilment capacity modelling and backlog alerts. */
   capacity: "growth",
+  /** Proactive margin, refund and operational diagnosis. */
+  anomalyAlerts: "growth",
+  /** Merchant-managed Meta, Google Ads and TikTok Ads OAuth connections. */
+  adConnections: "starter",
+  /** Merchant-managed ShipStation label-cost reconciliation. */
+  carrierConnections: "starter",
+  /** Automated weekly profit email. */
+  scheduledReports: "scale",
+  /** Streamed accountant-grade order profitability export. */
+  exports: "scale",
+  /** One web account may manage more than one connected Shopify store. */
+  multiStore: "scale",
 } as const satisfies Record<string, PlanId>;
 
 export type Feature = keyof typeof FEATURE_MIN_PLAN;
@@ -81,6 +94,9 @@ export interface PlanState {
   /** Raw Shopify status, for display. */
   status: string;
   trialEndsAt: Date | null;
+  /** A lower tier already accepted by Shopify, effective after paid access. */
+  pendingPlanId?: PlanId;
+  pendingEffectiveAt?: Date;
   /**
    * True for the seeded demo, which has no Shopify subscription to read and is
    * shown at the top plan so the demo exercises every screen.
@@ -192,10 +208,7 @@ export async function resolvePlan(ctx: ShopContext): Promise<PlanState> {
       ctx.shop.partnerDevelopment = billingIsTest;
       forceBillingRefresh = true;
     } catch (error) {
-      console.error(
-        `[billing] could not refresh store type for ${ctx.shop.domain}:`,
-        error,
-      );
+      logOperationalFailure("billing store-type refresh", error);
       return emptyState();
     }
   }
@@ -204,9 +217,18 @@ export async function resolvePlan(ctx: ShopContext): Promise<PlanState> {
     where: { shopId: ctx.shop.id },
   });
 
+  // A cancellation delivery can race the activation for the replacement
+  // subscription. Never cache a non-active row: ask Shopify for the current
+  // subscription before showing a merchant the plan picker or denying paid
+  // access. Active known plans remain cached to avoid an Admin API call on
+  // every dashboard navigation.
   const fresh =
     !forceBillingRefresh &&
     stored &&
+    stored.status.toLowerCase() === "active" &&
+    stored.plan in PLANS &&
+    (!stored.pendingEffectiveAt ||
+      stored.pendingEffectiveAt.getTime() > Date.now()) &&
     Date.now() - stored.updatedAt.getTime() < PLAN_CACHE_MS;
 
   if (fresh) return fromRow(stored);
@@ -236,15 +258,15 @@ export async function resolvePlan(ctx: ShopContext): Promise<PlanState> {
 
     if (!planId && result.appSubscriptions?.length) {
       console.error(
-        `[billing] ${ctx.shop.domain}: active subscriptions ` +
-          `${result.appSubscriptions.map((s) => `"${s.name}"`).join(", ")} ` +
-          `match no plan in PLANS — the Partner Dashboard names have drifted`,
+        "[billing] %s: active subscriptions %s match no plan in PLANS — the Partner Dashboard names have drifted",
+        ctx.shop.domain,
+        result.appSubscriptions.map((s) => `"${s.name}"`).join(", "),
       );
     }
   } catch (error) {
     // Shopify being unreachable must not lock a paying merchant out of the app
     // they have already been charged for.
-    console.error(`[billing] check failed for ${ctx.shop.domain}:`, error);
+    logOperationalFailure("billing subscription check", error);
     // This check was forced by SHOP_UPDATE invalidation. The cached row might
     // be an old test subscription on a store that just converted to paid, and
     // Subscription has no trustworthy mode marker. Fail closed until Shopify
@@ -257,6 +279,9 @@ export async function resolvePlan(ctx: ShopContext): Promise<PlanState> {
     plan: planId ?? "none",
     status,
     trialEndsAt: stored?.trialEndsAt ?? null,
+    pendingPlan: null,
+    pendingInterval: null,
+    pendingEffectiveAt: null,
   };
 
   const row = await prisma.subscription.upsert({
@@ -297,8 +322,15 @@ function fromRow(row: {
   plan: string;
   status: string;
   trialEndsAt: Date | null;
+  pendingPlan?: string | null;
+  pendingEffectiveAt?: Date | null;
 }): PlanState {
   const planId = row.plan in PLANS ? (row.plan as PlanId) : null;
+
+  const pendingPlanId =
+    row.pendingPlan && row.pendingPlan in PLANS
+      ? (row.pendingPlan as PlanId)
+      : undefined;
 
   return {
     // "trial" and "none" are both stored as non-plans; neither grants access,
@@ -308,6 +340,12 @@ function fromRow(row: {
     status: row.status,
     trialEndsAt: row.trialEndsAt,
     isDemo: false,
+    ...(pendingPlanId && row.pendingEffectiveAt
+      ? {
+          pendingPlanId,
+          pendingEffectiveAt: row.pendingEffectiveAt,
+        }
+      : {}),
   };
 }
 

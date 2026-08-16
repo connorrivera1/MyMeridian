@@ -26,6 +26,8 @@ import {
   AdProviderAuthError,
   AdProviderRateLimitError,
 } from "~/lib/ad-platforms/types.server";
+import { ShopCampaignsAccessError } from "~/lib/shop-campaigns.server";
+import { logOperationalFailure } from "~/lib/operational-errors.server";
 import { recomputeShopProfitability } from "~/lib/recompute.server";
 import {
   closeQueueRedis,
@@ -36,7 +38,7 @@ import {
 /**
  * The BullMQ topology for continuous ad-account polling.
  *
- * Three ingestion queues — one per platform, because rate limits are a
+ * Four ingestion queues — one per source, because rate limits are a
  * per-platform fact and BullMQ's limiter is per-queue. One scheduler queue
  * whose single repeatable job re-plans every connector each cycle from the
  * Postgres ledger; the plan, not the queue, is the source of truth, so Redis
@@ -61,12 +63,14 @@ const PROVIDER_QUEUES: Record<
   [ConnectorProvider.FACEBOOK_ADS]: "ads-meta",
   [ConnectorProvider.GOOGLE_ADS]: "ads-google",
   [ConnectorProvider.TIKTOK_ADS]: "ads-tiktok",
+  [ConnectorProvider.SHOPIFY_SHOP_CAMPAIGNS]: "ads-shopify-campaigns",
 };
 
 const PROVIDERS = [
   ConnectorProvider.FACEBOOK_ADS,
   ConnectorProvider.GOOGLE_ADS,
   ConnectorProvider.TIKTOK_ADS,
+  ConnectorProvider.SHOPIFY_SHOP_CAMPAIGNS,
 ] as const;
 
 /**
@@ -79,6 +83,7 @@ const PROVIDER_LIMITERS: Record<string, { max: number; duration: number }> = {
   "ads-meta": { max: 20, duration: 60_000 },
   "ads-google": { max: 15, duration: 60_000 },
   "ads-tiktok": { max: 20, duration: 60_000 },
+  "ads-shopify-campaigns": { max: 10, duration: 60_000 },
 };
 
 const WORKER_CONCURRENCY = 3;
@@ -260,6 +265,11 @@ function ingestProcessor(
         // and will re-enqueue automatically once the merchant reconnects.
         throw new UnrecoverableError(error.message);
       }
+      if (error instanceof ShopCampaignsAccessError) {
+        // The connector is marked ERROR and deliberately stays paused until a
+        // merchant retries after Shopify grants the required app approval.
+        throw new UnrecoverableError(error.message);
+      }
       throw error;
     }
   };
@@ -310,10 +320,14 @@ export async function startAdIngestion(): Promise<AdsIngestionHandle | null> {
       },
     });
     worker.on("failed", (job, error) => {
-      console.error(
-        `[ads] ${providerQueueName} job ${job?.id ?? "?"} failed (attempt ${job?.attemptsMade ?? "?"}): ${error.message}`,
+      logOperationalFailure(
+        `ads ${providerQueueName} job ${job?.id ?? "?"} attempt:${job?.attemptsMade ?? "?"}`,
+        error,
       );
     });
+    worker.on("error", (error) =>
+      logOperationalFailure(`ads ${providerQueueName} worker`, error),
+    );
     workers.push(worker);
   }
 
@@ -324,9 +338,12 @@ export async function startAdIngestion(): Promise<AdsIngestionHandle | null> {
     },
     { connection, concurrency: 1 },
   );
-  scheduleWorker.on("failed", (_job, error) => {
-    console.error(`[ads] scheduling cycle failed: ${error.message}`);
-  });
+  scheduleWorker.on("failed", (_job, error) =>
+    logOperationalFailure("ads scheduling cycle", error),
+  );
+  scheduleWorker.on("error", (error) =>
+    logOperationalFailure("ads scheduling worker", error),
+  );
   workers.push(scheduleWorker);
 
   const recomputeWorker = new Worker<{ shopId: string }>(
@@ -339,11 +356,12 @@ export async function startAdIngestion(): Promise<AdsIngestionHandle | null> {
     },
     { connection, concurrency: 1 },
   );
-  recomputeWorker.on("failed", (job, error) => {
-    console.error(
-      `[ads] recompute for ${job?.data?.shopId ?? "?"} failed: ${error.message}`,
-    );
-  });
+  recomputeWorker.on("failed", (job, error) =>
+    logOperationalFailure(`ads recompute shop ${job?.data?.shopId ?? "?"}`, error),
+  );
+  recomputeWorker.on("error", (error) =>
+    logOperationalFailure("ads recompute worker", error),
+  );
   workers.push(recomputeWorker);
 
   // The repeatable cycle. Upsert is idempotent across processes and deploys;

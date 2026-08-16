@@ -26,7 +26,11 @@ import { toMicros } from "~/engine/money";
 import { generatePricingRecommendations } from "~/lib/pricing.server";
 import { withProductLock } from "~/lib/product-lock.server";
 import { recomputeShopProfitability } from "~/lib/recompute.server";
-import { capabilitiesForShop, type Capabilities } from "~/lib/scopes";
+import {
+  capabilitiesForShop,
+  parseScopes,
+  type Capabilities,
+} from "~/lib/scopes";
 import { unauthenticated } from "~/shopify.server";
 
 export { backfillIsStale, resumePointFor };
@@ -314,6 +318,12 @@ const SHOP_QUERY = `#graphql
       currencyCode
       ianaTimezone
       plan { displayName partnerDevelopment }
+    }
+    # Shopify defaults count queries to 10,000. Request an unbounded count so
+    # an initial sync never presents that lower bound as a finished total.
+    ordersCount(limit: null) {
+      count
+      precision
     }
   }
 `;
@@ -683,7 +693,8 @@ function refreshingAdminClient(
           acquiredAt = Date.now();
         } catch (error) {
           console.error(
-            `[backfill] could not refresh the admin session for ${shopDomain}`,
+            "[backfill] could not refresh the admin session for %s",
+            shopDomain,
             error,
           );
           // Deliberately not fatal — the current token may still be valid, and
@@ -696,9 +707,6 @@ function refreshingAdminClient(
     },
   };
 }
-
-export type BackfillStartResult =
-  { started: true; resumed: boolean } | { started: false; reason: "active" };
 
 const activeBackfills = new Map<string, Promise<BackfillResult>>();
 
@@ -737,27 +745,6 @@ async function beginBackfill(
   );
 
   return { started: true, resumed: claim.resume !== null, task };
-}
-
-/**
- * Claim and detach a historical import for OAuth and Settings actions.
- *
- * The returned decision is safe to show to the merchant: `started: true`
- * means this request won the database claim, not merely that a promise was
- * created in this process.
- */
-export async function startBackfill(
-  shopId: string,
-  admin: AdminClient,
-): Promise<BackfillStartResult> {
-  const begun = await beginBackfill(shopId, admin);
-  if (!begun.started) return begun;
-
-  void begun.task.catch((error) => {
-    console.error(`[backfill] ${shopId} failed`, error);
-  });
-
-  return { started: true, resumed: begun.resumed };
 }
 
 /** Claim and wait for completion. Used by tests and explicit maintenance. */
@@ -863,7 +850,10 @@ async function runClaimedBackfill(
       syncCursor: null,
       lastSyncedAt: new Date(),
       earliestOrderAt: orders.earliestOrderAt,
-      hasAllOrdersScope: orders.sawOrdersOlderThan60Days,
+      // This field describes authorization, not the shape of today's data.
+      // A new store with zero old orders still has lifetime-history access;
+      // seeing an old order is neither necessary nor a safe proxy for scope.
+      hasAllOrdersScope: parseScopes(shop.grantedScopes).has("read_all_orders"),
     });
 
     return {
@@ -912,7 +902,21 @@ async function importShopProfile(
       ianaTimezone: string;
       plan: { displayName: string; partnerDevelopment: boolean } | null;
     };
+    ordersCount?: { count: number; precision?: string | null } | null;
   }>(admin, SHOP_QUERY);
+
+  // A lower-bound count cannot power a truthful percentage: "10,000 of
+  // 10,000" could still mean a store has more history left. Keep only an exact
+  // total and leave the UI indeterminate otherwise.
+  const syncTotalOrders =
+    data.ordersCount &&
+    Number.isSafeInteger(data.ordersCount.count) &&
+    data.ordersCount.count >= 0 &&
+    (data.ordersCount.precision === undefined ||
+      data.ordersCount.precision === null ||
+      data.ordersCount.precision === "EXACT")
+      ? data.ordersCount.count
+      : null;
 
   // Currency and timezone are not cosmetic: the engine buckets ad spend and
   // orders into the merchant's own days, and getting the zone wrong shifts
@@ -924,6 +928,7 @@ async function importShopProfile(
     timezone: data.shop.ianaTimezone,
     planName: data.shop.plan?.displayName ?? null,
     partnerDevelopment: data.shop.plan?.partnerDevelopment ?? null,
+    syncTotalOrders,
   });
 }
 
@@ -1269,7 +1274,10 @@ interface OrderNode {
       taxLines: TaxLineNode[];
     }[];
   };
-  totalPriceSet: { shopMoney?: { amount?: string }; presentmentMoney?: { amount?: string; currencyCode?: string } };
+  totalPriceSet: {
+    shopMoney?: { amount?: string };
+    presentmentMoney?: { amount?: string; currencyCode?: string };
+  };
   totalRefundedSet: never;
   /** Absent entirely when customer access was not granted. */
   customer?: { id: string; email: string | null } | null;
@@ -1598,11 +1606,23 @@ async function importOneOrder(shopId: string, node: OrderNode) {
       })),
   }));
   const perRefundTotalCents = refundEvents.reduce(
-    (sum, refund) => sum + Math.round(Number(refund.transactions[0]!.amount) * 100),
+    (sum, refund) =>
+      sum + Math.round(Number(refund.transactions[0]!.amount) * 100),
     0,
   );
   const refundedTotal = money(node.totalRefundedSet);
   const orderPresentment = presentmentMoney(node.totalPriceSet);
+  const totalLineItemsPrice = node.lineItems.nodes
+    .reduce(
+      (total, item) =>
+        total.plus(
+          new Prisma.Decimal(money(item.originalUnitPriceSet)).times(
+            item.quantity,
+          ),
+        ),
+      new Prisma.Decimal(0),
+    )
+    .toFixed(2);
 
   // Use the exact same source-watermarked, advisory-locked transaction as live
   // webhooks. A page fetched before a newer delivery can therefore finish
@@ -1617,6 +1637,7 @@ async function importOneOrder(shopId: string, node: OrderNode) {
     presentment_currency:
       node.presentmentCurrencyCode ?? orderPresentment?.currencyCode ?? null,
     subtotal_price: money(node.subtotalPriceSet),
+    total_line_items_price: totalLineItemsPrice,
     total_discounts: money(node.totalDiscountsSet),
     total_shipping_price_set: {
       shop_money: { amount: money(node.totalShippingPriceSet) },
@@ -1646,7 +1667,12 @@ async function importOneOrder(shopId: string, node: OrderNode) {
     total_price_set: {
       shop_money: { amount: money(node.totalPriceSet) },
       ...(orderPresentment
-        ? { presentment_money: { amount: orderPresentment.amount, currency_code: orderPresentment.currencyCode } }
+        ? {
+            presentment_money: {
+              amount: orderPresentment.amount,
+              currency_code: orderPresentment.currencyCode,
+            },
+          }
         : {}),
     },
     financial_status: (node.displayFinancialStatus ?? "PAID").toLowerCase(),
@@ -1683,10 +1709,14 @@ async function importOneOrder(shopId: string, node: OrderNode) {
       refundEvents.some((refund) => refund.refund_line_items.length > 0)
         ? refundEvents
         : refundedTotal !== "0.00"
-          ? [{
-              transactions: [{ status: "success", kind: "refund", amount: refundedTotal }],
-              refund_line_items: [],
-            }]
+          ? [
+              {
+                transactions: [
+                  { status: "success", kind: "refund", amount: refundedTotal },
+                ],
+                refund_line_items: [],
+              },
+            ]
           : [],
   });
 

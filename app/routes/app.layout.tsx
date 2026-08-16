@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import {
+  data,
+  Form,
   Link,
   NavLink,
   Outlet,
@@ -35,7 +37,13 @@ import {
   loadAdSpendCoverage,
   type AdSpendCoverage,
 } from "~/lib/ad-spend-coverage.server";
-import { requireShopContext } from "~/lib/auth.server";
+import {
+  requireShopContext,
+  resolveWebUser,
+  type ShopContext,
+} from "~/lib/auth.server";
+import prisma, { withTenantDatabase } from "~/db.server";
+import { completePendingLink } from "~/lib/store-link.server";
 import { planAllows, resolvePlan } from "~/lib/plan.server";
 import {
   parseRangePreset,
@@ -46,13 +54,51 @@ import { PLANS } from "~/lib/plans";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const ctx = await requireShopContext(request);
-  const { shop, isDemo } = ctx;
+  let linkedUserId = ctx.user?.id ?? null;
+  /*
+   * A web account finishing Shopify's install lands here, and this is the only
+   * place a ShopMembership is ever written. Shopify authentication has already
+   * proved the store; the pending cookie grants nothing by itself. This link is
+   * completed before the tenant role is entered because identity/membership
+   * authorisation belongs to the system authentication boundary.
+   */
+  if (ctx.session) {
+    const webUser = await resolveWebUser(request);
+    if (webUser) {
+      await completePendingLink(
+        request,
+        webUser.id,
+        ctx.shop.domain,
+        ctx.shop.id,
+      );
+      linkedUserId = webUser.id;
+    }
+  }
+  const result = await withTenantDatabase({ shopId: ctx.shop.id, userId: linkedUserId }, () =>
+    loadAppLayout(request, ctx),
+  );
+  return ctx.bridgeSessionCookie
+    ? data(result, { headers: { "set-cookie": ctx.bridgeSessionCookie } })
+    : result;
+}
 
+type AppLayoutData = Awaited<ReturnType<typeof loadAppLayout>>;
+
+async function loadAppLayout(request: Request, ctx: ShopContext) {
+  const { shop, isDemo } = ctx;
   // Resolved here rather than per route so the answer is read once per
   // navigation, and so a store with no active charge cannot reach a paid screen
   // by typing its URL.
   const plan = await resolvePlan(ctx);
   const url = new URL(request.url);
+
+  if (
+    !isDemo &&
+    shop.onboardingStep !== "complete" &&
+    url.pathname.replace(/\/+$/, "") !== "/app/onboarding"
+  ) {
+    throw redirect(`/app/onboarding${url.search}`);
+  }
   const operationalRoute =
     Boolean(plan.planId) && !isEntitlementExemptPath(url.pathname);
 
@@ -74,7 +120,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   // navigation, and the badge needs an integer that `CapacityDay` rows alone
   // can produce; building the whole profit engine for it made the shell as
   // expensive as the heaviest screen. See loadCapacityAnalysis.
-  const [capacity, adSpendCoverage] = await Promise.all([
+  const [capacity, adSpendCoverage, orderCount, reconnectingSources] = await Promise.all([
     !operationalRoute || importing || !planAllows(plan, "capacity")
       ? Promise.resolve(null)
       : loadCapacityAnalysis(
@@ -87,6 +133,17 @@ export async function loader({ request }: LoaderFunctionArgs) {
           mode: "unavailable" as const,
           syncedSourceCount: 0,
         }),
+    prisma.order.count({ where: { shopId: shop.id } }),
+    !isDemo && operationalRoute
+      ? prisma.connector.findMany({
+          where: {
+            shopId: shop.id,
+            provider: { in: ["FACEBOOK_ADS", "GOOGLE_ADS", "TIKTOK_ADS"] },
+            status: { in: ["ERROR", "DISCONNECTED"] },
+          },
+          select: { provider: true },
+        })
+      : Promise.resolve([]),
   ]);
   const alertCount =
     capacity?.alerts.filter(
@@ -108,11 +165,22 @@ export async function loader({ request }: LoaderFunctionArgs) {
       status: shop.syncStatus,
       stage: shop.syncStage,
       orders: shop.syncedOrders,
+      totalOrders: shop.syncTotalOrders,
       products: shop.syncedProducts,
       error: shop.syncError,
       completedAt: shop.syncCompletedAt,
       hasAllOrdersScope: shop.hasAllOrdersScope,
       earliestOrderAt: shop.earliestOrderAt,
+    },
+    awaitingFirstOrder:
+      !isDemo && shop.syncStatus === "COMPLETE" && orderCount === 0,
+    reauthentication: {
+      shopify:
+        shop.syncStatus === "FAILED" &&
+        /(?:access token|authentication|authori[sz]ation|invalid token|expired token|\b401\b)/i.test(
+          shop.syncError ?? "",
+        ),
+      providers: reconnectingSources.map((source) => source.provider),
     },
   };
 }
@@ -121,6 +189,7 @@ export function isEntitlementExemptPath(pathname: string): boolean {
   const normalized = pathname.replace(/\/+$/, "");
   return (
     normalized === "/app/plan" ||
+    normalized === "/app/onboarding" ||
     normalized === "/app/privacy-requests" ||
     /^\/app\/privacy-requests\/[^/]+\/download$/.test(normalized)
   );
@@ -179,9 +248,9 @@ export function ErrorBoundary() {
 
 const NAV = [
   { to: "/app", label: "Overview", Icon: IconOverview, end: true },
-  { to: "/app/orders", label: "Profit per order", Icon: IconOrders },
+  { to: "/app/orders", label: "Profit Per Order", Icon: IconOrders },
   { to: "/app/products", label: "Products", Icon: IconProducts },
-  { to: "/app/costs", label: "Costs & bundles", Icon: IconCosts },
+  { to: "/app/costs", label: "Costs & Bundles", Icon: IconCosts },
   { to: "/app/acquisition", label: "Acquisition", Icon: IconChannels },
   { to: "/app/pricing", label: "Pricing", Icon: IconPricing },
   {
@@ -192,7 +261,7 @@ const NAV = [
   },
 ];
 
-type SyncState = Awaited<ReturnType<typeof loader>>["sync"];
+type SyncState = AppLayoutData["sync"];
 
 /**
  * Import progress, shown on every page rather than one.
@@ -218,15 +287,38 @@ function SyncBanner({ sync, isDemo }: { sync: SyncState; isDemo: boolean }) {
   if (isDemo) return null;
 
   if (importing) {
+    const total = sync.totalOrders;
+    const hasExactTotal =
+      typeof total === "number" &&
+      Number.isSafeInteger(total) &&
+      total >= 0;
+    const completed = hasExactTotal
+      ? Math.min(sync.orders, total)
+      : sync.orders;
+    const windowLabel = sync.hasAllOrdersScope
+      ? "all accessible history"
+      : "the last 60 days";
     return (
       <div className="banner progress">
         <div>
           <strong style={{ color: "var(--ink-primary)" }}>
-            Importing your store…
+            Analyzing {windowLabel}…
           </strong>{" "}
+          {hasExactTotal
+            ? `${completed.toLocaleString()}/${total.toLocaleString()} orders synced.`
+            : `${completed.toLocaleString()} orders synced so far.`}{" "}
           {sync.stage ?? "Starting up"}. {sync.products.toLocaleString()}{" "}
-          products and {sync.orders.toLocaleString()} orders so far. You can
-          keep using the app — figures fill in as the import runs.
+          products processed. You can keep using the app while figures fill in.
+          <progress
+            aria-label={
+              hasExactTotal
+                ? `${completed.toLocaleString()} of ${total.toLocaleString()} orders synced`
+                : `${completed.toLocaleString()} orders synced; total unavailable`
+            }
+            value={hasExactTotal ? completed : undefined}
+            max={hasExactTotal ? Math.max(total, 1) : undefined}
+            style={{ display: "block", width: "100%", marginTop: 10 }}
+          />
         </div>
       </div>
     );
@@ -270,6 +362,69 @@ function SyncBanner({ sync, isDemo }: { sync: SyncState; isDemo: boolean }) {
   return null;
 }
 
+const RECONNECT_LABEL: Record<string, string> = {
+  FACEBOOK_ADS: "Meta Ads",
+  GOOGLE_ADS: "Google Ads",
+  TIKTOK_ADS: "TikTok Ads",
+};
+
+function ReauthenticationBanner({
+  recovery,
+  shopDomain,
+}: {
+  recovery: AppLayoutData["reauthentication"];
+  shopDomain: string;
+}) {
+  if (!recovery.shopify && recovery.providers.length === 0) return null;
+
+  return (
+    <Banner tone="warn">
+      <strong style={{ color: "var(--ink-primary)" }}>
+        A data connection needs to be renewed.
+      </strong>{" "}
+      MyMeridian keeps unconnected inputs out of profit calculations until the
+      connection is restored.
+      <span className="row" style={{ gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+        {recovery.shopify && (
+          <a
+            className="btn sm"
+            href={`/auth/login?shop=${encodeURIComponent(shopDomain)}`}
+          >
+            Reconnect Shopify
+          </a>
+        )}
+        {recovery.providers.map((provider) => (
+          <Form
+            key={provider}
+            method="post"
+            action={`/app/connections/${
+              provider === "FACEBOOK_ADS"
+                ? "meta"
+                : provider === "GOOGLE_ADS"
+                  ? "google"
+                  : "tiktok"
+            }/start`}
+          >
+            <button className="btn sm">Reconnect {RECONNECT_LABEL[provider]}</button>
+          </Form>
+        ))}
+      </span>
+    </Banner>
+  );
+}
+
+export function AwaitingFirstOrderBanner() {
+  return (
+    <Banner tone="neutral">
+      <strong style={{ color: "var(--ink-primary)" }}>
+        Awaiting First Live Order.
+      </strong>{" "}
+      Explore the clearly labelled demo preview while MyMeridian waits for the
+      first Shopify order to arrive.
+    </Banner>
+  );
+}
+
 export default function AppLayout() {
   const {
     shopName,
@@ -280,7 +435,9 @@ export default function AppLayout() {
     adSpendCoverage,
     plan,
     sync,
-  } = useLoaderData<typeof loader>();
+    awaitingFirstOrder,
+    reauthentication,
+  } = useLoaderData<AppLayoutData>();
   const location = useLocation();
   // Re-measured whenever the selected range changes, which is the only thing
   // that moves the pill between navigations.
@@ -304,13 +461,13 @@ export default function AppLayout() {
       {/* Eight nav items render before the content on every page; without this
           a keyboard user tabs the whole sidebar on each navigation. */}
       <a className="skip-link" href="#content">
-        Skip to content
+        Skip to Content
       </a>
       <aside className="sidebar">
         <div className="brand">
           <BrandMark />
           <div style={{ minWidth: 0 }}>
-            <div className="brand-name">Meridian</div>
+            <div className="brand-name">MyMeridian</div>
             <div className="brand-shop" title={shopDomain}>
               {shopName}
             </div>
@@ -338,19 +495,19 @@ export default function AppLayout() {
           {plan.id && (
             <NavLink to={`/app/settings?range=${preset}`} className="nav-link">
               <IconSettings />
-              Costs &amp; connections
+              Costs &amp; Connections
             </NavLink>
           )}
           <NavLink to="/app/privacy-requests" className="nav-link">
             <IconPrivacy />
-            Privacy requests
+            Privacy Requests
           </NavLink>
           {/* An in-app route rather than a link out to the Shopify admin.
               Requirement 1.2.3 is that a merchant can change plans in both
               directions without leaving the app or contacting support. */}
           <NavLink to="/app/plan" className="nav-link">
             <IconPlan />
-            {plan.name ? `Plan · ${plan.name}` : "Choose a plan"}
+            {plan.name ? `Plan · ${plan.name}` : "Choose a Plan"}
           </NavLink>
         </nav>
 
@@ -358,7 +515,7 @@ export default function AppLayout() {
           <div className="sidebar-footer">
             <div className="tiny muted" style={{ lineHeight: 1.5 }}>
               <strong style={{ color: "var(--ink-secondary)" }}>
-                Demo data.
+                Demo Data.
               </strong>{" "}
               A seeded store, computed by the same engine that runs on live
               Shopify data.
@@ -375,7 +532,7 @@ export default function AppLayout() {
             <div
               className="segmented"
               role="group"
-              aria-label="Date range"
+              aria-label="Date Range"
               ref={rangeRef}
             >
               {(Object.keys(RANGE_PRESETS) as RangePreset[]).map((key) => (
@@ -396,6 +553,13 @@ export default function AppLayout() {
         <main className="content" id="content">
           <RouteTitle />
           {showOperationalBanners && <SyncBanner sync={sync} isDemo={isDemo} />}
+          {showOperationalBanners && awaitingFirstOrder && <AwaitingFirstOrderBanner />}
+          {showOperationalBanners && (
+            <ReauthenticationBanner
+              recovery={reauthentication}
+              shopDomain={shopDomain}
+            />
+          )}
           {/* Overview carries the fuller, metric-specific version. Every other
               route gets this shell-level qualification. */}
           {showOperationalBanners && location.pathname !== "/app" && (
@@ -423,12 +587,6 @@ export default function AppLayout() {
   }
 
   return (
-    // `embedded` is deliberately off here. That prop is the only thing
-    // AppProvider uses it for — emitting the App Bridge script tag — and it
-    // emits it from inside <body>, which fails Shopify's "first script in the
-    // head" requirement. root.tsx puts it in the head instead; loading it twice
-    // would register two App Bridge instances against the same frame. Polaris
-    // and the navigation bridge below are what remain of AppProvider's job.
     <AppProvider embedded={false}>
       <AppBridgeNavigation />
       <Splash />
@@ -576,43 +734,43 @@ function AppBridgeNavigation() {
 const TITLES: Record<string, { title: string; subtitle: string }> = {
   "/app": {
     title: "Overview",
-    subtitle: "Profit from the inputs available",
+    subtitle: "Profit From The Inputs Available",
   },
   "/app/orders": {
-    title: "Profit per order",
-    subtitle: "Available and missing costs, order by order",
+    title: "Profit Per Order",
+    subtitle: "Available And Missing Costs, Order By Order",
   },
   "/app/products": {
     title: "Products",
-    subtitle: "Qualified contribution by product",
+    subtitle: "Qualified Contribution By Product",
   },
   "/app/acquisition": {
     title: "Acquisition",
-    subtitle: "Revenue and qualified contribution by channel",
+    subtitle: "Revenue And Qualified Contribution By Channel",
   },
   "/app/pricing": {
     title: "Pricing",
-    subtitle: "Modelled from price history observed after install",
+    subtitle: "Modelled From Price History Observed After Install",
   },
   "/app/fulfilment": {
-    title: "Fulfilment capacity",
-    subtitle: "Bottlenecks before they become problems",
+    title: "Fulfilment Capacity",
+    subtitle: "Bottlenecks Before They Become Problems",
   },
   "/app/costs": {
-    title: "Costs & bundles",
-    subtitle: "What things cost, when they cost it, and what a pack is made of",
+    title: "Costs & Bundles",
+    subtitle: "What Things Cost, When They Cost It, And What A Pack Is Made Of",
   },
   "/app/settings": {
-    title: "Costs & connections",
-    subtitle: "Cost assumptions and data availability",
+    title: "Costs & Connections",
+    subtitle: "Cost Assumptions And Data Availability",
   },
   "/app/privacy-requests": {
-    title: "Privacy requests",
-    subtitle: "Shopper exports, available regardless of subscription",
+    title: "Privacy Requests",
+    subtitle: "Shopper Exports, Available Regardless Of Subscription",
   },
   "/app/plan": {
     title: "Plan",
-    subtitle: "Billed by Shopify, changeable at any time",
+    subtitle: "Billed By Shopify, Changeable At Any Time",
   },
 };
 

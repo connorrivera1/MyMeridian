@@ -254,7 +254,7 @@ vi.mock("~/shopify.server", () => ({
   },
 }));
 
-const { backfillIsStale, parseBackfillOrderLimit, runBackfill, startBackfill } =
+const { backfillIsStale, parseBackfillOrderLimit, runBackfill } =
   await import("./backfill.server");
 const { claimBackfill } = await import("./backfill-claim.server");
 
@@ -406,7 +406,7 @@ function scriptedAdmin(script: Script = {}) {
 }
 
 const ALL_SCOPES =
-  "read_orders,read_products,read_inventory,read_customers,read_fulfillments";
+  "read_orders,read_all_orders,read_products,read_inventory,read_customers,read_fulfillments";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -471,6 +471,36 @@ describe("backfill order limit configuration", () => {
 // ---------------------------------------------------------------------------
 
 describe("runBackfill: a completed import", () => {
+  it("records lifetime-history access even when a new store has no old orders", async () => {
+    await runBackfill(
+      "shop_1",
+      scriptedAdmin({ orders: [orderPage([], null)] }),
+    );
+
+    expect(finalUpdate()).toMatchObject({
+      syncStatus: SyncStatus.COMPLETE,
+      earliestOrderAt: null,
+      hasAllOrdersScope: true,
+    });
+  });
+
+  it("does not infer lifetime-history access merely from an old order", async () => {
+    shopRow.grantedScopes = ALL_SCOPES.replace("read_all_orders,", "");
+    await runBackfill(
+      "shop_1",
+      scriptedAdmin({
+        orders: [
+          orderPage(
+            [orderNode("1001", { processedAt: "2023-04-02T08:00:00Z" })],
+            null,
+          ),
+        ],
+      }),
+    );
+
+    expect(finalUpdate()).toMatchObject({ hasAllOrdersScope: false });
+  });
+
   it("records the store profile, the counts and the history it found", async () => {
     const admin = scriptedAdmin({
       orders: [
@@ -569,7 +599,7 @@ describe("runBackfill: a completed import", () => {
   });
 });
 
-describe("startBackfill: same-process deduplication", () => {
+describe("runBackfill: same-process deduplication", () => {
   it("does not schedule a second Shopify walk while this process owns one", async () => {
     let release!: () => void;
     const held = new Promise<void>((resolve) => {
@@ -584,20 +614,15 @@ describe("startBackfill: same-process deduplication", () => {
       }),
     };
 
-    await expect(startBackfill("shop_1", admin)).resolves.toEqual({
-      started: true,
-      resumed: false,
-    });
-    await expect(startBackfill("shop_1", admin)).resolves.toEqual({
-      started: false,
-      reason: "active",
-    });
-    expect(admin.graphql).toHaveBeenCalledTimes(1);
+    const first = runBackfill("shop_1", admin);
+    await vi.waitFor(() => expect(admin.graphql).toHaveBeenCalledTimes(1));
+    await expect(runBackfill("shop_1", admin)).rejects.toThrow(
+      "already active",
+    );
 
     release();
-    await vi.waitFor(() => {
-      expect(shopRow.syncStatus).toBe(SyncStatus.COMPLETE);
-    });
+    await expect(first).resolves.toBeTruthy();
+    expect(shopRow.syncStatus).toBe(SyncStatus.COMPLETE);
   });
 
   it("renews its lease while a long profitability recompute is awaiting", async () => {
@@ -607,9 +632,7 @@ describe("startBackfill: same-process deduplication", () => {
     });
     recomputeShopProfitability.mockImplementationOnce(() => recomputeHeld);
 
-    await expect(
-      startBackfill("shop_1", scriptedAdmin()),
-    ).resolves.toMatchObject({ started: true });
+    const task = runBackfill("shop_1", scriptedAdmin());
     await vi.waitFor(() => {
       expect(recomputeShopProfitability).toHaveBeenCalledWith("shop_1");
     });
@@ -622,11 +645,10 @@ describe("startBackfill: same-process deduplication", () => {
     });
 
     releaseRecompute();
-    await vi.waitFor(() => {
-      expect(shopRow.syncStatus).toBe(SyncStatus.COMPLETE);
-      expect(shopRow.syncRunToken).toBeNull();
-      expect(shopRow.syncLeaseExpiresAt).toBeNull();
-    });
+    await expect(task).resolves.toBeTruthy();
+    expect(shopRow.syncStatus).toBe(SyncStatus.COMPLETE);
+    expect(shopRow.syncRunToken).toBeNull();
+    expect(shopRow.syncLeaseExpiresAt).toBeNull();
   });
 
   it("cannot publish terminal state after another owner takes its lease", async () => {
@@ -635,11 +657,7 @@ describe("startBackfill: same-process deduplication", () => {
       releaseRecompute = resolve;
     });
     recomputeShopProfitability.mockImplementationOnce(() => recomputeHeld);
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
-
-    await startBackfill("shop_1", scriptedAdmin());
+    const task = runBackfill("shop_1", scriptedAdmin());
     await vi.waitFor(() => {
       expect(recomputeShopProfitability).toHaveBeenCalledWith("shop_1");
     });
@@ -656,12 +674,8 @@ describe("startBackfill: same-process deduplication", () => {
     });
     await vi.advanceTimersByTimeAsync(60 * 1000);
     releaseRecompute();
-
-    await vi.waitFor(() => {
-      expect(consoleError).toHaveBeenCalledWith(
-        "[backfill] shop_1 failed",
-        expect.objectContaining({ name: "BackfillLeaseLostError" }),
-      );
+    await expect(task).rejects.toMatchObject({
+      name: "BackfillLeaseLostError",
     });
     expect(shopRow).toMatchObject({
       syncStatus: SyncStatus.RUNNING,
@@ -670,7 +684,6 @@ describe("startBackfill: same-process deduplication", () => {
       syncCursor: "replacement-cursor",
       syncedOrders: 777,
     });
-    consoleError.mockRestore();
   });
 });
 
@@ -1019,6 +1032,31 @@ describe("runBackfill: what one order writes", () => {
       ? { id: `gid://shopify/ProductVariant/${variantId}` }
       : null,
     product: { id: "gid://shopify/Product/1" },
+  });
+
+  it("uses the complete line-item corpus as the pre-discount subtotal", async () => {
+    const admin = scriptedAdmin({
+      orders: [
+        orderPage(
+          [
+            orderNode("1001", {
+              subtotalPriceSet: { shopMoney: { amount: "230.00" } },
+              totalDiscountsSet: { shopMoney: { amount: "10.00" } },
+              lineItems: {
+                pageInfo: { hasNextPage: false, endCursor: null },
+                nodes: [lineItem("1", "11", 1), lineItem("2", "11", 1)],
+              },
+            }),
+          ],
+          null,
+        ),
+      ],
+    });
+
+    await runBackfill("shop_1", admin);
+
+    expect(storedOrder?.subtotal.toString()).toBe("240.00");
+    expect(storedOrder?.discountTotal.toString()).toBe("10.00");
   });
 
   it("imports a redacted customer's later history without recreating the customer", async () => {

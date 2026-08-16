@@ -12,3 +12,9 @@ dist/
 coverage/
 prisma/*.db
 prisma/*.db-journal
+
+# Generated MyMeridian reveal media is retained locally or in approved asset storage.
+marketing/reveal-2026/raw/
+marketing/reveal-2026/output/
+marketing/reveal-2026/source/render-cache*/
+marketing/reveal-2026/source/motion/preview/

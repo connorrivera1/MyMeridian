@@ -42,6 +42,7 @@ function context(
     billing: {} as ShopContext["billing"],
     session: { shop: String(shop.domain), id: "session-1" },
     isDemo: false,
+    user: null,
   };
 }
 
@@ -248,6 +249,34 @@ describe("billing charge mode", () => {
     expect(
       billingIsTestForShop(ctx.shop, { NODE_ENV: "production" }),
     ).toBe(true);
+  });
+
+  it("rechecks Shopify instead of caching a recent cancellation", async () => {
+    const check = vi.fn().mockResolvedValue({
+      appSubscriptions: [{ name: "growth-change" }],
+    });
+    const ctx = context({
+      domain: "replacement-race.myshopify.com",
+      partnerDevelopment: true,
+    });
+    ctx.billing = { check } as unknown as ShopContext["billing"];
+    subscriptionFindUnique.mockResolvedValue({
+      plan: "none",
+      status: "cancelled",
+      trialEndsAt: null,
+      updatedAt: new Date(),
+    });
+    subscriptionUpsert.mockResolvedValue({
+      plan: "growth",
+      status: "active",
+      trialEndsAt: null,
+    });
+
+    await expect(resolvePlan(ctx)).resolves.toMatchObject({
+      planId: "growth",
+      status: "active",
+    });
+    expect(check).toHaveBeenCalledWith({ isTest: true });
   });
 
   it("redirects a selective child request before paid data can load", async () => {

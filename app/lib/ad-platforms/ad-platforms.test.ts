@@ -162,6 +162,24 @@ describe("Google Ads adapter", () => {
       // Dashes stripped from the customer id, GAQL pinned to the day.
       expect(String(url)).toContain("/customers/1234567890/googleAds:searchStream");
       expect(String(init?.body)).toContain("segments.date = '2026-08-10'");
+      expect((init?.headers as Record<string, string>)["login-customer-id"]).toBeUndefined();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("uses the saved MCC only for a client selected through that MCC", async () => {
+    vi.stubEnv("MERIDIAN_GOOGLE_ADS_DEVELOPER_TOKEN", "dev-token");
+    try {
+      const fetcher = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse([]));
+      await googleAdsAdapter.fetchDailySpend(
+        { accessToken: "token-1", loginCustomerId: "9000000000" },
+        "123-456-7890",
+        "2026-08-10",
+        fetcher,
+      );
+      const [, init] = fetcher.mock.calls[0]!;
+      expect((init?.headers as Record<string, string>)["login-customer-id"]).toBe("9000000000");
     } finally {
       vi.unstubAllEnvs();
     }

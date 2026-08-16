@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import prisma from "~/db.server";
+import { logOperationalFailure } from "~/lib/operational-errors.server";
 
 export const CONNECTOR_WORK_LEASE_MS = 4 * 60 * 1000;
 const CONNECTOR_WORK_HEARTBEAT_MS = 60 * 1000;
@@ -49,7 +50,7 @@ export async function withConnectorWork<T>(
       where: { id: connectorId, workLeaseToken: token },
       data: { workLeaseExpiresAt: new Date(Date.now() + CONNECTOR_WORK_LEASE_MS) },
     }).catch((error) =>
-      console.error(`[connector-lease:${connectorId}] heartbeat failed`, error),
+      logOperationalFailure(`connector lease ${connectorId} heartbeat`, error),
     );
   }, CONNECTOR_WORK_HEARTBEAT_MS);
   heartbeat.unref?.();
@@ -62,7 +63,7 @@ export async function withConnectorWork<T>(
     } catch (error) {
       // The bounded lease expires by itself. Do not turn successful provider
       // work into a retry merely because cleanup briefly lost the database.
-      console.error(`[connector-lease:${connectorId}] release failed`, error);
+      logOperationalFailure(`connector lease ${connectorId} release`, error);
     }
   }
 }

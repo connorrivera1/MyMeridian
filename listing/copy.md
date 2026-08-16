@@ -1,14 +1,12 @@
-# App Store listing copy — blocked draft
+# MyMeridian App Store listing copy — activation blocked
 
-Written 2026-08-05 (branch `eevee/meridian-triage`). Drafted from what the code
-actually does, checked screen by screen against the routes and the engine, not
-from the plan blurbs in `app/lib/plans.ts`.
+Originally drafted 2026-08-05 and updated against the completed product on
+2026-08-11. Every current claim is checked against a merchant-reachable route,
+worker and entitlement rather than inferred from a plan name.
 
-**Nothing below is paste-ready until the public app name is decided.** The copy
-structure is measured, but the working name appears throughout and must be
-replaced and re-counted as one change. A published Shopify app already uses
-Meridian, so another `Meridian + descriptor` variant does not close the naming
-risk.
+The public identity is **MyMeridian**. The copy remains activation-blocked only
+on facts that cannot be invented in the repository: production/support URLs,
+review-store credentials and the final screencast.
 
 What still needs Connor is called out in *Needs the owner* at the bottom, and it
 is now business facts and a screencast rather than anything about the code. The
@@ -19,9 +17,11 @@ connect — was closed on 2026-08-06; see *Resolved*.
 
 ## App name — limit 30
 
-**Blocked on the owner&rsquo;s distinctive brand-led name.** Do not paste the
-working name from `shopify.app.toml`, create a `Meridian + descriptor` variant,
-or finalize the icon, handle, site, screenshots, and character counts separately.
+```
+MyMeridian
+```
+
+**10 characters.**
 
 ---
 
@@ -42,13 +42,13 @@ not connected rather than calling the result complete net profit.
 ## App details — limit 500
 
 ```
-Shopify reports gross sales. Meridian reports profit from available inputs.
+Shopify reports gross sales. MyMeridian reports profit from available inputs.
 
 It imports orders, products, item costs and fulfilments, then applies payment, shipping, pick-and-pack and overhead models. Missing costs and ad spend stay visible instead of becoming zero.
 
-See qualified profit per order and product. Fit prices to history Meridian observes after install, and see when your warehouse falls behind.
+Connect Meta, Google, TikTok or ShipStation for measured spend and carrier costs. Get profit alerts, exports and weekly summaries.
 
-Meridian requests no write access.
+MyMeridian requests no write access.
 ```
 
 **444 characters**, counting the blank lines between paragraphs. The first draft
@@ -65,12 +65,11 @@ Every claim in it is load-bearing and checked:
 | which products carry the business and which bleed | `PROFITABLE` / `BLEEDING` classifications, `app/engine/products.ts:11-15` |
 | prices fitted to post-install observed history | weighted log-log OLS on price points Meridian records from first observation onward; pre-install history is never invented |
 | which day your warehouse falls behind | 14-day forecast against demonstrated throughput, `app/engine/capacity.ts:152-182` |
-| requests no write access | `scopes = "read_orders,read_products,read_fulfillments,read_inventory"`, `shopify.app.toml:59` |
+| requests no write access | `scopes = "read_orders,read_all_orders,read_products,read_fulfillments,read_inventory,read_reports"`, `shopify.app.toml:72` |
 
-Deliberately **not** claimed: ad ROI, CAC, LTV, payback, ad-channel connections,
-customer-lifecycle product classifications, or location-specific capacity. The
-in-app plan tiers and public landing page have now been brought into line with
-this — see *Resolved*.
+Deliberately **not** claimed: protected-customer cohort LTV/payback or
+location-specific capacity. Ad connections are now merchant-managed and spend
+is imported only after a provider completes a real sync.
 
 ---
 
@@ -80,19 +79,19 @@ this — see *Resolved*.
 Profit per order after COGS, shipping, payment fees and configured overhead
 ```
 ```
-Find profitable products, thin margins and products that quietly bleed
+Connect Meta, Google, TikTok and ShipStation without contacting support
 ```
 ```
-Price recommendations fitted to history Meridian observes after installation
+Catch margin drops, refund spikes, carrier drift and missing product costs
 ```
 ```
-Fulfilment backlog alerts before your warehouse falls behind, not after
+Schedule weekly profit summaries and export accountant-ready order detail
 ```
 ```
-Read-only. Meridian requests no write access and changes nothing
+Read-only. MyMeridian requests no write access and changes nothing
 ```
 
-**75 / 70 / 75 / 71 / 64 characters.**
+Every bullet remains below Shopify's 80-character limit.
 
 ---
 
@@ -103,20 +102,18 @@ credentials the reviewer needs to exercise the app, and that those credentials
 must grant the **full** feature set. Nothing in this file, `SUBMISSION.md` or
 `DEPLOY_PLAN.md` drafted this field before now, which is how it stayed invisible:
 it is a form field with no asset attached to it, so it does not show up as a
-missing file the way the screencast and the feature media do.
+missing file the way the screencast does.
 
-**Meridian has no login of its own.** There is no Meridian account to create, no
-third-party service to connect and no API key for the reviewer to enter — the
-Shopify session is the only credential. So 4.5.4 is satisfied by saying that
-explicitly rather than leaving the field blank, which reads to a reviewer as an
-omission rather than an answer.
+The embedded installation path requires no second signup or login. MyMeridian
+also offers an optional web account so a Scale merchant can switch stores
+outside Shopify Admin; that path is not required to review the embedded app.
+Provider test credentials must be supplied in Shopify's secure reviewer fields
+if the reviewer is expected to exercise Meta, Google, TikTok or ShipStation.
 
 ```
-Meridian has no separate login. There is no account to create and no third-party
-service to connect — the app authenticates entirely through your Shopify
-session. Follow the steps below to reach every feature available in this release.
-Customer-lifecycle analysis and ad-platform metrics are intentionally unavailable
-on the requested scopes and connections; they are not reviewable paid features.
+MyMeridian requires no separate signup on the Shopify installation path. Follow
+the steps below inside Shopify Admin. An optional web login exists for returning
+Scale users, but the reviewer does not need it to reach the embedded product.
 
 Demo store: <DEMO STORE URL>
 Storefront password: <PASSWORD>
@@ -125,10 +122,11 @@ Storefront password: <PASSWORD>
    read_orders, read_products, read_fulfillments and read_inventory. It requests
    no write scope and cannot change a price, an order or anything else.
 
-2. Choose Growth monthly ($149/month) for the simplest review path. It unlocks
-   Pricing and Fulfilment, so every analytic feature available in this release
-   is reachable. Growth is also $1,490/year; Starter is $49/month or $490/year,
-   and Scale is $399/month or $3,990/year. Annual billing gives two months free.
+2. Choose Scale monthly ($299/month) to expose the full reviewable feature set,
+   including Pricing, Fulfilment, weekly summaries, CSV export and multi-store
+   portfolio access. Scale is also $2,990/year; Starter is $49/month or $490/year,
+   Growth is $129/month or $1,290/year,
+   and Scale is $299/month or $2,990/year. Annual billing gives two months free.
    Every plan carries a 14-day free trial. The supplied development store uses a
    Shopify test charge, so nothing is billed. Until a plan is active every other
    paid analytics screen redirects to the plan page. The authenticated Privacy
@@ -136,8 +134,9 @@ Storefront password: <PASSWORD>
    shopper export. You can move up or down between all three plans at any time
    from the "Plan" item in the sidebar, in-app and without contacting us.
 
-3. The historical import starts on its own as install finishes — orders,
-   products, cost per item and fulfilments. The dashboard fills in as it runs.
+3. The historical import starts on its own as install finishes. Before plan
+   selection, onboarding shows the first imported 30-day figures and asks the
+   merchant to confirm payment, shipping, pick-and-pack and overhead inputs.
 
 4. Then walk the sidebar:
    - Overview — qualified profit, revenue and margin over the selected date
@@ -152,20 +151,15 @@ Storefront password: <PASSWORD>
      post-install price history; a new install reports insufficient data.
    - Fulfilment — a 14-day backlog forecast against demonstrated throughput.
    - Privacy requests — shopper exports remain collectable without a paid plan.
-   Settings holds the four modeled cost rules the figures are built from: payment
-   processing, shipping, pick-and-pack, and fixed monthly overhead. Editing any
-   of them re-computes every screen above.
+   Settings holds the four modeled cost rules, reporting preferences, streamed
+   CSV export and self-service Meta, Google Ads, TikTok Ads and ShipStation
+   connections. Editing a cost recomputes every screen above.
 
 These inputs and analyses are deliberately unavailable, and the app says why on
 screen rather than showing a zero:
 
-- Ad spend, ROAS and marketing efficiency on the Acquisition screen.
-  Meridian does not connect to Meta, Google or TikTok yet and never infers spend
-  from orders. Live stores and the no-spend demo show those inputs as unavailable
-  rather than zero. Revenue and qualified contribution by channel remain visible
-  from the store's own orders.
 - Customer-lifecycle product classifications, customer counts, CAC, lifetime
-  value and payback. Meridian does not request read_customers in this release.
+  value and payback. MyMeridian does not request read_customers in this release.
   Product contribution remains available from recorded order values and the
   configured cost inputs, with modeled assumptions and missing COGS flagged. Historical imports
   cannot read customer-journey attribution and therefore fall back to Direct;
@@ -194,7 +188,7 @@ terms as the listing copy above:
 |---|---|
 | no login of its own; Shopify session is the only credential | no sign-up route in `app/routes.ts`; the only unauthenticated documents are `/privacy` and `/support` |
 | four read-only scopes, no write scope | `shopify.app.toml:59` |
-| monthly prices $49 / $149 / $399 and annual prices $490 / $1,490 / $3,990 | `app/lib/plans.ts` |
+| monthly prices $49 / $129 / $299 and annual prices $490 / $1,290 / $2,990 | `app/lib/plans.ts` |
 | 14-day free trial on every plan | `TRIAL_DAYS = 14`, `app/lib/plans.ts` |
 | the supplied development store uses a test charge | `resolveBillingChargeMode` re-reads Shopify's `ShopPlan.partnerDevelopment` immediately before every production `billing.request`; `shop/update` invalidates the stored signal and forces subscription revalidation after a store conversion |
 | paid analytics screens redirect to the plan page until a plan is active | `app/routes/app.layout.tsx` and `requireActivePlan`; Plan and authenticated Privacy requests remain entitlement-exempt |
@@ -260,7 +254,7 @@ ships a real connector, and not before.**
 The Acquisition screen degrades honestly on zero spend — CAC and marketing
 efficiency render `—` rather than `0` — but gave no reason, while the missing
 `read_customers` case on the same screen explains itself. It now carries a banner
-saying no ad platform is connected, that spend is never inferred from orders, and
+saying no ad platform had completed a sync, that spend is never inferred from orders, and
 that the channel figures below contain order-derived revenue plus qualified
 contribution from the available recorded and modeled cost inputs.
 
@@ -305,26 +299,23 @@ until these are known; do not reuse another product's domain or terms.
 ### 2. The setup screencast — an automatic bounce if missing
 
 Shopify requires a screencast of the full setup flow, in English or with English
-subtitles, and rejects the submission outright without one. It cannot be recorded
-yet: it has to show a real OAuth install and the first dashboard view, the app
-has never been installed on any store, and it cannot be filmed against the demo
-bypass because that is exactly the path the recording is meant to prove works.
+subtitles, and rejects the submission outright without one. A real development-
+store install and first dashboard view now work. Record the final version after
+the public identity and populated reviewer store are ready; it cannot use the
+demo bypass because that is exactly the path the recording must prove is absent.
 
-This is not a copy task and nothing in this file unblocks it. It comes free with
-Phase 2 in `DEPLOY_PLAN.md` — record it during the first real install rather than
-staging it twice.
+### 3. Remaining listing evidence, unrelated to copy
 
-### 3. Still missing from the listing, unrelated to copy
-
-- **Feature media** — one 1600×900 image or a 2–3 minute video.
+- **Feature media is ready locally** — `listing/feature-media-1600x900.png` is
+  exactly 1600×900 and its dimensions are enforced by the listing test.
 - **Demo store URL** for the reviewer to click through. The store behind it is the
   same one the screenshots come from, and its invented `AdSpend` rows were cleared
   on 2026-08-06 — the local database now holds none.
-- **All listing screenshots need a fresh capture after the August 9–10 UI
-  redraw.** The redesigned Acquisition route now leads with order-derived
-  revenue and contribution profit, so it is useful without spend and is eligible
-  to join the new set. Its old held image remains only as provenance for the
-  fabricated-spend screenshot and must not be restored.
+- **The six listing screenshots were refreshed at 1600×900 on 2026-08-11.**
+  Overview, Orders, Products, Acquisition, Pricing and Fulfilment were captured
+  from the current seeded review dataset and visually checked. Re-capture from
+  the final real review store only if its identity or data differs. The old held
+  Acquisition image remains provenance and must not be restored.
 
 ### 4. The ad-spend claim was not closed where it mattered — 2026-08-06
 
@@ -354,11 +345,11 @@ edit, put the text in a file and run:
 node -e 'console.log(require("fs").readFileSync(process.argv[1],"utf8").replace(/\n$/,"").length)' /tmp/draft.txt
 ```
 
-Measured for the current blocked draft on 2026-08-10:
+Measured for the current MyMeridian draft on 2026-08-11:
 
 | Field | Limit | Draft |
 |---|---|---|
-| Name | 30 | blocked — distinctive public name not chosen |
+| Name | 30 | 10 |
 | Introduction | 100 | 100 |
 | Details | 500 | 444 |
 | Feature 1 | 80 | 75 |

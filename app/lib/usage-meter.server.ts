@@ -343,7 +343,7 @@ export async function billSoftOrderOverage(
       userErrors: Array<{ field?: string[]; message: string }>;
     };
   }>(admin, USAGE_RECORD_MUTATION, {
-    description: `Meridian soft overage: ${chargeableUnits} orders above the monthly threshold`,
+    description: `MyMeridian soft overage: ${chargeableUnits} orders above the monthly threshold`,
     price: {
       amount: Number(chargeAmount.toFixed(2)),
       currencyCode: usageLineItem.pricingDetails.cappedAmount.currencyCode,

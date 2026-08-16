@@ -56,7 +56,7 @@ function read(relative: string): string {
 describe("listing media and the demo store it is captured from", () => {
   it("the landing page uses a complete current capture in every feature card", () => {
     const site = read("site/index.html");
-    const styles = read("site/landing.css");
+    const styles = read("public/landing.css");
     for (const asset of ["orders", "products", "pricing", "fulfilment"]) {
       expect(site).toContain(`src="assets/${asset}.jpg"`);
     }
@@ -67,8 +67,8 @@ describe("listing media and the demo store it is captured from", () => {
 
   it("keeps the public surface aligned with the app opening and chrome", () => {
     const site = read("site/index.html");
-    const styles = read("site/landing.css");
-    const legalStyles = read("site/legal.css");
+    const styles = read("public/landing.css");
+    const legalStyles = read("public/legal.css");
 
     expect(site).toContain('class="site-splash"');
     expect(site).toContain('class="mark spinning"');
@@ -86,7 +86,7 @@ describe("listing media and the demo store it is captured from", () => {
     expect(site).toContain("data-longitude");
     expect(styles).toContain(".globe-meridian");
 
-    const globe = read("site/globe.js");
+    const globe = read("public/globe.js");
     expect(globe).toContain("scrollY");
     // Rotation is a cosine sweep of each meridian's width, not a rotateY: a
     // flat SVG spun in 3D collapses edge-on and reappears mirrored.
@@ -126,7 +126,9 @@ describe("listing media and the demo store it is captured from", () => {
     const shipped = readdirSync(shippedDir).filter((f) => f.endsWith(".png"));
 
     const digest = (dir: string, file: string) =>
-      createHash("sha256").update(readFileSync(join(dir, file))).digest("hex");
+      createHash("sha256")
+        .update(readFileSync(join(dir, file)))
+        .digest("hex");
 
     const heldDigests = new Map(
       readdirSync(heldDir)
@@ -151,7 +153,7 @@ describe("listing media and the demo store it is captured from", () => {
       "listing/copy.md",
       "site/index.html",
       "app/root.tsx",
-      "app/routes/home.tsx",
+      "app/routes/home.ts",
       "app/routes/app.products.tsx",
       "app/routes/app.pricing.tsx",
     ]
@@ -160,22 +162,24 @@ describe("listing media and the demo store it is captured from", () => {
       .toLowerCase();
 
     expect(publicCopy).not.toMatch(/loss[- ]leader/);
-    expect(publicCopy).not.toMatch(/multi[- ]location|per[- ]location capacity/);
+    expect(publicCopy).not.toMatch(
+      /multi[- ]location|per[- ]location capacity/,
+    );
     expect(publicCopy).not.toMatch(/priced by (your )?volume/);
     expect(publicCopy).not.toMatch(/up to [\d,]+ orders|unlimited orders/);
     expect(publicCopy).not.toContain("true net profit");
   });
 
-  it("does not distribute the Fontshare binary whose license forbids font serving", () => {
+  it("uses Fontshare-hosted Satoshi without distributing its font binary", () => {
     const forbidden = [
       "app/fonts/satoshi/Satoshi-Variable.woff2",
-      "site/fonts/Satoshi-Variable.woff2",
+      "public/fonts/Satoshi-Variable.woff2",
     ];
     for (const relative of forbidden) {
       expect(
         existsSync(join(REPO_ROOT, relative)),
-        `${relative} is governed by the Fontshare FFL, which forbids uploading ` +
-          "or serving the font file without prior written consent",
+        `${relative} must stay out of the repository; Satoshi is served only ` +
+          "from Fontshare's licensed web-font delivery.",
       ).toBe(false);
     }
 
@@ -183,18 +187,19 @@ describe("listing media and the demo store it is captured from", () => {
       "app/root.tsx",
       "app/design/meridian.css",
       "site/index.html",
-      "site/landing.css",
+      "public/landing.css",
     ]
       .map(read)
       .join("\n");
     expect(servedSource).not.toMatch(/Satoshi-Variable|fonts\/satoshi/i);
+    expect(read("public/landing.css")).toContain("api.fontshare.com/v2/css?f[]=satoshi");
   });
 
   it("reviewer instructions unlock the shipped gates without claiming dormant features", () => {
     const copy = read("listing/copy.md");
 
-    expect(copy).toContain("Choose Growth monthly ($149/month)");
-    expect(copy).toContain("Pricing and Fulfilment");
+    expect(copy).toContain("Choose Scale monthly ($299/month)");
+    expect(copy).toContain("including Pricing, Fulfilment");
     expect(copy).toContain("Customer-lifecycle product classifications");
     expect(copy).toContain("does not request read_customers");
     expect(copy).toContain("ShopPlan.partnerDevelopment");
@@ -223,9 +228,9 @@ describe("listing media and the demo store it is captured from", () => {
   it("the listing keeps at least Shopify's three desktop screenshots", () => {
     // Shopify requires three to six. Holding one back must not quietly take the
     // listing under the floor.
-    const shipped = readdirSync(join(REPO_ROOT, "listing", "screenshots")).filter((f) =>
-      f.endsWith(".png"),
-    );
+    const shipped = readdirSync(
+      join(REPO_ROOT, "listing", "screenshots"),
+    ).filter((f) => f.endsWith(".png"));
     expect(
       shipped.length,
       "the listing needs at least three desktop screenshots and is now below that",
@@ -234,6 +239,18 @@ describe("listing media and the demo store it is captured from", () => {
       shipped.length,
       "Shopify accepts at most six desktop screenshots",
     ).toBeLessThanOrEqual(6);
+  });
+
+  it("ships feature media at the exact App Store dimensions", () => {
+    const relative = "listing/feature-media-1600x900.png";
+    const file = join(REPO_ROOT, relative);
+    expect(existsSync(file), `${relative} is required before submission`).toBe(
+      true,
+    );
+    const png = readFileSync(file);
+    expect(png.subarray(1, 4).toString("ascii")).toBe("PNG");
+    expect(png.readUInt32BE(16)).toBe(1600);
+    expect(png.readUInt32BE(20)).toBe(900);
   });
 
   it("SUBMISSION.md does not record the ad-accuracy flag as closed while it is open", () => {

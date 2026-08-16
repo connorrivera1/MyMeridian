@@ -7,7 +7,11 @@ import {
   type RecalcJob,
 } from "@prisma/client";
 
-import prisma from "~/db.server";
+import prisma, { withoutTenantDatabase } from "~/db.server";
+import {
+  logOperationalFailure,
+  safeOperationalFailure,
+} from "~/lib/operational-errors.server";
 
 /**
  * Durable queue for recalculation work.
@@ -46,6 +50,69 @@ export interface EnqueueRecalcJob {
   availableAt?: Date;
 }
 
+export interface ExclusiveRecalcJobResult {
+  job: RecalcJob;
+  created: boolean;
+}
+
+/**
+ * Enqueue exactly one outstanding job for a durable dedupe key.
+ *
+ * Generic restatements intentionally allow work requested during a RUNNING
+ * job to queue behind it, because that later edit was not part of the active
+ * job's input. Historical imports are different: a second request while the
+ * same store is already queued or importing is always a duplicate. This
+ * helper makes the database uniqueness constraint the cross-process authority
+ * and returns the winning row to every losing caller.
+ */
+export async function enqueueExclusiveRecalcJob(
+  input: EnqueueRecalcJob & { dedupeKey: string },
+): Promise<ExclusiveRecalcJobResult> {
+  const existing = await prisma.recalcJob.findUnique({
+    where: { dedupeKey: input.dedupeKey },
+  });
+  if (
+    existing &&
+    (existing.status === RecalcJobStatus.QUEUED ||
+      existing.status === RecalcJobStatus.RUNNING)
+  ) {
+    return { job: existing, created: false };
+  }
+
+  // A terminal job normally releases the key. Clear a legacy/crash residue
+  // before creating the new request so a stale receipt cannot block imports.
+  if (existing) {
+    await prisma.recalcJob.updateMany({
+      where: { id: existing.id, dedupeKey: input.dedupeKey },
+      data: { dedupeKey: null },
+    });
+  }
+
+  try {
+    const job = await prisma.recalcJob.create({
+      data: {
+        shopId: input.shopId,
+        kind: input.kind,
+        payload: input.payload,
+        dedupeKey: input.dedupeKey,
+        availableAt: input.availableAt ?? new Date(),
+      },
+    });
+    return { job, created: true };
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      const winner = await prisma.recalcJob.findUnique({
+        where: { dedupeKey: input.dedupeKey },
+      });
+      if (winner) return { job: winner, created: false };
+    }
+    throw error;
+  }
+}
+
 /**
  * Enqueue, collapsing onto an identical job that has not run yet.
  *
@@ -72,7 +139,9 @@ export async function enqueueRecalcJob(
         data: {
           payload: input.payload,
           availableAt:
-            existing.availableAt < availableAt ? existing.availableAt : availableAt,
+            existing.availableAt < availableAt
+              ? existing.availableAt
+              : availableAt,
         },
       });
     }
@@ -201,7 +270,7 @@ export function startRecalcHeartbeat(
         data: { leaseExpiresAt: new Date(Date.now() + RECALC_LEASE_MS) },
       })
       .catch((error) =>
-        console.error(`[recalc:${jobId}] failed to extend job lease`, error),
+        logOperationalFailure(`recalc:${jobId} lease heartbeat`, error),
       );
   }, RECALC_HEARTBEAT_MS);
   timer.unref?.();
@@ -254,10 +323,7 @@ export async function failRecalcJob(
   attempt: number,
   error: unknown,
 ): Promise<boolean> {
-  const message = (error instanceof Error ? error.message : String(error)).slice(
-    0,
-    MAX_ERROR_LENGTH,
-  );
+  const message = safeOperationalFailure(error).slice(0, MAX_ERROR_LENGTH);
   const exhausted = attempt >= RECALC_MAX_ATTEMPTS;
 
   const updated = await prisma.recalcJob.updateMany({
@@ -289,7 +355,9 @@ export const RECALC_JOB_RETENTION_DAYS = 30;
  * Unfinished work is never touched, however old. A QUEUED job that has waited a
  * month is a bug to be found, not a row to be deleted.
  */
-export async function purgeFinishedRecalcJobs(now = new Date()): Promise<number> {
+export async function purgeFinishedRecalcJobs(
+  now = new Date(),
+): Promise<number> {
   const cutoff = new Date(
     now.getTime() - RECALC_JOB_RETENTION_DAYS * 24 * 60 * 60 * 1000,
   );
@@ -334,12 +402,12 @@ export async function runRecalcJob(leased: LeasedRecalcJob): Promise<void> {
     const result = await handler(job);
     await completeRecalcJob(job.id, leaseToken, result);
   } catch (error) {
-    console.error(`[recalc:${job.id}] ${job.kind} attempt ${attempt} failed`, error);
+    logOperationalFailure(`recalc:${job.kind} attempt:${attempt}`, error);
     try {
       await failRecalcJob(job.id, leaseToken, attempt, error);
     } catch (persistenceError) {
-      console.error(
-        `[recalc:${job.id}] could not record job failure`,
+      logOperationalFailure(
+        `recalc:${job.id} failure persistence`,
         persistenceError,
       );
     }
@@ -378,11 +446,9 @@ const workerState = (global.__meridianRecalcWorker ??= {
 function startDrain(): void {
   if (workerState.drain) return;
 
-  const work = drainRecalcQueue()
+  const work = withoutTenantDatabase(() => drainRecalcQueue())
     .then(() => undefined)
-    .catch((error) =>
-      console.error("[recalc] durable queue sweep failed", error),
-    );
+    .catch((error) => logOperationalFailure("recalc durable queue sweep", error));
   workerState.drain = work;
   void work.then(
     () => {
@@ -392,6 +458,11 @@ function startDrain(): void {
       if (workerState.drain === work) workerState.drain = null;
     },
   );
+}
+
+/** Wake the durable worker after a request enqueues time-sensitive work. */
+export function wakeRecalcWorker(): void {
+  startDrain();
 }
 
 /**

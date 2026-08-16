@@ -166,6 +166,7 @@ vi.mock("~/db.server", () => ({
 const {
   completeRecalcJob,
   drainRecalcQueue,
+  enqueueExclusiveRecalcJob,
   enqueueRecalcJob,
   failRecalcJob,
   leaseNextRecalcJob,
@@ -256,6 +257,41 @@ describe("enqueueRecalcJob", () => {
   });
 });
 
+describe("enqueueExclusiveRecalcJob", () => {
+  const enqueueExclusive = () =>
+    enqueueExclusiveRecalcJob({
+      shopId: "shop_1",
+      kind: "BUNDLE_ROLLUP" as any,
+      payload: {},
+      dedupeKey: "exclusive",
+    });
+
+  it("creates the first request and collapses every outstanding duplicate", async () => {
+    const first = await enqueueExclusive();
+    const second = await enqueueExclusive();
+    rows[0]!.status = "RUNNING";
+    const third = await enqueueExclusive();
+
+    expect(first.created).toBe(true);
+    expect(second).toMatchObject({ created: false, job: { id: first.job.id } });
+    expect(third).toMatchObject({ created: false, job: { id: first.job.id } });
+    expect(rows).toHaveLength(1);
+  });
+
+  it("releases a terminal residue before creating a new request", async () => {
+    const first = await enqueueExclusive();
+    rows[0]!.status = "FAILED";
+
+    const second = await enqueueExclusive();
+
+    expect(second.created).toBe(true);
+    expect(second.job.id).not.toBe(first.job.id);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.dedupeKey).toBeNull();
+    expect(rows[1]!.dedupeKey).toBe("exclusive");
+  });
+});
+
 describe("leaseNextRecalcJob", () => {
   it("claims a due job and stamps the first attempt", async () => {
     await enqueue();
@@ -330,9 +366,9 @@ describe("completeRecalcJob", () => {
     const leased = await leaseNextRecalcJob();
     rows[0]!.leaseToken = "someone-else";
 
-    expect(await completeRecalcJob(leased!.job.id, leased!.leaseToken, {})).toBe(
-      false,
-    );
+    expect(
+      await completeRecalcJob(leased!.job.id, leased!.leaseToken, {}),
+    ).toBe(false);
     expect(rows[0]!.status).toBe("RUNNING");
   });
 });
@@ -350,7 +386,7 @@ describe("failRecalcJob", () => {
     );
 
     expect(rows[0]!.status).toBe("QUEUED");
-    expect(rows[0]!.error).toBe("boom");
+    expect(rows[0]!.error).toBe("Operation failed (Error).");
     expect(rows[0]!.dedupeKey).toBe("k");
     expect(rows[0]!.availableAt.getTime()).toBeGreaterThan(Date.now());
   });
@@ -373,7 +409,7 @@ describe("failRecalcJob", () => {
     expect(rows[0]!.dedupeKey).toBeNull();
   });
 
-  it("truncates a runaway error message", async () => {
+  it("does not retain a runaway error message", async () => {
     await enqueue();
     const leased = await leaseNextRecalcJob();
     await failRecalcJob(
@@ -383,7 +419,7 @@ describe("failRecalcJob", () => {
       new Error("x".repeat(5_000)),
     );
 
-    expect(rows[0]!.error!.length).toBe(2_000);
+    expect(rows[0]!.error).toBe("Operation failed (Error).");
   });
 
   it("backs off exponentially and then stops growing", () => {
@@ -417,7 +453,7 @@ describe("runRecalcJob", () => {
     errors.mockRestore();
 
     expect(rows[0]!.status).toBe("QUEUED");
-    expect(rows[0]!.error).toContain("No recalculation handler");
+    expect(rows[0]!.error).toBe("Operation failed (Error).");
   });
 
   it("records a handler's own failure against the job", async () => {
@@ -431,7 +467,7 @@ describe("runRecalcJob", () => {
     await runRecalcJob(leased!);
     errors.mockRestore();
 
-    expect(rows[0]!.error).toBe("handler exploded");
+    expect(rows[0]!.error).toBe("Operation failed (Error).");
   });
 });
 

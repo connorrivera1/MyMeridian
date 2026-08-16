@@ -1,5 +1,5 @@
 {
-  "name": "meridian",
+  "name": "mymeridian",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "react-router dev",
     "shopify:dev": "shopify app dev",
-    "build": "prisma generate && react-router build",
+    "build": "prisma generate && react-router build && npm run verify:production-bundle",
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc --noEmit",
     "test": "vitest run",
@@ -20,9 +20,15 @@
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
     "connector:configure": "tsx scripts/configure-connector.ts",
+    "operator:provision": "tsx scripts/provision-operator.ts",
+    "operator:verify-live": "tsx scripts/verify-operator-live.ts",
     "db:reset": "prisma migrate reset --force && npm run db:seed",
     "setup": "prisma generate && prisma migrate deploy && tsx prisma/seed.ts",
     "test:coverage": "vitest run --coverage",
+    "test:load": "node scripts/load-test.mjs",
+    "verify:production-bundle": "node scripts/verify-production-bundle.mjs",
+    "production:preflight": "node scripts/production-preflight.mjs",
+    "production:preflight:config": "node scripts/production-preflight.mjs --config-only",
     "ci": "npm run typecheck && npm run test:coverage && npm run build"
   },
   "prisma": {

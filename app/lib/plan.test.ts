@@ -30,6 +30,14 @@ describe("feature gating", () => {
   it("withholds a feature from plans below it", () => {
     expect(planAllows(on("starter"), "pricing")).toBe(false);
     expect(planAllows(on("starter"), "capacity")).toBe(false);
+    expect(planAllows(on("starter"), "anomalyAlerts")).toBe(false);
+    expect(planAllows(on("growth"), "scheduledReports")).toBe(false);
+    expect(planAllows(on("growth"), "exports")).toBe(false);
+  });
+
+  it("does not gate the data connections needed for honest profitability", () => {
+    expect(planAllows(on("starter"), "adConnections")).toBe(true);
+    expect(planAllows(on("starter"), "carrierConnections")).toBe(true);
   });
 
   it("grants nothing without an active plan", () => {
@@ -67,6 +75,23 @@ describe("gates match what the plans advertise", () => {
     expect(advertised("growth")).toContain("capacity");
     expect(FEATURE_MIN_PLAN.pricing).toBe("growth");
     expect(FEATURE_MIN_PLAN.capacity).toBe("growth");
+    expect(advertised("growth")).toContain("proactive alerts");
+    expect(FEATURE_MIN_PLAN.anomalyAlerts).toBe("growth");
+    expect(advertised("starter")).toContain("meta");
+    expect(advertised("starter")).toContain("google");
+    expect(advertised("starter")).toContain("tiktok");
+    expect(FEATURE_MIN_PLAN.adConnections).toBe("starter");
+    expect(advertised("starter")).toContain("shipstation");
+    expect(FEATURE_MIN_PLAN.carrierConnections).toBe("starter");
+  });
+
+  it("Scale advertises the reporting capabilities it gates", () => {
+    expect(advertised("scale")).toContain("weekly profitability summaries");
+    expect(advertised("scale")).toContain("advanced csv");
+    expect(advertised("scale")).toContain("multi-store");
+    expect(FEATURE_MIN_PLAN.scheduledReports).toBe("scale");
+    expect(FEATURE_MIN_PLAN.exports).toBe("scale");
+    expect(FEATURE_MIN_PLAN.multiStore).toBe("scale");
   });
 
   it("Starter advertises channel revenue and profit, which need no ad platform", () => {
@@ -77,28 +102,12 @@ describe("gates match what the plans advertise", () => {
     expect(advertised("starter")).toContain("channel");
   });
 
-  it("no plan sells ad-platform or protected-customer analysis it cannot obtain", () => {
-    // Growth sold "Unlimited ad channels + blended CAC" and Starter "One ad
-    // channel connected", and the app cannot do either: there is no ad-platform
-    // OAuth flow and no platform API client in the tree, connectors are created
-    // NOT_CONFIGURED and never configured, and the only writer of `AdSpend` is
-    // `prisma/seed.ts`. The seeded demo therefore shows spend while every real
-    // store shows $0.00 — and `/app/plan` is a screen the Shopify reviewer walks
-    // during billing review, comparing it against a real install.
-    //
-    // This is the guard, not the fix: the fix was deleting the claims. Lift this
-    // test in the same change that ships a real connector, and not before.
+  it("qualifies protected-customer analysis instead of promising unavailable data", () => {
     const forbidden = [
-      "ad channel",
-      "ad channels",
-      "ad spend",
-      "cac",
-      "roas",
       "blended",
       "return on ad spend",
       "cohort",
       "ltv",
-      "payback",
       "loss leader",
       "loss-leader",
       "multi-location",
@@ -108,10 +117,11 @@ describe("gates match what the plans advertise", () => {
       for (const claim of forbidden) {
         expect(
           advertised(planId),
-          `${PLANS[planId].name} may not advertise "${claim}" — nothing in the repo can produce it on a real store`,
+          `${PLANS[planId].name} may not advertise "${claim}" without the required protected data`,
         ).not.toContain(claim);
       }
     }
+    expect(advertised("growth")).toContain("when authorised data is available");
   });
 
   it("gates nothing it cannot deliver", () => {

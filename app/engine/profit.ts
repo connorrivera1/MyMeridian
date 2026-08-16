@@ -242,7 +242,12 @@ export function computeOrderProfit(
     // both come back out. Return shipping is captured by the shipping cost.
     cogsCents += costOfUnits(item.unitCostMicros, soldQty);
 
-    if (item.unitCostMicros <= 0 && soldQty > 0) missingCost = true;
+    // Legacy test/ledger rows have no evidence marker, so retain the historic
+    // zero-means-unknown rule for them. New snapshots can distinguish missing
+    // COGS from a confirmed $0.00 cost.
+    if (soldQty > 0 && !(item.cogsKnown ?? item.unitCostMicros > 0)) {
+      missingCost = true;
+    }
   }
 
   const grossRevenueCents = order.subtotalCents;
@@ -376,6 +381,7 @@ export function computeOrderProfit(
       estimatedShippingDefault ||
       estimatedPickPack ||
       estimatedOverhead,
+    shippingCostMeasured: !usedDefaultShipping,
     usesEstimatedCosts:
       missingCost ||
       estimatedPaymentFee ||

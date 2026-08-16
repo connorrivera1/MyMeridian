@@ -1,10 +1,15 @@
-import { Form, useActionData, useLoaderData } from "react-router";
+import { data, Form, useActionData, useLoaderData } from "react-router";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { LoginErrorType } from "@shopify/shopify-app-react-router/server";
 
 import { BrandMark } from "~/design/components";
 import { demoAvailable } from "~/lib/auth.server";
 import { hasShopifyCredentials, login } from "~/shopify.server";
+import {
+  firstDeniedRequestLimit,
+  RATE_LIMIT_MESSAGE,
+  rateLimitHeaders,
+} from "~/lib/rate-limit.server";
 
 /**
  * Shop-domain entry point.
@@ -18,6 +23,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return { errors: {}, configured: false, demoAvailable };
   }
 
+  // Availability probes commonly use HEAD. Shopify's login helper expects a
+  // browser GET or form POST and can reject that probe before a merchant has
+  // supplied a store domain. The page itself is still safe to report as ready.
+  if (request.method === "HEAD") {
+    return { errors: {}, configured: true, demoAvailable };
+  }
+
   const errors = await login(request);
   return { errors: errorMessages(errors), configured: true, demoAvailable };
 }
@@ -25,6 +37,19 @@ export async function loader({ request }: LoaderFunctionArgs) {
 export async function action({ request }: ActionFunctionArgs) {
   if (!hasShopifyCredentials || !login) {
     return { errors: { shop: "Shopify credentials are not configured." } };
+  }
+
+  const limited = await firstDeniedRequestLimit({
+    request,
+    scope: "shopify-auth-start",
+    windowMs: 15 * 60 * 1_000,
+    ipLimit: 30,
+  });
+  if (limited) {
+    return data(
+      { errors: { shop: RATE_LIMIT_MESSAGE } },
+      { status: 429, headers: rateLimitHeaders(limited) },
+    );
   }
 
   const errors = await login(request);
@@ -62,9 +87,13 @@ export default function Login() {
         </p>
 
         {data.configured ? (
-          <Form method="post" className="stack" style={{ gap: 10, textAlign: "left" }}>
+          <Form
+            method="post"
+            className="stack"
+            style={{ gap: 10, textAlign: "left" }}
+          >
             <label className="stack" style={{ gap: 5 }}>
-              <span className="tiny muted">Store domain</span>
+              <span className="tiny muted">Store Domain</span>
               <input
                 className="field-input"
                 type="text"
@@ -74,21 +103,27 @@ export default function Login() {
                 style={{ width: "100%" }}
               />
               {errors.shop && (
-                <span className="tiny" style={{ color: "var(--status-critical)" }}>
+                <span
+                  className="tiny"
+                  style={{ color: "var(--status-critical)" }}
+                >
                   {errors.shop}
                 </span>
               )}
             </label>
-            <button className="btn primary" type="submit" style={{ justifyContent: "center" }}>
-              Continue to Shopify
+            <button
+              className="btn primary"
+              type="submit"
+              style={{ justifyContent: "center" }}
+            >
+              Continue To Shopify
             </button>
           </Form>
         ) : (
           <div className="banner warn" style={{ textAlign: "left" }}>
             <div>
-              Shopify credentials are not configured. Set{" "}
-              <code>SHOPIFY_API_KEY</code> and <code>SHOPIFY_API_SECRET</code>,
-              then run <code>npm run shopify:dev</code>.
+              The server-side Shopify connection is not configured. Finish the
+              private environment setup, then restart MyMeridian.
             </div>
           </div>
         )}
@@ -97,7 +132,7 @@ export default function Login() {
           <p className="tiny muted" style={{ marginTop: 24, lineHeight: 1.6 }}>
             Or{" "}
             <a href="/app" style={{ color: "var(--accent)", fontWeight: 600 }}>
-              explore the demo store
+              Explore The Demo Store
             </a>{" "}
             — six months of generated orders, computed by the same engine.
           </p>

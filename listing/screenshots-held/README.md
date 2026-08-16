@@ -15,14 +15,13 @@ a fresh capture is now eligible even though this old image remains held.
 ## Why
 
 `prisma/seed.ts` used to write `AdSpend` rows for every campaign for every day,
-and it was the only writer of that table in the repo. Nothing else can write it:
-there is no ad-platform OAuth flow and no platform API client anywhere in the
-tree, and `provision.server.ts:97` creates every connector `NOT_CONFIGURED` and
-nothing ever configures one.
+and it was the only writer of that table in the repo at the time these images
+were removed. The app then had no ad-platform OAuth flow or platform API client,
+and `provision.server.ts:97` created every connector `NOT_CONFIGURED`.
 
-So the seeded demo store showed ad performance, and every real store shows `—`
-and `$0.00` for the life of the install. These screenshots are what the App Store
-listing would have shown a merchant deciding whether to install:
+So the seeded demo store showed invented ad performance while a real store could
+not connect an ad account. These screenshots are what the App Store listing
+would have shown a merchant deciding whether to install:
 
 | File | What it advertised that the app cannot do | Now |
 |---|---|---|
@@ -39,8 +38,8 @@ from stored orders. Spend, CAC, ROAS, payback and marketing efficiency remain
 absent rather than zero. A fresh capture therefore demonstrates useful current
 behavior without pretending an ad source exists.
 
-All listing screenshots still need to be re-shot after the August 9–10 UI redraw;
-this note only removes the obsolete connector dependency from Acquisition.
+All six listing screenshots were re-shot after the August 9–10 UI redraw on
+2026-08-11. This note remains provenance for the replaced media.
 
 ## How to bring a held screenshot back
 

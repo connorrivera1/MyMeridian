@@ -44,6 +44,29 @@ function decimal(value: unknown, fallback = "0.00"): string {
   return /^-?\d+(\.\d+)?$/.test(text) ? text : fallback;
 }
 
+/**
+ * Meridian's profit engine keeps merchandise revenue before discounts, while
+ * Shopify's `subtotal_price` is already after discounts. Prefer Shopify's
+ * explicit pre-discount line total when the webhook carries it; the GraphQL
+ * backfill synthesizes the same field from its complete line-item collection.
+ * The addition fallback covers older/minimal deliveries without introducing a
+ * binary-float round trip.
+ */
+function grossMerchandiseSubtotal(payload: Payload): string {
+  const explicit = payload.total_line_items_price;
+  if (
+    explicit !== null &&
+    explicit !== undefined &&
+    /^-?\d+(\.\d+)?$/.test(String(explicit))
+  ) {
+    return String(explicit);
+  }
+
+  return new Prisma.Decimal(decimal(payload.subtotal_price))
+    .plus(decimal(payload.total_discounts))
+    .toFixed(2);
+}
+
 function centsDecimal(cents: number): string {
   const sign = cents < 0 ? "-" : "";
   const absolute = Math.abs(Math.trunc(cents));
@@ -105,6 +128,17 @@ export function deriveChannel(signals: AttributionSignals): {
     };
   }
   if (/tiktok/.test(source)) return { channel: Channel.TIKTOK, utm };
+  // `shop_campaign_insights` is an aggregate report: it does not expose
+  // order ids, so it must never rewrite an otherwise attributed order to make
+  // the aggregate line up. Only an explicit paid Shop Campaign UTM is enough
+  // to place an order in this channel. Plain `shop` traffic remains governed
+  // by the normal referral/direct logic below.
+  if (
+    /shop[-_ ]?campaign/.test(source) ||
+    (source === "shop" && /^(cpc|paid|ads?)$/.test(medium))
+  ) {
+    return { channel: Channel.SHOP_CAMPAIGNS, utm };
+  }
   if (/klaviyo|mailchimp|email|newsletter/.test(source) || medium === "email") {
     return { channel: Channel.EMAIL, utm };
   }
@@ -334,7 +368,7 @@ export async function syncOrderFromShopify(shopId: string, payload: Payload) {
     processedAt,
     shopifyUpdatedAt,
     currency: shopCurrency,
-    subtotal: decimal(payload.subtotal_price),
+    subtotal: grossMerchandiseSubtotal(payload),
     discountTotal: decimal(payload.total_discounts),
     shippingCharged: decimal(shippingCharged),
     taxTotal: decimal(payload.total_tax),
@@ -478,6 +512,10 @@ export async function syncOrderFromShopify(shopId: string, payload: Payload) {
       // Falling back to the catalog's current cost keeps a variant with no
       // timeline behaving exactly as it did before this change.
       const effective = variant ? effectiveCosts.get(variant.id) : undefined;
+      // `undefined !== null` is true, so use a nullish check rather than a
+      // strict null comparison. A line with no matched catalog variant has no
+      // trustworthy COGS evidence and must remain visibly unresolved.
+      const cogsKnown = effective !== undefined || variant?.unitCost != null;
       const lineDiscount = (item.discount_allocations ?? []).reduce(
         (sum: number, allocation: Payload) =>
           sum + Number(allocation.amount ?? 0),
@@ -498,6 +536,7 @@ export async function syncOrderFromShopify(shopId: string, payload: Payload) {
           effective?.unitCost ?? variant?.unitCost ?? "0",
           "0.0000",
         ),
+        cogsKnown,
         costEffectiveAt: effective?.effectiveAt ?? null,
         refundedQty: refundedByLineItem.get(String(item.id)) ?? 0,
       };

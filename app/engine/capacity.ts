@@ -228,7 +228,7 @@ function buildAlerts(args: {
     alerts.push({
       id: "backlog-over-sla",
       severity: "CRITICAL",
-      title: "Backlog exceeds your shipping promise",
+      title: "Backlog Exceeds Your Shipping Promise",
       detail:
         `${args.currentBacklog.toLocaleString()} orders are waiting and the team ` +
         `is clearing ${Math.round(args.throughputPerDay).toLocaleString()} a day. ` +
@@ -250,7 +250,7 @@ function buildAlerts(args: {
     alerts.push({
       id: "sla-breach-projected",
       severity: "WARNING",
-      title: "Projected to miss shipping promise",
+      title: "Projected To Miss Shipping Promise",
       detail:
         `At the current pace, backlog reaches ${day.projectedBacklog.toLocaleString()} ` +
         `orders by ${day.date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}, ` +
@@ -268,7 +268,7 @@ function buildAlerts(args: {
     alerts.push({
       id: "capacity-exceeded",
       severity: overCapacityDays.length >= 5 ? "CRITICAL" : "WARNING",
-      title: `${overCapacityDays.length} of the next 14 days exceed capacity`,
+      title: `${overCapacityDays.length} Of The Next 14 Days Exceed Capacity`,
       detail:
         `Peak demand reaches ${Math.max(
           ...overCapacityDays.map((d) => d.projectedInbound),
@@ -288,7 +288,7 @@ function buildAlerts(args: {
     alerts.push({
       id: "utilisation-high",
       severity: "WARNING",
-      title: "Running at " + Math.round(utilisation * 100) + "% of capacity",
+      title: "Running At " + Math.round(utilisation * 100) + "% Of Capacity",
       detail:
         `There is almost no slack left. A promotion, a sick day or a carrier ` +
         `delay will turn straight into a backlog — there is no headroom to ` +
@@ -302,7 +302,7 @@ function buildAlerts(args: {
     alerts.push({
       id: "demand-outpacing-capacity",
       severity: "INFO",
-      title: `Demand up ${Math.round(args.demandTrendPct * 100)}% and capacity is tightening`,
+      title: `Demand Up ${Math.round(args.demandTrendPct * 100)}% And Capacity Is Tightening`,
       detail:
         `Order volume is growing faster than throughput. At this rate the ` +
         `warehouse becomes the constraint on growth before the ad account does.`,

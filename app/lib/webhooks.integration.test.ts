@@ -109,7 +109,7 @@ describe.skipIf(!TEST_URL)("durable webhooks, against a real Postgres", () => {
     });
     expect(failed.processedAt).toBeNull();
     expect(failed.payload).toEqual({ order_id: 123 });
-    expect(failed.error).toMatch(/no durable webhook processor/i);
+    expect(failed.error).toBe("Operation failed (Error).");
     expect(failed.leaseToken).toBeNull();
 
     await prisma.webhookEvent.update({
@@ -167,7 +167,7 @@ describe.skipIf(!TEST_URL)("durable webhooks, against a real Postgres", () => {
       expect(event.payload).toEqual({
         customer: { email: `unresolved-${marker}@example.com` },
       });
-      expect(event.error).toMatch(/missing required customer\.id/i);
+      expect(event.error).toBe("Operation failed (Error).");
       expect(event.leaseToken).toBeNull();
       expect(event.leaseExpiresAt).toBeNull();
       expect(event.availableAt.getTime()).toBeGreaterThan(Date.now());
@@ -227,6 +227,98 @@ describe.skipIf(!TEST_URL)("durable webhooks, against a real Postgres", () => {
     expect(await prisma.subscriptionEvent.count({ where: { webhookId } })).toBe(
       1,
     );
+  });
+
+  it("keeps a replacement subscription active when its old charge cancels later", async () => {
+    const marker = Date.now();
+    await processAppSubscriptionsWebhook({
+      shopDomain,
+      webhookId: `subscription-replacement-active-${marker}`,
+      topic: "APP_SUBSCRIPTIONS_UPDATE",
+      isReplay: false,
+      payload: {
+        app_subscription: {
+          admin_graphql_api_id: "gid://shopify/AppSubscription/replacement",
+          name: "growth-change",
+          status: "ACTIVE",
+        },
+      },
+    });
+    await processAppSubscriptionsWebhook({
+      shopDomain,
+      webhookId: `subscription-replacement-old-cancelled-${marker}`,
+      topic: "APP_SUBSCRIPTIONS_UPDATE",
+      isReplay: false,
+      payload: {
+        app_subscription: {
+          admin_graphql_api_id: "gid://shopify/AppSubscription/old",
+          name: "starter",
+          status: "CANCELLED",
+        },
+      },
+    });
+
+    await expect(
+      prisma.subscription.findUnique({ where: { shopId } }),
+    ).resolves.toMatchObject({ plan: "growth", status: "active" });
+  });
+
+  it("keeps paid access through a deferred downgrade despite test-charge webhooks", async () => {
+    const marker = Date.now();
+    const effectiveAt = new Date(Date.now() + 24 * 60 * 60 * 1_000);
+    const oldCharge = "gid://shopify/AppSubscription/deferred-old";
+
+    await processAppSubscriptionsWebhook({
+      shopDomain,
+      webhookId: `deferred-downgrade-growth-${marker}`,
+      topic: "APP_SUBSCRIPTIONS_UPDATE",
+      isReplay: false,
+      payload: {
+        app_subscription: {
+          admin_graphql_api_id: oldCharge,
+          name: "growth-change",
+          status: "ACTIVE",
+          billing_on: effectiveAt.toISOString(),
+        },
+      },
+    });
+    await processAppSubscriptionsWebhook({
+      shopDomain,
+      webhookId: `deferred-downgrade-old-cancelled-${marker}`,
+      topic: "APP_SUBSCRIPTIONS_UPDATE",
+      isReplay: false,
+      payload: {
+        app_subscription: {
+          admin_graphql_api_id: oldCharge,
+          name: "growth-change",
+          status: "CANCELLED",
+          billing_on: effectiveAt.toISOString(),
+        },
+      },
+    });
+    await processAppSubscriptionsWebhook({
+      shopDomain,
+      webhookId: `deferred-downgrade-starter-${marker}`,
+      topic: "APP_SUBSCRIPTIONS_UPDATE",
+      isReplay: false,
+      payload: {
+        app_subscription: {
+          admin_graphql_api_id: "gid://shopify/AppSubscription/deferred-new",
+          name: "starter-next-cycle",
+          status: "ACTIVE",
+          billing_on: effectiveAt.toISOString(),
+        },
+      },
+    });
+
+    await expect(
+      prisma.subscription.findUnique({ where: { shopId } }),
+    ).resolves.toMatchObject({
+      plan: "growth",
+      status: "active",
+      pendingPlan: "starter",
+      pendingEffectiveAt: effectiveAt,
+    });
   });
 
   it("serializes redaction against an in-flight import and blocks every later import", async () => {

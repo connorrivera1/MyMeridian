@@ -1,4 +1,9 @@
-import { Form, useActionData, useLoaderData, useNavigation } from "react-router";
+import {
+  Form,
+  useActionData,
+  useLoaderData,
+  useNavigation,
+} from "react-router";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { RecStatus } from "@prisma/client";
 
@@ -18,14 +23,23 @@ import {
   UpgradeNotice,
 } from "~/design/components";
 import { formatPercent, toCents } from "~/engine/money";
-import { requireShopContext } from "~/lib/auth.server";
+import { assessPricingOutcome } from "~/engine/recommendation-outcomes";
+import { withShopContext, type ShopContext } from "~/lib/auth.server";
+import { requireRecentReauthentication } from "~/lib/reauth.server";
 import { planAllows, planFor, resolvePlan } from "~/lib/plan.server";
 import { generatePricingRecommendations } from "~/lib/pricing.server";
 import { PRICING_LOOKBACK_DAYS } from "~/lib/ranges";
-import { loadDashboard } from "~/lib/route-data.server";
+import { loadDashboardForContext } from "~/lib/route-data.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { shop, rangeLabel, plan } = await loadDashboard(request);
+  return withShopContext(request, (ctx) => loadPricing(request, ctx));
+}
+
+async function loadPricing(request: Request, ctx: ShopContext) {
+  const { shop, rangeLabel, plan } = await loadDashboardForContext(
+    request,
+    ctx,
+  );
 
   if (!planAllows(plan, "pricing")) {
     const required = planFor("pricing");
@@ -66,6 +80,37 @@ export async function loader({ request }: LoaderFunctionArgs) {
       rec.method === "ELASTICITY_REGRESSION" || rec.method === "MARGIN_TARGET",
   );
 
+  const actionedWithOutcomes = await Promise.all(
+    actioned.map(async (rec) => {
+      const observedPriceChange =
+        rec.status === RecStatus.APPLIED && rec.actionedAt
+          ? await prisma.priceChange.findFirst({
+              where: {
+                shopId: shop.id,
+                variantId: rec.variantId,
+                effectiveAt: { gte: rec.actionedAt },
+              },
+              orderBy: { effectiveAt: "asc" },
+              select: { effectiveAt: true },
+            })
+          : null;
+      const observedDays = observedPriceChange
+        ? Math.max(0, Math.floor((Date.now() - observedPriceChange.effectiveAt.getTime()) / 86_400_000))
+        : 0;
+      return {
+        rec,
+        outcome: assessPricingOutcome({
+          acceptedAt: rec.status === RecStatus.APPLIED ? rec.actionedAt : null,
+          observedPriceChangeAt: observedPriceChange?.effectiveAt ?? null,
+          observedDays,
+          // A reliable observed comparison needs a controlled baseline; until
+          // one exists, the outcome stays explicitly insufficient.
+          observedMonthlyProfitDeltaCents: null,
+        }),
+      };
+    }),
+  );
+
   return {
     locked: null,
     rangeLabel,
@@ -93,20 +138,26 @@ export async function loader({ request }: LoaderFunctionArgs) {
       method: rec.method,
       rationale: rec.rationale,
     })),
-    actioned: actioned.map((rec) => ({
+    actioned: actionedWithOutcomes.map(({ rec, outcome }) => ({
       id: rec.id,
       productTitle: rec.variant.product.title,
       variantTitle: rec.variant.title,
       status: rec.status,
       currentPriceCents: toCents(rec.currentPrice),
       suggestedPriceCents: toCents(rec.suggestedPrice),
+      expectedProfitDeltaCents: toCents(rec.expectedProfitDelta),
       actionedAt: rec.actionedAt,
+      outcome,
     })),
   };
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  const ctx = await requireShopContext(request);
+  return withShopContext(request, (ctx) => updatePricing(request, ctx));
+}
+
+async function updatePricing(request: Request, ctx: ShopContext) {
+  await requireRecentReauthentication(request, ctx.user);
   const { shop } = ctx;
 
   // The loader hides this screen below Growth, but a form post does not go
@@ -155,7 +206,7 @@ export async function action({ request }: ActionFunctionArgs) {
   if (intent === "dismiss") {
     await prisma.pricingRecommendation.update({
       where: { id },
-      data: { status: RecStatus.DISMISSED, actionedAt: new Date() },
+      data: { status: RecStatus.DISMISSED, actionedAt: new Date(), outcomeStatus: "NOT_TRACKED" },
     });
 
     return { ok: true, message: `Dismissed the suggestion for ${label}.` };
@@ -167,7 +218,7 @@ export async function action({ request }: ActionFunctionArgs) {
     // reconsidered.
     await prisma.pricingRecommendation.update({
       where: { id },
-      data: { status: RecStatus.PENDING, actionedAt: null },
+      data: { status: RecStatus.PENDING, actionedAt: null, outcomeStatus: "NOT_TRACKED", outcomeObservedAt: null, outcomeObservedProfitDelta: null },
     });
 
     return { ok: true, message: `Restored the suggestion for ${label}.` };
@@ -179,7 +230,7 @@ export async function action({ request }: ActionFunctionArgs) {
     // an analytics app should not be able to silently change what customers pay.
     await prisma.pricingRecommendation.update({
       where: { id },
-      data: { status: RecStatus.APPLIED, actionedAt: new Date() },
+      data: { status: RecStatus.APPLIED, actionedAt: new Date(), outcomeStatus: "AWAITING_PRICE_CHANGE", outcomeObservedAt: null, outcomeObservedProfitDelta: null },
     });
 
     return {
@@ -200,11 +251,24 @@ const CONFIDENCE_TONE = {
   LOW: "neutral",
 } as const;
 
+/**
+ * Written out rather than lower-cased from the enum.
+ *
+ * `confidence.toLowerCase()` rendered "high" beside two dozen Title Case
+ * badges elsewhere in the app, which reads as an unstyled value that escaped
+ * rather than a label someone chose.
+ */
+const CONFIDENCE_LABEL = {
+  HIGH: "High",
+  MEDIUM: "Medium",
+  LOW: "Low",
+} as const;
+
 const METHOD_LABEL: Record<string, string> = {
   ELASTICITY_REGRESSION: "Fitted demand curve",
   MARGIN_TARGET: "Margin target",
   BELOW_COST: "Priced below cost",
-  INSUFFICIENT_DATA: "Needs a price test",
+  INSUFFICIENT_DATA: "Needs A Price Test",
 };
 
 export default function Pricing() {
@@ -221,9 +285,9 @@ export default function Pricing() {
         price={data.locked.price}
       >
         Meridian fits a demand curve only to price history observed after this
-        app was installed, then solves for the price that maximises contribution profit — not a rule of
-        thumb, and never a number invented for a variant that has never changed
-        price.
+        app was installed, then solves for the price that maximises contribution
+        profit — not a rule of thumb, and never a number invented for a variant
+        that has never changed price.
       </UpgradeNotice>
     );
   }
@@ -237,9 +301,16 @@ export default function Pricing() {
       <div className="grid cols-3">
         <Tile
           tone="var(--viz-mint)"
+          valueTone={data.upsideCents > 0 ? "positive" : "neutral"}
           icon={<IconPricing />}
-          label="Modelled monthly upside"
-          value={<AnimatedMoney cents={data.upsideCents} currency={data.currency} decimals={false} />}
+          label="Modelled Monthly Upside"
+          value={
+            <AnimatedMoney
+              cents={data.upsideCents}
+              currency={data.currency}
+              decimals={false}
+            />
+          }
           meta={
             <span>
               across {data.actionableCount} actionable{" "}
@@ -249,26 +320,27 @@ export default function Pricing() {
         />
         <Tile
           tone="var(--viz-teal)"
+          valueTone={data.actionableCount > 0 ? "positive" : "neutral"}
           icon={<IconCheck />}
-          label="Ready to act on"
+          label="Ready To Act On"
           value={<AnimatedInt value={data.actionableCount} />}
-          meta={<span>backed by post-install observed history</span>}
+          meta={<span>Backed by Post-Install Observed History</span>}
         />
         <Tile
           tone="var(--viz-violet)"
           icon={<IconInfo />}
-          label="Need a price test"
+          label="Need A Price Test"
           value={<AnimatedInt value={data.testableCount} />}
-          meta={<span>never changed price, so demand is unknown</span>}
+          meta={<span>Never Changed Price, So Demand Is Unknown</span>}
         />
       </div>
 
       <Banner>
         Meridian fits a demand curve only to price history observed after this
-        app was installed, then solves for the price that maximises contribution profit. Where a variant
-        has never changed price there is nothing to fit, and it says so rather
-        than inventing an elasticity. Every move is capped at 25% and floored at
-        a 15% margin.
+        app was installed, then solves for the price that maximises contribution
+        profit. Where a variant has never changed price there is nothing to fit,
+        and it says so rather than inventing an elasticity. Every move is capped
+        at 25% and floored at a 15% margin.
       </Banner>
 
       <Card
@@ -290,7 +362,8 @@ export default function Pricing() {
       >
         {data.recommendations.length === 0 ? (
           <Empty>
-            No pricing recommendations yet — seed or sync some order history first.
+            No pricing recommendations yet — seed or sync some order history
+            first.
           </Empty>
         ) : (
           <div className="table-wrap">
@@ -300,8 +373,8 @@ export default function Pricing() {
                   <th>Product</th>
                   <th className="right">Now</th>
                   <th className="right">Suggested</th>
-                  <th className="right">Units impact</th>
-                  <th className="right">Monthly profit</th>
+                  <th className="right">Units Impact</th>
+                  <th className="right">Monthly Profit</th>
                   <th>Basis</th>
                   <th>Confidence</th>
                   <th></th>
@@ -312,7 +385,8 @@ export default function Pricing() {
                   const actionable =
                     rec.method === "ELASTICITY_REGRESSION" ||
                     rec.method === "MARGIN_TARGET";
-                  const rising = rec.suggestedPriceCents > rec.currentPriceCents;
+                  const rising =
+                    rec.suggestedPriceCents > rec.currentPriceCents;
 
                   return (
                     <tr key={rec.id}>
@@ -321,29 +395,37 @@ export default function Pricing() {
                         <div className="cell-sub">{rec.rationale}</div>
                       </td>
                       <td className="right">
-                        <Money cents={rec.currentPriceCents} currency={data.currency} />
+                        <Money
+                          cents={rec.currentPriceCents}
+                          currency={data.currency}
+                        />
                       </td>
                       <td className="right" style={{ fontWeight: 600 }}>
                         {actionable ? (
                           <>
-                            <Money cents={rec.suggestedPriceCents} currency={data.currency} />
+                            <Money
+                              cents={rec.suggestedPriceCents}
+                              currency={data.currency}
+                            />
                             <div className="cell-sub">
                               {rising ? "▲" : "▼"}{" "}
                               {formatPercent(
                                 Math.abs(
-                                  rec.suggestedPriceCents / rec.currentPriceCents - 1,
+                                  rec.suggestedPriceCents /
+                                    rec.currentPriceCents -
+                                    1,
                                 ),
                                 0,
                               )}
                             </div>
                           </>
                         ) : (
-                          <span className="muted">no change</span>
+                          <span className="muted">No Change</span>
                         )}
                       </td>
                       <td className="right num">
                         {rec.expectedUnitsDeltaPct === 0 ? (
-                          <span className="muted">unknown</span>
+                          <span className="muted">Unknown</span>
                         ) : (
                           formatPercent(rec.expectedUnitsDeltaPct, 0)
                         )}
@@ -378,7 +460,9 @@ export default function Pricing() {
                             ]
                           }
                         >
-                          {rec.confidence.toLowerCase()}
+                          {CONFIDENCE_LABEL[
+                            rec.confidence as keyof typeof CONFIDENCE_LABEL
+                          ] ?? rec.confidence}
                         </Badge>
                       </td>
                       <td>
@@ -427,6 +511,8 @@ export default function Pricing() {
                   <th className="right">Was</th>
                   <th className="right">Suggested</th>
                   <th>Decision</th>
+                  <th className="right">Expected Monthly Profit</th>
+                  <th>Outcome</th>
                   <th />
                 </tr>
               </thead>
@@ -438,10 +524,28 @@ export default function Pricing() {
                       <div className="cell-sub">{rec.variantTitle}</div>
                     </td>
                     <td className="right">
-                      <Money cents={rec.currentPriceCents} currency={data.currency} />
+                      <Money
+                        cents={rec.currentPriceCents}
+                        currency={data.currency}
+                      />
                     </td>
                     <td className="right">
-                      <Money cents={rec.suggestedPriceCents} currency={data.currency} />
+                      {rec.expectedProfitDeltaCents === 0 ? (
+                        <span className="muted">—</span>
+                      ) : (
+                        <Money
+                          cents={rec.expectedProfitDeltaCents}
+                          currency={data.currency}
+                          decimals={false}
+                          signed
+                        />
+                      )}
+                    </td>
+                    <td className="right">
+                      <Money
+                        cents={rec.suggestedPriceCents}
+                        currency={data.currency}
+                      />
                     </td>
                     <td>
                       {rec.status === "APPLIED" ? (
@@ -451,13 +555,22 @@ export default function Pricing() {
                       )}
                       {rec.actionedAt && (
                         <div className="cell-sub">
-                          {new Date(rec.actionedAt).toLocaleDateString("en-US", {
-                            timeZone: data.timezone,
-                            month: "short",
-                            day: "numeric",
-                          })}
+                          {new Date(rec.actionedAt).toLocaleDateString(
+                            "en-US",
+                            {
+                              timeZone: data.timezone,
+                              month: "short",
+                              day: "numeric",
+                            },
+                          )}
                         </div>
                       )}
+                    </td>
+                    <td>
+                      <Badge tone={rec.outcome.status === "OBSERVED_AFTER_CHANGE" ? "good" : "neutral"}>
+                        {rec.outcome.label}
+                      </Badge>
+                      <div className="cell-sub">{rec.outcome.detail}</div>
                     </td>
                     <td className="right">
                       <Form method="post">

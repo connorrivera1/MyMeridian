@@ -426,6 +426,7 @@ describe("loadEngineOrders column projection", () => {
     expect(Object.keys(lineItems.select).sort()).toEqual(
       [
         "discount",
+        "cogsKnown",
         "id",
         "productId",
         "quantity",

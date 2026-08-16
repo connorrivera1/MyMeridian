@@ -40,7 +40,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
     allocatedCostsCents:
       product.allocatedShippingCents +
       product.allocatedPaymentFeeCents +
-      product.allocatedPickPackCents,
+      product.allocatedPickPackCents +
+      product.allocatedReturnShippingCents,
     allocatedAdCostCents: product.allocatedAdCostCents,
     contributionProfitCents: product.contributionProfitCents,
     marginPct: product.marginPct,
@@ -84,8 +85,8 @@ const CLASS_META: Record<
   }
 > = {
   PROFITABLE: { label: "Profitable", tone: "good" },
-  THIN_MARGIN: { label: "Thin margin", tone: "warning" },
-  STRATEGIC_LOSS_LEADER: { label: "Negative margin", tone: "critical" },
+  THIN_MARGIN: { label: "Thin Margin", tone: "warning" },
+  STRATEGIC_LOSS_LEADER: { label: "Negative Margin", tone: "critical" },
   BLEEDING: { label: "Bleeding", tone: "critical" },
   MISSING_COGS: { label: "Needs COGS", tone: "warning" },
 };
@@ -110,6 +111,10 @@ export function ProductsView({ data }: { data: ProductsData }) {
     data.adSpendCoverage.mode === "unavailable"
       ? "before paid marketing"
       : "after available costs";
+  const profitBasisTitle =
+    data.adSpendCoverage.mode === "unavailable"
+      ? "Before Paid Marketing"
+      : "After Available Costs";
 
   const chartData = data.products
     .slice()
@@ -138,7 +143,7 @@ export function ProductsView({ data }: { data: ProductsData }) {
           {!data.hasCustomerData && (
             <>
               Customer-lifetime effects are intentionally omitted because
-              Meridian does not request the <code>read_customers</code> scope.
+              MyMeridian does not request the <code>read_customers</code> scope.
               Every negative-contribution product is therefore classified only
               by its available order economics.
             </>
@@ -167,25 +172,27 @@ export function ProductsView({ data }: { data: ProductsData }) {
       <div className="grid cols-3">
         <Tile
           tone="var(--viz-mint)"
+          valueTone={data.counts.profitable > 0 ? "positive" : "neutral"}
           icon={<IconProducts />}
           label="Profitable"
           value={<AnimatedInt value={data.counts.profitable} />}
-          meta={<span>{profitBasis}</span>}
+          meta={<span>{profitBasisTitle}</span>}
         />
         <Tile
           tone="var(--viz-amber)"
           icon={<IconPricing />}
-          label="Thin margin"
+          label="Thin Margin"
           value={<AnimatedInt value={data.counts.thin} />}
           meta={
             <>
-              <span>under 10% contribution</span>
-              {profitBasis && <span>{profitBasis}</span>}
+              <span>Under 10% Contribution</span>
+              <span>{profitBasisTitle}</span>
             </>
           }
         />
         <Tile
           tone="var(--viz-rose)"
+          valueTone={data.counts.bleeding > 0 ? "negative" : "neutral"}
           icon={<IconAlert />}
           label="Bleeding"
           value={<AnimatedInt value={data.counts.bleeding} />}
@@ -196,34 +203,34 @@ export function ProductsView({ data }: { data: ProductsData }) {
                 currency={data.currency}
                 decimals={false}
               />
-              <span>over the period</span>
-              {profitBasis && <span>{profitBasis}</span>}
+              <span>Over The Period</span>
+              <span>{profitBasisTitle}</span>
             </>
           }
         />
       </div>
 
       <Card
-        title={`Contribution profit ${profitBasis} by product`}
+        title={`Contribution Profit ${profitBasisTitle} By Product`}
         hint={
           data.adSpendCoverage.mode === "unavailable"
-            ? "After available shipping, payment-fee and pick-and-pack inputs. Those inputs can be modeled, missing COGS is flagged, and paid-marketing spend is unavailable and excluded."
-            : "After available recorded and modeled costs plus recorded ad spend. Missing COGS is flagged; spend from unconnected sources is excluded."
+            ? "After available shipping, payment-fee and pick-and-pack inputs. Those inputs can be configured estimates, missing COGS is flagged, and paid-marketing spend is unavailable and excluded."
+            : "After available measured costs and configured estimates plus recorded ad spend. Missing COGS is flagged; spend from unconnected sources is excluded."
         }
       >
         {chartData.length === 0 ? (
-          <Empty>No product sales in this period.</Empty>
+          <Empty>No Product Sales In This Period.</Empty>
         ) : (
           <HorizontalBars data={chartData} maxRows={20} />
         )}
       </Card>
 
       <Card
-        title="Full breakdown"
+        title="Full Breakdown"
         hint={
           data.adSpendCoverage.mode === "unavailable"
             ? "Sorted by contribution before paid marketing. Ads shows a dash; contribution, margin and per-unit profit exclude that unavailable cost."
-            : "Sorted by contribution after available costs. Modeled costs and missing COGS are flagged; Ads includes synced-source spend only and unconnected paid-marketing spend is excluded."
+            : "Sorted by contribution after available costs. Configured estimates and missing COGS are flagged; Ads includes synced-source spend only and unconnected paid-marketing spend is excluded."
         }
         flush
       >
@@ -234,23 +241,23 @@ export function ProductsView({ data }: { data: ProductsData }) {
                 <th>Product</th>
                 <th></th>
                 <th className="right">Units</th>
-                <th className="right">Attach rate</th>
+                <th className="right">Attach Rate</th>
                 <th className="right">Revenue</th>
                 <th className="right">COGS</th>
-                <th className="right">Fulfilment &amp; fees</th>
+                <th className="right">Fulfilment &amp; Fees</th>
                 <th className="right">
                   {data.adSpendCoverage.mode === "connected"
-                    ? "Recorded ads"
+                    ? "Recorded Ads"
                     : "Ads"}
                 </th>
                 <th className="right">
-                  {`Contribution ${profitBasis}`}
+                  {`Contribution ${profitBasisTitle}`}
                 </th>
                 <th className="right">
-                  {`Margin ${profitBasis}`}
+                  {`Margin ${profitBasisTitle}`}
                 </th>
                 <th className="right">
-                  {`Per unit ${profitBasis}`}
+                  {`Per Unit ${profitBasisTitle}`}
                 </th>
               </tr>
             </thead>
@@ -265,8 +272,8 @@ export function ProductsView({ data }: { data: ProductsData }) {
                       {(product.hasMissingCogs || product.usesModeledCosts) && (
                         <div className="cell-sub">
                           {[
-                            product.hasMissingCogs ? "missing COGS" : null,
-                            product.usesModeledCosts ? "modeled costs" : null,
+                            product.hasMissingCogs ? "Missing COGS" : null,
+                            product.usesModeledCosts ? "Configured Estimates" : null,
                           ]
                             .filter(Boolean)
                             .join(" · ")}

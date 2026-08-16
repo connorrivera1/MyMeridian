@@ -170,7 +170,7 @@ export function TimeSeriesChart({
   const drawKey = `${data.length}-${data[0]?.date.getTime() ?? 0}-${data.at(-1)?.date.getTime() ?? 0}`;
 
   if (data.length === 0) {
-    return <div className="empty">No data in this range.</div>;
+    return <div className="empty">No Data In This Range.</div>;
   }
 
   // Right padding leaves room for the end-labels rather than clipping them.
@@ -315,8 +315,37 @@ export function TimeSeriesChart({
           */}
         {series.length <= 4 &&
           (() => {
+            /*
+             * Clear of the line, not merely above its last point.
+             *
+             * The label is right-aligned and long — "Profit before paid
+             * marketing" runs ~180px — so it hangs back over a stretch of plot
+             * where the line is free to climb. Offsetting from the final point
+             * alone put the text straight along a rising tail, and the knockout
+             * that keeps it readable then bit a visible gap out of the series.
+             *
+             * So each label clears the highest point its own line reaches
+             * underneath it. The x-span is estimated from the glyph count
+             * because SVG text cannot be measured before layout; it only has to
+             * be close, and erring wide errs safe.
+             */
+            const labelSpan = (label: string) =>
+              Math.min(label.length * 7.2, plotW);
+
+            const highestUnder = (key: string, span: number) => {
+              const from = width - pad.right - span;
+              let top = Infinity;
+              data.forEach((d, i) => {
+                if (xAt(i) < from) return;
+                top = Math.min(top, yAt(d.values[key] ?? 0));
+              });
+              return Number.isFinite(top)
+                ? top
+                : yAt(data[data.length - 1]?.values[key] ?? 0);
+            };
+
             const ends = series
-              .map((s) => ({ s, y: yAt(data[data.length - 1]?.values[s.key] ?? 0) }))
+              .map((s) => ({ s, y: highestUnder(s.key, labelSpan(s.label)) }))
               .sort((a, b) => a.y - b.y);
             let previous = -Infinity;
             return ends.map(({ s, y }) => {
@@ -431,7 +460,7 @@ export function BarChart({
   const [ref, width] = useMeasuredWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
 
-  if (data.length === 0) return <div className="empty">No data in this range.</div>;
+  if (data.length === 0) return <div className="empty">No Data In This Range.</div>;
 
   const pad = { top: 12, right: 14, bottom: 28, left: 52 };
   const plotW = Math.max(1, width - pad.left - pad.right);
@@ -555,9 +584,60 @@ export function ProfitBridge({
   const [hover, setHover] = useState<number | null>(null);
   const gradId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
 
-  if (steps.length === 0) return <div className="empty">No data in this range.</div>;
+  if (steps.length === 0) return <div className="empty">No Data In This Range.</div>;
 
-  const pad = { top: 16, right: 14, bottom: 46, left: 56 };
+  /*
+   * Category labels wrap to their own column.
+   *
+   * These were single lines centred under each bar with nothing stopping them
+   * from running into their neighbours, and at any width where the columns get
+   * tight they did exactly that — "PICK & PACK" and "PAYMENT FEES" merging into
+   * one another, "OVERHEAD" and "PROFIT BEFORE PAID MARKETING" overprinting.
+   * The chart has seven columns and one of the labels is five words long, so
+   * this is the normal case, not an edge case.
+   *
+   * Greedy word wrap against the measured column width. SVG cannot measure text
+   * before layout, so the per-character estimate is deliberately generous: too
+   * many lines is untidy, overlapping words is unreadable.
+   */
+  const LABEL_CH = 6.4;
+  const LABEL_LINE_H = 12;
+
+  const wrapLabel = (label: string, maxWidth: number): string[] => {
+    const words = label.split(/\s+/).filter(Boolean);
+    if (words.length === 0) return [label];
+    const fits = Math.max(4, Math.floor(maxWidth / LABEL_CH));
+
+    const lines: string[] = [];
+    let line = "";
+    for (const word of words) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (candidate.length <= fits || !line) line = candidate;
+      else {
+        lines.push(line);
+        line = word;
+      }
+    }
+    if (line) lines.push(line);
+    return lines;
+  };
+
+  const slotFor = (count: number) =>
+    Math.max(1, width - 14 - 56) / Math.max(1, count);
+
+  const wrapped = steps.map((step) =>
+    wrapLabel(step.label, slotFor(steps.length) - 8),
+  );
+  const labelLines = Math.max(1, ...wrapped.map((l) => l.length));
+
+  // The axis grows downward to hold however many lines the widest label needs,
+  // so wrapping never eats into the plot or runs off the bottom of the card.
+  const pad = {
+    top: 16,
+    right: 14,
+    bottom: 34 + labelLines * LABEL_LINE_H,
+    left: 56,
+  };
   const plotW = Math.max(1, width - pad.left - pad.right);
   const plotH = Math.max(1, height - pad.top - pad.bottom);
 
@@ -607,7 +687,7 @@ export function ProfitBridge({
         width={width}
         height={height}
         role="img"
-        aria-label="Revenue to profit bridge"
+        aria-label="Revenue To Profit Bridge"
       >
         {ticks.map((tick) => (
           <g key={tick}>
@@ -694,15 +774,23 @@ export function ProfitBridge({
               />
               <text
                 x={x + barW / 2}
-                y={height - 28}
+                y={height - 20 - labelLines * LABEL_LINE_H}
                 textAnchor="middle"
                 className="bridge-label"
               >
-                {bar.step.label}
+                {(wrapped[i] ?? [bar.step.label]).map((line, li) => (
+                  <tspan
+                    key={line + li}
+                    x={x + barW / 2}
+                    dy={li === 0 ? 0 : LABEL_LINE_H}
+                  >
+                    {line}
+                  </tspan>
+                ))}
               </text>
               <text
                 x={x + barW / 2}
-                y={height - 13}
+                y={height - 12}
                 textAnchor="middle"
                 className="bridge-value"
                 style={
@@ -734,7 +822,7 @@ export function ProfitBridge({
                   ...(bars[hover]!.step.kind === "cost"
                     ? [
                         {
-                          label: "Running total",
+                          label: "Running Total",
                           value: formatMoney(bars[hover]!.to),
                         },
                       ]
@@ -760,7 +848,7 @@ export function HorizontalBars({
   maxRows?: number;
 }) {
   const rows = data.slice(0, maxRows);
-  if (rows.length === 0) return <div className="empty">Nothing to show.</div>;
+  if (rows.length === 0) return <div className="empty">Nothing To Show.</div>;
 
   const extent = Math.max(...rows.map((r) => Math.abs(r.value)), 1);
   const hasNegative = rows.some((r) => r.value < 0);
@@ -928,7 +1016,7 @@ export function CapacityChart({
     })),
   ];
 
-  if (combined.length === 0) return <div className="empty">No fulfilment data yet.</div>;
+  if (combined.length === 0) return <div className="empty">No Fulfilment Data Yet.</div>;
 
   const pad = { top: 14, right: 14, bottom: 26, left: 46 };
   const plotW = Math.max(1, width - pad.left - pad.right);
@@ -966,7 +1054,7 @@ export function CapacityChart({
         onMouseMove={onMove}
         onMouseLeave={() => setHover(null)}
         role="img"
-        aria-label="Orders received and backlog against warehouse capacity"
+        aria-label="Orders Received And Backlog Against Warehouse Capacity"
       >
         {ticks.map((tick) => (
           <g key={tick}>
@@ -993,9 +1081,17 @@ export function CapacityChart({
           strokeWidth={1.5}
           strokeDasharray="5 4"
         />
+        {/*
+          * Pulled in from the boundary and lifted off its own rule. Sat flush
+          * at `width - pad.right` the last glyph met the plot's edge, and six
+          * pixels of clearance was not enough to keep a 1.5px dashed line out
+          * of the type. The knockout does the rest — this label always crosses
+          * the very rule it names.
+          */}
         <text
-          x={width - pad.right}
-          y={yAt(capacity) - 6}
+          className="chart-rule-label"
+          x={width - pad.right - 4}
+          y={yAt(capacity) - 9}
           textAnchor="end"
           style={{ fill: "var(--status-warning)", fontWeight: 650 }}
         >
@@ -1140,7 +1236,7 @@ export function CapacityChart({
                 })}${combined[hover]!.projected ? " · projected" : ""}`,
                 rows: [
                   {
-                    label: "Orders in",
+                    label: "Orders In",
                     value: String(Math.round(combined[hover]!.inbound)),
                     color: "var(--series-1)",
                   },
@@ -1189,7 +1285,7 @@ export function PaybackChart({
   }));
 
   if (visible.every((s) => s.points.length === 0)) {
-    return <div className="empty">Not enough customer history yet.</div>;
+    return <div className="empty">Not Enough Customer History Yet.</div>;
   }
 
   // Right gutter carries the cohort labels rather than clipping them.
@@ -1215,7 +1311,7 @@ export function PaybackChart({
         width={width}
         height={height}
         role="img"
-        aria-label="Cumulative value per acquired customer against acquisition cost"
+        aria-label="Cumulative Value Per Acquired Customer Against Acquisition Cost"
       >
         {ticks.map((tick) => (
           <g key={tick}>
@@ -1394,7 +1490,7 @@ export function ThemeToggle() {
       className="theme-switch"
       type="button"
       onClick={toggle}
-      aria-label="Switch between light and dark"
+      aria-label="Switch Between Light And Dark"
       aria-pressed={theme === "dark"}
     >
       <span className="theme-switch-track" aria-hidden="true">

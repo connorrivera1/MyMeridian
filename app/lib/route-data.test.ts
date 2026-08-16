@@ -17,6 +17,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const requireShopContext = vi.fn();
 vi.mock("~/lib/auth.server", () => ({
   requireShopContext: (...args: unknown[]) => requireShopContext(...args),
+  withShopContext: async (
+    request: Request,
+    work: (context: unknown) => unknown,
+  ) => work(await requireShopContext(request)),
 }));
 
 const requireActivePlan = vi.fn();
@@ -37,7 +41,10 @@ vi.mock("~/data/analytics.server", async (importOriginal) => ({
   loadPeriodProfit: (...args: unknown[]) => loadPeriodProfit(...args),
 }));
 
-vi.mock("~/db.server", () => ({ default: {} }));
+const findDismissals = vi.fn();
+vi.mock("~/db.server", () => ({
+  default: { actionDismissal: { findMany: (...args: unknown[]) => findDismissals(...args) } },
+}));
 
 const { loadDashboard, change } = await import("./route-data.server");
 
@@ -63,12 +70,25 @@ beforeEach(() => {
     trialEndsAt: null,
     isDemo: false,
   });
-  loadShopAnalytics.mockResolvedValue({ analytics: "stub" });
+  loadShopAnalytics.mockResolvedValue({
+    analytics: "stub",
+    period: { orders: [] },
+    rules: {
+      paymentPercentRate: 0,
+      paymentFixedPerOrderCents: 0,
+      shippingDefaultPerOrderCents: 0,
+      pickPackPerOrderCents: 0,
+      pickPackPerItemCents: 0,
+      monthlyOverheadCents: 0,
+      provenance: { paymentFee: null, shippingDefault: null, pickPack: null, monthlyOverhead: null },
+    },
+  });
   loadPeriodProfit.mockResolvedValue({ profit: "stub" });
   loadAdSpendCoverage.mockResolvedValue({
     mode: "unavailable",
     syncedSourceCount: 0,
   });
+  findDismissals.mockResolvedValue([]);
 });
 
 describe("loadDashboard", () => {
@@ -98,7 +118,7 @@ describe("loadDashboard", () => {
     const result = await loadDashboard(request);
 
     expect(result.preset).toBe("30d");
-    expect(result.rangeLabel).toBe("30 days");
+    expect(result.rangeLabel).toBe("30 Days");
   });
 
   it("defaults to the 30-day preset when ?range= is not a known preset", async () => {
@@ -113,7 +133,7 @@ describe("loadDashboard", () => {
     const result = await loadDashboard(request);
 
     expect(result.preset).toBe("180d");
-    expect(result.rangeLabel).toBe("6 months");
+    expect(result.rangeLabel).toBe("6 Months");
   });
 
   it("passes each loader the range it owns: current to loadShopAnalytics, previous to loadPeriodProfit", async () => {
@@ -133,7 +153,19 @@ describe("loadDashboard", () => {
   });
 
   it("finishes the current analytics build before starting the previous window", async () => {
-    let releaseCurrent!: (value: { analytics: string }) => void;
+    let releaseCurrent!: (value: {
+      analytics: string;
+      period: { orders: never[] };
+      rules: {
+        paymentPercentRate: number;
+        paymentFixedPerOrderCents: number;
+        shippingDefaultPerOrderCents: number;
+        pickPackPerOrderCents: number;
+        pickPackPerItemCents: number;
+        monthlyOverheadCents: number;
+        provenance: { paymentFee: null; shippingDefault: null; pickPack: null; monthlyOverhead: null };
+      };
+    }) => void;
     loadShopAnalytics.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -150,7 +182,19 @@ describe("loadDashboard", () => {
     // The lightweight coverage aggregate is still allowed to overlap.
     expect(loadAdSpendCoverage).toHaveBeenCalledTimes(1);
 
-    releaseCurrent({ analytics: "current" });
+    releaseCurrent({
+      analytics: "current",
+      period: { orders: [] },
+      rules: {
+        paymentPercentRate: 0,
+        paymentFixedPerOrderCents: 0,
+        shippingDefaultPerOrderCents: 0,
+        pickPackPerOrderCents: 0,
+        pickPackPerItemCents: 0,
+        monthlyOverheadCents: 0,
+        provenance: { paymentFee: null, shippingDefault: null, pickPack: null, monthlyOverhead: null },
+      },
+    });
     await pending;
 
     expect(loadPeriodProfit).toHaveBeenCalledTimes(1);
@@ -219,7 +263,7 @@ describe("loadDashboard", () => {
 
     expect(result.shop.id).toBe("shop_1");
     expect(result.isDemo).toBe(false);
-    expect(result.analytics).toEqual({ analytics: "stub" });
+    expect(result.analytics).toMatchObject({ analytics: "stub" });
     expect(result.previous.period).toEqual({ profit: "stub" });
     expect(result.adSpendCoverage).toEqual({
       mode: "unavailable",

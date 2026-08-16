@@ -1,12 +1,13 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-# Working development identity only. A published Shopify app already uses
-# Meridian, so the public name/handle must be chosen as one coordinated brand
-# decision before deployment. Do not rename only this linked config while the
-# logo, landing page, listing copy, screenshots, and Fly slug still use the old
-# identity.
-name = "Meridian"
-handle = "meridian-profit"
+# A published Shopify app already holds "Meridian", and the matching domain is
+# taken, so the public identity is MyMeridian. Decided 2026-08-11; the app UI,
+# landing page, listing copy and legal pages were renamed in the same change.
+# The linked development app still shows the old dashboard name until a safe
+# production config release; the Fly slug and final brand assets must also use
+# the chosen identity.
+name = "MyMeridian"
+handle = "mymeridian"
 # NOT SUBMITTABLE AS IT STANDS. This is still the Shopify CLI's placeholder.
 # It must become the app's real, stable, public HTTPS origin before submission:
 # Shopify rejects localhost and tunnel URLs here, and it must not contain the
@@ -18,10 +19,9 @@ handle = "meridian-profit"
 # the tunnel while `shopify app dev` runs, which is why it can sit wrong for a
 # long time without anything locally appearing to break.
 #
-# TODO(deploy): Dockerfile, .dockerignore, and fly.toml now exist and have been
-# validated locally, but no Fly app/database has been provisioned and no
-# production origin exists. flyctl is installed but still needs `fly auth
-# login`. Once the final app name is chosen and a real host is live, set
+# DEPLOYMENT BLOCKER: Dockerfile, .dockerignore, and fly.toml have been
+# validated locally, but no hosting app/database has been provisioned and no
+# production origin exists. Once a real host is live, set
 # application_url to that origin and update redirect_urls below to match —
 # webhook `uri` values are relative and resolve against it automatically.
 #
@@ -59,11 +59,16 @@ client_id = "9dfbe484752628b0a96c4755caf4f502"
 # advertises cohort LTV/payback; keep that promise out until approval is obtained
 # and this scope is intentionally added. Do not add it speculatively.
 #
+# read_all_orders was approved in the Partner Dashboard on 2026-08-11. It
+# extends the read_orders window beyond 60 days so lifetime profitability,
+# repeat-customer cohorts and seasonal trends are based on the merchant's full
+# history rather than a recent fragment.
+#
 # read_refunds is deliberately absent: it is not a Shopify access scope, and
 # refunds are read as Order.refunds inside the orders query, which read_orders
 # already covers. Requesting a scope the platform does not recognise risks
 # failing OAuth outright, and nothing in the app ever checked for it.
-scopes = "read_orders,read_products,read_fulfillments,read_inventory,read_reports"
+scopes = "read_orders,read_all_orders,read_products,read_fulfillments,read_inventory,read_reports"
 
 [auth]
 # The path has to match `authPathPrefix` in app/shopify.server.ts, which is

@@ -5,6 +5,7 @@ import { CapacityChart } from "~/design/charts";
 import {
   Alert,
   AnimatedInt,
+  Badge,
   Card,
   Empty,
   IconChannels,
@@ -17,11 +18,16 @@ import {
 } from "~/design/components";
 import { formatPercent } from "~/engine/money";
 import { loadCapacityDays } from "~/data/queries.server";
+import { withShopContext, type ShopContext } from "~/lib/auth.server";
 import { planAllows, planFor } from "~/lib/plan.server";
-import { loadDashboard } from "~/lib/route-data.server";
+import { loadDashboardForContext } from "~/lib/route-data.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { shop, analytics, plan } = await loadDashboard(request);
+  return withShopContext(request, (ctx) => loadFulfilment(request, ctx));
+}
+
+async function loadFulfilment(request: Request, ctx: ShopContext) {
+  const { shop, analytics, plan } = await loadDashboardForContext(request, ctx);
 
   if (!planAllows(plan, "capacity")) {
     const required = planFor("capacity");
@@ -76,6 +82,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
 export default function Fulfilment() {
   const data = useLoaderData<typeof loader>();
 
+  return <FulfilmentView data={data} />;
+}
+
+type FulfilmentData = Awaited<ReturnType<typeof loader>>;
+
+export function FulfilmentView({ data }: { data: FulfilmentData }) {
   if (data.locked) {
     return (
       <UpgradeNotice
@@ -83,7 +95,7 @@ export default function Fulfilment() {
         planName={data.locked.name}
         price={data.locked.price}
       >
-        Meridian measures the throughput your team has actually demonstrated,
+        MyMeridian measures the throughput your team has actually demonstrated,
         projects the next fortnight of demand against it, and tells you which
         days will miss your shipping promise before the backlog forms.
       </UpgradeNotice>
@@ -92,10 +104,11 @@ export default function Fulfilment() {
 
   if (!data.hasData) {
     return (
-      <Card title="Fulfilment capacity">
+      <Card title="Fulfilment Capacity">
         <Empty>
-          No fulfilment history yet. Once orders start shipping, Meridian learns
-          your warehouse&rsquo;s real throughput and warns you before it falls behind.
+          No Fulfilment History Yet. Once orders start shipping, MyMeridian
+          learns your warehouse&rsquo;s real throughput and warns you before it
+          falls behind.
         </Empty>
       </Card>
     );
@@ -110,50 +123,56 @@ export default function Fulfilment() {
       <div className="grid cols-4">
         <Tile
           tone="var(--viz-rose)"
+          valueTone={breached && m.currentBacklog > 0 ? "negative" : "neutral"}
           icon={<IconFulfilment />}
-          label="Orders waiting"
+          label="Orders Waiting"
           value={<AnimatedInt value={m.currentBacklog} />}
           spark={data.backlogSpark}
           meta={
             <span>
               {m.daysToClearBacklog === null
                 ? "—"
-                : `${m.daysToClearBacklog.toFixed(1)} days to clear`}
+                : `${m.daysToClearBacklog.toFixed(1)} Days to Clear`}
             </span>
           }
         />
         <Tile
           tone="var(--viz-blue)"
           icon={<IconOrders />}
-          label="Shipping now"
+          label="Shipping Now"
           value={<AnimatedInt value={Math.round(m.throughputPerDay)} />}
           spark={data.shippedSpark}
-          meta={<span>orders a day, 14-day average</span>}
+          meta={<span>Orders A Day, 14-Day Average</span>}
         />
         <Tile
           tone="var(--viz-amber)"
           icon={<IconOverview />}
-          label="Capacity used"
-          value={m.utilisationPct === null ? "—" : formatPercent(m.utilisationPct, 0)}
+          label="Capacity Used"
+          value={
+            m.utilisationPct === null ? "—" : formatPercent(m.utilisationPct, 0)
+          }
           meta={
             <span>
-              ceiling {Math.round(m.effectiveCapacityPerDay).toLocaleString()}/day
+              Ceiling {Math.round(m.effectiveCapacityPerDay).toLocaleString()}
+              /day
             </span>
           }
         />
         <Tile
           tone="var(--viz-teal)"
           icon={<IconChannels />}
-          label="Demand trend"
-          value={m.demandTrendPct === null ? "—" : formatPercent(m.demandTrendPct, 0)}
+          label="Demand Trend"
+          value={
+            m.demandTrendPct === null ? "—" : formatPercent(m.demandTrendPct, 0)
+          }
           spark={data.receivedSpark}
-          meta={<span>last 28 days vs the 28 before</span>}
+          meta={<span>Last 28 Days Vs. The 28 Before</span>}
         />
       </div>
 
       {data.alerts.length > 0 && (
         <Card
-          title={breached ? "You are behind" : "Watch list"}
+          title={breached ? "You Are Behind" : "Watch List"}
           hint={`Measured against your ${data.slaDays}-day shipping promise, using the throughput your team has actually demonstrated rather than a configured number.`}
           flush
         >
@@ -171,17 +190,19 @@ export default function Fulfilment() {
       )}
 
       <Card
-        title="Demand against capacity"
+        title="Demand Against Capacity"
         hint="Solid region is history; shaded region is the next 14 days, projected from trailing demand with your weekday pattern applied."
         flush
       >
-        <Legend
-          items={[
-            { label: "Orders received", color: "var(--mark-structure)" },
-            { label: "Backlog", color: "var(--delta-down)" },
-            { label: "Capacity ceiling", color: "var(--status-warning)" },
-          ]}
-        />
+        <div className="chart-legend-inset">
+          <Legend
+            items={[
+              { label: "Orders Received", color: "var(--mark-structure)" },
+              { label: "Backlog", color: "var(--delta-down)" },
+              { label: "Capacity Ceiling", color: "var(--status-warning)" },
+            ]}
+          />
+        </div>
         <div style={{ padding: "4px 16px 14px" }}>
           <CapacityChart
             history={data.history.map((day) => ({
@@ -201,7 +222,7 @@ export default function Fulfilment() {
       </Card>
 
       <Card
-        title="Next 14 days"
+        title="Next 14 Days"
         hint="Overflow rolls into the following day rather than disappearing, which is why a single busy week can put shipping times out for a fortnight."
         flush
       >
@@ -210,15 +231,16 @@ export default function Fulfilment() {
             <thead>
               <tr>
                 <th>Day</th>
-                <th className="right">Orders expected</th>
-                <th className="right">Backlog at close</th>
-                <th className="right">Ship delay</th>
+                <th className="right">Orders Expected</th>
+                <th className="right">Backlog At Close</th>
+                <th className="right">Ship Delay</th>
                 <th>Status</th>
               </tr>
             </thead>
             <tbody>
               {data.forecast.map((day) => {
-                const late = day.shipDelay !== null && day.shipDelay > data.slaDays;
+                const late =
+                  day.shipDelay !== null && day.shipDelay > data.slaDays;
                 return (
                   <tr key={String(day.date)}>
                     <td className="primary-cell">
@@ -231,20 +253,27 @@ export default function Fulfilment() {
                         day: "numeric",
                       })}
                     </td>
-                    <td className="right num">{day.inbound.toLocaleString()}</td>
-                    <td className="right num">{day.backlog.toLocaleString()}</td>
+                    <td className="right num">
+                      {day.inbound.toLocaleString()}
+                    </td>
+                    <td className="right num">
+                      {day.backlog.toLocaleString()}
+                    </td>
                     <td className="right num">
                       {day.shipDelay === null
                         ? "—"
                         : `${day.shipDelay.toFixed(1)} days`}
                     </td>
                     <td>
+                      {/* The Badge component, not a hand-rolled span: these
+                          three were the only badges in the app bypassing it,
+                          and they were also the only ones in lower case. */}
                       {late ? (
-                        <span className="badge critical">past promise</span>
+                        <Badge tone="critical">Past Promise</Badge>
                       ) : day.overCapacity ? (
-                        <span className="badge warning">over capacity</span>
+                        <Badge tone="warning">Over Capacity</Badge>
                       ) : (
-                        <span className="badge neutral">on track</span>
+                        <Badge tone="neutral">On Track</Badge>
                       )}
                     </td>
                   </tr>

@@ -3,6 +3,7 @@ import {
   ApiVersion,
   AppDistribution,
   BillingInterval,
+  BillingReplacementBehavior,
   DeliveryMethod,
   shopifyApp,
 } from "@shopify/shopify-app-react-router/server";
@@ -13,6 +14,9 @@ import {
   PLANS,
   TRIAL_DAYS,
   ANNUAL_SUFFIX,
+  CHANGE_SUFFIX,
+  FOUNDING_SUFFIX,
+  NEXT_CYCLE_SUFFIX,
   USAGE_CAP_AMOUNT,
   USAGE_TERMS,
 } from "./lib/plans";
@@ -31,6 +35,10 @@ export {
   basePlanId,
   type PlanId,
   type BillingKey,
+  billingKeyInfo,
+  changeKey,
+  nextCycleKey,
+  foundingKey,
 } from "./lib/plans";
 
 /**
@@ -80,8 +88,11 @@ function buildShopify() {
      * price change in plans.ts cannot desync from what Shopify charges: these
      * three literals were exactly the kind of duplication that drifts.
      *
-     * Both intervals carry the same trial. Shopify prorates a mid-cycle switch
-     * between them and shows the merchant the amount before confirming.
+     * The normal keys are used only for a first subscription and carry the
+     * 14-day trial. A `-change` key replaces an existing plan without a second
+     * trial. Its `-next-cycle` companion is used only for a downgrade, which
+     * preserves the current plan until the next billing cycle. Shopify shows
+     * that timing before a merchant confirms.
      */
     billing: Object.fromEntries(
       Object.values(PLANS).flatMap((plan) => [
@@ -121,6 +132,109 @@ function buildShopify() {
               },
             ],
             trialDays: TRIAL_DAYS,
+          },
+        ],
+        // The only discounted Billing API plan. The action route selects this
+        // key only when an email-bound Founding Merchant entitlement has been
+        // reserved for the authenticated owner and shop. Shopify enforces the
+        // exact 15% / 12 monthly-interval limit on the subscription itself.
+        [
+          `${plan.id}${FOUNDING_SUFFIX}`,
+          {
+            lineItems: [
+              {
+                amount: plan.price,
+                currencyCode: "USD",
+                interval: BillingInterval.Every30Days,
+                discount: {
+                  value: { percentage: 0.15 },
+                  durationLimitInIntervals: 12,
+                },
+              },
+              {
+                amount: USAGE_CAP_AMOUNT,
+                currencyCode: "USD",
+                interval: BillingInterval.Usage,
+                terms: USAGE_TERMS,
+              },
+            ],
+            trialDays: TRIAL_DAYS,
+          },
+        ],
+        [
+          `${plan.id}${CHANGE_SUFFIX}`,
+          {
+            lineItems: [
+              {
+                amount: plan.price,
+                currencyCode: "USD",
+                interval: BillingInterval.Every30Days,
+              },
+              {
+                amount: USAGE_CAP_AMOUNT,
+                currencyCode: "USD",
+                interval: BillingInterval.Usage,
+                terms: USAGE_TERMS,
+              },
+            ],
+          },
+        ],
+        [
+          `${plan.id}${ANNUAL_SUFFIX}${CHANGE_SUFFIX}`,
+          {
+            lineItems: [
+              {
+                amount: plan.annualPrice,
+                currencyCode: "USD",
+                interval: BillingInterval.Annual,
+              },
+              {
+                amount: USAGE_CAP_AMOUNT,
+                currencyCode: "USD",
+                interval: BillingInterval.Usage,
+                terms: USAGE_TERMS,
+              },
+            ],
+          },
+        ],
+        [
+          `${plan.id}${NEXT_CYCLE_SUFFIX}`,
+          {
+            lineItems: [
+              {
+                amount: plan.price,
+                currencyCode: "USD",
+                interval: BillingInterval.Every30Days,
+              },
+              {
+                amount: USAGE_CAP_AMOUNT,
+                currencyCode: "USD",
+                interval: BillingInterval.Usage,
+                terms: USAGE_TERMS,
+              },
+            ],
+            replacementBehavior:
+              BillingReplacementBehavior.ApplyOnNextBillingCycle,
+          },
+        ],
+        [
+          `${plan.id}${ANNUAL_SUFFIX}${NEXT_CYCLE_SUFFIX}`,
+          {
+            lineItems: [
+              {
+                amount: plan.annualPrice,
+                currencyCode: "USD",
+                interval: BillingInterval.Annual,
+              },
+              {
+                amount: USAGE_CAP_AMOUNT,
+                currencyCode: "USD",
+                interval: BillingInterval.Usage,
+                terms: USAGE_TERMS,
+              },
+            ],
+            replacementBehavior:
+              BillingReplacementBehavior.ApplyOnNextBillingCycle,
           },
         ],
       ]),
@@ -202,9 +316,18 @@ function buildShopify() {
 
         // Every install needs a Shop row and a starting set of cost rules,
         // otherwise the first dashboard load has nothing to reason about.
-        const { ensureShopProvisioned, synchroniseShopifyShippingConnector } =
-          await import("./lib/provision.server");
+        const {
+          ensureShopProvisioned,
+          synchroniseShopifyShippingConnector,
+          synchroniseShopifyShopCampaignsConnector,
+        } = await import("./lib/provision.server");
         const shop = await ensureShopProvisioned(session.shop);
+
+        const hadAllOrders = parseScopes(shop.grantedScopes).has(
+          "read_all_orders",
+        );
+        const hasAllOrders = parseScopes(session.scope).has("read_all_orders");
+        const orderHistoryAccessChanged = hadAllOrders !== hasAllOrders;
 
         // Record what the store actually granted. The import gates its
         // GraphQL fields on this: asking for a field the app is not
@@ -212,25 +335,41 @@ function buildShopify() {
         const prismaClient = (await import("./db.server")).default;
         await prismaClient.shop.update({
           where: { id: shop.id },
-          data: { grantedScopes: session.scope ?? null },
+          data: {
+            grantedScopes: session.scope ?? null,
+            // A completed 60-day import is not a completed lifetime import.
+            // Likewise, a revoked lifetime scope must stop claiming full
+            // history. Resetting the claim lets the backfill below rebuild
+            // the merchant-facing boundary from the newly granted access.
+            ...(orderHistoryAccessChanged
+              ? {
+                  syncStatus: "PENDING",
+                  syncCompletedAt: null,
+                  syncStage: "Order-history access changed",
+                  hasAllOrdersScope: false,
+                }
+              : {}),
+          },
         });
         await synchroniseShopifyShippingConnector(shop.id, session.scope);
+        await synchroniseShopifyShopCampaignsConnector(shop.id, session.scope);
 
         // Webhooks only describe what happens next, so without a historical
         // import the merchant's first view of Meridian is a wall of zeroes.
         // Started in the background: OAuth has to redirect into the app now,
         // and pulling a store's order history takes far longer than a redirect
         // can wait. Progress is polled from the Shop row.
-        const { startBackfill, backfillIsStale } =
-          await import("./lib/backfill.server");
+        const { backfillIsStale } = await import("./lib/backfill.server");
+        const { requestBackfill } = await import("./lib/backfill-queue.server");
 
         const alreadyImported =
-          shop.syncStatus === "COMPLETE" || shop.syncStatus === "RUNNING";
+          !orderHistoryAccessChanged &&
+          (shop.syncStatus === "COMPLETE" || shop.syncStatus === "RUNNING");
 
         if (!alreadyImported || backfillIsStale(shop)) {
-          // Wait only for the atomic claim, not the import. This keeps OAuth
-          // fast while ensuring two callbacks cannot start overlapping walks.
-          await startBackfill(shop.id, admin);
+          // Wait only for the durable enqueue, not the import. This keeps OAuth
+          // fast while ensuring a deploy cannot erase the outstanding work.
+          await requestBackfill(shop.id);
         }
       },
     },

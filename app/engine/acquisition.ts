@@ -35,6 +35,10 @@ export interface ChannelPerformance {
   spendCents: Cents;
   impressions: number;
   clicks: number;
+  /** Provider-reported customers/conversions, never Meridian order counts. */
+  platformConversions: number;
+  /** Provider-reported sales, kept separate from Meridian order revenue. */
+  platformRevenueCents: Cents;
 
   orders: number;
   newCustomers: number;
@@ -385,6 +389,10 @@ export function computeChannelPerformance(
       (sum, s) => sum + s.platformRevenueCents,
       0,
     );
+    const platformConversions = channelSpend.reduce(
+      (sum, s) => sum + s.platformConversions,
+      0,
+    );
 
     const channelOrders = orders.filter((o) => o.channel === channel);
     const channelProfits = channelOrders
@@ -446,6 +454,8 @@ export function computeChannelPerformance(
       spendCents,
       impressions,
       clicks,
+      platformConversions,
+      platformRevenueCents,
       orders: channelOrders.length,
       newCustomers,
       returningOrders: channelOrders.filter((o) => !o.isFirstOrder).length,

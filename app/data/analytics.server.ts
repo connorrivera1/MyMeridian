@@ -31,6 +31,7 @@ import {
 
 /** How far back cohort value is measured, independent of the reporting window. */
 const COHORT_LOOKBACK_DAYS = 365;
+const LIVE_RANGE_BUCKET_MS = 60_000;
 
 /**
  * One assembled analytical picture of a store, shared by every dashboard route.
@@ -67,7 +68,17 @@ export function resolveRange(
   // The seeded demo store is the one case that genuinely wants the old
   // behaviour — its data ends at a fixed point in the past, so anchoring to now
   // would eventually show an empty window. Callers opt into that explicitly.
-  const to = (anchorToData ? shop.lastSyncedAt : null) ?? new Date();
+  const anchored = anchorToData ? shop.lastSyncedAt : null;
+  // Cache entries live for one minute. Giving every live request a distinct
+  // millisecond endpoint defeated both the cache and in-flight coalescing even
+  // though the resulting financial window was materially identical. Aligning
+  // live windows to that same minute keeps "last 30 days" current while making
+  // repeated and simultaneous requests share one bounded build.
+  const to =
+    anchored ??
+    new Date(
+      Math.floor(Date.now() / LIVE_RANGE_BUCKET_MS) * LIVE_RANGE_BUCKET_MS,
+    );
   const from = new Date(to.getTime() - days * 86_400_000);
 
   return { from, to };
@@ -211,70 +222,99 @@ export async function loadShopAnalytics(
 
     const startedAt = Date.now();
 
-    const cohortRange: DateRange = {
-      from: new Date(range.to.getTime() - COHORT_LOOKBACK_DAYS * 86_400_000),
-      to: range.to,
-    };
-    const includeCustomerCohorts = capabilitiesForShop(
-      shop,
-      process.env.SCOPES,
-    ).customers;
+    try {
+      const cohortRange: DateRange = {
+        from: new Date(range.to.getTime() - COHORT_LOOKBACK_DAYS * 86_400_000),
+        to: range.to,
+      };
+      const includeCustomerCohorts = capabilitiesForShop(
+        shop,
+        process.env.SCOPES,
+      ).customers;
 
-    const [orders, spend, rules, productMeta, capacityDays, cohortRows] =
-      await Promise.all([
-        loadEngineOrders(shop.id, range),
-        loadAdSpend(shop.id, range),
-        loadCostRules(shop.id),
-        loadProductMeta(shop.id),
-        loadCapacityDays(shop.id, range),
-        includeCustomerCohorts
-          ? loadCohortRows(shop.id, cohortRange)
-          : Promise.resolve([]),
-      ]);
+      const [orders, spend, rules, productMeta, capacityDays, cohortRows] =
+        await Promise.all([
+          loadEngineOrders(shop.id, range),
+          loadAdSpend(shop.id, range),
+          loadCostRules(shop.id),
+          loadProductMeta(shop.id),
+          loadCapacityDays(shop.id, range),
+          includeCustomerCohorts
+            ? loadCohortRows(shop.id, cohortRange)
+            : Promise.resolve([]),
+        ]);
 
-    const cohortJourneys = buildJourneysFromRows(cohortRows);
+      const cohortJourneys = buildJourneysFromRows(cohortRows);
 
-    const period = computeProfitForPeriod(
-      orders,
-      spend,
-      rules,
-      shop.timezone,
-      range,
-    );
+      const period = computeProfitForPeriod(
+        orders,
+        spend,
+        rules,
+        shop.timezone,
+        range,
+      );
 
-    // `orders` — the hydrated engine input, line items and all — deliberately
-    // does not go into the returned object. Every consumer reads `period.orders`,
-    // the per-order profit rows; nothing outside this function has ever read the
-    // raw input. Returning it meant the cache held the engine's scratch paper for
-    // a minute after the answer was computed, at 57% of the entry's weight.
-    const value: ShopAnalytics = {
-      shop,
-      range,
-      rules,
-      period,
-      products: computeProductProfitability(orders, period.orders, productMeta),
-      channels: computeChannelPerformance(orders, period.orders, spend, {
-        periodStart: range.from,
-        periodEnd: range.to,
-        cohortJourneys,
-        cohortEnd: cohortRange.to,
-      }),
-      campaigns: computeCampaignPerformance(orders, period.orders, spend),
-      capacity: analyseCapacity(capacityDays, {
-        slaDays: shop.fulfillmentSlaDays,
-        today: range.to,
-      }),
-      computedInMs: Date.now() - startedAt,
-    };
+      // `orders` — the hydrated engine input, line items and all — deliberately
+      // does not go into the returned object. Every consumer reads `period.orders`,
+      // the per-order profit rows; nothing outside this function has ever read the
+      // raw input. Returning it meant the cache held the engine's scratch paper for
+      // a minute after the answer was computed, at 57% of the entry's weight.
+      const value: ShopAnalytics = {
+        shop,
+        range,
+        rules,
+        period,
+        products: computeProductProfitability(
+          orders,
+          period.orders,
+          productMeta,
+        ),
+        channels: computeChannelPerformance(orders, period.orders, spend, {
+          periodStart: range.from,
+          periodEnd: range.to,
+          cohortJourneys,
+          cohortEnd: cohortRange.to,
+        }),
+        campaigns: computeCampaignPerformance(orders, period.orders, spend),
+        capacity: analyseCapacity(capacityDays, {
+          slaDays: shop.fulfillmentSlaDays,
+          today: range.to,
+        }),
+        computedInMs: Date.now() - startedAt,
+      };
 
-    // A webhook or recompute can invalidate while the engine is running. Do
-    // not put that now-stale snapshot back after the invalidation.
-    if (generation === cacheGeneration) {
-      cache.set(key, { at: Date.now(), weight: period.orders.length, value });
-      trimCaches(key);
+      // A webhook or recompute can invalidate while the engine is running. Do
+      // not put that now-stale snapshot back after the invalidation.
+      if (generation === cacheGeneration) {
+        cache.set(key, { at: Date.now(), weight: period.orders.length, value });
+        trimCaches(key);
+      }
+
+      return value;
+    } catch (error) {
+      if (!(error instanceof Error) || error.name !== "WindowTooLargeError") {
+        throw error;
+      }
+      // Large windows read the exact profit ledger already materialized by the
+      // recompute worker and aggregate product lines in SQL. This avoids
+      // hydrating the full order + line-item graph that the guard refused.
+      const { loadMaterializedShopAnalytics } = await import(
+        "./materialized-analytics.server"
+      );
+      const value: ShopAnalytics = await loadMaterializedShopAnalytics(
+        shop,
+        range,
+      );
+      if (generation === cacheGeneration) {
+        cache.set(key, {
+          at: Date.now(),
+          weight: value.period.orders.length,
+          value,
+        });
+        trimCaches(key);
+      }
+      return value;
     }
-
-    return value;
   });
 
   shopBuildsInFlight.set(flightKey, build);
@@ -344,19 +384,29 @@ export async function loadPeriodProfit(
     // must not coexist with that peak either.
     cache.clear();
 
-    const [orders, spend, rules] = await Promise.all([
-      loadEngineOrders(shop.id, range),
-      loadAdSpend(shop.id, range),
-      loadCostRules(shop.id),
-    ]);
-
-    const value = computeProfitForPeriod(
-      orders,
-      spend,
-      rules,
-      shop.timezone,
-      range,
-    );
+    let value: PeriodProfit;
+    try {
+      const [orders, spend, rules] = await Promise.all([
+        loadEngineOrders(shop.id, range),
+        loadAdSpend(shop.id, range),
+        loadCostRules(shop.id),
+      ]);
+      value = computeProfitForPeriod(
+        orders,
+        spend,
+        rules,
+        shop.timezone,
+        range,
+      );
+    } catch (error) {
+      if (!(error instanceof Error) || error.name !== "WindowTooLargeError") {
+        throw error;
+      }
+      const { loadMaterializedPeriodProfit } = await import(
+        "./materialized-analytics.server"
+      );
+      value = await loadMaterializedPeriodProfit(shop.id, range);
+    }
     const { orders: _discardedOrders, ...summary } = value;
 
     // Comparison routes read scalar deltas only. Keeping `value.orders` here

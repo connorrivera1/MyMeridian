@@ -1,5 +1,13 @@
 import { purgeExpiredDataRequests } from "~/lib/data-request.server";
 import { purgeFinishedRecalcJobs } from "~/lib/recalc-queue.server";
+import { purgeExpiredSecurityAuditEvents } from "~/lib/security-audit.server";
+import { purgeExpiredConnectorOAuthStates } from "~/lib/connector-oauth.server";
+import { purgeOldMerchantNotifications } from "~/lib/merchant-notifications.server";
+import { purgeExpiredOperatorSecurityData } from "~/lib/operator-auth.server";
+import { purgeExpiredRateLimitBuckets } from "~/lib/rate-limit.server";
+import { purgeExpiredMfaChallenges } from "~/lib/mfa.server";
+import { purgeOldWaitlistEmailDeliveries } from "~/lib/waitlist.server";
+import { logOperationalFailure } from "~/lib/operational-errors.server";
 
 /**
  * The retention boundary is measured in days, but an hourly sweep keeps the
@@ -30,14 +38,16 @@ function beginSweep(): void {
   const work = purgeExpiredDataRequests()
     .then((count) => {
       if (count > 0) {
-        console.info(`[privacy] purged ${count} expired customer data export(s)`);
+        console.info(
+          `[privacy] purged ${count} expired customer data export(s)`,
+        );
       }
     })
     .catch((error: unknown) => {
       // A transient database failure must not become an unhandled rejection or
       // stop future sweeps. The next interval retries the same deterministic
       // expiresAt predicate.
-      console.error("[privacy] expired customer data export purge failed", error);
+      logOperationalFailure("privacy expired customer data export purge", error);
     })
     // Chained rather than combined: a failure to prune spent job receipts must
     // never be able to stop a privacy deletion, and the privacy deletion is the
@@ -50,7 +60,65 @@ function beginSweep(): void {
       }
     })
     .catch((error: unknown) => {
-      console.error("[recalc] finished job purge failed", error);
+      logOperationalFailure("recalc finished job purge", error);
+    })
+    .then(() => purgeExpiredSecurityAuditEvents())
+    .then((count) => {
+      if (count > 0)
+        console.info(`[security] purged ${count} expired access event(s)`);
+    })
+    .catch((error: unknown) => {
+      logOperationalFailure("security access-event purge", error);
+    })
+    .then(() => purgeExpiredOperatorSecurityData())
+    .then(({ sessions, auditEvents }) => {
+      if (sessions > 0 || auditEvents > 0) {
+        console.info(
+          `[operator-security] purged ${sessions} expired session(s) and ${auditEvents} expired audit event(s)`,
+        );
+      }
+    })
+    .catch((error: unknown) => {
+      logOperationalFailure("operator-security retention purge", error);
+    })
+    .then(() => purgeExpiredRateLimitBuckets())
+    .then((count) => {
+      if (count > 0) {
+        console.info(`[rate-limit] purged ${count} expired request bucket(s)`);
+      }
+    })
+    .catch((error: unknown) => {
+      logOperationalFailure("rate-limit retention purge", error);
+    })
+    .then(() => purgeExpiredMfaChallenges())
+    .then((count) => {
+      if (count > 0) console.info(`[mfa] purged ${count} expired challenge(s)`);
+    })
+    .catch((error: unknown) => {
+      logOperationalFailure("MFA challenge retention purge", error);
+    })
+    .then(() => purgeOldWaitlistEmailDeliveries())
+    .then((count) => {
+      if (count > 0) {
+        console.info(`[waitlist] purged ${count} expired email delivery receipt(s)`);
+      }
+    })
+    .catch((error: unknown) => {
+      logOperationalFailure("waitlist email receipt retention purge", error);
+    })
+    .then(async () => {
+      const [oauth, notifications] = await Promise.all([
+        purgeExpiredConnectorOAuthStates(),
+        purgeOldMerchantNotifications(),
+      ]);
+      if (oauth > 0 || notifications > 0) {
+        console.info(
+          `[retention] purged ${oauth} OAuth state(s) and ${notifications} notification receipt(s)`,
+        );
+      }
+    })
+    .catch((error: unknown) => {
+      logOperationalFailure("retention connector/notification purge", error);
     })
     .finally(() => {
       if (state.inFlight === work) state.inFlight = undefined;

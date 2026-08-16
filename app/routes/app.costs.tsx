@@ -1,12 +1,21 @@
 import { PeriodStatus, CostSource } from "@prisma/client";
-import { Form, useActionData, useLoaderData, useNavigation } from "react-router";
+import {
+  Form,
+  isRouteErrorResponse,
+  useActionData,
+  useLoaderData,
+  useNavigation,
+  useRouteError,
+} from "react-router";
+import { useEffect, useRef, useState } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { z } from "zod";
 
 import prisma from "~/db.server";
 import { Badge, Banner, Card, Empty, Money } from "~/design/components";
 import { toMicros } from "~/engine/money";
-import { requireShopContext } from "~/lib/auth.server";
+import { withShopContext, type ShopContext } from "~/lib/auth.server";
+import { requireRecentReauthentication } from "~/lib/reauth.server";
 import {
   confirmBundleComponent,
   enqueueBundleDetection,
@@ -34,11 +43,22 @@ import {
 const VARIANT_LIMIT = 250;
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const ctx = await requireShopContext(request);
+  return withShopContext(request, (ctx) => loadCosts(request, ctx));
+}
+
+async function loadCosts(request: Request, ctx: ShopContext) {
   const { shop } = ctx;
   await requireActivePlan(ctx, request);
 
-  const [variants, variantCount, edges, snapshots, restatements, jobs] =
+  const [
+    variants,
+    variantCount,
+    missingCogsCount,
+    edges,
+    snapshots,
+    restatements,
+    jobs,
+  ] =
     await Promise.all([
       prisma.variant.findMany({
         where: { shopId: shop.id },
@@ -65,6 +85,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         take: VARIANT_LIMIT,
       }),
       prisma.variant.count({ where: { shopId: shop.id } }),
+      prisma.variant.count({ where: { shopId: shop.id, unitCost: null } }),
       prisma.bundleComponent.findMany({
         where: { shopId: shop.id },
         select: {
@@ -74,10 +95,20 @@ export async function loader({ request }: LoaderFunctionArgs) {
           evidence: true,
           confirmedAt: true,
           bundleVariant: {
-            select: { id: true, title: true, sku: true, product: { select: { title: true } } },
+            select: {
+              id: true,
+              title: true,
+              sku: true,
+              product: { select: { title: true } },
+            },
           },
           componentVariant: {
-            select: { id: true, title: true, sku: true, product: { select: { title: true } } },
+            select: {
+              id: true,
+              title: true,
+              sku: true,
+              product: { select: { title: true } },
+            },
           },
         },
         orderBy: [{ confirmedAt: "asc" }, { createdAt: "asc" }],
@@ -109,11 +140,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
     currency: shop.currency,
     timezone: shop.timezone,
     variantCount,
+    missingCogsCount,
     variantsShown: variants.length,
     variants: variants.map((variant) => ({
       id: variant.id,
       label: label(variant),
       unitCost: variant.unitCost ? variant.unitCost.toString() : null,
+      needsCogs: variant.unitCost === null,
       costSource: variant.costSource,
       history: variant.costHistory.map((version) => ({
         id: version.id,
@@ -189,14 +222,225 @@ const BundleEdit = z.object({
   quantity: z.coerce.number().int().min(1).max(1000),
 });
 
+const BulkCostEdit = z.object({
+  variantIds: z.array(z.string().min(1)).min(1).max(VARIANT_LIMIT),
+  unitCost: z.coerce.number().positive().max(1_000_000),
+  effectiveAt: z.string().min(1),
+});
+
+const COGS_CSV_MAX_BYTES = 2_000_000;
+const COGS_CSV_MAX_ROWS = 2_000;
+
+export interface CsvCogsRow {
+  sku: string;
+  cogsUsd: number;
+  line: number;
+}
+
+/**
+ * Parse the deliberately tiny COGS import format without treating commas in a
+ * quoted SKU as separate columns. We accept only the two documented columns;
+ * silently accepting a shifted or wider file could apply a supplier price to
+ * the wrong item.
+ */
+export function parseCogsCsv(input: string): CsvCogsRow[] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let quoted = false;
+
+  for (let index = 0; index < input.length; index += 1) {
+    const character = input[index]!;
+    if (quoted) {
+      if (character === '"') {
+        if (input[index + 1] === '"') {
+          field += '"';
+          index += 1;
+        } else {
+          quoted = false;
+        }
+      } else {
+        field += character;
+      }
+      continue;
+    }
+
+    if (character === '"') {
+      if (field.length !== 0) throw new Error("CSV quotes must wrap a whole cell.");
+      quoted = true;
+    } else if (character === ",") {
+      row.push(field.trim());
+      field = "";
+    } else if (character === "\n") {
+      row.push(field.trim());
+      rows.push(row);
+      row = [];
+      field = "";
+    } else if (character !== "\r") {
+      field += character;
+    }
+  }
+  if (quoted) throw new Error("CSV has an unclosed quoted value.");
+  if (field.length > 0 || row.length > 0) {
+    row.push(field.trim());
+    rows.push(row);
+  }
+
+  const nonEmptyRows = rows.filter((entry) => entry.some((value) => value !== ""));
+  const header = nonEmptyRows.shift()?.map((value) => value.replace(/^\uFEFF/, "").toLowerCase());
+  if (!header || header.length !== 2 || header[0] !== "sku" || header[1] !== "cogs_usd") {
+    throw new Error("CSV must begin with exactly: sku,cogs_usd");
+  }
+  if (nonEmptyRows.length === 0) throw new Error("CSV does not contain any COGS rows.");
+  if (nonEmptyRows.length > COGS_CSV_MAX_ROWS) {
+    throw new Error(`CSV can contain at most ${COGS_CSV_MAX_ROWS.toLocaleString()} COGS rows.`);
+  }
+
+  const seen = new Set<string>();
+  return nonEmptyRows.map((entry, index) => {
+    const line = index + 2;
+    const [sku, rawCogs] = entry;
+    if (entry.length !== 2 || !sku || !rawCogs) {
+      throw new Error(`CSV line ${line} must include both sku and cogs_usd.`);
+    }
+    if (!/^\d+(?:\.\d{1,4})?$/.test(rawCogs)) {
+      throw new Error(`CSV line ${line} has an invalid cogs_usd value.`);
+    }
+    const cogsUsd = Number(rawCogs);
+    if (!Number.isFinite(cogsUsd) || cogsUsd <= 0 || cogsUsd > 1_000_000) {
+      throw new Error(
+        `CSV line ${line} must have a positive cogs_usd value no larger than 1,000,000.`,
+      );
+    }
+    if (seen.has(sku)) throw new Error(`CSV includes SKU ${sku} more than once.`);
+    seen.add(sku);
+    return { sku, cogsUsd, line };
+  });
+}
+
+function validEffectiveAt(value: string): Date | null {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 export async function action({ request }: ActionFunctionArgs) {
-  const ctx = await requireShopContext(request);
+  return withShopContext(request, (ctx) => updateCosts(request, ctx));
+}
+
+async function updateCosts(request: Request, ctx: ShopContext) {
+  await requireRecentReauthentication(request, ctx.user);
   await requireActivePlan(ctx, request);
   const { shop } = ctx;
   const form = await request.formData();
   const intent = form.get("intent");
 
   try {
+    if (intent === "bulk-assign-missing-cogs") {
+      const parsed = BulkCostEdit.safeParse({
+        variantIds: [...new Set(form.getAll("variantIds").map(String))],
+        unitCost: form.get("unitCost"),
+        effectiveAt: form.get("effectiveAt"),
+      });
+      if (!parsed.success) {
+        return { ok: false, message: "Choose missing variants, a positive COGS value and a valid date." };
+      }
+      const effectiveAt = validEffectiveAt(parsed.data.effectiveAt);
+      if (!effectiveAt) return { ok: false, message: "That effective date isn't a real date." };
+
+      const variants = await prisma.$transaction(async (tx) => {
+        const selected = await tx.variant.findMany({
+          where: { shopId: shop.id, id: { in: parsed.data.variantIds } },
+          select: { id: true, unitCost: true },
+        });
+        if (
+          selected.length !== parsed.data.variantIds.length ||
+          selected.some((variant) => variant.unitCost !== null)
+        ) {
+          throw new Error(
+            "One or more selected variants already has COGS or is not in this store. Refresh before trying again.",
+          );
+        }
+
+        for (const variant of selected) {
+          await recordVariantCost(
+            {
+              shopId: shop.id,
+              variantId: variant.id,
+              unitCostMicros: toMicros(parsed.data.unitCost),
+              effectiveAt,
+              source: CostSource.MANUAL,
+              note: "Bulk COGS assignment",
+            },
+            tx,
+          );
+        }
+        return selected;
+      });
+      return {
+        ok: true,
+        message: `${variants.length.toLocaleString()} missing COGS ${variants.length === 1 ? "value was" : "values were"} saved. ${effectiveAt.getTime() < Date.now() ? "Use Restate History to apply this correction to prior orders." : "New orders will use this cost from the effective date."}`,
+      };
+    }
+
+    if (intent === "upload-missing-cogs") {
+      const upload = form.get("cogsFile");
+      const effectiveAt = validEffectiveAt(String(form.get("effectiveAt") ?? ""));
+      if (!(upload instanceof File) || upload.size === 0) {
+        return { ok: false, message: "Choose a CSV file to upload." };
+      }
+      if (upload.size > COGS_CSV_MAX_BYTES) {
+        return { ok: false, message: "That CSV is too large. Upload at most 2 MB at a time." };
+      }
+      if (!effectiveAt) return { ok: false, message: "That effective date isn't a real date." };
+
+      const rows = parseCogsCsv(await upload.text());
+      await prisma.$transaction(async (tx) => {
+        const variants = await tx.variant.findMany({
+          where: { shopId: shop.id, sku: { in: rows.map((row) => row.sku) } },
+          select: { id: true, sku: true, unitCost: true },
+        });
+        const bySku = new Map<string, typeof variants>();
+        for (const variant of variants) {
+          if (!variant.sku) continue;
+          const matches = bySku.get(variant.sku);
+          if (matches) matches.push(variant);
+          else bySku.set(variant.sku, [variant]);
+        }
+        const problems: string[] = [];
+        for (const row of rows) {
+          const matches = bySku.get(row.sku) ?? [];
+          if (matches.length === 0) problems.push(`SKU ${row.sku} was not found`);
+          else if (matches.length > 1) problems.push(`SKU ${row.sku} matches multiple variants`);
+          else if (matches[0]!.unitCost !== null) problems.push(`SKU ${row.sku} already has COGS`);
+        }
+        if (problems.length > 0) {
+          throw new Error(
+            `No COGS were imported. ${problems.slice(0, 3).join("; ")}${problems.length > 3 ? `; and ${problems.length - 3} more.` : "."}`,
+          );
+        }
+
+        for (const row of rows) {
+          const variant = bySku.get(row.sku)?.[0];
+          if (!variant) throw new Error(`SKU ${row.sku} disappeared before it could be updated.`);
+          await recordVariantCost(
+            {
+              shopId: shop.id,
+              variantId: variant.id,
+              unitCostMicros: toMicros(row.cogsUsd),
+              effectiveAt,
+              source: CostSource.MANUAL,
+              note: `CSV COGS import (line ${row.line})`,
+            },
+            tx,
+          );
+        }
+      });
+      return {
+        ok: true,
+        message: `${rows.length.toLocaleString()} SKU ${rows.length === 1 ? "was" : "were"} assigned COGS. ${effectiveAt.getTime() < Date.now() ? "Use Restate History to apply this correction to prior orders." : "New orders will use these costs from the effective date."}`,
+      };
+    }
+
     if (intent === "save-cost") {
       const parsed = CostEdit.safeParse({
         variantId: form.get("variantId"),
@@ -239,7 +483,10 @@ export async function action({ request }: ActionFunctionArgs) {
         message: reachesBack
           ? `Saved. This changes the cost basis from ${result.divergedFrom
               .toISOString()
-              .slice(0, 10)}. Reported figures have not moved — use Restate history to apply it.`
+              .slice(
+                0,
+                10,
+              )}. Reported figures have not moved — use Restate History to apply it.`
           : "Saved. It takes effect from the date you chose; nothing historical has changed.",
         divergedFrom: result.divergedFrom.toISOString(),
       };
@@ -288,7 +535,10 @@ export async function action({ request }: ActionFunctionArgs) {
         quantity: form.get("quantity"),
       });
       if (!parsed.success) {
-        return { ok: false, message: "Pick two variants and a whole quantity." };
+        return {
+          ok: false,
+          message: "Pick two variants and a whole quantity.",
+        };
       }
       await upsertBundleComponent({ shopId: shop.id, ...parsed.data });
       return { ok: true, message: "Mapping saved. Costs are re-deriving." };
@@ -296,7 +546,10 @@ export async function action({ request }: ActionFunctionArgs) {
 
     if (intent === "close-period") {
       await closePeriod(shop.id, String(form.get("periodKey")));
-      return { ok: true, message: "Period closed. Its figures are now locked." };
+      return {
+        ok: true,
+        message: "Period closed. Its figures are now locked.",
+      };
     }
 
     if (intent === "reopen-period") {
@@ -320,6 +573,23 @@ export default function Costs() {
   const busy = navigation.state !== "idle";
 
   return <CostsView data={data} result={result ?? null} busy={busy} />;
+}
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  const detail = isRouteErrorResponse(error)
+    ? error.status === 403
+      ? "You no longer have permission to edit costs for this store."
+      : error.status === 404
+        ? "This cost record is no longer available."
+        : "Costs could not be loaded right now."
+    : "Costs could not be loaded right now. Your saved COGS values have not changed.";
+  return (
+    <Card title="Costs Unavailable">
+      <p className="muted" style={{ margin: 0 }}>{detail}</p>
+      <p style={{ marginBottom: 0 }}><a className="btn sm" href="/app/costs">Try Again</a></p>
+    </Card>
+  );
 }
 
 type CostsData = Awaited<ReturnType<typeof loader>>;
@@ -368,6 +638,18 @@ function Field({
   required?: boolean;
   width?: number;
 }) {
+  if (type === "date") {
+    return (
+      <MeridianDateField
+        label={label}
+        name={name}
+        defaultValue={defaultValue}
+        required={required}
+        width={width}
+      />
+    );
+  }
+
   return (
     <label className="stack" style={{ gap: 4 }}>
       <span className="tiny muted">{label}</span>
@@ -387,6 +669,156 @@ function Field({
   );
 }
 
+function dateFromValue(value: string | undefined): Date {
+  const [year, month, day] = (value ?? "").split("-").map(Number);
+  if (!year || !month || !day) return new Date();
+  return new Date(year, month - 1, day);
+}
+
+function toDateValue(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function displayDate(value: string): string {
+  const date = dateFromValue(value);
+  return new Intl.DateTimeFormat("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
+
+function MeridianDateField({
+  label,
+  name,
+  defaultValue,
+  required,
+  width,
+}: {
+  label: string;
+  name: string;
+  defaultValue?: string;
+  required?: boolean;
+  width?: number;
+}) {
+  const initialValue = defaultValue ?? toDateValue(new Date());
+  const [value, setValue] = useState(initialValue);
+  const [open, setOpen] = useState(false);
+  const [month, setMonth] = useState(() => dateFromValue(initialValue));
+  const rootRef = useRef<HTMLDivElement>(null);
+  const labelId = `${name}-label`;
+
+  useEffect(() => {
+    const dismiss = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", dismiss);
+    return () => document.removeEventListener("mousedown", dismiss);
+  }, []);
+
+  const year = month.getFullYear();
+  const monthIndex = month.getMonth();
+  const firstDay = new Date(year, monthIndex, 1).getDay();
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+  const monthName = new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    year: "numeric",
+  }).format(month);
+  const selectedValue = dateFromValue(value);
+
+  const changeMonth = (offset: number) => {
+    setMonth((current) => new Date(current.getFullYear(), current.getMonth() + offset, 1));
+  };
+
+  const choose = (day: number) => {
+    const next = new Date(year, monthIndex, day);
+    setValue(toDateValue(next));
+    setOpen(false);
+  };
+
+  return (
+    <div
+      className="stack meridian-date-field"
+      style={{ gap: 4, width: width ? `${width}px` : undefined }}
+      ref={rootRef}
+    >
+      <span id={labelId} className="tiny muted">{label}</span>
+      <input type="hidden" name={name} value={value} required={required} />
+      <button
+        type="button"
+        className="field-input meridian-date-trigger"
+        aria-labelledby={labelId}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span>{displayDate(value)}</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+          <rect x="4" y="5" width="16" height="15" rx="1" />
+          <path d="M8 3v4M16 3v4M4 10h16" />
+        </svg>
+      </button>
+      {open && (
+        <div className="meridian-calendar" role="dialog" aria-label={`Choose date for ${label}`}>
+          <div className="meridian-calendar-head">
+            <button type="button" aria-label="Previous Month" onClick={() => changeMonth(-1)}>‹</button>
+            <strong>{monthName}</strong>
+            <button type="button" aria-label="Next Month" onClick={() => changeMonth(1)}>›</button>
+          </div>
+          <div className="meridian-calendar-grid" role="grid" aria-label={monthName}>
+            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
+              <span className="meridian-calendar-weekday" key={`${day}-${index}`}>{day}</span>
+            ))}
+            {Array.from({ length: firstDay }, (_, index) => (
+              <span aria-hidden="true" key={`empty-${index}`} />
+            ))}
+            {Array.from({ length: daysInMonth }, (_, index) => {
+              const day = index + 1;
+              const isSelected =
+                selectedValue.getFullYear() === year &&
+                selectedValue.getMonth() === monthIndex &&
+                selectedValue.getDate() === day;
+              const today = new Date();
+              const isToday =
+                today.getFullYear() === year &&
+                today.getMonth() === monthIndex &&
+                today.getDate() === day;
+              return (
+                <button
+                  type="button"
+                  role="gridcell"
+                  key={day}
+                  className={isSelected ? "selected" : isToday ? "today" : undefined}
+                  aria-label={`${monthName} ${day}`}
+                  aria-pressed={isSelected}
+                  onClick={() => choose(day)}
+                >
+                  {day}
+                </button>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            className="meridian-calendar-today"
+            onClick={() => {
+              const today = new Date();
+              setMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+              setValue(toDateValue(today));
+              setOpen(false);
+            }}
+          >
+            Today
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function VariantPicker({
   label,
   name,
@@ -399,8 +831,13 @@ function VariantPicker({
   return (
     <label className="stack" style={{ gap: 4 }}>
       <span className="tiny muted">{label}</span>
-      <select className="field-input" name={name} required style={{ width: 260 }}>
-        <option value="">Choose a variant…</option>
+      <select
+        className="field-input"
+        name={name}
+        required
+        style={{ width: 260 }}
+      >
+        <option value="">Choose A Variant…</option>
         {variants.map((variant) => (
           <option key={variant.id} value={variant.id}>
             {variant.label}
@@ -422,7 +859,7 @@ const SOURCE_LABEL: Record<string, string> = {
 };
 
 const JOB_LABEL: Record<string, string> = {
-  COST_RESTATEMENT: "Restate history",
+  COST_RESTATEMENT: "Restate History",
   BUNDLE_ROLLUP: "Re-derive bundle costs",
   BUNDLE_DETECTION: "Scan for bundles",
 };
@@ -440,6 +877,12 @@ export function CostsView({
   const activeJobs = data.jobs.filter(
     (job) => job.status === "QUEUED" || job.status === "RUNNING",
   );
+  // The fallback keeps the presentational component resilient to a cached
+  // loader payload from immediately before this counter was added.
+  const missingCogsVariants = data.variants.filter(
+    (variant) => variant.needsCogs ?? variant.unitCost === null,
+  );
+  const missingCogsCount = data.missingCogsCount ?? missingCogsVariants.length;
 
   return (
     <>
@@ -448,15 +891,17 @@ export function CostsView({
       )}
 
       <Banner tone="neutral">
-        Saving a cost records what a variant cost from a date onward. It does not
-        move a figure you have already reported — restating history is the
+        Saving a cost records what a variant cost from a date onward. It does
+        not move a figure you have already reported — restating history is the
         separate action below, it freezes each affected month before it changes
         anything, and it refuses to touch a closed period.
       </Banner>
 
       {activeJobs.length > 0 && (
         <Banner tone="neutral">
-          {activeJobs.length === 1 ? "A recalculation is" : `${activeJobs.length} recalculations are`}{" "}
+          {activeJobs.length === 1
+            ? "A recalculation is"
+            : `${activeJobs.length} recalculations are`}{" "}
           running in the background:{" "}
           {activeJobs.map((job) => JOB_LABEL[job.kind] ?? job.kind).join(", ")}.
           Figures update when it finishes.
@@ -464,34 +909,85 @@ export function CostsView({
       )}
 
       <Card
-        title="Restate history"
+        title="Fix Missing COGS"
+        hint="A missing Shopify cost_per_item is never counted as $0. Select variants to assign one shared COGS value, or upload a two-column CSV with the exact header sku,cogs_usd. Existing COGS are never overwritten by this bulk fixer."
+      >
+        {missingCogsCount === 0 ? (
+          <Empty>Every Imported Variant Has A Current COGS Value.</Empty>
+        ) : (
+          <div className="stack" style={{ gap: 20 }}>
+            <p className="tiny muted" style={{ margin: 0 }}>
+              {missingCogsCount.toLocaleString()} variant{missingCogsCount === 1 ? " needs" : "s need"} COGS.
+            </p>
+            <Form method="post" className="stack">
+              <input type="hidden" name="intent" value="bulk-assign-missing-cogs" />
+              <label className="stack" style={{ gap: 4 }}>
+                <span className="tiny muted">Missing Variants</span>
+                <select className="field-input" name="variantIds" multiple required size={Math.min(8, Math.max(3, missingCogsVariants.length))}>
+                  {missingCogsVariants.map((variant) => (
+                    <option key={variant.id} value={variant.id}>{variant.label}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
+                <Field label="COGS Per Item" name="unitCost" type="number" min="0.0001" step="0.0001" required width={160} />
+                <Field label="Effective From" name="effectiveAt" type="date" defaultValue={today} required width={160} />
+                <button className="btn primary" disabled={busy}>Assign COGS</button>
+              </div>
+            </Form>
+            <Form method="post" encType="multipart/form-data" className="stack">
+              <input type="hidden" name="intent" value="upload-missing-cogs" />
+              <div className="row" style={{ gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+                <label className="stack" style={{ gap: 4, flex: "1 1 260px" }}>
+                  <span className="tiny muted">CSV File</span>
+                  <input className="field-input" type="file" name="cogsFile" accept=".csv,text/csv" required />
+                </label>
+                <Field label="Effective From" name="effectiveAt" type="date" defaultValue={today} required width={160} />
+                <button className="btn sm" disabled={busy}>Upload COGS CSV</button>
+              </div>
+            </Form>
+          </div>
+        )}
+      </Card>
+
+      <Card
+        title="Restate History"
         hint="Re-derives every order's COGS from the cost timeline as it stood on the day that order was placed, then re-materialises profit. Each affected month is frozen as-reported first."
       >
         <Form method="post" className="stack">
           <input type="hidden" name="intent" value="restate" />
           <span className="row" style={{ gap: 16, flexWrap: "wrap" }}>
-            <Field label="Restate from" name="from" type="date" defaultValue={today} required width={150} />
             <Field
-              label="Reason"
+              label="Restate From"
+              name="from"
+              type="date"
+              defaultValue={today}
+              required
+              width={150}
+            />
+            <Field
+              label="Reason (Optional)"
               name="reason"
               type="text"
               maxLength={200}
-              placeholder="Corrected Q1 freight costs"
               width={260}
             />
-            <label className="row" style={{ gap: 6, alignSelf: "flex-end", paddingBottom: 8 }}>
+            <label
+              className="row"
+              style={{ gap: 6, alignSelf: "flex-end", paddingBottom: 8 }}
+            >
               <input type="checkbox" name="includeClosed" />
-              <span className="tiny muted">Include closed periods</span>
+              <span className="tiny muted">Include Closed Periods</span>
             </label>
           </span>
           <button className="btn primary" disabled={busy}>
-            Restate history
+            Restate History
           </button>
         </Form>
       </Card>
 
       <Card
-        title="Cost history"
+        title="Cost History"
         hint={
           data.variantCount > data.variantsShown
             ? `Showing ${data.variantsShown.toLocaleString()} of ${data.variantCount.toLocaleString()} variants.`
@@ -500,17 +996,17 @@ export function CostsView({
         flush
       >
         {data.variants.length === 0 ? (
-          <Empty>No variants have been imported yet.</Empty>
+          <Empty>No Variants Have Been Imported Yet.</Empty>
         ) : (
           <div className="table-wrap">
             <table className="data">
               <thead>
                 <tr>
                   <th>Variant</th>
-                  <th className="right">Cost today</th>
+                  <th className="right">Cost Today</th>
                   <th>Source</th>
                   <th>History</th>
-                  <th>New cost</th>
+                  <th>New Cost</th>
                 </tr>
               </thead>
               <tbody>
@@ -522,16 +1018,16 @@ export function CostsView({
                     </td>
                     <td>
                       <Badge
-                        tone={
-                          variant.costSource === "ESTIMATED" ? "warning" : "neutral"
-                        }
+                        tone={(variant.needsCogs ?? variant.unitCost === null) ? "critical" : variant.costSource === "ESTIMATED" ? "warning" : "neutral"}
                       >
-                        {SOURCE_LABEL[variant.costSource] ?? variant.costSource}
+                        {(variant.needsCogs ?? variant.unitCost === null)
+                          ? "Needs COGS"
+                          : SOURCE_LABEL[variant.costSource] ?? variant.costSource}
                       </Badge>
                     </td>
                     <td>
                       {variant.history.length === 0 ? (
-                        <span className="cell-sub">no history</span>
+                        <span className="cell-sub">No History</span>
                       ) : (
                         <div className="cell-sub">
                           {variant.history.slice(0, 4).map((version) => (
@@ -567,7 +1063,7 @@ export function CostsView({
                           min="0"
                           required
                           style={{ width: 96 }}
-                          aria-label={`New unit cost for ${variant.label}`}
+                          aria-label={`New Unit Cost For ${variant.label}`}
                         />
                         <input
                           className="field-input"
@@ -576,7 +1072,7 @@ export function CostsView({
                           defaultValue={today}
                           required
                           style={{ width: 140 }}
-                          aria-label={`Effective from, for ${variant.label}`}
+                          aria-label={`Effective From, For ${variant.label}`}
                         />
                         <input
                           className="field-input"
@@ -601,13 +1097,13 @@ export function CostsView({
       </Card>
 
       <Card
-        title="Bundles and multi-packs"
+        title="Bundles & Multi-Packs"
         hint="A multi-pack costs what its components cost. Map one once and every future component cost change flows through it automatically, at every level of nesting."
       >
         <Form method="post" className="stack">
           <input type="hidden" name="intent" value="detect-bundles" />
           <button className="btn" disabled={busy}>
-            Scan the catalog for multi-packs
+            Scan the Catalog for Multi-Packs
           </button>
         </Form>
 
@@ -616,7 +1112,7 @@ export function CostsView({
             <table className="data">
               <thead>
                 <tr>
-                  <th>Proposed bundle</th>
+                  <th>Proposed Bundle</th>
                   <th>Contains</th>
                   <th className="right">Qty</th>
                   <th>Why</th>
@@ -673,7 +1169,7 @@ export function CostsView({
               {data.mappings.length === 0 ? (
                 <tr>
                   <td colSpan={5}>
-                    <Empty>No confirmed bundle mappings yet.</Empty>
+                    <Empty>No Confirmed Bundle Mappings Yet.</Empty>
                   </td>
                 </tr>
               ) : (
@@ -685,7 +1181,11 @@ export function CostsView({
                     <td>{SOURCE_LABEL[mapping.source] ?? mapping.source}</td>
                     <td>
                       <Form method="post">
-                        <input type="hidden" name="intent" value="remove-bundle" />
+                        <input
+                          type="hidden"
+                          name="intent"
+                          value="remove-bundle"
+                        />
                         <input type="hidden" name="id" value={mapping.id} />
                         <button className="btn sm ghost" disabled={busy}>
                           Remove
@@ -724,13 +1224,13 @@ export function CostsView({
             />
           </span>
           <button className="btn primary" disabled={busy}>
-            Add mapping
+            Add Mapping
           </button>
         </Form>
       </Card>
 
       <Card
-        title="Reported periods"
+        title="Reported Periods"
         hint="What each month said when it was frozen. These figures never change; a restatement records its effect separately. Closing a month refuses any later restatement that would move it."
         flush
       >
@@ -747,9 +1247,9 @@ export function CostsView({
                   <th>Month</th>
                   <th></th>
                   <th className="right">Orders</th>
-                  <th className="right">Revenue as reported</th>
-                  <th className="right">COGS as reported</th>
-                  <th className="right">Net profit as reported</th>
+                  <th className="right">Revenue as Reported</th>
+                  <th className="right">COGS as Reported</th>
+                  <th className="right">Net Profit as Reported</th>
                   <th className="right">Restatements</th>
                   <th></th>
                 </tr>
@@ -761,10 +1261,14 @@ export function CostsView({
                     <td>
                       <Badge
                         tone={
-                          period.status === PeriodStatus.CLOSED ? "good" : "neutral"
+                          period.status === PeriodStatus.CLOSED
+                            ? "good"
+                            : "neutral"
                         }
                       >
-                        {period.status === PeriodStatus.CLOSED ? "Closed" : "Open"}
+                        {period.status === PeriodStatus.CLOSED
+                          ? "Closed"
+                          : "Open"}
                       </Badge>
                     </td>
                     <td className="right num">
@@ -797,7 +1301,9 @@ export function CostsView({
                           }
                           disabled={busy}
                         >
-                          {period.status === PeriodStatus.CLOSED ? "Reopen" : "Close"}
+                          {period.status === PeriodStatus.CLOSED
+                            ? "Reopen"
+                            : "Close"}
                         </button>
                       </Form>
                     </td>
@@ -810,12 +1316,12 @@ export function CostsView({
       </Card>
 
       <Card
-        title="Restatement history"
+        title="Restatement History"
         hint="Append-only. Every correction that moved a month, and by how much."
         flush
       >
         {data.restatements.length === 0 ? (
-          <Empty>No history has been restated.</Empty>
+          <Empty>No History Has Been Restated.</Empty>
         ) : (
           <div className="table-wrap">
             <table className="data">
@@ -825,9 +1331,9 @@ export function CostsView({
                   <th>Month</th>
                   <th>Reason</th>
                   <th className="right">Orders</th>
-                  <th className="right">COGS before</th>
-                  <th className="right">COGS after</th>
-                  <th className="right">Net profit change</th>
+                  <th className="right">COGS Before</th>
+                  <th className="right">COGS After</th>
+                  <th className="right">Net Profit Change</th>
                 </tr>
               </thead>
               <tbody>
@@ -865,7 +1371,7 @@ export function CostsView({
 
       {data.jobs.length > 0 && (
         <Card
-          title="Background recalculations"
+          title="Background Recalculations"
           hint="Restatements and bundle rollups run off the request thread and survive a deploy."
           flush
         >

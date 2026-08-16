@@ -184,7 +184,7 @@ describe("autonomous ad connector recovery", () => {
     expect(mocks.eventCreate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         kind: "ALERT_FAILED",
-        message: "No alert webhook is configured.",
+        message: "No alert webhook or support-email destination is configured.",
       }),
     }));
   });

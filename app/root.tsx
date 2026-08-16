@@ -9,6 +9,7 @@ import {
 import type { LoaderFunctionArgs } from "react-router";
 
 import styles from "./design/meridian.css?url";
+import { canonicalDeploymentRedirect } from "./lib/public-origin.server";
 
 /**
  * App Bridge has to be resolved here rather than in the embedded layout.
@@ -19,6 +20,9 @@ import styles from "./design/meridian.css?url";
  * from an unauthenticated loader discloses nothing.
  */
 export async function loader({ request }: LoaderFunctionArgs) {
+  const canonicalRedirect = canonicalDeploymentRedirect(request);
+  if (canonicalRedirect) return canonicalRedirect;
+
   const { shouldLoadAppBridge } = await import("./lib/auth.server");
 
   return {
@@ -30,12 +34,16 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
 export const links = () => [
   { rel: "stylesheet", href: styles },
-  { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
+  {
+    rel: "icon",
+    href: "/favicon-globe.svg?v=20260812",
+    type: "image/svg+xml",
+  },
   { rel: "preconnect", href: "https://cdn.shopify.com" },
 ];
 
 export const meta = () => [
-  { title: "Meridian — qualified profit from available inputs" },
+  { title: "MyMeridian — Qualified Profit From Available Inputs" },
   { name: "viewport", content: "width=device-width, initial-scale=1" },
   // Media-scoped so the browser chrome follows the sky. The toggle also
   // rewrites these at runtime, since data-theme can override the OS setting.
@@ -90,21 +98,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const appBridgeApiKey = data ? data.appBridgeApiKey : errorDocumentApiKey();
 
   return (
-    <html lang="en" data-theme="dark">
+    <html lang="en" data-theme="dark" suppressHydrationWarning>
       <head>
         <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
         {/* App Bridge, first script in the head as Shopify's embedded app
             requirements state. The meta tag must precede the script — App
             Bridge reads the client id from it at load, and without it session
             tokens are never minted and Shopify collects no Web Vitals, which
-            is a silent failure rather than a visible one. `data-api-key` is
-            kept alongside it because both forms are in circulation. */}
+            is a silent failure rather than a visible one. */}
         {appBridgeApiKey && (
           <>
             <meta name="shopify-api-key" content={appBridgeApiKey} />
             <script
               src="https://cdn.shopify.com/shopifycloud/app-bridge.js"
-              data-api-key={appBridgeApiKey}
             />
           </>
         )}
@@ -126,26 +133,18 @@ export default function App() {
 }
 
 export function ErrorBoundary({ error }: { error: unknown }) {
-  const message =
-    error instanceof Error ? error.message : "Something went wrong.";
-
   const status =
     typeof error === "object" && error !== null && "status" in error
       ? (error as { status?: number }).status
       : undefined;
 
-  const detail =
-    typeof error === "object" && error !== null && "data" in error
-      ? String((error as { data?: unknown }).data ?? "")
-      : "";
-
   return (
     <main style={{ padding: 48, maxWidth: 640, margin: "0 auto" }}>
       <h1 className="auth-word" style={{ fontSize: 22, marginTop: 0, marginBottom: 8 }}>
-        {status ? `${status} — ` : ""}Meridian hit a problem
+        {status ? `${status} — ` : ""}MyMeridian hit a problem
       </h1>
       <p className="secondary" style={{ lineHeight: 1.6 }}>
-        {detail || message}
+        The request could not be completed. Please try again.
       </p>
       <p style={{ marginTop: 20 }}>
         <a className="btn" href="/app">

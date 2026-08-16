@@ -118,6 +118,17 @@ model Shop {
   onboardingStep     String    @default("connect_costs")
   fulfillmentSlaDays Int       @default(2)
 
+  // --- merchant reporting and alerts ----------------------------------
+  weeklySummaryEnabled   Boolean   @default(false)
+  weeklySummaryEmail     String?
+  weeklySummaryDay       Int       @default(1)
+  nextWeeklySummaryAt    DateTime?
+  lastWeeklySummaryAt    DateTime?
+  lastWeeklySummaryError String?
+  anomalyAlertsEnabled   Boolean   @default(false)
+  lastAnomalyCheckAt     DateTime?
+  lastAnomalyAlertAt     DateTime?
+
   // --- historical backfill ---------------------------------------------
   // Webhooks only ever describe what happens next. Without an initial import
   // a freshly installed store has a dashboard full of zeroes, so install
@@ -133,6 +144,10 @@ model Shop {
   syncCompletedAt    DateTime?
   syncStage          String?
   syncedOrders       Int        @default(0)
+  /// Exact order total reported by Shopify at the start of the active import.
+  /// Null means Shopify supplied only a lower bound, so the UI must not
+  /// manufacture a progress percentage.
+  syncTotalOrders    Int?
   syncedProducts     Int        @default(0)
   /// Resume point, so an interrupted import does not start over.
   syncCursor         String?
@@ -169,6 +184,7 @@ model Shop {
   connectors            Connector[]
   connectorHealthEvents ConnectorHealthEvent[]
   pricingRecs           PricingRecommendation[]
+  actionDismissals      ActionDismissal[]
   priceChanges          PriceChange[]
   dataRequests          DataRequest[]
   customerErasures      CustomerErasure[]
@@ -180,6 +196,12 @@ model Shop {
   usageMeterEvents      UsageMeterEvent[]
   shippingAdjustments   ShippingLabelAdjustment[]
   adSyncWindows         AdSyncWindow[]
+  memberships           ShopMembership[]
+  merchantNotifications MerchantNotification[]
+  connectorOAuthStates  ConnectorOAuthState[]
+  securityAuditEvents   SecurityAuditEvent[]
+  operatorAuditEvents   OperatorAuditEvent[]
+  foundingMerchantEntitlement FoundingMerchantEntitlement? @relation("FoundingMerchantRedemptionShop")
 
   @@index([domain])
 }
@@ -196,6 +218,11 @@ model Subscription {
   shopifyChargeId  String?
   trialEndsAt      DateTime?
   currentPeriodEnd DateTime?
+  /// A lower tier Shopify has accepted but which must not reduce access until
+  /// the current paid period has ended.
+  pendingPlan             String?
+  pendingInterval         String?
+  pendingEffectiveAt      DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 }
@@ -733,14 +760,25 @@ model Order {
   isFirstOrder Boolean @default(false)
 
   // --- materialized by the profit engine ---
-  cogsTotal          Decimal   @default(0) @db.Decimal(12, 2)
-  shippingCost       Decimal   @default(0) @db.Decimal(12, 2)
-  paymentFee         Decimal   @default(0) @db.Decimal(12, 2)
-  adCostAttributed   Decimal   @default(0) @db.Decimal(12, 2)
-  overheadAllocated  Decimal   @default(0) @db.Decimal(12, 2)
-  contributionProfit Decimal   @default(0) @db.Decimal(12, 2)
-  netProfit          Decimal   @default(0) @db.Decimal(12, 2)
-  computedAt         DateTime?
+  cogsTotal                        Decimal   @default(0) @db.Decimal(12, 2)
+  shippingCost                     Decimal   @default(0) @db.Decimal(12, 2)
+  paymentFee                       Decimal   @default(0) @db.Decimal(12, 2)
+  adCostAttributed                 Decimal   @default(0) @db.Decimal(12, 2)
+  overheadAllocated                Decimal   @default(0) @db.Decimal(12, 2)
+  contributionProfit               Decimal   @default(0) @db.Decimal(12, 2)
+  netProfit                        Decimal   @default(0) @db.Decimal(12, 2)
+  /// Exact components for the large-window materialized analytics path. The
+  /// legacy shippingCost/paymentFee columns historically combined return
+  /// shipping and pick/pack respectively; these keep each economic input
+  /// independently auditable without rewriting old column semantics.
+  materializedPaymentFee           Decimal   @default(0) @db.Decimal(12, 2)
+  materializedPickPackCost         Decimal   @default(0) @db.Decimal(12, 2)
+  materializedOutboundShippingCost Decimal   @default(0) @db.Decimal(12, 2)
+  materializedReturnShippingCost   Decimal   @default(0) @db.Decimal(12, 2)
+  materializedUnits                Int       @default(0)
+  materializedMissingCogs          Boolean   @default(false)
+  materializedModeledCosts         Boolean   @default(false)
+  computedAt                       DateTime?
 
   lineItems                OrderLineItem[]
   fulfillments             Fulfillment[]
@@ -836,6 +874,9 @@ model OrderLineItem {
 
   /// COGS as it was on the day this order was placed.
   unitCost    Decimal @default(0) @db.Decimal(12, 4)
+  /// Distinguishes a confirmed $0.00 COGS from a missing Shopify
+  /// `cost_per_item` field. Missing is never interpreted as free.
+  cogsKnown   Boolean @default(false)
   refundedQty Int     @default(0)
 
   /// Which `VariantCost.effectiveAt` this snapshot came from. Null means the
@@ -1022,6 +1063,7 @@ model Connector {
 
   externalAccountId String?
   displayName       String?
+  availableAccounts Json?
 
   /// AES-256-GCM ciphertext. See app/lib/crypto.server.ts — never plaintext.
   accessTokenEnc  String?
@@ -1082,6 +1124,234 @@ model ConnectorHealthEvent {
   @@index([connectorId, createdAt])
 }
 
+/// Durable merchant-facing mail outbox. Report generation and delivery are
+/// separate so a provider outage cannot lose a scheduled summary or alert.
+model MerchantNotification {
+  id     String @id @default(cuid())
+  shopId String
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  kind      MerchantNotificationKind
+  status    MerchantNotificationStatus @default(PENDING)
+  recipient String
+  subject   String
+  payload   Json
+  dedupeKey String                     @unique
+
+  attempts       Int       @default(0)
+  availableAt    DateTime  @default(now())
+  leaseToken     String?
+  leaseExpiresAt DateTime?
+  sentAt         DateTime?
+  error          String?
+  createdAt      DateTime  @default(now())
+
+  @@index([status, availableAt, leaseExpiresAt])
+  @@index([shopId, createdAt])
+}
+
+/// One-use, short-lived state for merchant initiated connector OAuth. Only a
+/// SHA-256 hash is stored, so a database reader cannot replay the callback.
+model ConnectorOAuthState {
+  id        String            @id @default(cuid())
+  tokenHash String            @unique
+  shopId    String
+  shop      Shop              @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  provider  ConnectorProvider
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime          @default(now())
+
+  @@index([shopId, provider, createdAt])
+  @@index([expiresAt, usedAt])
+}
+
+/// Append-only access evidence for protected-data operating controls. Actor
+/// identifiers are one-way hashes and request paths contain no query string.
+model SecurityAuditEvent {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  actorType   String
+  actorHash   String
+  action      String
+  resource    String
+  requestPath String
+  dedupeKey   String?  @unique
+  occurredAt  DateTime @default(now())
+
+  @@index([shopId, occurredAt])
+  @@index([action, occurredAt])
+}
+
+/// Publisher-only browser session. This is deliberately unrelated to User,
+/// WebSession and ShopMembership: a merchant account must never become an
+/// operator account through a role edit or an OAuth callback.
+model OperatorSession {
+  id            String    @id @default(cuid())
+  tokenHash     String    @unique
+  actorHash     String
+  role          String
+  mfaAt         DateTime
+  createdAt     DateTime  @default(now())
+  lastSeenAt    DateTime  @default(now())
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  ipHash        String
+  userAgentHash String
+
+  @@index([actorHash, expiresAt])
+  @@index([expiresAt, revokedAt])
+}
+
+/// The most recent accepted TOTP counter for an operator identity. Keeping
+/// this outside the session closes same-code replay, including concurrent
+/// login attempts during the 30-second TOTP window.
+model OperatorMfaState {
+  actorHash           String   @id
+  lastAcceptedCounter BigInt
+  updatedAt           DateTime @updatedAt
+}
+
+/// Append-only evidence for every publisher login, dashboard read, store view
+/// and rejected privileged request. Actor/network identifiers are keyed hashes;
+/// neither the publisher email nor a raw IP/user-agent is retained here.
+model OperatorAuditEvent {
+  id            String   @id @default(cuid())
+  actorHash     String
+  action        String
+  resource      String
+  requestPath   String
+  outcome       String
+  reason        String?
+  shopId        String?
+  shop          Shop?    @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  ipHash        String
+  userAgentHash String
+  occurredAt    DateTime @default(now())
+
+  @@index([actorHash, occurredAt])
+  @@index([action, occurredAt])
+  @@index([shopId, occurredAt])
+  @@index([outcome, occurredAt])
+}
+
+/// Durable fixed-window abuse controls for public and authenticated routes.
+/// Only a keyed HMAC of the client/subject is retained; IP addresses, emails,
+/// session tokens and shop domains never enter this table in recoverable form.
+model RateLimitBucket {
+  scope       String
+  subjectHash String
+  windowStart DateTime
+  count       Int      @default(0)
+  expiresAt   DateTime
+  updatedAt   DateTime @updatedAt
+
+  @@id([scope, subjectHash, windowStart])
+  @@index([expiresAt])
+}
+
+// ---------------------------------------------------------------------------
+// Publisher waitlist
+// ---------------------------------------------------------------------------
+//
+// Waitlist records are deliberately not Shop records. A person can express
+// interest before they install MyMeridian, and that publisher-level contact
+// data must never become readable through a merchant tenant transaction.
+// These tables are RLS-protected for the system/operator path only by the
+// migration that creates them.
+
+model WaitlistSignup {
+  id       String @id @default(cuid())
+  /// Lowercased and trimmed before write. This is the minimum contact data
+  /// needed to notify a prospective merchant and attach their early benefit.
+  email    String @unique
+  /// Normalized to an HTTPS origin; paths, credentials, query strings and
+  /// fragments are discarded before persistence.
+  storeUrl String?
+
+  /// First-touch campaign fields are bounded and optional. No raw referrer,
+  /// click id, IP address or user agent is retained here.
+  source      String?
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  utmTerm     String?
+  utmContent  String?
+
+  /// This is opt-in only and is never used to send a newsletter until a
+  /// marketing sender and unsubscribe path are configured.
+  marketingConsent   Boolean   @default(false)
+  marketingConsentAt DateTime?
+  marketingUnsubscribedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  entitlement     FoundingMerchantEntitlement?
+  emailDeliveries WaitlistEmailDelivery[]
+
+  @@index([createdAt])
+  @@index([source, createdAt])
+  @@index([utmSource, createdAt])
+  @@index([marketingConsent, createdAt])
+}
+
+/// A server-side, auditable benefit. A public code is intentionally not the
+/// authorization mechanism: launch billing checks this record against a
+/// verified owner account and the Shopify store that owner authenticated.
+model FoundingMerchantEntitlement {
+  id       String @id @default(cuid())
+  signupId String @unique
+  signup   WaitlistSignup @relation(fields: [signupId], references: [id], onDelete: Cascade)
+
+  offerVersion      String @default("founding-merchant-15-monthly-v1")
+  discountPercentage Int @default(15)
+  durationIntervals  Int @default(12)
+  status             FoundingMerchantEntitlementStatus @default(ELIGIBLE)
+
+  /// A reservation prevents two stores from using one email-bound benefit
+  /// while a merchant is on Shopify's approval screen. It becomes REDEEMED
+  /// only when Shopify confirms the discounted subscription.
+  redeemShopId          String? @unique
+  redeemShop            Shop? @relation("FoundingMerchantRedemptionShop", fields: [redeemShopId], references: [id], onDelete: SetNull)
+  reservedAt            DateTime?
+  reservationExpiresAt  DateTime?
+  redeemedAt            DateTime?
+  redeemedBillingKey    String?
+  redeemedSubscriptionId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, reservationExpiresAt])
+  @@index([redeemShopId, status])
+}
+
+/// Durable receipt of a transactional waitlist email. A provider outage does
+/// not lose the welcome message or turn a retry into duplicate mail.
+model WaitlistEmailDelivery {
+  id       String @id @default(cuid())
+  signupId String
+  signup   WaitlistSignup @relation(fields: [signupId], references: [id], onDelete: Cascade)
+
+  kind       WaitlistEmailKind   @default(WELCOME)
+  status     WaitlistEmailStatus @default(PENDING)
+  dedupeKey  String              @unique
+  providerId String?
+
+  attempts       Int       @default(0)
+  availableAt    DateTime  @default(now())
+  leaseToken     String?
+  leaseExpiresAt DateTime?
+  sentAt         DateTime?
+  error          String?
+  createdAt      DateTime  @default(now())
+
+  @@index([status, availableAt, leaseExpiresAt])
+  @@index([signupId, createdAt])
+}
+
 /// Durable per-connector/day ad sync ledger. Redis schedules work, while this
 /// table makes missing and restated days recoverable after a worker restart.
 model AdSyncWindow {
@@ -1139,19 +1409,269 @@ model PricingRecommendation {
   status      RecStatus @default(PENDING)
   generatedAt DateTime  @default(now())
   actionedAt  DateTime?
+  /// A post-acceptance observation record, never a causal outcome claim.
+  outcomeStatus               String    @default("NOT_TRACKED")
+  outcomeObservedAt           DateTime?
+  outcomeObservedProfitDelta  Decimal?  @db.Decimal(12, 2)
 
   @@index([shopId, status, generatedAt])
   @@index([variantId])
+}
+
+/// A merchant's explicit decision not to see an evidence-backed action again.
+/// The key contains only aggregated recommendation evidence, never customer
+/// data. A materially different impact bucket receives a different key and can
+/// therefore return for review without repeatedly nagging for unchanged facts.
+model ActionDismissal {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  key         String
+  dismissedAt DateTime @default(now())
+
+  @@unique([shopId, key])
+  @@index([shopId, dismissedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Web accounts
+// ---------------------------------------------------------------------------
+//
+// Everything above this line is keyed by Shop, because the embedded app learns
+// who you are from Shopify's session token and never needs an identity of its
+// own. The web dashboard has no such token, so it needs one.
+//
+// The rule these tables exist to enforce: signing up proves you own an email
+// address, and nothing else. It does not prove you control a store. Only the
+// Shopify OAuth install does that, so `ShopMembership` is written from the
+// OAuth callback and never from a signup form — otherwise anyone who typed a
+// merchant's address would be handed that merchant's revenue.
+
+/// A person, as opposed to a store. Sign-in methods hang off this.
+model User {
+  id    String  @id @default(cuid())
+  /// Lowercased and trimmed before write; the uniqueness guarantee is only
+  /// meaningful if "A@x.com" and "a@x.com" cannot both exist.
+  email String  @unique
+  name  String?
+
+  /// Null for accounts that only ever signed in with Apple or Google. Such an
+  /// account has no password to guess, so the absence is a feature; the login
+  /// form must still not reveal which kind of account an address belongs to.
+  passwordHash String?
+
+  emailVerifiedAt DateTime?
+
+  /// Standalone-account MFA. The phone is Protected Account Data: ciphertext
+  /// only, with a last-four display hint so Settings never decrypts it merely
+  /// to render a page. Shopify-embedded sessions do not use these fields.
+  phoneNumberEnc  String?
+  phoneLast4      String?
+  phoneVerifiedAt DateTime?
+  mfaEnrolledAt   DateTime?
+
+  /// Gate for the one-time post-signup splash. A timestamp rather than a
+  /// boolean so it also answers "when did this account start", and so the
+  /// splash cannot be replayed by a second device or a re-login.
+  welcomedAt DateTime?
+
+  /// Throttling state for password attempts. Kept on the row rather than in
+  /// memory so it survives a deploy and is shared across every Fly machine —
+  /// an in-process counter resets exactly when an attacker wants it to.
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  oauthAccounts      OAuthAccount[]
+  sessions           WebSession[]
+  memberships        ShopMembership[]
+  verificationTokens EmailVerificationToken[]
+  passwordResetCodes PasswordResetCode[]
+  mfaChallenges      MfaChallenge[]
+
+  @@index([email])
+}
+
+/// A third-party sign-in method bound to a User.
+model OAuthAccount {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  provider       AuthProvider
+  /// The provider's stable subject claim (`sub`), never the email. Apple lets
+  /// a user hide their address and rotates the relay, while Google and
+  /// Microsoft addresses can change within an organization; keying on email
+  /// would silently merge or orphan accounts.
+  providerUserId String
+  /// Whatever address the provider released, kept for display only.
+  providerEmail  String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+}
+
+/// A logged-in browser.
+model WebSession {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// SHA-256 of the cookie value, never the value itself. A dump of this table
+  /// must not be enough to log in as anyone.
+  tokenHash String @unique
+
+  expiresAt              DateTime
+  createdAt              DateTime  @default(now())
+  lastSeenAt             DateTime  @default(now())
+  /// Primary authentication is not a merchant-data session until MFA succeeds.
+  primaryAuthenticatedAt DateTime  @default(now())
+  mfaVerifiedAt          DateTime?
+  reauthenticatedAt      DateTime?
+  /// Recorded so a user can recognise a session when revoking it.
+  userAgent              String?
+
+  revokedAt DateTime?
+
+  mfaChallenges MfaChallenge[]
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// One short-lived email or SMS possession challenge. Codes are never stored
+/// in plaintext. Twilio Verify owns production SMS codes; locally generated
+/// email/dev codes use a keyed HMAC so a database dump cannot brute-force six
+/// digits offline.
+model MfaChallenge {
+  id        String     @id @default(cuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId String
+  session   WebSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  purpose         String
+  channel         String
+  codeHash        String?
+  destinationHash String
+  providerRef     String?
+  attempts        Int       @default(0)
+  expiresAt       DateTime
+  consumedAt      DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([sessionId, purpose, channel, createdAt])
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+}
+
+/// Proof that a User controls a Shop.
+///
+/// Written only after a Shopify OAuth install completes for a shop while that
+/// user was signed in. This is the join that decides whose numbers a web
+/// session is allowed to see, so it is the security boundary of the whole web
+/// dashboard.
+model ShopMembership {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shopId String
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  role      MembershipRole @default(OWNER)
+  createdAt DateTime       @default(now())
+
+  @@unique([userId, shopId])
+  @@index([shopId])
+}
+
+/// A single-use email-confirmation token.
+///
+/// Hashed like a session token, for the same reason. Rows are kept after use
+/// so a consumed token is rejected as consumed rather than as unknown.
+model EmailVerificationToken {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+}
+
+/// A one-time code for resetting a forgotten password.
+///
+/// Hashed like every other token here, but deliberately NOT unique: a six-digit
+/// code has only a million values, so two users can hold the same one at the
+/// same time, and a unique index would make the second issue fail. That is also
+/// why verification looks the code up by user and never by code alone —
+/// searching all users for a matching code would let someone submit six digits
+/// without knowing whose account they were opening.
+model PasswordResetCode {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  codeHash String
+
+  /// Wrong guesses so far. A million values is brute-forceable in seconds
+  /// against an endpoint that answers indefinitely, so the code dies after a
+  /// handful of attempts and the person asks for a new one.
+  attempts Int @default(0)
+
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 // ---------------------------------------------------------------------------
 // Enums
 // ---------------------------------------------------------------------------
 
+enum AuthProvider {
+  GOOGLE
+  MICROSOFT
+  APPLE
+}
+
+enum MembershipRole {
+  OWNER
+  MEMBER
+}
+
+enum FoundingMerchantEntitlementStatus {
+  ELIGIBLE
+  RESERVED
+  REDEEMED
+  VOID
+}
+
+enum WaitlistEmailKind {
+  WELCOME
+}
+
+enum WaitlistEmailStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+}
+
 enum Channel {
   FACEBOOK
   GOOGLE
   TIKTOK
+  SHOP_CAMPAIGNS
   EMAIL
   ORGANIC_SEARCH
   DIRECT
@@ -1190,6 +1710,8 @@ enum RecalcJobKind {
   COST_RESTATEMENT
   BUNDLE_ROLLUP
   BUNDLE_DETECTION
+  HISTORICAL_BACKFILL
+  FULL_RECOMPUTE
 }
 
 enum RecalcJobStatus {
@@ -1219,6 +1741,7 @@ enum ConnectorProvider {
   FACEBOOK_ADS
   GOOGLE_ADS
   TIKTOK_ADS
+  SHOPIFY_SHOP_CAMPAIGNS
   STRIPE
   WAREHOUSE_3PL
   SHIPSTATION
@@ -1246,6 +1769,18 @@ enum ConnectorHealthEventKind {
   FAILOVER_ACTIVATED
   ALERT_SENT
   ALERT_FAILED
+}
+
+enum MerchantNotificationKind {
+  WEEKLY_SUMMARY
+  ANOMALY_ALERT
+}
+
+enum MerchantNotificationStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
 }
 
 enum TaxRegime {

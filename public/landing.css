@@ -930,7 +930,6 @@ strong[data-count],
 }
 
 .hero-actions { justify-content: flex-start; }
-.hero-assurances { justify-content: flex-start; }
 
 /* Both hero buttons are outlined; the reference has no filled button in the
    hero at all, and the restraint is most of why it reads as expensive. */
@@ -1201,76 +1200,6 @@ strong[data-count],
   align-items: center;
   gap: 14px;
   margin-top: 32px;
-}
-
-/* A single concrete answer under the call to action makes the promise tangible
-   before the merchant reaches the long-form walkthrough. It uses the same
-   demo receipt below — this is evidence, not an invented testimonial. */
-.hero-proof {
-  width: min(100%, 520px);
-  margin: 26px 0 0;
-  padding: 15px 18px 16px;
-  border: 1px solid rgba(10, 10, 10, 0.18);
-  border-left: 3px solid var(--ink);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  background: color-mix(in srgb, var(--ground) 76%, transparent);
-}
-
-.hero-proof-label {
-  display: block;
-  color: var(--ink-3);
-  font-family: var(--font-display);
-  font-size: 10px;
-  font-weight: 750;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-}
-
-.hero-proof p {
-  margin: 8px 0 9px;
-  color: var(--ink-2);
-  font-size: 14px;
-  line-height: 1.45;
-}
-
-.hero-proof p strong { color: var(--ink); font-weight: 750; }
-
-.hero-proof a {
-  color: var(--ink);
-  font-size: 12px;
-  font-weight: 700;
-  text-decoration: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 3px;
-}
-
-.hero-proof a:hover { color: var(--ink-2); }
-
-.hero-assurances {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 22px;
-  margin: 22px 0 0;
-  padding: 0;
-  list-style: none;
-  color: var(--ink-4);
-  font-size: 13px;
-  font-weight: 520;
-}
-
-.hero-assurances li {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.hero-assurances li::before {
-  content: "";
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--periwinkle);
-  opacity: 0.7;
 }
 
 /* Hero product ---------------------------------------------------------- */
@@ -3334,8 +3263,6 @@ footer {
   .hero-actions { flex-direction: column; align-items: stretch; }
   .hero-actions .pill,
   .hero-actions .ghost-btn { width: 100%; }
-
-  .hero-proof { width: 100%; padding: 14px 15px 15px; }
 
   /* The bar keeps only its dots on a phone. */
   .window-title,

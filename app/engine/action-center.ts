@@ -26,10 +26,14 @@ export interface ActionRecommendation {
 export interface ActionCenterInput {
   period: {
     orderCount: number;
-    orders: readonly Pick<
+    orders: readonly (Pick<
       PeriodProfit["orders"][number],
       "contributionProfitCents" | "hasMissingCogs"
-    >[];
+    > & {
+      /** Present for live engine rows; optional for older aggregate fixtures. */
+      shippingCostCents?: number;
+      shippingRevenueCents?: number;
+    })[];
   };
   products: readonly Pick<
     ProductProfit,
@@ -115,6 +119,25 @@ export function buildActionCenter(input: ActionCenterInput): ActionRecommendatio
     lossOrders.reduce((sum, order) => sum + order.contributionProfitCents, 0),
   );
   if (lossOrders.length > 0 && lossCents > 0) {
+    const shippingMismatchOrders = lossOrders.filter(
+      (order) =>
+        typeof order.shippingCostCents === "number" &&
+        typeof order.shippingRevenueCents === "number" &&
+        order.shippingCostCents > order.shippingRevenueCents,
+    );
+    const shippingGapCents = shippingMismatchOrders.reduce(
+      (sum, order) =>
+        sum +
+        Math.max(
+          0,
+          (order.shippingCostCents ?? 0) -
+            (order.shippingRevenueCents ?? 0),
+        ),
+      0,
+    );
+    const everyLossHasShippingMismatch =
+      shippingMismatchOrders.length === lossOrders.length &&
+      shippingGapCents > 0;
     const productsWithLosses = input.products
       .filter((product) => product.contributionProfitCents < 0 && !product.hasMissingCogs)
       .sort((a, b) => a.contributionProfitCents - b.contributionProfitCents);
@@ -126,19 +149,30 @@ export function buildActionCenter(input: ActionCenterInput): ActionRecommendatio
     actions.push({
       key,
       severity: "CRITICAL",
-      title: `${lossOrders.length.toLocaleString()} Orders Lost Contribution`,
-      observedFact: `${lossOrders.length.toLocaleString()} orders had negative contribution after the recorded costs, totaling ${formatCents(lossCents)} in losses.`,
+      title: everyLossHasShippingMismatch
+        ? `${lossOrders.length.toLocaleString()} Orders Lost Contribution From A Shipping Fee Mismatch`
+        : `${lossOrders.length.toLocaleString()} Orders Lost Contribution`,
+      observedFact: everyLossHasShippingMismatch
+        ? `${lossOrders.length.toLocaleString()} orders lost contribution totaling ${formatCents(lossCents)}; shipping cost exceeded the amount collected by ${formatCents(shippingGapCents)} across those orders.`
+        : `${lossOrders.length.toLocaleString()} orders had negative contribution after the recorded costs, totaling ${formatCents(lossCents)} in losses.${shippingMismatchOrders.length > 0 ? ` Shipping cost exceeded the amount collected by ${formatCents(shippingGapCents)} on ${shippingMismatchOrders.length.toLocaleString()} of those orders.` : ""}`,
       likelyExplanation:
-        productsWithLosses.length > 0
+        everyLossHasShippingMismatch
+          ? "The shipping shortfall is measured from what the customer was charged and the available fulfillment cost; check rate tables, shipping promotions and carrier service mapping."
+          : productsWithLosses.length > 0
           ? `${share}% of measured losses are concentrated in ${productsWithLosses.slice(0, 2).map((product) => product.title).join(" and ")}.`
           : null,
-      suggestedAction: "Review the affected orders, then check COGS, price and shipping eligibility before changing a product or promotion.",
+      suggestedAction: everyLossHasShippingMismatch
+        ? "Review the affected orders, then compare customer shipping charges with carrier rates and any free-shipping rules before changing a price or promotion."
+        : "Review the affected orders, then check COGS, price and shipping eligibility before changing a product or promotion.",
       impactCents: lossCents,
       impactLabel: "Measured Negative Contribution",
       confidence: "High",
       evidence: [
         `${lossOrders.length.toLocaleString()} orders with recorded COGS`,
         "Contribution includes available order, shipping, fee and recorded ad costs",
+        ...(shippingMismatchOrders.length > 0
+          ? [`${shippingMismatchOrders.length.toLocaleString()} loss orders collected less shipping than they cost`]
+          : []),
       ],
       href: `/app/orders${rangeQuery}`,
       priority: priorityFor("CRITICAL", lossCents),
@@ -232,7 +266,7 @@ export function buildActionCenter(input: ActionCenterInput): ActionRecommendatio
     actions.push({
       key,
       severity: "DATA",
-      title: `Profit data is ${input.confidence.label.toLowerCase()}`,
+      title: `Profit Data Is ${input.confidence.label}`,
       observedFact:
         missingLabels.length > 0
           ? `${missingLabels.join(" and ")} ${missingLabels.length === 1 ? "is" : "are"} unavailable for at least part of this result.`

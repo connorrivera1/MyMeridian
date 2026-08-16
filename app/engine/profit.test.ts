@@ -283,6 +283,19 @@ describe("computeOrderProfit", () => {
     expect(profit.usesEstimatedCosts).toBe(true);
   });
 
+  it("does not mistake a confirmed zero COGS value for missing evidence", () => {
+    const confirmedFreeGoods = makeOrder({
+      lineItems: makeOrder().lineItems.map((item) => ({
+        ...item,
+        unitCostMicros: 0,
+        cogsKnown: true,
+      })),
+    });
+
+    const profit = computeOrderProfit(confirmedFreeGoods, RULES);
+    expect(profit.hasMissingCogs).toBe(false);
+  });
+
   it("flags a reviewed payment-fee model even with measured fulfilment", () => {
     const rules: CostRuleSet = {
       ...RULES,

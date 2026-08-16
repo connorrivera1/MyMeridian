@@ -34,3 +34,9 @@ DEPLOY_PLAN.md
 SUBMISSION.md
 README.md
 listing
+
+# Reveal-film source, renders and raw footage are launch-marketing deliverables,
+# not runtime assets. Keeping them out of the build context makes the deployed
+# image reproducible and prevents staging releases from uploading gigabytes of
+# unrelated media.
+marketing

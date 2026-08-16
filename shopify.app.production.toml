@@ -5,10 +5,12 @@
 # or release so local development cannot rewrite the live app URL.
 
 name = "MyMeridian"
-handle = "mymeridian"
+# Shopify assigned this unique handle when the separately issued production
+# app draft was created. It must not point at the existing staging app.
+handle = "mymeridian-1"
 application_url = "https://mymeridian.io"
 embedded = true
-client_id = "9dfbe484752628b0a96c4755caf4f502"
+client_id = "5faafd595d33ede4b01419b5b2073e37"
 
 [access_scopes]
 scopes = "read_orders,read_all_orders,read_products,read_fulfillments,read_inventory,read_reports"

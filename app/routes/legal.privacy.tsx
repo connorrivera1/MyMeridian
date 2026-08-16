@@ -47,11 +47,12 @@ export default function Privacy() {
         The planned production address is <strong>mymeridian.io</strong> and
         staging is kept separately at <strong>staging.mymeridian.io</strong>.
         The production domain is controlled but still serves a temporary page;
-        the MyMeridian service and staging hostname are not deployed there yet.
-        MyMeridian is intended to be published by its founder as an individual.
-        The planned support address is <strong>support@mymeridian.io</strong>;
-        controlled delivery, the final legal publisher identity and a monitored
-        contact will be confirmed before public distribution.
+        the separate staging service is deployed at
+        <strong>staging.mymeridian.io</strong>. MyMeridian is intended to be
+        published by its founder as an individual. The monitored support
+        address is <strong>support@mymeridian.io</strong>; controlled delivery
+        has been verified. The final legal publisher identity will be supplied
+        before public distribution.
       </p>
 
       <h2>Pre-Launch Waitlist</h2>
@@ -98,9 +99,10 @@ export default function Privacy() {
         </li>
         <li>
           <code>read_all_orders</code> — extends that read-only order history
-          beyond Shopify&rsquo;s default 60-day window so lifetime profitability,
-          repeat-customer cohorts and seasonal trends are complete. This
-          permission is already approved and does not add any write access.
+          beyond Shopify&rsquo;s default 60-day window when Shopify approves it for
+          the production installation. It does not add any write access. Until
+          then, MyMeridian identifies the available history window rather than
+          implying that it has a complete record.
         </li>
         <li>
           <code>read_products</code> — products and variants, so line items can
@@ -108,8 +110,9 @@ export default function Privacy() {
         </li>
         <li>
           <code>read_inventory</code> — the per-variant unit cost recorded on
-          the inventory item. Without it, cost of goods is zero and every margin
-          would be overstated.
+          the inventory item. Without it, cost of goods is incomplete and
+          MyMeridian marks the affected margin as needing COGS rather than
+          treating the missing cost as $0.00.
         </li>
         <li>
           <code>read_fulfillments</code> — when each order shipped, used for
@@ -190,10 +193,10 @@ export default function Privacy() {
       <p>
         Because a shopper email address is among the fields read and stored,
         {APP_NAME}&rsquo;s access to orders falls under Shopify&rsquo;s protected
-        customer data requirements at the level that covers customer email. The
-        approved <code>read_all_orders</code> permission remains read-only, and
-        {APP_NAME} continues to apply the applicable data-handling undertakings
-        and least-privilege limits described in this policy.
+        customer data requirements at the level that covers customer email. If
+        Shopify approves <code>read_all_orders</code>, it remains read-only,
+        and {APP_NAME} continues to apply the applicable data-handling
+        undertakings and least-privilege limits described in this policy.
       </p>
 
       <h2>What The Merchant Gives Us Directly</h2>

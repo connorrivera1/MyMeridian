@@ -1,27 +1,22 @@
 import { smsProviderConfiguration } from "~/lib/mfa.server";
 import { operatorConfiguration } from "~/lib/operator-config";
 import { rateLimitConfiguration } from "~/lib/rate-limit.server";
+import requirements from "../../config/production-readiness.json";
 
-const PRODUCTION_REQUIRED = [
-  "DATABASE_URL",
-  "MERIDIAN_TENANT_DATABASE_URL",
-  "SHOPIFY_API_KEY",
-  "SHOPIFY_API_SECRET",
-  "SHOPIFY_APP_URL",
-  "MERIDIAN_ENCRYPTION_KEY",
-  "MERIDIAN_CUSTOMER_ERASURE_KEY",
-  "MERIDIAN_OPERATOR_EMAIL",
-  "MERIDIAN_OPERATOR_PASSWORD_HASH",
-  "MERIDIAN_OPERATOR_TOTP_SECRET",
-  "MERIDIAN_OPERATOR_SESSION_KEY",
-  "MERIDIAN_RATE_LIMIT_KEY",
-  "RESEND_API_KEY",
-  "MERIDIAN_EMAIL_FROM",
-  "TWILIO_ACCOUNT_SID",
-  "TWILIO_API_KEY_SID",
-  "TWILIO_API_KEY_SECRET",
-  "TWILIO_VERIFY_SERVICE_SID",
-] as const;
+// This name-only manifest also powers scripts/production-preflight.mjs. It
+// prevents the deploy-time readiness check and the no-deploy Fly inventory
+// check from drifting apart. Redis is the durable queue/retry boundary, so it
+// is required before launch-promised connector tokens can be accepted.
+const PRODUCTION_REQUIRED = requirements.requiredEnvironment;
+
+// Ad connections remain optional for a staging environment, where a provider
+// can be deliberately unavailable while its OAuth flow is being exercised.
+// Production declares this switch in fly.toml because Meta, Google Ads and
+// TikTok are launch commitments. Keeping the list here makes /readyz the
+// single source of truth for the exact server-side credentials that gate that
+// promise; merchant tokens remain per-connector encrypted database records.
+const LAUNCH_CONNECTOR_REQUIRED = requirements.launchConnectorSecrets;
+const WEB_OAUTH_REQUIRED = requirements.webOAuthSecrets;
 
 export function readinessConfiguration(env: NodeJS.ProcessEnv = process.env): {
   ready: boolean;
@@ -31,6 +26,19 @@ export function readinessConfiguration(env: NodeJS.ProcessEnv = process.env): {
   const missing: string[] = PRODUCTION_REQUIRED.filter(
     (name) => !env[name]?.trim(),
   );
+  if (env.MERIDIAN_REQUIRE_LAUNCH_CONNECTORS?.trim() === "true") {
+    missing.push(
+      ...LAUNCH_CONNECTOR_REQUIRED.filter((name) => !env[name]?.trim()),
+    );
+    if (env.MERIDIAN_ADS_WORKER_DISABLED?.trim() === "true") {
+      missing.push("MERIDIAN_ADS_WORKER_DISABLED_FALSE");
+    }
+  }
+  if (env.MERIDIAN_REQUIRE_WEB_OAUTH?.trim() === "true") {
+    missing.push(
+      ...WEB_OAUTH_REQUIRED.filter((name) => !env[name]?.trim()),
+    );
+  }
   const appUrl = env.SHOPIFY_APP_URL?.trim();
   if (appUrl) {
     try {
@@ -51,6 +59,21 @@ export function readinessConfiguration(env: NodeJS.ProcessEnv = process.env): {
       }
     } catch {
       missing.push("SHOPIFY_APP_URL_VALID");
+    }
+  }
+  const publicOrigin = env.MERIDIAN_PUBLIC_ORIGIN?.trim();
+  if (publicOrigin && appUrl) {
+    try {
+      const publicUrl = new URL(publicOrigin);
+      const shopifyUrl = new URL(appUrl);
+      if (
+        publicUrl.protocol !== "https:" ||
+        publicUrl.origin !== shopifyUrl.origin
+      ) {
+        missing.push("MERIDIAN_PUBLIC_ORIGIN_MATCHES_SHOPIFY_APP_URL");
+      }
+    } catch {
+      missing.push("MERIDIAN_PUBLIC_ORIGIN_VALID");
     }
   }
   const operator = operatorConfiguration(env);

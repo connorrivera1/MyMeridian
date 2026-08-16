@@ -20,13 +20,24 @@ const tenantPrisma =
       })
     : null);
 
+function usesDedicatedTenantLogin(env: NodeJS.ProcessEnv = process.env): boolean {
+  const systemUrl = env.DATABASE_URL?.trim();
+  const tenantUrl = env.MERIDIAN_TENANT_DATABASE_URL?.trim();
+  if (!systemUrl || !tenantUrl) return false;
+  try {
+    return new URL(systemUrl).username !== new URL(tenantUrl).username;
+  } catch {
+    return false;
+  }
+}
+
 if (process.env.NODE_ENV !== "production") {
   global.__meridianPrisma = systemPrisma;
   if (tenantPrisma) global.__meridianTenantPrisma = tenantPrisma;
 }
 
 type TransactionClient = Prisma.TransactionClient;
-const tenantStorage = new AsyncLocalStorage<TransactionClient>();
+const tenantStorage = new AsyncLocalStorage<TransactionClient | undefined>();
 
 /** Explicit privileged client for authentication, workers and operations. */
 export { systemPrisma };
@@ -38,9 +49,9 @@ export interface TenantDatabaseContext {
 
 /**
  * Run merchant-data work under PostgreSQL RLS on one transaction/connection.
- * Production uses a least-privileged login URL. Local/integration environments
- * may use the migration owner, but immediately SET LOCAL ROLE down to the same
- * no-login tenant role the production login inherits.
+ * Deployed Fly Managed Postgres uses a separate least-privileged tenant login
+ * directly. Local/integration environments may use the migration owner, so
+ * they immediately SET LOCAL ROLE down to the tenant group instead.
  */
 export async function withTenantDatabase<T>(
   context: TenantDatabaseContext,
@@ -49,10 +60,13 @@ export async function withTenantDatabase<T>(
   const client = tenantPrisma ?? systemPrisma;
   return client.$transaction(
     async (tx) => {
-      // Do this even for the dedicated production login. Its own grants are
-      // deliberately insufficient; the transaction must explicitly assume
-      // the NOLOGIN RLS group before any merchant query can run.
-      await tx.$executeRawUnsafe("SET LOCAL ROLE meridian_tenant");
+      // Managed Postgres has two separately provisioned runtime identities and
+      // forbids custom role creation. In that deployment the dedicated tenant
+      // login is the RLS principal. Local and integration databases retain the
+      // group-role path so those checks exercise the same tenant policy.
+      if (!usesDedicatedTenantLogin()) {
+        await tx.$executeRawUnsafe("SET LOCAL ROLE meridian_tenant");
+      }
       await tx.$executeRaw(Prisma.sql`
         SELECT set_config('meridian.shop_id', ${context.shopId}, true)
       `);
@@ -68,6 +82,17 @@ export async function withTenantDatabase<T>(
 /** True only inside an active tenant-scoped database transaction. */
 export function tenantDatabaseActive(): boolean {
   return Boolean(tenantStorage.getStore());
+}
+
+/**
+ * Begin background work outside a request's tenant transaction.
+ *
+ * AsyncLocalStorage otherwise follows an unawaited worker promise after the
+ * request commits. That leaves durable workers holding a closed transaction
+ * client instead of their intended system database connection.
+ */
+export function withoutTenantDatabase<T>(work: () => T): T {
+  return tenantStorage.run(undefined, work);
 }
 
 /*

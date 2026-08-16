@@ -27,6 +27,7 @@ import {
   AdProviderRateLimitError,
 } from "~/lib/ad-platforms/types.server";
 import { ShopCampaignsAccessError } from "~/lib/shop-campaigns.server";
+import { logOperationalFailure } from "~/lib/operational-errors.server";
 import { recomputeShopProfitability } from "~/lib/recompute.server";
 import {
   closeQueueRedis,
@@ -319,10 +320,14 @@ export async function startAdIngestion(): Promise<AdsIngestionHandle | null> {
       },
     });
     worker.on("failed", (job, error) => {
-      console.error(
-        `[ads] ${providerQueueName} job ${job?.id ?? "?"} failed (attempt ${job?.attemptsMade ?? "?"}): ${error.message}`,
+      logOperationalFailure(
+        `ads ${providerQueueName} job ${job?.id ?? "?"} attempt:${job?.attemptsMade ?? "?"}`,
+        error,
       );
     });
+    worker.on("error", (error) =>
+      logOperationalFailure(`ads ${providerQueueName} worker`, error),
+    );
     workers.push(worker);
   }
 
@@ -333,9 +338,12 @@ export async function startAdIngestion(): Promise<AdsIngestionHandle | null> {
     },
     { connection, concurrency: 1 },
   );
-  scheduleWorker.on("failed", (_job, error) => {
-    console.error("[ads] scheduling cycle failed: %s", error.message);
-  });
+  scheduleWorker.on("failed", (_job, error) =>
+    logOperationalFailure("ads scheduling cycle", error),
+  );
+  scheduleWorker.on("error", (error) =>
+    logOperationalFailure("ads scheduling worker", error),
+  );
   workers.push(scheduleWorker);
 
   const recomputeWorker = new Worker<{ shopId: string }>(
@@ -348,11 +356,12 @@ export async function startAdIngestion(): Promise<AdsIngestionHandle | null> {
     },
     { connection, concurrency: 1 },
   );
-  recomputeWorker.on("failed", (job, error) => {
-    console.error(
-      `[ads] recompute for ${job?.data?.shopId ?? "?"} failed: ${error.message}`,
-    );
-  });
+  recomputeWorker.on("failed", (job, error) =>
+    logOperationalFailure(`ads recompute shop ${job?.data?.shopId ?? "?"}`, error),
+  );
+  recomputeWorker.on("error", (error) =>
+    logOperationalFailure("ads recompute worker", error),
+  );
   workers.push(recomputeWorker);
 
   // The repeatable cycle. Upsert is idempotent across processes and deploys;

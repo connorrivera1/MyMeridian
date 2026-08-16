@@ -17,6 +17,7 @@ import {
 } from "~/design/account";
 import { resolvePendingWebSession, resolveWebUser } from "~/lib/auth.server";
 import { APP_NAME } from "~/lib/brand";
+import { HONEYPOT_FIELD, honeypotTriggered } from "~/lib/form-anti-bot";
 import { safeReturnPath } from "~/lib/web-oauth.server";
 import { providerNotice } from "~/lib/provider-notice";
 import {
@@ -61,6 +62,10 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   const form = await request.formData();
+  // Public account creation is a high-value target for automated signups.
+  // Silently return the same neutral pending state without issuing a session,
+  // writing an account, or revealing which anti-abuse control fired.
+  if (honeypotTriggered(form)) return redirect("/welcome?pending=1");
   const email = String(form.get("email") ?? "");
   const password = String(form.get("password") ?? "");
   const name = form.get("name") ? String(form.get("name")) : null;
@@ -141,6 +146,8 @@ export default function Signup() {
     <AccountShell
       title={`Create Your ${APP_NAME} Account`}
       tagline="See what your store keeps, from the browser or from inside Shopify."
+      backTo="/"
+      backLabel="Back to Home"
       footer={
         <AccountFooterLink
           prompt="Already Have an Account?"
@@ -154,6 +161,14 @@ export default function Signup() {
 
       <Form method="post" className="account-form">
         <input type="hidden" name="returnTo" value={returnTo} />
+        <input
+          aria-hidden="true"
+          autoComplete="off"
+          hidden
+          name={HONEYPOT_FIELD}
+          tabIndex={-1}
+          type="text"
+        />
         <Field
           label="Name"
           name="name"

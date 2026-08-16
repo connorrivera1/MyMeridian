@@ -1,4 +1,5 @@
 import { Redis } from "ioredis";
+import { logOperationalFailure } from "~/lib/operational-errors.server";
 
 /**
  * The shared Redis connection for queue infrastructure.
@@ -45,7 +46,7 @@ export function getQueueRedis(): Redis {
     retryStrategy: (attempt) => Math.min(30_000, 1_000 * 2 ** attempt),
   });
   connection.on("error", (error) => {
-    console.error("[queue] redis connection error", error.message);
+    logOperationalFailure("queue Redis connection", error);
   });
 
   global.__meridianQueueRedis = connection;

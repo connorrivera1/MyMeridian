@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import {
+  data,
+  Form,
   Link,
   NavLink,
   Outlet,
@@ -40,7 +42,7 @@ import {
   resolveWebUser,
   type ShopContext,
 } from "~/lib/auth.server";
-import { withTenantDatabase } from "~/db.server";
+import prisma, { withTenantDatabase } from "~/db.server";
 import { completePendingLink } from "~/lib/store-link.server";
 import { planAllows, resolvePlan } from "~/lib/plan.server";
 import {
@@ -72,10 +74,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
       linkedUserId = webUser.id;
     }
   }
-  return withTenantDatabase({ shopId: ctx.shop.id, userId: linkedUserId }, () =>
+  const result = await withTenantDatabase({ shopId: ctx.shop.id, userId: linkedUserId }, () =>
     loadAppLayout(request, ctx),
   );
+  return ctx.bridgeSessionCookie
+    ? data(result, { headers: { "set-cookie": ctx.bridgeSessionCookie } })
+    : result;
 }
+
+type AppLayoutData = Awaited<ReturnType<typeof loadAppLayout>>;
 
 async function loadAppLayout(request: Request, ctx: ShopContext) {
   const { shop, isDemo } = ctx;
@@ -113,7 +120,7 @@ async function loadAppLayout(request: Request, ctx: ShopContext) {
   // navigation, and the badge needs an integer that `CapacityDay` rows alone
   // can produce; building the whole profit engine for it made the shell as
   // expensive as the heaviest screen. See loadCapacityAnalysis.
-  const [capacity, adSpendCoverage] = await Promise.all([
+  const [capacity, adSpendCoverage, orderCount, reconnectingSources] = await Promise.all([
     !operationalRoute || importing || !planAllows(plan, "capacity")
       ? Promise.resolve(null)
       : loadCapacityAnalysis(
@@ -126,6 +133,17 @@ async function loadAppLayout(request: Request, ctx: ShopContext) {
           mode: "unavailable" as const,
           syncedSourceCount: 0,
         }),
+    prisma.order.count({ where: { shopId: shop.id } }),
+    !isDemo && operationalRoute
+      ? prisma.connector.findMany({
+          where: {
+            shopId: shop.id,
+            provider: { in: ["FACEBOOK_ADS", "GOOGLE_ADS", "TIKTOK_ADS"] },
+            status: { in: ["ERROR", "DISCONNECTED"] },
+          },
+          select: { provider: true },
+        })
+      : Promise.resolve([]),
   ]);
   const alertCount =
     capacity?.alerts.filter(
@@ -147,11 +165,22 @@ async function loadAppLayout(request: Request, ctx: ShopContext) {
       status: shop.syncStatus,
       stage: shop.syncStage,
       orders: shop.syncedOrders,
+      totalOrders: shop.syncTotalOrders,
       products: shop.syncedProducts,
       error: shop.syncError,
       completedAt: shop.syncCompletedAt,
       hasAllOrdersScope: shop.hasAllOrdersScope,
       earliestOrderAt: shop.earliestOrderAt,
+    },
+    awaitingFirstOrder:
+      !isDemo && shop.syncStatus === "COMPLETE" && orderCount === 0,
+    reauthentication: {
+      shopify:
+        shop.syncStatus === "FAILED" &&
+        /(?:access token|authentication|authori[sz]ation|invalid token|expired token|\b401\b)/i.test(
+          shop.syncError ?? "",
+        ),
+      providers: reconnectingSources.map((source) => source.provider),
     },
   };
 }
@@ -232,7 +261,7 @@ const NAV = [
   },
 ];
 
-type SyncState = Awaited<ReturnType<typeof loader>>["sync"];
+type SyncState = AppLayoutData["sync"];
 
 /**
  * Import progress, shown on every page rather than one.
@@ -258,15 +287,38 @@ function SyncBanner({ sync, isDemo }: { sync: SyncState; isDemo: boolean }) {
   if (isDemo) return null;
 
   if (importing) {
+    const total = sync.totalOrders;
+    const hasExactTotal =
+      typeof total === "number" &&
+      Number.isSafeInteger(total) &&
+      total >= 0;
+    const completed = hasExactTotal
+      ? Math.min(sync.orders, total)
+      : sync.orders;
+    const windowLabel = sync.hasAllOrdersScope
+      ? "all accessible history"
+      : "the last 60 days";
     return (
       <div className="banner progress">
         <div>
           <strong style={{ color: "var(--ink-primary)" }}>
-            Importing your store…
+            Analyzing {windowLabel}…
           </strong>{" "}
+          {hasExactTotal
+            ? `${completed.toLocaleString()}/${total.toLocaleString()} orders synced.`
+            : `${completed.toLocaleString()} orders synced so far.`}{" "}
           {sync.stage ?? "Starting up"}. {sync.products.toLocaleString()}{" "}
-          products and {sync.orders.toLocaleString()} orders so far. You can
-          keep using the app — figures fill in as the import runs.
+          products processed. You can keep using the app while figures fill in.
+          <progress
+            aria-label={
+              hasExactTotal
+                ? `${completed.toLocaleString()} of ${total.toLocaleString()} orders synced`
+                : `${completed.toLocaleString()} orders synced; total unavailable`
+            }
+            value={hasExactTotal ? completed : undefined}
+            max={hasExactTotal ? Math.max(total, 1) : undefined}
+            style={{ display: "block", width: "100%", marginTop: 10 }}
+          />
         </div>
       </div>
     );
@@ -310,6 +362,69 @@ function SyncBanner({ sync, isDemo }: { sync: SyncState; isDemo: boolean }) {
   return null;
 }
 
+const RECONNECT_LABEL: Record<string, string> = {
+  FACEBOOK_ADS: "Meta Ads",
+  GOOGLE_ADS: "Google Ads",
+  TIKTOK_ADS: "TikTok Ads",
+};
+
+function ReauthenticationBanner({
+  recovery,
+  shopDomain,
+}: {
+  recovery: AppLayoutData["reauthentication"];
+  shopDomain: string;
+}) {
+  if (!recovery.shopify && recovery.providers.length === 0) return null;
+
+  return (
+    <Banner tone="warn">
+      <strong style={{ color: "var(--ink-primary)" }}>
+        A data connection needs to be renewed.
+      </strong>{" "}
+      MyMeridian keeps unconnected inputs out of profit calculations until the
+      connection is restored.
+      <span className="row" style={{ gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+        {recovery.shopify && (
+          <a
+            className="btn sm"
+            href={`/auth/login?shop=${encodeURIComponent(shopDomain)}`}
+          >
+            Reconnect Shopify
+          </a>
+        )}
+        {recovery.providers.map((provider) => (
+          <Form
+            key={provider}
+            method="post"
+            action={`/app/connections/${
+              provider === "FACEBOOK_ADS"
+                ? "meta"
+                : provider === "GOOGLE_ADS"
+                  ? "google"
+                  : "tiktok"
+            }/start`}
+          >
+            <button className="btn sm">Reconnect {RECONNECT_LABEL[provider]}</button>
+          </Form>
+        ))}
+      </span>
+    </Banner>
+  );
+}
+
+export function AwaitingFirstOrderBanner() {
+  return (
+    <Banner tone="neutral">
+      <strong style={{ color: "var(--ink-primary)" }}>
+        Awaiting First Live Order.
+      </strong>{" "}
+      Explore the clearly labelled demo preview while MyMeridian waits for the
+      first Shopify order to arrive.
+    </Banner>
+  );
+}
+
 export default function AppLayout() {
   const {
     shopName,
@@ -320,7 +435,9 @@ export default function AppLayout() {
     adSpendCoverage,
     plan,
     sync,
-  } = useLoaderData<typeof loader>();
+    awaitingFirstOrder,
+    reauthentication,
+  } = useLoaderData<AppLayoutData>();
   const location = useLocation();
   // Re-measured whenever the selected range changes, which is the only thing
   // that moves the pill between navigations.
@@ -436,6 +553,13 @@ export default function AppLayout() {
         <main className="content" id="content">
           <RouteTitle />
           {showOperationalBanners && <SyncBanner sync={sync} isDemo={isDemo} />}
+          {showOperationalBanners && awaitingFirstOrder && <AwaitingFirstOrderBanner />}
+          {showOperationalBanners && (
+            <ReauthenticationBanner
+              recovery={reauthentication}
+              shopDomain={shopDomain}
+            />
+          )}
           {/* Overview carries the fuller, metric-specific version. Every other
               route gets this shell-level qualification. */}
           {showOperationalBanners && location.pathname !== "/app" && (
@@ -463,12 +587,6 @@ export default function AppLayout() {
   }
 
   return (
-    // `embedded` is deliberately off here. That prop is the only thing
-    // AppProvider uses it for — emitting the App Bridge script tag — and it
-    // emits it from inside <body>, which fails Shopify's "first script in the
-    // head" requirement. root.tsx puts it in the head instead; loading it twice
-    // would register two App Bridge instances against the same frame. Polaris
-    // and the navigation bridge below are what remain of AppProvider's job.
     <AppProvider embedded={false}>
       <AppBridgeNavigation />
       <Splash />

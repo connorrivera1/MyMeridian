@@ -58,7 +58,7 @@ newsletter mailing list by default.
 ## Activation checklist
 
 1. In Resend, verify `mymeridian.io`, create a restricted production API key,
-   and set `MERIDIAN_EMAIL_FROM="MyMeridian <hello@mymeridian.io>"` plus
+   and set `MERIDIAN_EMAIL_FROM="MyMeridian <welcome@mymeridian.io>"` plus
    `MERIDIAN_PUBLIC_ORIGIN=https://mymeridian.io` in the production secret
    store.
 2. Deploy only after the approved infrastructure gate and make a controlled

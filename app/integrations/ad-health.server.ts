@@ -10,6 +10,7 @@ import {
 
 import prisma from "~/db.server";
 import { decryptSecret, encryptSecret } from "~/lib/crypto.server";
+import { mailConfiguration, sendEmail } from "~/lib/mail.server";
 import { withConnectorWork } from "./lease.server";
 
 const AD_PROVIDERS = [
@@ -22,7 +23,7 @@ export const AD_HEALTH_INTERVAL_MS = 5 * 60 * 1000;
 const REFRESH_EARLY_MS = 5 * 60 * 1000;
 const MAX_BACKOFF_MS = 6 * 60 * 60 * 1000;
 
-export interface AdHealthEnvironment {
+export interface AdHealthEnvironment extends Partial<NodeJS.ProcessEnv> {
   META_APP_ID?: string;
   META_APP_SECRET?: string;
   GOOGLE_ADS_CLIENT_ID?: string;
@@ -31,6 +32,9 @@ export interface AdHealthEnvironment {
   MERIDIAN_GOOGLE_ADS_CLIENT_ID?: string;
   MERIDIAN_GOOGLE_ADS_CLIENT_SECRET?: string;
   MERIDIAN_GOOGLE_ADS_DEVELOPER_TOKEN?: string;
+  RESEND_API_KEY?: string;
+  MERIDIAN_EMAIL_FROM?: string;
+  MERIDIAN_SUPPORT_EMAIL?: string;
   CONNECTOR_ALERT_WEBHOOK_URL?: string;
   CONNECTOR_ALERT_WEBHOOK_SECRET?: string;
 }
@@ -235,27 +239,57 @@ export async function sendConnectorAlert(
   env: AdHealthEnvironment = process.env as AdHealthEnvironment,
   fetcher: typeof fetch = fetch,
 ) {
-  if (!env.CONNECTOR_ALERT_WEBHOOK_URL) return { sent: false, reason: "No alert webhook is configured." };
-  const url = new URL(env.CONNECTOR_ALERT_WEBHOOK_URL);
-  if (url.protocol !== "https:" && !["localhost", "127.0.0.1"].includes(url.hostname)) {
-    throw new Error("CONNECTOR_ALERT_WEBHOOK_URL must use HTTPS outside localhost.");
+  if (env.CONNECTOR_ALERT_WEBHOOK_URL) {
+    const url = new URL(env.CONNECTOR_ALERT_WEBHOOK_URL);
+    if (url.protocol !== "https:" && !["localhost", "127.0.0.1"].includes(url.hostname)) {
+      throw new Error("CONNECTOR_ALERT_WEBHOOK_URL must use HTTPS outside localhost.");
+    }
+    if (!env.CONNECTOR_ALERT_WEBHOOK_SECRET) {
+      throw new Error("CONNECTOR_ALERT_WEBHOOK_SECRET is required when an alert webhook is configured.");
+    }
+    const body = JSON.stringify(payload);
+    const signature = createHmac("sha256", env.CONNECTOR_ALERT_WEBHOOK_SECRET)
+      .update(body)
+      .digest("hex");
+    const response = await fetcher(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Meridian-Signature": `sha256=${signature}`,
+      },
+      body,
+    });
+    if (!response.ok) throw new Error(`Connector alert webhook returned HTTP ${response.status}.`);
+    return { sent: true, reason: null };
   }
-  if (!env.CONNECTOR_ALERT_WEBHOOK_SECRET) {
-    throw new Error("CONNECTOR_ALERT_WEBHOOK_SECRET is required when an alert webhook is configured.");
+
+  const recipient = env.MERIDIAN_SUPPORT_EMAIL?.trim();
+  if (!recipient || /[\r\n]/.test(recipient) || !mailConfiguration(env).configured) {
+    return { sent: false, reason: "No alert webhook or support-email destination is configured." };
   }
-  const body = JSON.stringify(payload);
-  const signature = createHmac("sha256", env.CONNECTOR_ALERT_WEBHOOK_SECRET)
-    .update(body)
-    .digest("hex");
-  const response = await fetcher(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Meridian-Signature": `sha256=${signature}`,
+
+  const provider = typeof payload.provider === "string" ? payload.provider : "UNKNOWN_PROVIDER";
+  const shop = typeof payload.shop === "string" ? payload.shop : "unknown shop";
+  const status = typeof payload.status === "string" ? payload.status : "UNKNOWN";
+  const message = safeMessage(payload.message);
+  const eventId = typeof payload.eventId === "string" ? payload.eventId.slice(0, 160) : "unknown";
+  await sendEmail(
+    {
+      to: recipient,
+      subject: `MyMeridian connector alert: ${provider}`,
+      text: [
+        "A merchant advertising connector needs attention.",
+        "",
+        `Provider: ${provider}`,
+        `Shop: ${shop}`,
+        `Status: ${status}`,
+        `Event: ${eventId}`,
+        `Detail: ${message}`,
+      ].join("\n"),
+      idempotencyKey: `connector-alert:${eventId}`,
     },
-    body,
-  });
-  if (!response.ok) throw new Error(`Connector alert webhook returned HTTP ${response.status}.`);
+    { env, fetchImpl: fetcher },
+  );
   return { sent: true, reason: null };
 }
 

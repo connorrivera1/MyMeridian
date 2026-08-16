@@ -65,6 +65,37 @@ export const PAID_AD_PROVIDERS = [
   ConnectorProvider.SHOPIFY_SHOP_CAMPAIGNS,
 ] as const;
 
+/**
+ * Account selection preserves the MCC through which a Google Ads client was
+ * discovered. Older connector records deliberately fall back to no manager
+ * header: those records contain only directly authorized account ids.
+ */
+export function googleLoginCustomerIdForConnector(
+  connector: Pick<
+    Connector,
+    "provider" | "externalAccountId" | "availableAccounts"
+  >,
+): string | null {
+  if (
+    connector.provider !== ConnectorProvider.GOOGLE_ADS ||
+    !connector.externalAccountId ||
+    !Array.isArray(connector.availableAccounts)
+  ) {
+    return null;
+  }
+  const selected = connector.availableAccounts.find((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    return (value as Record<string, unknown>).id === connector.externalAccountId;
+  });
+  if (!selected || typeof selected !== "object" || Array.isArray(selected)) {
+    return null;
+  }
+  const loginCustomerId = (selected as Record<string, unknown>).loginCustomerId;
+  return typeof loginCustomerId === "string" && /^\d{1,20}$/.test(loginCustomerId)
+    ? loginCustomerId
+    : null;
+}
+
 export interface IngestDeps {
   adapters?: Partial<Record<ConnectorProvider, AdPlatformAdapter>>;
   fetcher?: typeof fetch;
@@ -120,6 +151,7 @@ async function freshAuth(
       refreshToken: connector.refreshTokenEnc
         ? decryptSecret(connector.refreshTokenEnc)
         : null,
+      loginCustomerId: googleLoginCustomerIdForConnector(connector),
     };
   }
 
@@ -134,7 +166,11 @@ async function freshAuth(
       ),
     },
   });
-  return { accessToken: rotated.accessToken, refreshToken };
+  return {
+    accessToken: rotated.accessToken,
+    refreshToken,
+    loginCustomerId: googleLoginCustomerIdForConnector(connector),
+  };
 }
 
 function toAdSpendRows(

@@ -93,4 +93,20 @@ describe("connector OAuth start", () => {
     expect(beginConnectorOAuth).not.toHaveBeenCalled();
     expect(recordSensitiveAction).not.toHaveBeenCalled();
   });
+
+  it("does not put provider or configuration errors in the browser URL", async () => {
+    beginConnectorOAuth.mockRejectedValueOnce(
+      new Error("provider token=secret-value database=private-host"),
+    );
+
+    const response = await action({
+      request: request(),
+      params: { provider: "meta" },
+    } as never).catch((error) => error);
+    expect(response).toBeInstanceOf(Response);
+    expect((response as Response).status).toBe(302);
+    expect((response as Response).headers.get("location")).toBe(
+      "/app/settings?connection_error=Connector+setup+could+not+be+started.+Try+again.",
+    );
+  });
 });

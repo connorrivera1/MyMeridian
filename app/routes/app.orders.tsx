@@ -610,7 +610,7 @@ export function OrdersView({ data }: { data: OrdersData }) {
 
       {data.field.numbers.length > 0 && (
         <Card
-          title="Every Order in the Range"
+        title="Every Order In The Range"
           hint="One mark per order; the solid marks lost money. Point at any mark to read it, click to open its receipt. The same engine and the same window as the table below."
         >
           <div className="order-field-layout">

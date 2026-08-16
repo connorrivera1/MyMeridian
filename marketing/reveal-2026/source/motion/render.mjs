@@ -96,6 +96,7 @@ async function startChrome() {
   ], { stdio: "ignore" });
   for (let i = 0; i < 60; i++) {
     try {
+      // nosemgrep: typescript.react.security.react-insecure-request.react-insecure-request -- The script starts this loopback-only CDP endpoint itself; it is never a product request.
       const list = await fetch(`http://127.0.0.1:${DEBUG_PORT}/json/list`).then((r) => r.json());
       const page = list.find((t) => t.type === "page");
       if (page) {

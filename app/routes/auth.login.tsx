@@ -23,6 +23,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return { errors: {}, configured: false, demoAvailable };
   }
 
+  // Availability probes commonly use HEAD. Shopify's login helper expects a
+  // browser GET or form POST and can reject that probe before a merchant has
+  // supplied a store domain. The page itself is still safe to report as ready.
+  if (request.method === "HEAD") {
+    return { errors: {}, configured: true, demoAvailable };
+  }
+
   const errors = await login(request);
   return { errors: errorMessages(errors), configured: true, demoAvailable };
 }

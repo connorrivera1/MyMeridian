@@ -20,6 +20,7 @@ export interface EmailCta {
 }
 
 const DEFAULT_ORIGIN = "https://mymeridian.io";
+const EMAIL_FONT = "'Satoshi','Avenir Next','Helvetica Neue',Arial,sans-serif";
 
 function escapeHtml(value: string): string {
   return value.replace(
@@ -64,7 +65,7 @@ function paragraphs(lines: string[]): string {
   return lines
     .map(
       (line) =>
-        `<p style="margin:0 0 18px;color:#c9c9c9;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.65;">${escapeHtml(line)}</p>`,
+        `<p style="margin:0 0 18px;color:#b8b8b8;font-family:${EMAIL_FONT};font-size:16px;font-weight:400;line-height:1.7;">${escapeHtml(line)}</p>`,
     )
     .join("");
 }
@@ -79,13 +80,13 @@ function emailShell(input: {
   env?: NodeJS.ProcessEnv;
 }): string {
   const origin = publicOrigin(input.env);
-  const logo = `${origin}/assets/mymeridian-email-logo.png`;
+  const shield = `${origin}/favicon-globe.svg?v=20260812`;
   const cta = input.cta
-    ? `<tr><td style="padding:8px 32px 8px;"><a href="${emailHref(input.cta.href)}" style="display:inline-block;background:#f5f5f5;border:1px solid #f5f5f5;border-radius:999px;color:#0a0a0a;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;line-height:20px;padding:13px 20px;text-decoration:none;">${escapeHtml(input.cta.label)}</a></td></tr>`
+    ? `<tr><td style="padding:8px 42px 8px;"><a href="${emailHref(input.cta.href)}" style="display:inline-block;background:#f5f5f5;border:1px solid #f5f5f5;border-radius:999px;color:#0a0a0a;font-family:${EMAIL_FONT};font-size:14px;font-weight:700;line-height:20px;padding:13px 20px;text-decoration:none;">${escapeHtml(input.cta.label)}</a></td></tr>`
     : "";
   const footer = input.footerHtml
     ? input.footerHtml
-    : `<p style="margin:0;color:#8b8b8b;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.55;">MyMeridian<br />Know what you kept. Know what to fix.</p>`;
+    : `<p style="margin:0;color:#888888;font-family:${EMAIL_FONT};font-size:12px;line-height:1.6;">MyMeridian<br />Know what you kept. Know what to fix.</p>`;
 
   return `<!doctype html>
 <html lang="en">
@@ -94,22 +95,28 @@ function emailShell(input: {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="x-apple-disable-message-reformatting" />
     <title>${escapeHtml(input.title)}</title>
+    <style>
+      @import url("https://api.fontshare.com/v2/css?f[]=satoshi@400,500,600,700&display=swap");
+    </style>
   </head>
-  <body style="margin:0;padding:0;background:#f1f1ef;color:#111111;">
+  <body style="margin:0;padding:0;background:#0a0a0a;color:#f5f5f5;">
     <span style="display:none!important;color:transparent;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">${escapeHtml(input.preheader)}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</span>
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f1f1ef;margin:0;padding:0;width:100%;">
-      <tr><td align="center" style="padding:32px 16px;">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#0a0a0a;border-radius:18px;max-width:600px;overflow:hidden;width:100%;">
-          <tr><td style="padding:30px 32px 25px;border-bottom:1px solid #303030;">
-            <img src="${escapeHtml(logo)}" width="194" height="52" alt="MyMeridian" style="border:0;display:block;height:auto;max-width:194px;outline:none;text-decoration:none;" />
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#0a0a0a" style="background:#0a0a0a;margin:0;padding:0;width:100%;">
+      <tr><td align="center" style="padding:44px 16px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#101010;border:1px solid #303030;border-radius:28px;max-width:600px;overflow:hidden;width:100%;">
+          <tr><td style="padding:40px 42px 18px;">
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>
+              <td style="padding:0 11px 0 0;"><img src="${escapeHtml(shield)}" width="30" height="30" alt="" style="border:0;display:block;height:30px;width:30px;outline:none;text-decoration:none;" /></td>
+              <td style="color:#f5f5f5;font-family:${EMAIL_FONT};font-size:17px;font-weight:600;letter-spacing:0.01em;line-height:30px;">MyMeridian</td>
+            </tr></table>
           </td></tr>
-          <tr><td style="padding:34px 32px 8px;">
-            <p style="color:#f5f5f5;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;letter-spacing:1.7px;line-height:16px;margin:0 0 14px;text-transform:uppercase;">${escapeHtml(input.eyebrow)}</p>
-            <h1 style="color:#f5f5f5;font-family:Arial,Helvetica,sans-serif;font-size:34px;font-weight:700;letter-spacing:-1.1px;line-height:1.12;margin:0 0 23px;">${escapeHtml(input.title)}</h1>
+          <tr><td style="padding:16px 42px 8px;">
+            <p style="color:#8c8c8c;font-family:${EMAIL_FONT};font-size:11px;font-weight:600;letter-spacing:1.8px;line-height:16px;margin:0 0 16px;text-transform:uppercase;"><span style="color:#f5f5f5;">&#9472;&#9472;</span>&nbsp;&nbsp;${escapeHtml(input.eyebrow)}</p>
+            <h1 style="color:#f5f5f5;font-family:${EMAIL_FONT};font-size:36px;font-weight:500;letter-spacing:-1.25px;line-height:1.08;margin:0 0 23px;">${escapeHtml(input.title)}</h1>
           </td></tr>
-          <tr><td style="padding:0 32px 14px;">${input.bodyHtml}</td></tr>
+          <tr><td style="padding:0 42px 16px;">${input.bodyHtml}</td></tr>
           ${cta}
-          <tr><td style="padding:30px 32px 32px;border-top:1px solid #303030;">${footer}</td></tr>
+          <tr><td style="padding:30px 42px 38px;border-top:1px solid #303030;">${footer}</td></tr>
         </table>
       </td></tr>
     </table>
@@ -154,15 +161,42 @@ export function renderWaitlistWelcome(
           "Thanks for joining the MyMeridian waitlist.",
           "We're building Meridian to answer a question every Shopify business should be able to answer:",
         ].map((line) => paragraphs([line])),
-        `<p style="margin:4px 0 22px;padding:18px 20px;border-left:2px solid #f5f5f5;color:#f5f5f5;font-family:Arial,Helvetica,sans-serif;font-size:21px;font-weight:700;letter-spacing:-0.35px;line-height:1.35;">You know what you sold. But how much did you actually keep?</p>`,
+        `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#171717;border:1px solid #303030;border-radius:18px;margin:4px 0 22px;"><tr><td style="border-left:2px solid #f5f5f5;padding:19px 20px;"><p style="color:#f5f5f5;font-family:${EMAIL_FONT};font-size:20px;font-weight:600;letter-spacing:-0.5px;line-height:1.38;margin:0;">You know what you sold. But how much did you actually keep?</p></td></tr></table>`,
         paragraphs([
           "Meridian brings together your orders, product costs, shipping, fulfillment, payment fees, advertising and overhead to show where your money actually goes, then helps surface the orders, products, channels and operational problems that deserve attention.",
           "We're getting ready for launch now.",
           "You'll be among the first to know when early access opens.",
         ]),
-        `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#171717;border:1px solid #303030;border-radius:12px;margin:8px 0 13px;"><tr><td style="padding:18px 19px;"><p style="color:#f5f5f5;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;letter-spacing:1.4px;line-height:15px;margin:0 0 7px;text-transform:uppercase;">Your Founding Merchant benefit</p><p style="color:#f5f5f5;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;line-height:1.5;margin:0;">15% off your first 12 months on a monthly Meridian plan.</p><p style="color:#a7a7a7;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.55;margin:7px 0 0;">Eligibility is held securely on our side and activated at launch. It is not automatically combined with annual pricing.</p></td></tr></table>`,
+        `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#171717;border:1px solid #303030;border-radius:18px;margin:8px 0 13px;"><tr><td style="padding:20px 21px;"><p style="color:#8c8c8c;font-family:${EMAIL_FONT};font-size:11px;font-weight:600;letter-spacing:1.55px;line-height:15px;margin:0 0 8px;text-transform:uppercase;">Your Founding Merchant benefit</p><p style="color:#f5f5f5;font-family:${EMAIL_FONT};font-size:16px;font-weight:600;line-height:1.5;margin:0;">15% off your first 12 months on a monthly Meridian plan.</p><p style="color:#a7a7a7;font-family:${EMAIL_FONT};font-size:13px;font-weight:400;line-height:1.6;margin:8px 0 0;">Eligibility is held securely on our side and activated at launch. It is not automatically combined with annual pricing.</p></td></tr></table>`,
       ].join(""),
       env,
+    }),
+  };
+}
+
+export function renderAuthenticationCode(input: {
+  code: string;
+  env?: NodeJS.ProcessEnv;
+}): RenderedEmail {
+  const code = escapeHtml(input.code);
+  const subject = "Your MyMeridian authentication code";
+  const text = `Your MyMeridian authentication code is ${input.code}. It expires in 10 minutes. If you did not request it, sign out of other sessions and reset your password.`;
+
+  return {
+    subject,
+    text,
+    html: emailShell({
+      eyebrow: "Account security",
+      title: "Your Authentication Code",
+      preheader: "Use this code to continue securely.",
+      bodyHtml: [
+        paragraphs(["Use this one-time code to continue securely."]),
+        `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#171717;border:1px solid #303030;border-radius:18px;margin:4px 0 22px;"><tr><td style="border-left:2px solid #f5f5f5;padding:19px 20px;"><p style="color:#8c8c8c;font-family:${EMAIL_FONT};font-size:11px;font-weight:600;letter-spacing:1.55px;line-height:15px;margin:0 0 8px;text-transform:uppercase;">Your one-time code</p><p style="color:#f5f5f5;font-family:${EMAIL_FONT};font-size:30px;font-weight:700;letter-spacing:7px;line-height:1.2;margin:0;">${code}</p></td></tr></table>`,
+        paragraphs([
+          "It expires in 10 minutes. If you did not request it, sign out of other sessions and reset your password.",
+        ]),
+      ].join(""),
+      env: input.env,
     }),
   };
 }
@@ -205,12 +239,13 @@ export function renderWeeklyEeveeSummary(input: {
   env?: NodeJS.ProcessEnv;
 }): RenderedEmail {
   const textRows = input.rows.map(
-    (row) => `${row.label}: ${row.value}${row.detail ? ` (${row.detail})` : ""}`,
+    (row) =>
+      `${row.label}: ${row.value}${row.detail ? ` (${row.detail})` : ""}`,
   );
   const table = input.rows
     .map(
       (row) =>
-        `<tr><td style="border-bottom:1px solid #303030;color:#bcbcbc;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;padding:11px 0;">${escapeHtml(row.label)}</td><td align="right" style="border-bottom:1px solid #303030;color:#f5f5f5;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;line-height:20px;padding:11px 0 11px 16px;">${escapeHtml(row.value)}${row.detail ? `<span style="color:#9a9a9a;font-size:12px;font-weight:400;"> ${escapeHtml(row.detail)}</span>` : ""}</td></tr>`,
+        `<tr><td style="border-bottom:1px solid #303030;color:#bcbcbc;font-family:${EMAIL_FONT};font-size:14px;line-height:20px;padding:11px 0;">${escapeHtml(row.label)}</td><td align="right" style="border-bottom:1px solid #303030;color:#f5f5f5;font-family:${EMAIL_FONT};font-size:14px;font-weight:700;line-height:20px;padding:11px 0 11px 16px;">${escapeHtml(row.value)}${row.detail ? `<span style="color:#9a9a9a;font-size:12px;font-weight:400;"> ${escapeHtml(row.detail)}</span>` : ""}</td></tr>`,
     )
     .join("");
   return {
@@ -227,7 +262,7 @@ export function renderWeeklyEeveeSummary(input: {
       eyebrow: "E.E.V.E.E. summary",
       title: `${input.shopName}, This Week In Meridian.`,
       preheader: `${input.periodLabel} business summary.`,
-      bodyHtml: `<p style="margin:0 0 16px;color:#c9c9c9;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.65;">${escapeHtml(input.periodLabel)}</p><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">${table}</table>`,
+      bodyHtml: `<p style="margin:0 0 16px;color:#b8b8b8;font-family:${EMAIL_FONT};font-size:16px;line-height:1.7;">${escapeHtml(input.periodLabel)}</p><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">${table}</table>`,
       cta: { label: "Open MyMeridian", href: input.dashboardUrl },
       env: input.env,
     }),
@@ -290,14 +325,14 @@ export function renderNewsletterProductUpdate(input: {
       preheader: input.summary,
       bodyHtml: paragraphs([input.summary]),
       cta: { label: "Read The Update", href: input.articleUrl },
-      footerHtml: `<p style="margin:0;color:#8b8b8b;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.55;">You are receiving this because you opted in to MyMeridian product updates.<br /><a href="${unsubscribe}" style="color:#f5f5f5;text-decoration:underline;">Unsubscribe</a> from marketing updates. Transactional account and service notices may still be sent when needed.</p>`,
+      footerHtml: `<p style="margin:0;color:#8b8b8b;font-family:${EMAIL_FONT};font-size:12px;line-height:1.6;">You are receiving this because you opted in to MyMeridian product updates.<br /><a href="${unsubscribe}" style="color:#f5f5f5;text-decoration:underline;">Unsubscribe</a> from marketing updates. Transactional account and service notices may still be sent when needed.</p>`,
       env: input.env,
     }),
   };
 }
 
 export function renderHumanEmailSignature(input: {
-  address: "hello@mymeridian.io" | "support@mymeridian.io";
+  address: "welcome@mymeridian.io" | "support@mymeridian.io";
   env?: NodeJS.ProcessEnv;
 }): string {
   const logo = `${publicOrigin(input.env)}/assets/mymeridian-email-logo.png`;

@@ -1,4 +1,4 @@
-import { CostRuleKind, SyncStatus } from "@prisma/client";
+import { Channel, ConnectorProvider, CostRuleKind, SyncStatus } from "@prisma/client";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,7 +15,10 @@ const prismaMock = {
     findFirst: vi.fn(),
     update: vi.fn(),
   },
-  connector: { findMany: vi.fn(async () => []) },
+  connector: { findMany: vi.fn(async () => []), findFirst: vi.fn(), update: vi.fn() },
+  adSpend: { deleteMany: vi.fn() },
+  adSyncWindow: { deleteMany: vi.fn() },
+  $transaction: vi.fn(async (work: Promise<unknown>[]) => Promise.all(work)),
   order: { count: vi.fn(async () => 12_000) },
   product: { count: vi.fn(async () => 340) },
   shop: { findUniqueOrThrow: vi.fn(), updateMany: vi.fn() },
@@ -120,6 +123,78 @@ describe("Settings Shopify Shipping recovery", () => {
       message: "Shopify Shipping cost reconciliation is active.",
     });
     expect(retryShopifyShippingConnector).toHaveBeenCalledWith("shop_1");
+  });
+});
+
+describe("Settings ad-account selection", () => {
+  it("clears the prior account's channel rows and ledger before scheduling a clean import", async () => {
+    prismaMock.connector.findFirst.mockResolvedValue({
+      id: "connector_1",
+      provider: ConnectorProvider.GOOGLE_ADS,
+      externalAccountId: "111",
+      availableAccounts: [
+        { id: "111", name: "Old account", currency: "USD" },
+        { id: "222", name: "New account", currency: "CAD", loginCustomerId: "900" },
+      ],
+    });
+    prismaMock.adSpend.deleteMany.mockResolvedValue({ count: 3 });
+    prismaMock.adSyncWindow.deleteMany.mockResolvedValue({ count: 90 });
+    prismaMock.connector.update.mockResolvedValue({ id: "connector_1" });
+    enqueueShopRecompute.mockResolvedValue({ jobId: "recompute_1" });
+
+    const request = new Request("https://meridian.example/app/settings", {
+      method: "POST",
+      body: new URLSearchParams({
+        intent: "select-connector-account",
+        provider: ConnectorProvider.GOOGLE_ADS,
+        externalAccountId: "222",
+      }),
+    });
+
+    await expect(action({ request } as never)).resolves.toEqual({
+      ok: true,
+      message: "Ad account changed. Previous-account spend was cleared and a fresh sync is queued.",
+    });
+    expect(prismaMock.adSpend.deleteMany).toHaveBeenCalledWith({
+      where: { shopId: "shop_1", channel: Channel.GOOGLE },
+    });
+    expect(prismaMock.adSyncWindow.deleteMany).toHaveBeenCalledWith({
+      where: { connectorId: "connector_1" },
+    });
+    expect(prismaMock.connector.update).toHaveBeenCalledWith({
+      where: { id: "connector_1" },
+      data: expect.objectContaining({
+        externalAccountId: "222",
+        accountCurrency: "CAD",
+        lastSyncedAt: null,
+        lastDeepSyncAt: null,
+      }),
+    });
+    expect(enqueueShopRecompute).toHaveBeenCalledWith("shop_1", "ad_account_changed");
+  });
+
+  it("does not erase a channel when the submitted account is already selected", async () => {
+    prismaMock.connector.findFirst.mockResolvedValue({
+      id: "connector_1",
+      provider: ConnectorProvider.FACEBOOK_ADS,
+      externalAccountId: "act_42",
+      availableAccounts: [{ id: "act_42", name: "Current account", currency: "USD" }],
+    });
+    const request = new Request("https://meridian.example/app/settings", {
+      method: "POST",
+      body: new URLSearchParams({
+        intent: "select-connector-account",
+        provider: ConnectorProvider.FACEBOOK_ADS,
+        externalAccountId: "act_42",
+      }),
+    });
+
+    await expect(action({ request } as never)).resolves.toEqual({
+      ok: true,
+      message: "That ad account is already selected.",
+    });
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(enqueueShopRecompute).not.toHaveBeenCalled();
   });
 });
 

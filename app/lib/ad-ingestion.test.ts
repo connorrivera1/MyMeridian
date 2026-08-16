@@ -192,7 +192,11 @@ function applyWindowUpdate(row: WindowRow, data: Record<string, unknown>) {
   }
 }
 
-const { ingestConnectorDay, retryShopCampaignsConnector } = await import(
+const {
+  googleLoginCustomerIdForConnector,
+  ingestConnectorDay,
+  retryShopCampaignsConnector,
+} = await import(
   "./ad-ingestion.server"
 );
 const {
@@ -268,6 +272,60 @@ beforeEach(() => {
 });
 
 describe("ingestConnectorDay", () => {
+  it("uses an MCC only when the selected Google advertiser retained one", () => {
+    expect(
+      googleLoginCustomerIdForConnector({
+        provider: "GOOGLE_ADS",
+        externalAccountId: "1234567890",
+        availableAccounts: [
+          { id: "1234567890", loginCustomerId: "9000000000" },
+        ],
+      } as never),
+    ).toBe("9000000000");
+    expect(
+      googleLoginCustomerIdForConnector({
+        provider: "GOOGLE_ADS",
+        externalAccountId: "1234567890",
+        availableAccounts: [{ id: "1234567890" }],
+      } as never),
+    ).toBeNull();
+    expect(
+      googleLoginCustomerIdForConnector({
+        provider: "FACEBOOK_ADS",
+        externalAccountId: "1234567890",
+        availableAccounts: [{ id: "1234567890", loginCustomerId: "9000000000" }],
+      } as never),
+    ).toBeNull();
+    expect(
+      googleLoginCustomerIdForConnector({
+        provider: "GOOGLE_ADS",
+        externalAccountId: null,
+        availableAccounts: [],
+      } as never),
+    ).toBeNull();
+    expect(
+      googleLoginCustomerIdForConnector({
+        provider: "GOOGLE_ADS",
+        externalAccountId: "1234567890",
+        availableAccounts: [{ id: "1234567890", loginCustomerId: "not-a-customer" }],
+      } as never),
+    ).toBeNull();
+    expect(
+      googleLoginCustomerIdForConnector({
+        provider: "GOOGLE_ADS",
+        externalAccountId: "1234567890",
+        availableAccounts: null,
+      } as never),
+    ).toBeNull();
+    expect(
+      googleLoginCustomerIdForConnector({
+        provider: "GOOGLE_ADS",
+        externalAccountId: "1234567890",
+        availableAccounts: [{ id: "different-account" }],
+      } as never),
+    ).toBeNull();
+  });
+
   it("writes the day's rows, stamps the ledger and heals the connector", async () => {
     const outcome = await ingestConnectorDay("conn_1", DAY, deps(fakeAdapter()));
 

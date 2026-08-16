@@ -119,6 +119,9 @@ describe("operator configuration and transport", () => {
 
   it("sends no-store, no-frame and no-index response controls", () => {
     expect(OPERATOR_SECURITY_HEADERS["cache-control"]).toContain("no-store");
+    expect(OPERATOR_SECURITY_HEADERS["strict-transport-security"]).toContain(
+      "max-age=31536000",
+    );
     expect(OPERATOR_SECURITY_HEADERS["x-frame-options"]).toBe("DENY");
     expect(OPERATOR_SECURITY_HEADERS["x-robots-tag"]).toContain("noindex");
     expect(OPERATOR_SECURITY_HEADERS["content-security-policy"]).toContain(

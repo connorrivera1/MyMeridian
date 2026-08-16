@@ -166,7 +166,7 @@ export function FulfilmentView({ data }: { data: FulfilmentData }) {
             m.demandTrendPct === null ? "—" : formatPercent(m.demandTrendPct, 0)
           }
           spark={data.receivedSpark}
-          meta={<span>last 28 days vs the 28 before</span>}
+          meta={<span>Last 28 Days Vs. The 28 Before</span>}
         />
       </div>
 

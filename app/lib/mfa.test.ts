@@ -48,6 +48,7 @@ vi.mock("~/lib/password-reset.server", () => ({
 const {
   normalizePhoneNumber,
   purgeExpiredMfaChallenges,
+  SmsVerificationProviderError,
   smsProviderConfiguration,
   startMfaChallenge,
   verifyMfaChallenge,
@@ -173,6 +174,48 @@ describe("MFA provider boundaries", () => {
     expect(challengeUpdate).toHaveBeenCalledWith({
       where: { id: "challenge-sms" },
       data: { providerRef: `VE${"e".repeat(32)}` },
+    });
+  });
+
+  it("returns a safe typed error for a rejected Twilio request", async () => {
+    challengeCreate.mockImplementation(async ({ data }) => ({
+      id: "challenge-rejected-sms",
+      ...data,
+    }));
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ code: 21608 }), {
+          status: 403,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+
+    let thrown: unknown;
+    try {
+      await startMfaChallenge({
+        session,
+        purpose: "login",
+        channel: "sms",
+        now: NOW,
+        env: {
+          ...env,
+          NODE_ENV: "production",
+          TWILIO_ACCOUNT_SID: `AC${"a".repeat(32)}`,
+          TWILIO_API_KEY_SID: `SK${"b".repeat(32)}`,
+          TWILIO_API_KEY_SECRET: "c".repeat(32),
+          TWILIO_VERIFY_SERVICE_SID: `VA${"d".repeat(32)}`,
+        },
+        fetchImpl: fetchImpl as typeof fetch,
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(SmsVerificationProviderError);
+    expect(thrown).toMatchObject({ status: 403, code: 21608 });
+    expect(challengeUpdate).toHaveBeenLastCalledWith({
+      where: { id: "challenge-rejected-sms" },
+      data: { consumedAt: expect.any(Date) },
     });
   });
 

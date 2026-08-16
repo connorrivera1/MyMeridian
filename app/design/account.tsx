@@ -17,15 +17,50 @@ export function AccountShell({
   tagline,
   children,
   footer,
+  backTo,
+  backAction,
+  backLabel = "Back to Sign In",
 }: {
   title: string;
   tagline: string;
   children: ReactNode;
   footer?: ReactNode;
+  /** Optional escape hatch for flows a merchant can safely cancel. */
+  backTo?: string;
+  /** A safe POST escape hatch for flows that must end the active session. */
+  backAction?: string;
+  backLabel?: string;
 }) {
   return (
     <main className="auth-hero">
       <div className="auth-panel account-panel">
+        {backAction ? (
+          <Form method="post" action={backAction}>
+            <button type="submit" className="account-back">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 16 16"
+                width="16"
+                height="16"
+              >
+                <path d="M10.5 2.75 5.25 8l5.25 5.25" />
+              </svg>
+              <span>{backLabel}</span>
+            </button>
+          </Form>
+        ) : backTo ? (
+          <Link className="account-back" to={backTo}>
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 16 16"
+              width="16"
+              height="16"
+            >
+              <path d="M10.5 2.75 5.25 8l5.25 5.25" />
+            </svg>
+            <span>{backLabel}</span>
+          </Link>
+        ) : null}
         <div className="account-mark">
           <BrandMark size={72} orbit />
         </div>
@@ -38,7 +73,7 @@ export function AccountShell({
   );
 }
 
-/** Apple and Google, always both. */
+/** Google, Microsoft and Apple are always offered from the account screens. */
 export function ProviderButtons({
   returnTo,
   verb,
@@ -84,6 +119,7 @@ export function ProviderButtons({
 
 const PROVIDERS = [
   { id: "google", label: "Google", Mark: GoogleMark },
+  { id: "microsoft", label: "Microsoft", Mark: MicrosoftMark },
   { id: "apple", label: "Apple", Mark: AppleMark },
 ] as const;
 
@@ -160,8 +196,7 @@ export function brandName(): string {
   return APP_NAME;
 }
 
-/* Marks are inline so the page has no external image dependency and both
-   follow the theme's ink colour. */
+/* Marks are inline so the page has no external image dependency. */
 
 function GoogleMark() {
   return (
@@ -182,6 +217,17 @@ function GoogleMark() {
         fill="#EA4335"
         d="M24 10.8c3.3 0 6.2 1.1 8.5 3.3l6.3-6.3C34.9 4.2 30 2 24 2 15.4 2 7.9 7 4.3 14.2l7.3 5.7c1.7-5.2 6.6-9.1 12.4-9.1z"
       />
+    </svg>
+  );
+}
+
+function MicrosoftMark() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="#f35325" d="M1 1h10v10H1z" />
+      <path fill="#81bc06" d="M13 1h10v10H13z" />
+      <path fill="#05a6f0" d="M1 13h10v10H1z" />
+      <path fill="#ffba08" d="M13 13h10v10H13z" />
     </svg>
   );
 }

@@ -4,7 +4,7 @@ const queryRaw = vi.fn();
 const deleteMany = vi.fn();
 
 vi.mock("~/db.server", () => ({
-  default: {
+  systemPrisma: {
     $queryRaw: (...args: unknown[]) => queryRaw(...args),
     rateLimitBucket: {
       deleteMany: (...args: unknown[]) => deleteMany(...args),

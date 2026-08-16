@@ -26,7 +26,7 @@ describe("production deployment configuration", () => {
     expect(landing).toContain(
       '<link rel="canonical" href="https://mymeridian.io/" />',
     );
-    expect(landing).toContain('href="privacy.html"');
+    expect(landing).toContain('href="/privacy"');
     expect(landing).toContain('href="terms.html"');
     expect(landing).toContain('href="/support"');
     expect(landing).not.toMatch(/localhost|shopify\.dev|trycloudflare/i);
@@ -41,9 +41,15 @@ describe("production deployment configuration", () => {
     expect(production).toContain(
       'SHOPIFY_APP_URL = "https://mymeridian.io"',
     );
+    expect(production).toContain(
+      'MERIDIAN_REQUIRE_LAUNCH_CONNECTORS = "true"',
+    );
+    expect(production).toContain('MERIDIAN_REQUIRE_WEB_OAUTH = "true"');
+    expect(production).toContain('MERIDIAN_ADS_WORKER_DISABLED = "false"');
     expect(staging).toContain(
       'SHOPIFY_APP_URL = "https://staging.mymeridian.io"',
     );
+    expect(staging).not.toContain("MERIDIAN_REQUIRE_LAUNCH_CONNECTORS");
     for (const config of [production, staging]) {
       expect(config).toContain("force_https = true");
       expect(config).toContain('MERIDIAN_DEMO_MODE = "false"');

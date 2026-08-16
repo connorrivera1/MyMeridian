@@ -9,6 +9,7 @@ import {
   createWaitlistSignup,
   validateWaitlistSubmission,
 } from "~/lib/waitlist.server";
+import { honeypotTriggered } from "~/lib/form-anti-bot";
 import { normalizeEmail } from "~/lib/webauth.server";
 import { requestOriginIsSelf } from "~/lib/web-session.server";
 
@@ -30,7 +31,7 @@ export async function action({ request }: ActionFunctionArgs) {
   const form = await request.formData();
   // Silent honeypot success prevents an automated form fill from learning
   // which anti-abuse controls fired, while no real contact is written.
-  if (stringField(form, "website")) throw redirect("/waitlist/confirmed");
+  if (honeypotTriggered(form)) throw redirect("/waitlist/confirmed");
 
   const rawEmail = stringField(form, "email");
   const limited = await firstDeniedRequestLimit({

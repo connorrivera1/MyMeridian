@@ -27,15 +27,15 @@ const PAGES = ["public/privacy.html", "public/terms.html"] as const;
 
 describe("public legal pages", () => {
   it.each(PAGES)("%s is linked from the landing page footer", (page) => {
-    const file = page.replace("public/", "");
-    expect(read("site/index.html")).toContain(`href="${file}"`);
+    const href = page.includes("privacy") ? "/privacy" : "terms.html";
+    expect(read("site/index.html")).toContain(`href="${href}"`);
   });
 
   it.each(PAGES)("%s links back to the site and to its sibling", (page) => {
     const html = read(page);
     // The landing page is served at the root now, not as a sibling file.
     expect(html).toContain('href="/"');
-    const sibling = page.includes("privacy") ? "terms.html" : "privacy.html";
+    const sibling = page.includes("privacy") ? "terms.html" : "/privacy";
     expect(html).toContain(`href="${sibling}"`);
     expect(html).toContain('href="/support"');
   });
@@ -72,7 +72,8 @@ describe("public legal pages", () => {
     );
     expect(privacy).toMatch(/not<\/strong> requested/);
     expect(privacy).toContain("<code>read_all_orders</code>");
-    expect(privacy).toContain("permission is already approved");
+    expect(privacy).toContain("when shopify approves it for");
+    expect(privacy).not.toContain("permission is already approved");
     expect(privacy).toContain("<code>read_reports</code>");
     expect(privacy).toContain(
       "level 2 protected-customer-data approval covering name,",

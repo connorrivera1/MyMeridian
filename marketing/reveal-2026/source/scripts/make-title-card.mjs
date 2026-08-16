@@ -27,6 +27,7 @@ if (!out || !title) {
   process.exit(64);
 }
 
+// nosemgrep: typescript.react.security.react-insecure-request.react-insecure-request -- This talks solely to the local Chrome CDP process used to render a title card.
 const targets = await fetch("http://127.0.0.1:9223/json/list").then((response) => response.json());
 const target = targets.find((candidate) => candidate.type === "page") ?? targets[0];
 if (!target?.webSocketDebuggerUrl) throw new Error("No debuggable Chrome page was found on port 9223.");

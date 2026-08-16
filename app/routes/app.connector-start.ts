@@ -56,10 +56,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
       throw redirect(authorizationUrl);
     } catch (error) {
       if (error instanceof Response) throw error;
-      const message =
-        error instanceof Error ? error.message : "Connector setup failed.";
+      // Errors at this boundary can originate in a provider SDK, database
+      // driver or an OAuth configuration check.  They must never be copied
+      // into a merchant-facing URL because those messages may retain provider
+      // response context or connection details.
+      console.error("[connector-oauth:%s] start failed", slug);
       throw redirect(
-        `/app/settings?connection_error=${encodeURIComponent(message)}`,
+        "/app/settings?connection_error=Connector+setup+could+not+be+started.+Try+again.",
       );
     }
   });

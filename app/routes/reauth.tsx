@@ -144,6 +144,7 @@ export default function Reauthenticate() {
     <AccountShell
       title="Confirm It Is You"
       tagline="Sensitive changes require a fresh primary sign-in and a second factor."
+      backAction="/logout"
     >
       {challenge ? (
         <Form method="post" className="account-form">

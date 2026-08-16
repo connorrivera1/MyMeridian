@@ -130,8 +130,9 @@ describe("data retention scheduler", () => {
     startDataRetentionScheduler(1_000);
     await dataRetentionSettled();
     expect(error).toHaveBeenCalledWith(
-      "[privacy] expired customer data export purge failed",
-      expect.any(Error),
+      "[%s] %s",
+      "privacy expired customer data export purge",
+      "Operation failed (Error).",
     );
 
     await vi.advanceTimersByTimeAsync(1_000);

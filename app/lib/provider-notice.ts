@@ -10,6 +10,8 @@
 const NOTICES: Record<string, string> = {
   "google-unavailable":
     "Google sign-in isn't connected yet. Use your email and password for now.",
+  "microsoft-unavailable":
+    "Microsoft sign-in isn't connected yet. Use your email and password for now.",
   "apple-unavailable":
     "Apple sign-in isn't connected yet. Use your email and password for now.",
   oauth: "That sign-in didn't complete. Try again.",

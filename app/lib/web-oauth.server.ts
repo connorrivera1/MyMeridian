@@ -1,13 +1,14 @@
 /**
- * "Continue with Google" and "Continue with Apple".
+ * "Continue with Google", "Continue with Microsoft" and "Continue with Apple".
  *
- * Both are OpenID Connect authorisation-code flows, and both are optional:
+ * All three are OpenID Connect authorisation-code flows, and all are optional:
  * MyMeridian boots and serves email/password sign-in with neither configured,
  * the same way `hasShopifyCredentials` lets the app run before it has Shopify
- * keys. A provider that is not configured is not offered on the sign-in page,
- * rather than offered and then failing at the redirect.
+ * keys. The signed-out pages always show each supported provider so merchants
+ * know the option exists; an unconfigured provider returns a clear, neutral
+ * message rather than failing at its redirect.
  *
- * Apple is the more demanding of the two. Its client secret is not a string
+ * Apple is the more demanding provider. Its client secret is not a string
  * you paste in — it is an ES256 JWT you sign yourself, valid for at most six
  * months, and it has to be minted per request rather than stored.
  */
@@ -18,12 +19,14 @@ import { createHash, createPrivateKey, randomBytes, sign } from "node:crypto";
 
 export interface ProviderConfig {
   clientId: string;
-  /** Google only. Apple derives its secret from a signing key instead. */
+  /** Google and Microsoft. Apple derives its secret from a signing key instead. */
   clientSecret?: string;
   /** Apple only. */
   teamId?: string;
   keyId?: string;
   privateKey?: string;
+  /** Microsoft only. `common` permits both work/school and personal accounts. */
+  tenantId?: string;
 }
 
 function googleConfig(): ProviderConfig | null {
@@ -43,18 +46,59 @@ function appleConfig(): ProviderConfig | null {
   return { clientId, teamId, keyId, privateKey };
 }
 
+/**
+ * Apple provides the signing key as a PEM-formatted `.p8` file. Treat a
+ * malformed value as an unavailable provider instead of discovering it only
+ * after Apple has redirected a person back to the callback endpoint.
+ */
+function usableApplePrivateKey(config: ProviderConfig | null): boolean {
+  if (!config?.privateKey) return false;
+  try {
+    createPrivateKey(config.privateKey);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A Microsoft authority segment is part of the server-controlled URL. Keep it
+ * deliberately narrow so an environment typo cannot turn into a different
+ * host or path. `common` supports the work/school accounts businesses use and
+ * personal Microsoft accounts; an organization can optionally pin a tenant.
+ */
+function microsoftTenantId(): string | null {
+  const value = process.env.MICROSOFT_TENANT_ID?.trim() || "common";
+  if (!/^[a-z0-9][a-z0-9.-]{0,251}$/i.test(value)) return null;
+  if (value.includes("..")) return null;
+  return value;
+}
+
+function microsoftConfig(): ProviderConfig | null {
+  const clientId = process.env.MICROSOFT_CLIENT_ID;
+  const clientSecret = process.env.MICROSOFT_CLIENT_SECRET;
+  const tenantId = microsoftTenantId();
+  if (!clientId || !clientSecret || !tenantId) return null;
+  return { clientId, clientSecret, tenantId };
+}
+
 export function googleIsConfigured(): boolean {
   return googleConfig() !== null;
 }
 
 export function appleIsConfigured(): boolean {
-  return appleConfig() !== null;
+  return usableApplePrivateKey(appleConfig());
+}
+
+export function microsoftIsConfigured(): boolean {
+  return microsoftConfig() !== null;
 }
 
 /** Which providers currently have working credentials. */
-export function configuredProviders(): Array<"GOOGLE" | "APPLE"> {
-  const providers: Array<"GOOGLE" | "APPLE"> = [];
+export function configuredProviders(): Array<"GOOGLE" | "MICROSOFT" | "APPLE"> {
+  const providers: Array<"GOOGLE" | "MICROSOFT" | "APPLE"> = [];
   if (googleIsConfigured()) providers.push("GOOGLE");
+  if (microsoftIsConfigured()) providers.push("MICROSOFT");
   if (appleIsConfigured()) providers.push("APPLE");
   return providers;
 }
@@ -162,6 +206,42 @@ export function startGoogle(redirectUri: string): AuthorizationStart | null {
   return { url: url.toString(), state, nonce, codeVerifier };
 }
 
+/* ------------------------------------------------------------- Microsoft */
+
+const MICROSOFT_AUTHORITY = "https://login.microsoftonline.com";
+
+function microsoftAuthorizeEndpoint(tenantId: string): string {
+  return `${MICROSOFT_AUTHORITY}/${tenantId}/oauth2/v2.0/authorize`;
+}
+
+function microsoftTokenEndpoint(tenantId: string): string {
+  return `${MICROSOFT_AUTHORITY}/${tenantId}/oauth2/v2.0/token`;
+}
+
+export function startMicrosoft(redirectUri: string): AuthorizationStart | null {
+  const config = microsoftConfig();
+  if (!config?.tenantId) return null;
+
+  const state = base64url(randomBytes(24));
+  const nonce = base64url(randomBytes(24));
+  const codeVerifier = base64url(randomBytes(32));
+  const challenge = base64url(
+    createHash("sha256").update(codeVerifier).digest(),
+  );
+
+  const url = new URL(microsoftAuthorizeEndpoint(config.tenantId));
+  url.searchParams.set("client_id", config.clientId);
+  url.searchParams.set("redirect_uri", redirectUri);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("scope", "openid profile email");
+  url.searchParams.set("state", state);
+  url.searchParams.set("nonce", nonce);
+  url.searchParams.set("code_challenge", challenge);
+  url.searchParams.set("code_challenge_method", "S256");
+
+  return { url: url.toString(), state, nonce, codeVerifier };
+}
+
 /* ----------------------------------------------------------------- Apple */
 
 const APPLE_AUTH = "https://appleid.apple.com/auth/authorize";
@@ -199,21 +279,26 @@ export function mintAppleClientSecret(now: Date = new Date()): string | null {
     base64url(Buffer.from(JSON.stringify(payload))),
   ].join(".");
 
-  const signature = sign(
-    "sha256",
-    Buffer.from(signingInput),
-    {
-      key: createPrivateKey(config.privateKey),
-      dsaEncoding: "ieee-p1363",
-    },
-  );
+  let signature: Buffer;
+  try {
+    signature = sign(
+      "sha256",
+      Buffer.from(signingInput),
+      {
+        key: createPrivateKey(config.privateKey),
+        dsaEncoding: "ieee-p1363",
+      },
+    );
+  } catch {
+    return null;
+  }
 
   return `${signingInput}.${base64url(signature)}`;
 }
 
 export function startApple(redirectUri: string): AuthorizationStart | null {
   const config = appleConfig();
-  if (!config) return null;
+  if (!config || !usableApplePrivateKey(config)) return null;
 
   const state = base64url(randomBytes(24));
   const nonce = base64url(randomBytes(24));
@@ -385,6 +470,70 @@ export async function completeGoogle(
     return null;
   }
 
+  return identityFromClaims(claims, null);
+}
+
+/**
+ * Microsoft returns a tenant-specific issuer even when the request starts at
+ * the `common` authority. Checking it against the signed-in tenant stops an
+ * ID token from a different Microsoft authority being accepted here.
+ */
+export function microsoftClaimsAreAcceptable(
+  claims: Record<string, unknown>,
+  expected: { clientId: string; nonce: string },
+  now: Date = new Date(),
+): boolean {
+  const tenantId = typeof claims.tid === "string" ? claims.tid : null;
+  if (!tenantId || !microsoftTenantIdIsValid(tenantId)) return false;
+
+  return claimsAreAcceptable(
+    claims,
+    {
+      issuers: [`${MICROSOFT_AUTHORITY}/${tenantId}/v2.0`],
+      clientId: expected.clientId,
+      nonce: expected.nonce,
+    },
+    now,
+  );
+}
+
+function microsoftTenantIdIsValid(value: string): boolean {
+  return /^[a-z0-9][a-z0-9.-]{0,251}$/i.test(value) && !value.includes("..");
+}
+
+/** Exchange Microsoft's authorization code and return its account identity. */
+export async function completeMicrosoft(
+  code: string,
+  redirectUri: string,
+  codeVerifier: string,
+  nonce: string,
+  now: Date = new Date(),
+): Promise<IdentityClaims | null> {
+  const config = microsoftConfig();
+  if (!config?.clientSecret || !config.tenantId) return null;
+
+  const idToken = await exchangeCode(
+    microsoftTokenEndpoint(config.tenantId),
+    new URLSearchParams({
+      code,
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      redirect_uri: redirectUri,
+      grant_type: "authorization_code",
+      code_verifier: codeVerifier,
+    }),
+  );
+  if (!idToken) return null;
+
+  const claims = decodeIdTokenPayload(idToken);
+  if (!claims) return null;
+  if (!microsoftClaimsAreAcceptable(claims, { clientId: config.clientId, nonce }, now)) {
+    return null;
+  }
+
+  // Microsoft only returns an email claim when one is available and does not
+  // attach Google's/Apple's `email_verified` claim. Preserve it for display,
+  // but do not use it to silently link an existing password account.
   return identityFromClaims(claims, null);
 }
 

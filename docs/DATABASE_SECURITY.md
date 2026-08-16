@@ -7,14 +7,26 @@ merchant-facing data route. It must be a separate login with no ownership,
 superuser or `BYPASSRLS` privilege.
 
 Migrations `20260812001000_tenant_row_level_security` and
-`20260812013000_system_runtime_role_privileges` create the NOLOGIN group roles,
-force RLS on every merchant table, and give the system group the runtime table
-privileges it needs without making the application login a database owner.
-Provision the two production logins once, using passwords generated and stored
-in the platform secret vault (never in this repository):
+`20260812013000_system_runtime_role_privileges` force RLS on every merchant
+table and give the system identity the required runtime privileges without
+making it a database owner. On PostgreSQL providers that permit role creation,
+the migrations use NOLOGIN group roles. Fly Managed Postgres forbids custom
+role creation, so it uses the two separately provisioned runtime logins
+directly.
+
+For Fly Managed Postgres, create two **Writer** users in the cluster dashboard
+or with `fly mpg users create`. Fly user names may use lowercase alphanumerics
+and hyphens only, so the required names are `meridian-app-system` and
+`meridian-app-tenant`. Let Fly generate passwords; attach their pooled URLs to
+`DATABASE_URL` and `MERIDIAN_TENANT_DATABASE_URL`, and store the migration
+owner's direct URL in `DIRECT_DATABASE_URL`. These values belong only in Fly
+secrets.
+
+For providers that allow PostgreSQL role management, provision the two runtime
+logins with vault-generated passwords (never in this repository):
 
 ```sql
-CREATE ROLE meridian_app_system
+CREATE ROLE "meridian-app-system"
   LOGIN
   NOSUPERUSER
   NOCREATEDB
@@ -23,13 +35,13 @@ CREATE ROLE meridian_app_system
   NOREPLICATION
   NOBYPASSRLS
   PASSWORD '<vault-generated-password>';
-GRANT CONNECT ON DATABASE meridian TO meridian_app_system;
-GRANT USAGE ON SCHEMA public TO meridian_app_system;
-GRANT meridian_system TO meridian_app_system;
+GRANT CONNECT ON DATABASE meridian TO "meridian-app-system";
+GRANT USAGE ON SCHEMA public TO "meridian-app-system";
+GRANT meridian_system TO "meridian-app-system";
 ```
 
 ```sql
-CREATE ROLE meridian_app_tenant
+CREATE ROLE "meridian-app-tenant"
   LOGIN
   NOSUPERUSER
   NOCREATEDB
@@ -38,9 +50,9 @@ CREATE ROLE meridian_app_tenant
   NOREPLICATION
   NOBYPASSRLS
   PASSWORD '<vault-generated-password>';
-GRANT CONNECT ON DATABASE meridian TO meridian_app_tenant;
-GRANT USAGE ON SCHEMA public TO meridian_app_tenant;
-GRANT meridian_tenant TO meridian_app_tenant;
+GRANT CONNECT ON DATABASE meridian TO "meridian-app-tenant";
+GRANT USAGE ON SCHEMA public TO "meridian-app-tenant";
+GRANT meridian_tenant TO "meridian-app-tenant";
 ```
 
 If the managed service database name is not `meridian`, change only the
@@ -48,10 +60,10 @@ If the managed service database name is not `meridian`, change only the
 `MERIDIAN_TENANT_DATABASE_URL`, the system connection string in `DATABASE_URL`,
 and reserve `DIRECT_DATABASE_URL` for the migration endpoint.
 
-Each merchant transaction explicitly assumes `meridian_tenant`; the login
-cannot query merchant tables before that role switch. `/readyz` fails closed
-unless both URLs are configured with different database usernames in
-production. It also
+On Fly Managed Postgres, each merchant transaction uses the dedicated tenant
+login directly. Local and integration environments explicitly assume
+`meridian_tenant` to exercise the same policy. `/readyz` fails closed unless
+both URLs are configured with different database usernames in production. It also
 executes a live isolation probe: the tenant connection must see no shop for a
 sentinel tenant and must be denied access to the `User` identity table.
 

@@ -94,6 +94,9 @@ export interface PlanState {
   /** Raw Shopify status, for display. */
   status: string;
   trialEndsAt: Date | null;
+  /** A lower tier already accepted by Shopify, effective after paid access. */
+  pendingPlanId?: PlanId;
+  pendingEffectiveAt?: Date;
   /**
    * True for the seeded demo, which has no Shopify subscription to read and is
    * shown at the top plan so the demo exercises every screen.
@@ -214,9 +217,18 @@ export async function resolvePlan(ctx: ShopContext): Promise<PlanState> {
     where: { shopId: ctx.shop.id },
   });
 
+  // A cancellation delivery can race the activation for the replacement
+  // subscription. Never cache a non-active row: ask Shopify for the current
+  // subscription before showing a merchant the plan picker or denying paid
+  // access. Active known plans remain cached to avoid an Admin API call on
+  // every dashboard navigation.
   const fresh =
     !forceBillingRefresh &&
     stored &&
+    stored.status.toLowerCase() === "active" &&
+    stored.plan in PLANS &&
+    (!stored.pendingEffectiveAt ||
+      stored.pendingEffectiveAt.getTime() > Date.now()) &&
     Date.now() - stored.updatedAt.getTime() < PLAN_CACHE_MS;
 
   if (fresh) return fromRow(stored);
@@ -267,6 +279,9 @@ export async function resolvePlan(ctx: ShopContext): Promise<PlanState> {
     plan: planId ?? "none",
     status,
     trialEndsAt: stored?.trialEndsAt ?? null,
+    pendingPlan: null,
+    pendingInterval: null,
+    pendingEffectiveAt: null,
   };
 
   const row = await prisma.subscription.upsert({
@@ -307,8 +322,15 @@ function fromRow(row: {
   plan: string;
   status: string;
   trialEndsAt: Date | null;
+  pendingPlan?: string | null;
+  pendingEffectiveAt?: Date | null;
 }): PlanState {
   const planId = row.plan in PLANS ? (row.plan as PlanId) : null;
+
+  const pendingPlanId =
+    row.pendingPlan && row.pendingPlan in PLANS
+      ? (row.pendingPlan as PlanId)
+      : undefined;
 
   return {
     // "trial" and "none" are both stored as non-plans; neither grants access,
@@ -318,6 +340,12 @@ function fromRow(row: {
     status: row.status,
     trialEndsAt: row.trialEndsAt,
     isDemo: false,
+    ...(pendingPlanId && row.pendingEffectiveAt
+      ? {
+          pendingPlanId,
+          pendingEffectiveAt: row.pendingEffectiveAt,
+        }
+      : {}),
   };
 }
 

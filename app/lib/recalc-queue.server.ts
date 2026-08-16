@@ -7,7 +7,7 @@ import {
   type RecalcJob,
 } from "@prisma/client";
 
-import prisma from "~/db.server";
+import prisma, { withoutTenantDatabase } from "~/db.server";
 import {
   logOperationalFailure,
   safeOperationalFailure,
@@ -446,7 +446,7 @@ const workerState = (global.__meridianRecalcWorker ??= {
 function startDrain(): void {
   if (workerState.drain) return;
 
-  const work = drainRecalcQueue()
+  const work = withoutTenantDatabase(() => drainRecalcQueue())
     .then(() => undefined)
     .catch((error) => logOperationalFailure("recalc durable queue sweep", error));
   workerState.drain = work;

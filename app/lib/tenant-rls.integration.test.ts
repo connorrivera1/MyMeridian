@@ -135,6 +135,12 @@ suite("PostgreSQL tenant row-level security", () => {
     await systemPrisma.$executeRawUnsafe(
       `GRANT meridian_tenant TO \"${runtimeTenantRole}\"`,
     );
+    // Fly Managed Postgres places each provisioned Writer login in a broad
+    // writer role. Simulate that inherited table privilege here: RLS must
+    // still deny identity data to the tenant runtime connection.
+    await systemPrisma.$executeRawUnsafe(
+      `GRANT SELECT ON TABLE \"User\" TO \"${runtimeTenantRole}\"`,
+    );
     runtimeSystem = new PrismaClient({
       datasources: { db: { url: runtimeUrl(runtimeSystemRole, systemPassword) } },
     });
@@ -168,6 +174,9 @@ suite("PostgreSQL tenant row-level security", () => {
       );
     }
     if (runtimeTenantRole) {
+      await systemPrisma.$executeRawUnsafe(
+        `REVOKE SELECT ON TABLE \"User\" FROM \"${runtimeTenantRole}\"`,
+      );
       await systemPrisma.$executeRawUnsafe(
         `REVOKE ALL PRIVILEGES ON SCHEMA public FROM \"${runtimeTenantRole}\"`,
       );
@@ -281,7 +290,15 @@ suite("PostgreSQL tenant row-level security", () => {
     );
     expect(crossShopWrite.count).toBe(0);
 
-    await expect(runtimeTenant!.user.count()).rejects.toThrow();
+    // This runtime login has a direct SELECT grant to simulate Fly's inherited
+    // Writer role. Forced RLS must still make identity rows invisible and
+    // reject writes without relying on a missing-table-privilege error.
+    await expect(runtimeTenant!.user.count()).resolves.toBe(0);
+    await expect(
+      runtimeTenant!.user.create({
+        data: { email: `blocked-${stamp}@example.com` },
+      }),
+    ).rejects.toThrow();
     await expect(
       runtimeTenant!.$executeRawUnsafe("SET ROLE meridian_system"),
     ).rejects.toThrow();

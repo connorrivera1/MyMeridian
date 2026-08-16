@@ -245,7 +245,7 @@ async function loadMaterializedProducts(
           0
         )) OVER (PARTITION BY li."orderId") AS order_weight,
         COUNT(*) OVER (PARTITION BY li."orderId")::numeric AS line_count,
-        (li."unitCost" <= 0 AND GREATEST(li.quantity - li."refundedQty", 0) > 0) AS missing_cogs
+        (NOT li."cogsKnown" AND GREATEST(li.quantity - li."refundedQty", 0) > 0) AS missing_cogs
       FROM "OrderLineItem" li
       JOIN "Order" o ON o.id = li."orderId"
       WHERE li."shopId" = ${shopId}

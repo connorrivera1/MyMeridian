@@ -126,6 +126,8 @@ export default function Login() {
     <AccountShell
       title={`Sign In to ${APP_NAME}`}
       tagline="Your dashboard, outside the Shopify admin."
+      backTo="/"
+      backLabel="Back to Home"
       footer={
         <AccountFooterLink
           prompt="No Account Yet?"

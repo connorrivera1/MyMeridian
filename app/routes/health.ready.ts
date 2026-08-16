@@ -1,5 +1,12 @@
 import prisma, { systemPrisma, withTenantDatabase } from "~/db.server";
+import { addSecurityHeaders } from "~/lib/http-security";
 import { readinessConfiguration } from "~/lib/readiness.server";
+
+function readinessHeaders(): Headers {
+  const headers = new Headers({ "cache-control": "no-store" });
+  addSecurityHeaders(headers);
+  return headers;
+}
 
 export async function loader() {
   const configuration = readinessConfiguration();
@@ -8,9 +15,8 @@ export async function loader() {
       {
         status: "not_ready",
         reason: "configuration",
-        missing: configuration.missing,
       },
-      { status: 503, headers: { "cache-control": "no-store" } },
+      { status: 503, headers: readinessHeaders() },
     );
   }
   try {
@@ -28,25 +34,30 @@ export async function loader() {
     if (visibleShops !== 0)
       throw new Error("Tenant database can enumerate shops.");
 
-    let identityDenied = false;
+    let identityIsolated = false;
     try {
-      await withTenantDatabase({ shopId: sentinelShop }, () =>
-        prisma.user.count(),
+      const visibleIdentities = await withTenantDatabase(
+        { shopId: sentinelShop },
+        () => prisma.user.count(),
       );
+      // A direct table grant can exist through a managed-provider role. Forced
+      // RLS is equally valid when it reduces the identity relation to zero
+      // rows; a tenant must never see or mutate identity records.
+      identityIsolated = visibleIdentities === 0;
     } catch {
-      identityDenied = true;
+      identityIsolated = true;
     }
-    if (!identityDenied)
-      throw new Error("Tenant database can read identity tables.");
+    if (!identityIsolated)
+      throw new Error("Tenant database can see identity tables.");
 
     return Response.json(
       { status: "ready", database: "reachable", tenantIsolation: "enforced" },
-      { headers: { "cache-control": "no-store" } },
+      { headers: readinessHeaders() },
     );
   } catch {
     return Response.json(
       { status: "not_ready", reason: "database" },
-      { status: 503, headers: { "cache-control": "no-store" } },
+      { status: 503, headers: readinessHeaders() },
     );
   }
 }

@@ -28,6 +28,21 @@ describe("Shopify login route", () => {
     expect(login).toHaveBeenCalledWith(request);
   });
 
+  it("responds to a HEAD probe without invoking Shopify's browser login helper", async () => {
+    await expect(
+      loader({
+        request: new Request("https://mymeridian.example/auth/login", {
+          method: "HEAD",
+        }),
+      } as never),
+    ).resolves.toEqual({
+      errors: {},
+      configured: true,
+      demoAvailable: false,
+    });
+    expect(login).not.toHaveBeenCalled();
+  });
+
   it("turns Shopify's missing-shop result into actionable merchant copy", async () => {
     login.mockResolvedValue({ shop: LoginErrorType.MissingShop });
 

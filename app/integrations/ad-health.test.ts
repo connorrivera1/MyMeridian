@@ -128,4 +128,28 @@ describe("ad token health adapters", () => {
       CONNECTOR_ALERT_WEBHOOK_URL: "https://alerts.example.test/hooks",
     }, fetcher)).rejects.toThrow(/SECRET is required/);
   });
+
+  it("falls back to the verified support mailbox when no webhook is configured", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: "email_123" }), { status: 200 }),
+    );
+    await expect(sendConnectorAlert({
+      eventId: "event_1",
+      provider: "GOOGLE_ADS",
+      shop: "northwind.myshopify.com",
+      status: "UNHEALTHY",
+      message: "Access token invalid",
+      ignored: "must not appear in the alert",
+    }, {
+      RESEND_API_KEY: "resend-key",
+      MERIDIAN_EMAIL_FROM: "MyMeridian <welcome@mymeridian.io>",
+      MERIDIAN_SUPPORT_EMAIL: "support@mymeridian.io",
+    }, fetcher)).resolves.toEqual({ sent: true, reason: null });
+
+    const [url, init] = fetcher.mock.calls[0]!;
+    expect(String(url)).toBe("https://api.resend.com/emails");
+    expect(init?.headers).toMatchObject({ "idempotency-key": "connector-alert:event_1" });
+    expect(String(init?.body)).toContain("Access token invalid");
+    expect(String(init?.body)).not.toContain("must not appear");
+  });
 });

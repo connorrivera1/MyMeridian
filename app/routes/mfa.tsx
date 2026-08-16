@@ -1,7 +1,6 @@
 import {
   data,
   Form,
-  redirect,
   useActionData,
   useLoaderData,
   type ActionFunctionArgs,
@@ -10,11 +9,13 @@ import {
 
 import { AccountShell, Field, FormError } from "~/design/account";
 import { resolvePendingWebSession } from "~/lib/auth.server";
+import { redirectWithSecurityHeaders } from "~/lib/http-security";
 import { APP_NAME } from "~/lib/brand";
 import {
   latestMfaChallenge,
   maskPhone,
   normalizePhoneNumber,
+  SmsVerificationProviderError,
   startMfaChallenge,
   verifyMfaChallenge,
   type MfaChannel,
@@ -40,8 +41,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const returnTo = safeReturnPath(url.searchParams.get("returnTo"));
   if (!pending)
-    throw redirect(`/login?returnTo=${encodeURIComponent(returnTo)}`);
-  if (pending.session.mfaVerifiedAt) throw redirect(returnTo);
+    throw redirectWithSecurityHeaders(
+      `/login?returnTo=${encodeURIComponent(returnTo)}`,
+    );
+  if (pending.session.mfaVerifiedAt)
+    throw redirectWithSecurityHeaders(returnTo);
 
   const challenge = await latestMfaChallenge(pending.session.id);
   const phase = !pending.user.emailVerifiedAt
@@ -65,7 +69,7 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   const pending = await resolvePendingWebSession(request);
-  if (!pending) throw redirect("/login");
+  if (!pending) throw redirectWithSecurityHeaders("/login");
   const url = new URL(request.url);
   const returnTo = safeReturnPath(url.searchParams.get("returnTo"));
   const limited = await firstDeniedRequestLimit({
@@ -108,9 +112,25 @@ export async function action({ request }: ActionFunctionArgs) {
         channel,
         phone,
       });
-      return redirect(`/mfa?returnTo=${encodeURIComponent(returnTo)}`);
+      return redirectWithSecurityHeaders(
+        `/mfa?returnTo=${encodeURIComponent(returnTo)}`,
+      );
     } catch (error) {
-      void error;
+      if (error instanceof SmsVerificationProviderError) {
+        console.warn("[mfa] Twilio Verify request failed", {
+          status: error.status,
+          code: error.code,
+        });
+        if (error.code === 21608) {
+          return data(
+            {
+              error:
+                "This controlled test number must be verified in Twilio before staging can send it a code.",
+            },
+            { status: 503 },
+          );
+        }
+      }
       return data(
         {
           error:
@@ -140,8 +160,11 @@ export async function action({ request }: ActionFunctionArgs) {
     }
 
     const purpose = String(form.get("purpose") ?? "");
-    if (purpose === "login" || purpose === "reauth") throw redirect(returnTo);
-    throw redirect(`/mfa?returnTo=${encodeURIComponent(returnTo)}`);
+    if (purpose === "login" || purpose === "reauth")
+      throw redirectWithSecurityHeaders(returnTo);
+    throw redirectWithSecurityHeaders(
+      `/mfa?returnTo=${encodeURIComponent(returnTo)}`,
+    );
   }
 
   return data(

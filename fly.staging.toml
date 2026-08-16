@@ -9,8 +9,11 @@ primary_region = "iad"
   NODE_ENV = "production"
   PORT = "8080"
   SHOPIFY_APP_URL = "https://staging.mymeridian.io"
+  SCOPES = "read_orders,read_all_orders,read_products,read_fulfillments,read_inventory,read_reports"
   MERIDIAN_SUPPORT_EMAIL = "support@mymeridian.io"
   MERIDIAN_SUPPORT_URL = "https://staging.mymeridian.io/support"
+  MERIDIAN_EMAIL_FROM = "MyMeridian <welcome@mymeridian.io>"
+  MERIDIAN_PUBLIC_ORIGIN = "https://staging.mymeridian.io"
   MERIDIAN_DEMO_MODE = "false"
 
 [deploy]

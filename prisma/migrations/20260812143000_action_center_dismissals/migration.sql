@@ -19,14 +19,17 @@ ALTER TABLE "ActionDismissal"
 ALTER TABLE "ActionDismissal" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "ActionDismissal" FORCE ROW LEVEL SECURITY;
 
-CREATE POLICY "meridian_system_all" ON "ActionDismissal" TO meridian_system
-  USING (true) WITH CHECK (true);
-CREATE POLICY "meridian_tenant_shop" ON "ActionDismissal" TO meridian_tenant
-  USING ("shopId" = NULLIF(current_setting('meridian.shop_id', true), ''))
-  WITH CHECK ("shopId" = NULLIF(current_setting('meridian.shop_id', true), ''));
-
-GRANT SELECT, INSERT, UPDATE, DELETE ON "ActionDismissal" TO meridian_system;
-GRANT SELECT, INSERT, UPDATE, DELETE ON "ActionDismissal" TO meridian_tenant;
+DO $$
+DECLARE
+  system_role text := CASE WHEN EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'meridian-app-system') THEN 'meridian-app-system' ELSE 'meridian_system' END;
+  tenant_role text := CASE WHEN EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'meridian-app-tenant') THEN 'meridian-app-tenant' ELSE 'meridian_tenant' END;
+BEGIN
+  EXECUTE format('CREATE POLICY "meridian_system_all" ON "ActionDismissal" TO %I USING (true) WITH CHECK (true)', system_role);
+  EXECUTE format('CREATE POLICY "meridian_tenant_shop" ON "ActionDismissal" TO %I USING ("shopId" = NULLIF(current_setting(''meridian.shop_id'', true), '''')) WITH CHECK ("shopId" = NULLIF(current_setting(''meridian.shop_id'', true), ''''))', tenant_role);
+  EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON "ActionDismissal" TO %I', system_role);
+  EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON "ActionDismissal" TO %I', tenant_role);
+END
+$$;
 
 -- An accepted price recommendation is an observation request, not a claim of
 -- causation. It stays pending until Meridian sees a Shopify price change and

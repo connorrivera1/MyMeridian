@@ -20,4 +20,15 @@ describe("safe operational errors", () => {
 
     expect(operationalErrorKind(error)).toBe("Error");
   });
+
+  it("retains a safe database code without retaining the provider message", () => {
+    const error = Object.assign(new Error("https://provider.example/?token=secret"), {
+      code: "P2021",
+    });
+
+    expect(safeOperationalFailure(error)).toBe(
+      "Operation failed (Error, P2021).",
+    );
+    expect(safeOperationalFailure(error)).not.toContain("secret");
+  });
 });

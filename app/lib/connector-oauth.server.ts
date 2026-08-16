@@ -77,13 +77,19 @@ export function authorizationUrlFor(input: {
   const redirectUri = connectorCallbackUrl(input.origin, input.slug);
   if (input.slug === "meta") {
     const url = new URL("https://www.facebook.com/v21.0/dialog/oauth");
-    url.search = new URLSearchParams({
+    const params = new URLSearchParams({
       client_id: required("META_APP_ID"),
       redirect_uri: redirectUri,
       state: input.state,
       scope: "ads_read",
       response_type: "code",
-    }).toString();
+    });
+    // Facebook Login for Business configuration controls the exact approved
+    // asset and permission bundle. Older Meta apps may not have one, so keep
+    // this optional while using it whenever the provider has issued an id.
+    const configurationId = process.env.META_LOGIN_CONFIG_ID?.trim();
+    if (configurationId) params.set("config_id", configurationId);
+    url.search = params.toString();
     return url.toString();
   }
   if (input.slug === "google") {
@@ -170,8 +176,117 @@ type ExchangedConnector = {
   externalAccountId: string;
   displayName?: string | null;
   accountCurrency?: string | null;
-  accounts: Array<{ id: string; name: string | null; currency: string | null }>;
+  accounts: Array<{
+    id: string;
+    name: string | null;
+    currency: string | null;
+    /** Present only for a client discovered under a Google Ads MCC. */
+    loginCustomerId?: string | null;
+  }>;
 };
+
+type GoogleCustomerClient = {
+  id?: string | number;
+  level?: string | number;
+  manager?: boolean;
+  descriptiveName?: string;
+  currencyCode?: string;
+  status?: string;
+};
+
+type GoogleCustomerClientChunk = {
+  results?: Array<{ customerClient?: GoogleCustomerClient }>;
+};
+
+function googleCustomerId(value: unknown): string | null {
+  const id = String(value ?? "").replace(/-/g, "");
+  return /^\d{1,20}$/.test(id) ? id : null;
+}
+
+/**
+ * Build the merchant-selectable Google Ads account list. The accessible list
+ * contains only direct accounts; when one is an MCC, walk each direct child so
+ * a client account retains the manager id required on its later API calls.
+ */
+async function discoverGoogleAdsAccounts(input: {
+  accessToken: string;
+  resourceNames: unknown[];
+  fetcher: typeof fetch;
+}): Promise<ExchangedConnector["accounts"]> {
+  const developerToken = required("MERIDIAN_GOOGLE_ADS_DEVELOPER_TOKEN", [
+    "GOOGLE_ADS_DEVELOPER_TOKEN",
+  ]);
+  const roots = input.resourceNames
+    .map((value) => googleCustomerId(String(value).replace(/^customers\//, "")))
+    .filter((value): value is string => value !== null);
+  const accounts = new Map<string, ExchangedConnector["accounts"][number]>();
+  const queue = roots.map((customerId) => ({ customerId, loginCustomerId: null as string | null }));
+  const visited = new Set<string>();
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (visited.has(current.customerId)) continue;
+    visited.add(current.customerId);
+    // Bound hierarchy traversal even if a provider response is pathological.
+    if (visited.size > 100) break;
+    const headers: Record<string, string> = {
+      authorization: `Bearer ${input.accessToken}`,
+      "developer-token": developerToken,
+      "content-type": "application/json",
+    };
+    if (current.loginCustomerId) {
+      headers["login-customer-id"] = current.loginCustomerId;
+    }
+    const response = await input.fetcher(
+      `https://googleads.googleapis.com/v25/customers/${current.customerId}/googleAds:searchStream`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          query:
+            "SELECT customer_client.id, customer_client.level, customer_client.manager, " +
+            "customer_client.descriptive_name, customer_client.currency_code, customer_client.status " +
+            "FROM customer_client WHERE customer_client.level <= 1",
+        }),
+      },
+    );
+    const body = (await json(response)) as unknown;
+    if (!response.ok) {
+      throw providerFailure("Google Ads account discovery", response, {});
+    }
+    const chunks = (Array.isArray(body) ? body : [body]) as GoogleCustomerClientChunk[];
+    for (const row of chunks.flatMap((chunk) => chunk.results ?? [])) {
+      const customer = row.customerClient;
+      const id = googleCustomerId(customer?.id);
+      const level = Number(customer?.level ?? -1);
+      if (!id || (customer?.status && customer.status !== "ENABLED")) continue;
+      if (level === 0 && customer?.manager !== true) {
+        accounts.set(id, {
+          id,
+          name: customer?.descriptiveName ?? null,
+          currency: customer?.currencyCode?.toUpperCase() ?? null,
+          loginCustomerId: null,
+        });
+      } else if (level === 1 && customer?.manager === true) {
+        // The first root remains the login customer for every recursive
+        // descendant. It is the account the OAuth user actually controls.
+        queue.push({
+          customerId: id,
+          loginCustomerId: current.loginCustomerId ?? current.customerId,
+        });
+      } else if (level === 1) {
+        accounts.set(id, {
+          id,
+          name: customer?.descriptiveName ?? null,
+          currency: customer?.currencyCode?.toUpperCase() ?? null,
+          loginCustomerId: current.loginCustomerId ?? current.customerId,
+        });
+      }
+    }
+  }
+
+  return [...accounts.values()];
+}
 
 export async function exchangeConnectorCode(input: {
   slug: ConnectorProviderSlug;
@@ -263,18 +378,26 @@ export async function exchangeConnectorCode(input: {
     );
     const accountsBody = await json(accountsResponse);
     const resources = Array.isArray(accountsBody.resourceNames) ? accountsBody.resourceNames : [];
-    const resource = resources[0];
-    if (!accountsResponse.ok || !resource) throw providerFailure("Google Ads account discovery", accountsResponse, accountsBody);
+    if (!accountsResponse.ok || resources.length === 0) {
+      throw providerFailure("Google Ads account discovery", accountsResponse, accountsBody);
+    }
+    const accounts = await discoverGoogleAdsAccounts({
+      accessToken,
+      resourceNames: resources,
+      fetcher,
+    });
+    const account = accounts[0];
+    if (!account) {
+      throw new Error("Google Ads authorization found no active advertiser accounts.");
+    }
     return {
       accessToken,
       refreshToken: String(tokenBody.refresh_token),
       expiresAt: new Date(Date.now() + Number(tokenBody.expires_in ?? 3600) * 1000),
-      externalAccountId: String(resource).replace(/^customers\//, ""),
-      displayName: `Google Ads ${String(resource).replace(/^customers\//, "")}`,
-      accounts: resources.map((value: unknown) => {
-        const id = String(value).replace(/^customers\//, "");
-        return { id, name: `Google Ads ${id}`, currency: null };
-      }),
+      externalAccountId: account.id,
+      displayName: account.name ?? `Google Ads ${account.id}`,
+      accountCurrency: account.currency,
+      accounts,
     };
   }
 

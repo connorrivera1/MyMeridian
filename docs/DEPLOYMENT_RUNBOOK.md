@@ -35,7 +35,11 @@ client id for staging. Domain cutover is governed by
    cryptographic and operator values once in a private terminal; retain their
    recovery copies outside the deployment platform.
 3. Build the candidate from a clean checkout: `npm ci`, `npm run ci`, then the
-   real-Postgres integration suite against a disposable database. Record commit,
+   real-Postgres integration suite against a disposable database. For a
+   production candidate, run `npm run production:preflight:config` before any
+   release command; after production secrets are entered directly into Fly, run
+   `npm run production:preflight`. It validates only configuration and secret
+   names, never secret values, and must pass before deployment. Record commit,
    test counts, migration count and dependency audit result.
 4. Deploy the compiled release using the staging application configuration. The
    release command applies the checked-in migrations using `DIRECT_DATABASE_URL`.
@@ -71,8 +75,9 @@ sanitized evidence for each item using
    intended worker access.
 3. Redis: TLS/auth connection, enqueue, processing, retry, lease expiry and
    recovery after worker restart.
-4. Secrets: `/readyz` reports ready; production bundle scan finds no configured
-   secret or server-only key name in public assets.
+4. Secrets: `npm run production:preflight` passes against the intended Fly app;
+   `/readyz` reports ready; production bundle scan finds no configured secret
+   or server-only key name in public assets.
 5. Health: `/healthz`, `/readyz`, TLS, HSTS/security headers, liveness check,
    logs and alert receiver work.
 6. Shopify: controlled store install, embedded session, onboarding, scope

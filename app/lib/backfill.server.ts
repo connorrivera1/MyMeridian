@@ -319,6 +319,12 @@ const SHOP_QUERY = `#graphql
       ianaTimezone
       plan { displayName partnerDevelopment }
     }
+    # Shopify defaults count queries to 10,000. Request an unbounded count so
+    # an initial sync never presents that lower bound as a finished total.
+    ordersCount(limit: null) {
+      count
+      precision
+    }
   }
 `;
 
@@ -896,7 +902,21 @@ async function importShopProfile(
       ianaTimezone: string;
       plan: { displayName: string; partnerDevelopment: boolean } | null;
     };
+    ordersCount?: { count: number; precision?: string | null } | null;
   }>(admin, SHOP_QUERY);
+
+  // A lower-bound count cannot power a truthful percentage: "10,000 of
+  // 10,000" could still mean a store has more history left. Keep only an exact
+  // total and leave the UI indeterminate otherwise.
+  const syncTotalOrders =
+    data.ordersCount &&
+    Number.isSafeInteger(data.ordersCount.count) &&
+    data.ordersCount.count >= 0 &&
+    (data.ordersCount.precision === undefined ||
+      data.ordersCount.precision === null ||
+      data.ordersCount.precision === "EXACT")
+      ? data.ordersCount.count
+      : null;
 
   // Currency and timezone are not cosmetic: the engine buckets ad spend and
   // orders into the merchant's own days, and getting the zone wrong shifts
@@ -908,6 +928,7 @@ async function importShopProfile(
     timezone: data.shop.ianaTimezone,
     planName: data.shop.plan?.displayName ?? null,
     partnerDevelopment: data.shop.plan?.partnerDevelopment ?? null,
+    syncTotalOrders,
   });
 }
 

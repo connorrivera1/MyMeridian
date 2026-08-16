@@ -42,6 +42,8 @@ export interface EngineLineItem {
   unitPriceCents: Cents;
   discountCents: Cents;
   unitCostMicros: Micros;
+  /** True when Shopify or a merchant explicitly supplied COGS, even if $0. */
+  cogsKnown?: boolean;
 }
 
 export interface EngineOrder {

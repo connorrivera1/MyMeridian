@@ -30,6 +30,8 @@ describe("public legal routes", () => {
     expect(html).toContain("read_all_orders");
     expect(html).toContain("read_reports");
     expect(html).toContain("does not query or persist shopper name");
+    expect(html).toContain("rather than treating the missing cost as $0.00");
+    expect(html).not.toContain("permission is already approved");
     expect(html).toContain("support@example.com");
   });
 

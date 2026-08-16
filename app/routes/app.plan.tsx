@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import {
   Form,
   useActionData,
@@ -36,6 +36,10 @@ import {
 } from "~/lib/rate-limit.server";
 import { requireRecentReauthentication } from "~/lib/reauth.server";
 import { recordSensitiveAction } from "~/lib/security-audit.server";
+import {
+  navigateToShopifyBillingConfirmation,
+  submitShopifyBillingForm,
+} from "~/lib/shopify-billing.client";
 
 /**
  * Plan selection, upgrade and downgrade.
@@ -65,6 +69,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
       // publisher-side entitlement can see the discounted choice. The action
       // repeats the reservation check immediately before Shopify billing.
       foundingOffer: Boolean(foundingOffer),
+      scheduledDowngrade: plan.pendingPlanId
+        ? { name: PLANS[plan.pendingPlanId].name }
+        : null,
       /** Surfaced so a reviewer can see the charge is a test one, not a real bill. */
       isTest,
     };
@@ -183,13 +190,39 @@ export default function Plan() {
   const result = useActionData<typeof action>();
   const navigation = useNavigation();
   const busy = navigation.state !== "idle";
+  const [billingBusy, setBillingBusy] = useState(false);
+  const [billingError, setBillingError] = useState<string | null>(null);
   // Which interval the three cards are quoting. Purely presentational until
   // the form is submitted, so plain component state is the right home for it.
   const [yearly, setYearly] = useState(false);
 
+  async function submitBilling(event: FormEvent<HTMLFormElement>) {
+    // Calling preventDefault after an await is too late: the browser has
+    // already begun the document navigation. Check synchronously so only a
+    // real App Bridge session takes the authenticated fetch path.
+    if (!window.shopify?.idToken) return;
+    event.preventDefault();
+
+    const form = event.currentTarget;
+    setBillingError(null);
+    setBillingBusy(true);
+    const result = await submitShopifyBillingForm(form);
+    try {
+      if (result.kind === "redirect") {
+        navigateToShopifyBillingConfirmation(result.url);
+        return;
+      }
+      if (result.kind === "error") setBillingError(result.message);
+    } finally {
+      setBillingBusy(false);
+    }
+  }
+
   return (
     <>
-      {result?.error && <Banner tone="warn">{result.error}</Banner>}
+      {(billingError ?? result?.error) && (
+        <Banner tone="warn">{billingError ?? result?.error}</Banner>
+      )}
 
       {data.isDemo ? (
         <Banner>
@@ -216,6 +249,14 @@ export default function Plan() {
         <Banner>
           Test mode: charges created for this development store are Shopify test
           charges and take no money.
+        </Banner>
+      )}
+
+      {data.scheduledDowngrade && (
+        <Banner>
+          Your change to <strong>{data.scheduledDowngrade.name}</strong> is
+          scheduled for the next billing cycle. You keep your current plan
+          until then.
         </Banner>
       )}
 
@@ -323,15 +364,15 @@ export default function Plan() {
                   ))}
                 </ul>
 
-                {/* Billing exits the admin iframe for Shopify's confirmation
-                    screen. A document submission lets the Shopify adapter
-                    return its exit-iframe page; a client-side data request
-                    turns the adapter's 401 handoff into a stranded React
-                    Router error boundary instead. */}
+                {/* Billing confirmation always leaves the iframe for Shopify's
+                    own approval screen. Embedded submissions add a fresh
+                    App Bridge token and deliberately handle Shopify's 401
+                    handoff; an older/non-embedded browser keeps the secure
+                    document-submission fallback. */}
                 {current ? (
                   <Badge tone="good">Current Plan</Badge>
                 ) : (
-                  <Form method="post" reloadDocument>
+                  <Form method="post" reloadDocument onSubmit={submitBilling}>
                     <input
                       type="hidden"
                       name="plan"
@@ -339,7 +380,7 @@ export default function Plan() {
                     />
                     <button
                       className={data.currentPlan ? "btn sm" : "btn primary sm"}
-                      disabled={busy}
+                      disabled={busy || billingBusy}
                     >
                       {!data.currentPlan
                         ? founding

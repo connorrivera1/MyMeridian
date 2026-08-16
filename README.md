@@ -3,9 +3,9 @@
 A unified profitability dashboard for Shopify stores. Revenue, COGS,
 fulfilment, payment fees and overhead resolved into one number a merchant can
 act on. That number is calculated from available recorded and modeled inputs.
-Growth and Scale merchants can connect Meta Ads, Google Ads and TikTok Ads;
-until a connector is healthy and synced, ad spend is disclosed as unavailable
-and the result is qualified rather than marketed as complete net profit.
+Merchants can connect Meta Ads, Google Ads and TikTok Ads; until a connector
+is healthy and synced, ad spend is disclosed as unavailable and the result is
+qualified rather than marketed as complete net profit.
 
 Built as a real embedded Shopify app: React Router 7, Prisma/PostgreSQL,
 read-only Shopify scopes and the mandatory GDPR webhooks. Billing is enforced:
@@ -140,7 +140,7 @@ fails the _entire_ query rather than returning null for that field.
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `read_orders`       | Nothing works. Essential, and itself gated by an approved Protected Customer Data request.                                                                                                                                                                                                                                                                                         |
 | `read_products`     | No catalogue or pricing analysis. Essential.                                                                                                                                                                                                                                                                                                                                       |
-| `read_inventory`    | **No COGS.** Margins read as ~100% and every profit figure is overstated. Requested by default; not protected data.                                                                                                                                                                                                                                                                |
+| `read_inventory`    | **No confirmed COGS.** Affected margins and profit results are labelled incomplete or need COGS rather than presented as 100% or as if the cost were $0. Requested by default; not protected data.                                                                                                                                                                               |
 | `read_customers`    | No CAC, LTV, payback or customer-lifecycle product classification. **Protected customer data** — needs an approved request in the Partner Dashboard, not just the scope.                                                                                                                                                                                                           |
 | `read_fulfillments` | No capacity forecasting. MyMeridian writes no capacity data at all rather than inferring a backlog that only ever grows.                                                                                                                                                                                                                                                           |
 | `read_reports`      | No Shopify Shipping label-cost reconciliation or Shop Campaigns reporting. ShopifyQL also requires Level 2 Protected Customer Data approval covering name, address, phone and email before it exposes either aggregate schema. MyMeridian does not query or persist shopper identity for these reports; that approval is a ShopifyQL platform gate, not additional collection by the app. |
@@ -150,12 +150,11 @@ affected screens explain what is unavailable instead of rendering a zero.
 
 ### Two things that will surprise you
 
-- **Full order history is approved.** Shopify approved `read_all_orders` on
-  2026-08-11 and the scope is requested with `read_orders`. MyMeridian can now
-  backfill beyond Shopify's default 60-day window for lifetime profitability,
-  repeat-customer cohorts and seasonal trends. The app still records the scopes
-  each shop actually granted and warns if an older installation has not yet
-  granted the extended window.
+- **Full order history depends on Shopify approval and the installed scope.**
+  `read_all_orders` is requested with `read_orders`, but MyMeridian only
+  backfills beyond Shopify's default 60-day window when Shopify has approved
+  that access and the shop granted it. Otherwise it records the actual history
+  window and marks the limitation instead of implying a complete record.
 - **Ad spend requires an explicit merchant connection.** Growth and Scale
   merchants can connect Meta, Google or TikTok from inside the embedded app.
   CAC, ROAS and marketing efficiency stay unavailable rather than zero until a
@@ -258,7 +257,7 @@ and must never be reachable there.
 | `npm run shopify:dev`                            | Run against a real store via the Shopify CLI                |
 | `npm run dev`                                    | Dev server (demo / no Shopify)                              |
 | `npm run db:migrate`                             | Apply migrations                                            |
-| `npm test`                                       | Test suite (930 unit tests; 57 PostgreSQL tests are opt-in) |
+| `npm test`                                       | Test suite; PostgreSQL integration checks are opt-in         |
 | `npm run test:coverage`                          | Tests with coverage thresholds enforced                     |
 | `npm run ci`                                     | Everything CI runs: typecheck, coverage, build              |
 | `npm run typecheck`                              | Types                                                       |
@@ -271,10 +270,9 @@ and must never be reachable there.
 
 ## Guarding main
 
-This repository has **no git remote**, so there is no CI service and no
-pull-request review — and it has more than one writer, since an agent system
-also commits here. The gate that actually protects `main` is a pre-commit hook,
-and hooks are not cloned. Enable it once per checkout:
+This repository has more than one writer, including automated contributors.
+The local gate that protects commits is a pre-commit hook, and hooks are not
+cloned. Enable it once per checkout:
 
 ```bash
 git config core.hooksPath .githooks
@@ -307,7 +305,7 @@ app/
   data/       Prisma -> engine input translation, and the assembled picture.
   lib/        Auth boundary, webhooks, sync, recompute, crypto.
   design/     Tokens, primitives, hand-built SVG charts.
-  routes/     Ten app screens and thirteen webhook endpoints.
+  routes/     Merchant screens, public pages and webhook endpoints.
 ```
 
 **The engine is the product.** `app/engine/` holds pure functions with no

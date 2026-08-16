@@ -106,14 +106,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
             requirements state. The meta tag must precede the script — App
             Bridge reads the client id from it at load, and without it session
             tokens are never minted and Shopify collects no Web Vitals, which
-            is a silent failure rather than a visible one. `data-api-key` is
-            kept alongside it because both forms are in circulation. */}
+            is a silent failure rather than a visible one. */}
         {appBridgeApiKey && (
           <>
             <meta name="shopify-api-key" content={appBridgeApiKey} />
             <script
               src="https://cdn.shopify.com/shopifycloud/app-bridge.js"
-              data-api-key={appBridgeApiKey}
             />
           </>
         )}
@@ -135,18 +133,10 @@ export default function App() {
 }
 
 export function ErrorBoundary({ error }: { error: unknown }) {
-  const message =
-    error instanceof Error ? error.message : "Something went wrong.";
-
   const status =
     typeof error === "object" && error !== null && "status" in error
       ? (error as { status?: number }).status
       : undefined;
-
-  const detail =
-    typeof error === "object" && error !== null && "data" in error
-      ? String((error as { data?: unknown }).data ?? "")
-      : "";
 
   return (
     <main style={{ padding: 48, maxWidth: 640, margin: "0 auto" }}>
@@ -154,7 +144,7 @@ export function ErrorBoundary({ error }: { error: unknown }) {
         {status ? `${status} — ` : ""}MyMeridian hit a problem
       </h1>
       <p className="secondary" style={{ lineHeight: 1.6 }}>
-        {detail || message}
+        The request could not be completed. Please try again.
       </p>
       <p style={{ marginTop: 20 }}>
         <a className="btn" href="/app">

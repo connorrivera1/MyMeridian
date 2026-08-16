@@ -63,7 +63,7 @@ document.documentElement.classList.add("js");
         </a>
         <nav class="header-nav">
           <a href="/">Home</a>
-          <a href="privacy.html" aria-current="page">Privacy</a>
+          <a href="/privacy" aria-current="page">Privacy</a>
           <a href="terms.html">Terms</a>
           <a href="/support">Support</a>
         <button class="theme-switch" type="button" id="theme-switch"
@@ -134,13 +134,11 @@ document.documentElement.classList.add("js");
           <strong>https://mymeridian.io</strong>; the separate staging address
           is <strong>https://staging.mymeridian.io</strong>. The public service
           is not live yet, and staging remains a separate environment. The
-          general contact address is
-          <strong>hello@mymeridian.io</strong> and the planned merchant-support
-          and technical-emergency address is
-          <strong>support@mymeridian.io</strong>. Support delivery and
-          monitoring must be verified before public distribution. The final
-          legal publisher name and governing-law details will be supplied before
-          Shopify submission.
+          general contact address is <strong>welcome@mymeridian.io</strong>;
+          merchant support is <strong>support@mymeridian.io</strong>; and
+          technical contact is <strong>eevee@mymeridian.io</strong>. Controlled
+          delivery and monitoring are verified. The final legal publisher name
+          and governing-law details will be supplied before Shopify submission.
         </div>
 
         <h2>What MyMeridian Reads From A Store</h2>
@@ -159,9 +157,10 @@ document.documentElement.classList.add("js");
           </li>
           <li>
             <code>read_all_orders</code> — extends that read-only order history
-            beyond Shopify&rsquo;s default 60-day window so lifetime profit,
-            repeat-customer cohorts and seasonal trends are complete. This
-            permission is already approved and does not add any write access.
+            beyond Shopify&rsquo;s default 60-day window when Shopify approves it for
+            the production installation. It does not add any write access. Until
+            then, MyMeridian identifies the available history window rather than
+            implying that it has a complete record.
           </li>
           <li>
             <code>read_products</code> — the catalogue, variants and prices.
@@ -223,8 +222,8 @@ document.documentElement.classList.add("js");
         <p>
           Because a shopper email address is among the fields stored,
           MyMeridian&rsquo;s access to orders falls under Shopify&rsquo;s protected
-          customer data requirements at the level covering customer email. The
-          approved <code>read_all_orders</code> permission remains read-only;
+          customer data requirements at the level covering customer email. If
+          Shopify approves <code>read_all_orders</code>, it remains read-only;
           MyMeridian continues to apply the applicable data-handling
           undertakings and least-privilege limits described in this policy.
         </p>
@@ -425,8 +424,8 @@ document.documentElement.classList.add("js");
         <h2>Contact</h2>
         <p>
           For support, contact <strong>support@mymeridian.io</strong>. The
-          mailbox will be monitored before public distribution; until then,
-          MyMeridian is not accepting merchant installations.
+          mailbox is monitored. MyMeridian is not accepting merchant
+          installations until public distribution begins.
         </p>
       </div>
     </main>
@@ -436,7 +435,7 @@ document.documentElement.classList.add("js");
         <span>&copy; 2026 MyMeridian</span>
         <nav class="foot-nav">
           <a href="/">Home</a>
-          <a href="privacy.html">Privacy</a>
+          <a href="/privacy">Privacy</a>
           <a href="terms.html">Terms</a>
           <a href="/support">Support</a>
         </nav>

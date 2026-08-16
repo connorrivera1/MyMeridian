@@ -91,12 +91,15 @@ ALTER TABLE "FoundingMerchantEntitlement" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "WaitlistEmailDelivery" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "WaitlistEmailDelivery" FORCE ROW LEVEL SECURITY;
 
-CREATE POLICY "meridian_system_all" ON "WaitlistSignup" TO meridian_system
-  USING (true) WITH CHECK (true);
-CREATE POLICY "meridian_system_all" ON "FoundingMerchantEntitlement" TO meridian_system
-  USING (true) WITH CHECK (true);
-CREATE POLICY "meridian_system_all" ON "WaitlistEmailDelivery" TO meridian_system
-  USING (true) WITH CHECK (true);
-
-REVOKE ALL ON TABLE "WaitlistSignup", "FoundingMerchantEntitlement", "WaitlistEmailDelivery" FROM PUBLIC, meridian_tenant;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "WaitlistSignup", "FoundingMerchantEntitlement", "WaitlistEmailDelivery" TO meridian_system;
+DO $$
+DECLARE
+  system_role text := CASE WHEN EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'meridian-app-system') THEN 'meridian-app-system' ELSE 'meridian_system' END;
+  tenant_role text := CASE WHEN EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'meridian-app-tenant') THEN 'meridian-app-tenant' ELSE 'meridian_tenant' END;
+BEGIN
+  EXECUTE format('CREATE POLICY "meridian_system_all" ON "WaitlistSignup" TO %I USING (true) WITH CHECK (true)', system_role);
+  EXECUTE format('CREATE POLICY "meridian_system_all" ON "FoundingMerchantEntitlement" TO %I USING (true) WITH CHECK (true)', system_role);
+  EXECUTE format('CREATE POLICY "meridian_system_all" ON "WaitlistEmailDelivery" TO %I USING (true) WITH CHECK (true)', system_role);
+  EXECUTE format('REVOKE ALL ON TABLE "WaitlistSignup", "FoundingMerchantEntitlement", "WaitlistEmailDelivery" FROM PUBLIC, %I', tenant_role);
+  EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "WaitlistSignup", "FoundingMerchantEntitlement", "WaitlistEmailDelivery" TO %I', system_role);
+END
+$$;

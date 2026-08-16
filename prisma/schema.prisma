@@ -144,6 +144,10 @@ model Shop {
   syncCompletedAt    DateTime?
   syncStage          String?
   syncedOrders       Int        @default(0)
+  /// Exact order total reported by Shopify at the start of the active import.
+  /// Null means Shopify supplied only a lower bound, so the UI must not
+  /// manufacture a progress percentage.
+  syncTotalOrders    Int?
   syncedProducts     Int        @default(0)
   /// Resume point, so an interrupted import does not start over.
   syncCursor         String?
@@ -214,6 +218,11 @@ model Subscription {
   shopifyChargeId  String?
   trialEndsAt      DateTime?
   currentPeriodEnd DateTime?
+  /// A lower tier Shopify has accepted but which must not reduce access until
+  /// the current paid period has ended.
+  pendingPlan             String?
+  pendingInterval         String?
+  pendingEffectiveAt      DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 }
@@ -865,6 +874,9 @@ model OrderLineItem {
 
   /// COGS as it was on the day this order was placed.
   unitCost    Decimal @default(0) @db.Decimal(12, 4)
+  /// Distinguishes a confirmed $0.00 COGS from a missing Shopify
+  /// `cost_per_item` field. Missing is never interpreted as free.
+  cogsKnown   Boolean @default(false)
   refundedQty Int     @default(0)
 
   /// Which `VariantCost.effectiveAt` this snapshot came from. Null means the
@@ -1490,9 +1502,9 @@ model OAuthAccount {
 
   provider       AuthProvider
   /// The provider's stable subject claim (`sub`), never the email. Apple lets
-  /// a user hide their address and rotates the relay, and Google addresses can
-  /// be reassigned within a workspace; keying on email would silently merge or
-  /// orphan accounts.
+  /// a user hide their address and rotates the relay, while Google and
+  /// Microsoft addresses can change within an organization; keying on email
+  /// would silently merge or orphan accounts.
   providerUserId String
   /// Whatever address the provider released, kept for display only.
   providerEmail  String?
@@ -1628,6 +1640,7 @@ model PasswordResetCode {
 
 enum AuthProvider {
   GOOGLE
+  MICROSOFT
   APPLE
 }
 

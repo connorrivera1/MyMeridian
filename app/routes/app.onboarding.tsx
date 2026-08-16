@@ -1,10 +1,12 @@
 import { CostRuleKind } from "@prisma/client";
 import {
   Form,
+  isRouteErrorResponse,
   redirect,
   useActionData,
   useLoaderData,
   useNavigation,
+  useRouteError,
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
 } from "react-router";
@@ -35,7 +37,7 @@ async function loadOnboarding({ shop }: ShopContext) {
     prisma.orderLineItem.count({
       where: {
         shopId: shop.id,
-        unitCost: 0,
+        cogsKnown: false,
         quantity: { gt: 0 },
         order: { processedAt: { gte: since } },
       },
@@ -52,6 +54,8 @@ async function loadOnboarding({ shop }: ShopContext) {
     syncStatus: shop.syncStatus,
     syncStage: shop.syncStage,
     orders: totals._count._all,
+    awaitingFirstOrder:
+      shop.syncStatus === "COMPLETE" && totals._count._all === 0,
     revenueCents: Math.round(Number(totals._sum.total ?? 0) * 100),
     profitCents: Math.round(Number(totals._sum.netProfit ?? 0) * 100),
     missingCostLines,
@@ -110,7 +114,11 @@ async function updateOnboarding(request: Request, ctx: ShopContext) {
     return { error: "Check the cost figures and try again." };
   }
   const confirmedAt = new Date();
-  await prisma.$transaction([
+  // withShopContext already places this action inside the tenant transaction.
+  // Do not open a nested array transaction through the scoped Prisma proxy:
+  // React Router actions must see the completed shop update before following
+  // their data-navigation redirect.
+  const [, , , , completedShop] = await Promise.all([
     prisma.costRule.updateMany({
       where: { shopId: shop.id, kind: CostRuleKind.PAYMENT_FEE, active: true },
       data: {
@@ -148,8 +156,15 @@ async function updateOnboarding(request: Request, ctx: ShopContext) {
       data: { onboardingStep: "complete" },
     }),
   ]);
+  if (completedShop.onboardingStep !== "complete") {
+    throw new Error("Onboarding completion did not persist.");
+  }
   await enqueueShopRecompute(shop.id, "onboarding_costs_confirmed");
-  throw redirect("/app/plan");
+  // The first embedded document carries Shopify's signed context in its query.
+  // Preserve it across this action redirect: React Router follows redirects as
+  // a data request, and dropping it creates an unauthenticated request before
+  // App Bridge's fetch interceptor has a chance to mint a fresh token.
+  throw redirect(`/app/plan${new URL(request.url).search}`);
 }
 
 export default function Onboarding() {
@@ -161,10 +176,24 @@ export default function Onboarding() {
     <>
       <Banner>
         <strong>{data.shopName} is connected.</strong>{" "}
-        {data.syncStatus === "COMPLETE"
+        {data.awaitingFirstOrder
+          ? "Awaiting your first live order. The preview below is illustrative and is not included in your store’s figures."
+          : data.syncStatus === "COMPLETE"
           ? `Your first figures are ready. ${data.missingCostLines > 0 ? "Start with the orders and products already visible, then improve the result by filling the missing cost inputs below." : "You can review what is making and losing money before connecting any optional source."}`
           : `The Shopify import is ${data.syncStage ?? "still running"}; figures will keep filling in.`}
       </Banner>
+      {data.awaitingFirstOrder && (
+        <Card
+          title="Awaiting First Live Order"
+          hint="This is a clearly labelled demo preview. These example values are not part of your store’s profit calculation and will be replaced as soon as Shopify sends the first order."
+        >
+          <div className="grid cols-3">
+            <Stat small label="Example Revenue" value={<Money cents={128_000} currency={data.currency} />} />
+            <Stat small label="Example COGS" value={<Money cents={49_000} currency={data.currency} />} />
+            <Stat small label="Example Contribution" value={<Money cents={38_500} currency={data.currency} />} />
+          </div>
+        </Card>
+      )}
       <div className="grid cols-4">
         <Stat
           small
@@ -238,6 +267,21 @@ export default function Onboarding() {
         </Form>
       </Card>
     </>
+  );
+}
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  const detail = isRouteErrorResponse(error)
+    ? error.status === 403
+      ? "You no longer have access to complete onboarding for this store."
+      : "Onboarding could not be loaded right now."
+    : "Onboarding could not be loaded right now. No cost settings were changed.";
+  return (
+    <Card title="Onboarding Unavailable">
+      <p className="muted" style={{ margin: 0 }}>{detail}</p>
+      <p style={{ marginBottom: 0 }}><a className="btn sm" href="/app/onboarding">Try Again</a></p>
+    </Card>
   );
 }
 

@@ -178,6 +178,7 @@ export async function loadEngineOrders(
             unitPrice: true,
             discount: true,
             unitCost: true,
+            cogsKnown: true,
           },
         },
       },
@@ -277,6 +278,7 @@ export async function loadEngineOrders(
         unitPriceCents: toCents(item.unitPrice),
         discountCents: toCents(item.discount),
         unitCostMicros: toMicros(item.unitCost),
+        cogsKnown: item.cogsKnown,
       })),
     };
   });

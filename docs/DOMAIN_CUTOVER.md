@@ -5,32 +5,23 @@ below can be added before deployment because they do not route traffic. The
 apex and staging routing records must not change until the corresponding Fly
 app is deployed and ready.
 
-## Recheck recorded — 13 August 2026
+## Current state — 14 August 2026
 
-No DNS or provider setting was changed by the pre-launch waitlist work. An
-authenticated GoDaddy browser session was not available in this workspace, so
-this is a verified handoff rather than an applied registrar change.
+- `https://mymeridian.io` still returns GoDaddy Website Builder (`Server:
+  DPS`) at `13.248.243.5` / `76.223.105.230`; `www` redirects to the apex.
+- `https://staging.mymeridian.io` is deployed over verified TLS and its Fly
+  Machine is healthy. Its DNS and hosting must remain separate from production.
+- `mymeridian-prod` remains an un-deployed Fly app record. Do not point the
+  apex or `www` at it before explicit production deployment authorization.
+- The apex, `www`, and staging Fly certificates are issued and active through
+  the three non-routing ACME CNAMEs below.
+- Microsoft 365 MX/DKIM/DMARC and Resend DNS resolve. Controlled inbound
+  mailbox delivery and controlled Resend delivery have passed for
+  `welcome@mymeridian.io`, `support@mymeridian.io`, and `eevee@mymeridian.io`.
 
-- `https://mymeridian.io` returns GoDaddy Website Builder (`Server: DPS`) and
-  the current apex remains `13.248.243.5` / `76.223.105.230`; `www` redirects
-  to the apex.
-- `mymeridian-prod` and `mymeridian-staging` exist in Fly but have no image or
-  running Machine. Fly reports both checked hostnames as **Not verified**.
-- Production Fly ingress remains `66.241.125.144` and
-  `2a09:8280:1::168:dcef:0`. Staging has its own ingress
-  `66.241.125.205` and `2a09:8280:1::168:dce5:0`; it must not reuse the
-  production address.
-- Microsoft 365 MX, both Microsoft DKIM selectors, DMARC, and Resend DKIM all
-  resolve. DNS alone does not prove Resend domain verification or inbox
-  delivery.
+Do not change any Microsoft 365 or Resend mail record during web cutover.
 
-The owner must first authorize/pay for the required Fly Machine/Postgres
-resources, deploy and pass `/readyz`, then use an authenticated GoDaddy session
-to add the exact non-routing certificate-validation CNAMEs below. Do not point
-the apex or staging at an empty Fly app, and do not edit Microsoft 365 or
-Resend records.
-
-## Verified current state — 12 August 2026
+## Historical pre-staging snapshot — 12 August 2026
 
 - GoDaddy nameservers are authoritative (`ns25.domaincontrol.com` and
   `ns26.domaincontrol.com`).
@@ -45,10 +36,8 @@ Resend records.
 - Resend mail DNS is present: `resend._domainkey`, plus the `send` MX and SPF
   records, resolve. Dashboard verification and an actual delivery have not been
   claimed from DNS evidence alone.
-- `staging.mymeridian.io` does not currently resolve.
-- Fly CLI is authenticated. The empty, non-deployed app records
-  `mymeridian-prod` and `mymeridian-staging` are reserved in the personal
-  organization. No Machine, database or Redis service exists.
+- Staging had not yet been routed or deployed. This was superseded by the
+  current-state record above.
 - Fly assigned included shared IPv4 and Anycast IPv6 ingress addresses. The
   apex, `www` and staging Let’s Encrypt certificates are issued, verified and
   active.
@@ -96,8 +85,7 @@ them.
 
 ## Staging record
 
-After `mymeridian-staging` is deployed and its certificate is attached, add
-only this application subdomain record using the exact target Fly confirms:
+The deployed staging record is:
 
 ```text
 Type: CNAME

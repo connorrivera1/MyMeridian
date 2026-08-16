@@ -33,6 +33,7 @@ const debugBase = "http://127.0.0.1:9223";
 const outputDirectory = resolve(out);
 await mkdir(outputDirectory, { recursive: true });
 
+// nosemgrep: typescript.react.security.react-insecure-request.react-insecure-request -- CDP listens only on the local capture process and is not a product network boundary.
 const targets = await fetch(`${debugBase}/json/list`).then((response) => response.json());
 const target = targets.find((candidate) => candidate.type === "page") ?? targets[0];
 if (!target?.webSocketDebuggerUrl) {

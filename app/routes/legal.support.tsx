@@ -39,15 +39,18 @@ export default function Support() {
           <strong>Margins look too high, or every product shows 100%.</strong>{" "}
           {APP_NAME} takes cost of goods from the unit cost recorded against
           each variant&rsquo;s inventory item in Shopify. A variant with no cost
-          set contributes nothing to COGS. Open <em>Products</em>: sold units
-          with missing COGS are labelled <em>Needs COGS</em>, and modeled fee or
+          set is not treated as a $0.00 cost. Open <em>Products</em>: sold
+          units with missing COGS are labelled <em>Needs COGS</em>, and the
+          resulting profitability is marked incomplete. Modeled fee or
           fulfilment inputs are marked separately from measured costs.
         </li>
         <li>
-          <strong>History only reaches back 60 days.</strong> MyMeridian is
-          approved for <code>read_all_orders</code>, but an installation created
-          before that approval may still need to grant the updated scope. Open
-          <em>Costs &amp; connections</em> to see the scopes this store granted.
+          <strong>History only reaches back 60 days.</strong> Shopify&rsquo;s
+          <code>read_all_orders</code> approval and the scope granted to this
+          installation determine whether older orders are available. Open
+          <em>Costs &amp; connections</em> to see the scopes this store granted;
+          MyMeridian labels a limited history window rather than treating it as
+          complete.
         </li>
         <li>
           <strong>Acquisition shows no customer acquisition cost.</strong> CAC,

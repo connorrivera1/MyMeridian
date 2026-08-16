@@ -187,7 +187,7 @@ export async function queueWeeklySummary(
     prisma.orderLineItem.count({
       where: {
         shopId: shop.id,
-        unitCost: 0,
+        cogsKnown: false,
         quantity: { gt: 0 },
         order: { processedAt: { gte: periodStart, lt: periodEnd } },
       },
@@ -247,7 +247,7 @@ export async function detectAndQueueAnomalies(
       prisma.orderLineItem.count({
         where: {
           shopId: shop.id,
-          unitCost: 0,
+          cogsKnown: false,
           quantity: { gt: 0 },
           order: { processedAt: { gte: periodStart, lt: now } },
         },

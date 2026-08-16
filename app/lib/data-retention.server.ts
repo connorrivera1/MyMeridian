@@ -7,6 +7,7 @@ import { purgeExpiredOperatorSecurityData } from "~/lib/operator-auth.server";
 import { purgeExpiredRateLimitBuckets } from "~/lib/rate-limit.server";
 import { purgeExpiredMfaChallenges } from "~/lib/mfa.server";
 import { purgeOldWaitlistEmailDeliveries } from "~/lib/waitlist.server";
+import { logOperationalFailure } from "~/lib/operational-errors.server";
 
 /**
  * The retention boundary is measured in days, but an hourly sweep keeps the
@@ -46,10 +47,7 @@ function beginSweep(): void {
       // A transient database failure must not become an unhandled rejection or
       // stop future sweeps. The next interval retries the same deterministic
       // expiresAt predicate.
-      console.error(
-        "[privacy] expired customer data export purge failed",
-        error,
-      );
+      logOperationalFailure("privacy expired customer data export purge", error);
     })
     // Chained rather than combined: a failure to prune spent job receipts must
     // never be able to stop a privacy deletion, and the privacy deletion is the
@@ -62,7 +60,7 @@ function beginSweep(): void {
       }
     })
     .catch((error: unknown) => {
-      console.error("[recalc] finished job purge failed", error);
+      logOperationalFailure("recalc finished job purge", error);
     })
     .then(() => purgeExpiredSecurityAuditEvents())
     .then((count) => {
@@ -70,7 +68,7 @@ function beginSweep(): void {
         console.info(`[security] purged ${count} expired access event(s)`);
     })
     .catch((error: unknown) => {
-      console.error("[security] access-event purge failed", error);
+      logOperationalFailure("security access-event purge", error);
     })
     .then(() => purgeExpiredOperatorSecurityData())
     .then(({ sessions, auditEvents }) => {
@@ -81,7 +79,7 @@ function beginSweep(): void {
       }
     })
     .catch((error: unknown) => {
-      console.error("[operator-security] retention purge failed", error);
+      logOperationalFailure("operator-security retention purge", error);
     })
     .then(() => purgeExpiredRateLimitBuckets())
     .then((count) => {
@@ -90,14 +88,14 @@ function beginSweep(): void {
       }
     })
     .catch((error: unknown) => {
-      console.error("[rate-limit] retention purge failed", error);
+      logOperationalFailure("rate-limit retention purge", error);
     })
     .then(() => purgeExpiredMfaChallenges())
     .then((count) => {
       if (count > 0) console.info(`[mfa] purged ${count} expired challenge(s)`);
     })
     .catch((error: unknown) => {
-      console.error("[mfa] challenge retention purge failed", error);
+      logOperationalFailure("MFA challenge retention purge", error);
     })
     .then(() => purgeOldWaitlistEmailDeliveries())
     .then((count) => {
@@ -106,7 +104,7 @@ function beginSweep(): void {
       }
     })
     .catch((error: unknown) => {
-      console.error("[waitlist] email receipt retention purge failed", error);
+      logOperationalFailure("waitlist email receipt retention purge", error);
     })
     .then(async () => {
       const [oauth, notifications] = await Promise.all([
@@ -120,7 +118,7 @@ function beginSweep(): void {
       }
     })
     .catch((error: unknown) => {
-      console.error("[retention] connector/notification purge failed", error);
+      logOperationalFailure("retention connector/notification purge", error);
     })
     .finally(() => {
       if (state.inFlight === work) state.inFlight = undefined;

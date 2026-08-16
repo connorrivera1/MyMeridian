@@ -15,6 +15,8 @@ export default [
   // be moved behind authentication.
   route("privacy", "routes/legal.privacy.tsx"),
   route("support", "routes/legal.support.tsx"),
+  route("robots.txt", "routes/robots.txt.ts"),
+  route("sitemap.xml", "routes/sitemap.xml.ts"),
   route("healthz", "routes/health.live.ts"),
   route("readyz", "routes/health.ready.ts"),
 

@@ -9,8 +9,22 @@ primary_region = "iad"
   NODE_ENV = "production"
   PORT = "8080"
   SHOPIFY_APP_URL = "https://mymeridian.io"
+  SCOPES = "read_orders,read_all_orders,read_products,read_fulfillments,read_inventory,read_reports"
   MERIDIAN_SUPPORT_EMAIL = "support@mymeridian.io"
   MERIDIAN_SUPPORT_URL = "https://mymeridian.io/support"
+  MERIDIAN_EMAIL_FROM = "MyMeridian <welcome@mymeridian.io>"
+  MERIDIAN_PUBLIC_ORIGIN = "https://mymeridian.io"
+  # Meta, Google Ads and TikTok are launch commitments. /readyz refuses to
+  # report production-ready until their exact global OAuth/API credentials are
+  # present; merchant authorizations are still stored separately and encrypted.
+  MERIDIAN_REQUIRE_LAUNCH_CONNECTORS = "true"
+  # Browser-based Google and Microsoft sign-in are launch commitments too;
+  # readiness rejects a production machine that lacks their web OAuth keys.
+  MERIDIAN_REQUIRE_WEB_OAUTH = "true"
+  # A launch connector needs its durable worker active. Readiness also refuses
+  # a secret override to true, so an exhausted staging queue cannot silently
+  # become the production behavior.
+  MERIDIAN_ADS_WORKER_DISABLED = "false"
   # app/lib/auth.server.ts throws at boot if this is "true" while
   # NODE_ENV=production. That is deliberate — the demo path bypasses Shopify
   # session authentication — so this is not an optional line.

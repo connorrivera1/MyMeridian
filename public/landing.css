@@ -92,8 +92,9 @@
   --ink: #0a0a0a;
   --ink-rgb: 10, 10, 10;
   --ink-2: rgba(10, 10, 10, 0.68);
-  --ink-3: rgba(10, 10, 10, 0.5);
-  --ink-4: rgba(10, 10, 10, 0.36);
+  --ink-3: rgba(10, 10, 10, 0.58);
+  /* Subdued labels remain readable at text sizes, not merely decorative. */
+  --ink-4: rgba(10, 10, 10, 0.58);
 
   /*
    * The data still has to say three different things — money in, money taken,
@@ -3674,7 +3675,7 @@ html[data-theme="dark"] {
   --ink-rgb: 245, 245, 245;
   --ink-2: rgba(245, 245, 245, 0.7);
   --ink-3: rgba(245, 245, 245, 0.52);
-  --ink-4: rgba(245, 245, 245, 0.38);
+  --ink-4: rgba(245, 245, 245, 0.52);
 
   --gold: #ffffff;          /* kept — still the strongest mark */
   --gold-bright: #ffffff;

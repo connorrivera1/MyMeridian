@@ -1,4 +1,5 @@
 import {
+  Channel,
   ConnectorProvider,
   ConnectorStatus,
   CostRuleKind,
@@ -37,6 +38,19 @@ import {
   ensureShipStationWebhook,
   retryShopifyShippingConnector,
 } from "~/integrations/shipping.server";
+
+function adChannelForConnector(provider: ConnectorProvider): Channel | null {
+  switch (provider) {
+    case ConnectorProvider.FACEBOOK_ADS:
+      return Channel.FACEBOOK;
+    case ConnectorProvider.GOOGLE_ADS:
+      return Channel.GOOGLE;
+    case ConnectorProvider.TIKTOK_ADS:
+      return Channel.TIKTOK;
+    default:
+      return null;
+  }
+}
 
 export async function loader({ request }: LoaderFunctionArgs) {
   return withShopContext(request, (ctx) => loadSettings(request, ctx));
@@ -330,21 +344,39 @@ async function updateSettings(request: Request, ctx: ShopContext) {
         message: "That ad account is not authorized for this connection.",
       };
     }
-    await prisma.connector.update({
-      where: { id: connector.id },
-      data: {
-        externalAccountId,
-        displayName: typeof selected.name === "string" ? selected.name : null,
-        accountCurrency:
-          typeof selected.currency === "string" ? selected.currency : null,
-        lastSyncedAt: null,
-        lastDeepSyncAt: null,
-        lastError: null,
-      },
-    });
+    if (connector.externalAccountId === externalAccountId) {
+      return { ok: true, message: "That ad account is already selected." };
+    }
+    const channel = adChannelForConnector(connector.provider);
+    if (!channel) {
+      return { ok: false, message: "That connection does not support ad-account selection." };
+    }
+    // Spend is keyed to the store and channel, rather than the connector id.
+    // Retaining it after the merchant selects another advertiser would blend
+    // two accounts into one profitability result. Clear both the reporting
+    // rows and their sync ledger atomically, then let the scheduler import the
+    // newly chosen account from a clean horizon.
+    await prisma.$transaction([
+      prisma.adSpend.deleteMany({ where: { shopId: shop.id, channel } }),
+      prisma.adSyncWindow.deleteMany({ where: { connectorId: connector.id } }),
+      prisma.connector.update({
+        where: { id: connector.id },
+        data: {
+          externalAccountId,
+          displayName: typeof selected.name === "string" ? selected.name : null,
+          accountCurrency:
+            typeof selected.currency === "string" ? selected.currency : null,
+          lastSyncedAt: null,
+          lastDeepSyncAt: null,
+          lastError: null,
+        },
+      }),
+    ]);
+    invalidateAnalyticsCache();
+    await enqueueShopRecompute(shop.id, "ad_account_changed");
     return {
       ok: true,
-      message: "Ad account changed. A fresh spend sync is queued.",
+      message: "Ad account changed. Previous-account spend was cleared and a fresh sync is queued.",
     };
   }
 
@@ -1039,7 +1071,10 @@ export default function Settings() {
                             className="btn sm"
                             disabled={busy || !data.reporting.canUseConnections}
                           >
-                            Connect
+                            {connector.status === ConnectorStatus.ERROR ||
+                            connector.status === ConnectorStatus.DISCONNECTED
+                              ? "Reconnect"
+                              : "Connect"}
                           </button>
                         </Form>
                       ) : (

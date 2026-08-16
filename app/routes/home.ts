@@ -23,14 +23,19 @@ import { hasShopifyCredentials } from "~/shopify.server";
  * never reads it off disk and the Docker image needs no extra COPY.
  */
 
-const LANDING = new Response(landingHtml, {
-  headers: {
+async function landingResponse(): Promise<Response> {
+  const { addPublicDocumentSecurityHeadersForHtml } = await import(
+    "~/lib/public-document-security.server"
+  );
+  const headers = new Headers({
     "content-type": "text/html; charset=utf-8",
     // The document is identical for everyone; the assets it pulls are
     // fingerprinted separately by Vite.
     "cache-control": "public, max-age=0, must-revalidate",
-  },
-});
+  });
+  addPublicDocumentSecurityHeadersForHtml(headers, landingHtml);
+  return new Response(landingHtml, { headers });
+}
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const canonicalRedirect = canonicalDeploymentRedirect(request);
@@ -53,5 +58,5 @@ export async function loader({ request }: LoaderFunctionArgs) {
   if (await resolveWebUser(request)) throw redirect("/app");
 
   // A fresh Response each time, because a Response body can only be read once.
-  return LANDING.clone();
+  return landingResponse();
 }

@@ -12,7 +12,7 @@ import { createHmac } from "node:crypto";
 
 import { Prisma } from "@prisma/client";
 
-import prisma from "~/db.server";
+import { systemPrisma } from "~/db.server";
 
 const KEY_BYTES = 32;
 const TEST_BYPASS_ENV = "MERIDIAN_RATE_LIMIT_TEST_ENABLED";
@@ -134,7 +134,12 @@ export async function consumeRateLimit(
     : `ip:${clientAddress(input.request)}`;
   const subjectHash = fingerprint(identity, env);
 
-  const rows = await prisma.$queryRaw<Array<{ count: number }>>(Prisma.sql`
+  // Rate-limit fingerprints are deliberately a system-only relation: they
+  // protect public endpoints and can cover one subject across more than one
+  // merchant. Running this insert through a tenant transaction makes correct
+  // RLS deny it, which turns a protected mutation into a 500. The dedicated
+  // system runtime role has the narrow grant required for this table.
+  const rows = await systemPrisma.$queryRaw<Array<{ count: number }>>(Prisma.sql`
     INSERT INTO "RateLimitBucket"
       ("scope", "subjectHash", "windowStart", "count", "expiresAt", "updatedAt")
     VALUES
@@ -194,7 +199,7 @@ export function rateLimitHeaders(decision: RateLimitDecision): HeadersInit {
 export async function purgeExpiredRateLimitBuckets(
   now = new Date(),
 ): Promise<number> {
-  const deleted = await prisma.rateLimitBucket.deleteMany({
+  const deleted = await systemPrisma.rateLimitBucket.deleteMany({
     where: { expiresAt: { lt: now } },
   });
   return deleted.count;

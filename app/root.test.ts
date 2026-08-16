@@ -54,10 +54,11 @@ describe("root Layout", () => {
 
     expect(html).toContain('<meta name="shopify-api-key" content="live-key"/>');
     expect(html).toContain(
-      '<script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"',
+      'src="https://cdn.shopify.com/shopifycloud/app-bridge.js"',
     );
-    // App Bridge reads the client id from the meta tag as it loads. After it,
-    // the tag is never read and session tokens are never minted.
+    // Shopify's current CDN script reads its public client key from the meta
+    // tag. Keeping configuration in one documented location avoids a stale
+    // script attribute overriding the active app identity.
     expect(html.indexOf('name="shopify-api-key"')).toBeLessThan(
       html.indexOf("app-bridge.js"),
     );
@@ -73,7 +74,7 @@ describe("root Layout", () => {
 
     expect(html).toContain('<meta name="shopify-api-key" content="test-api-key"/>');
     expect(html).toContain(
-      '<script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"',
+      'src="https://cdn.shopify.com/shopifycloud/app-bridge.js"',
     );
   });
 

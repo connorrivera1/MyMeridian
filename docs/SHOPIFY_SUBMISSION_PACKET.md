@@ -6,9 +6,9 @@ Partner Dashboard without Connor's explicit authorization. Status is governed by
 
 ## Required packet
 
-- [ ] Partner organization/public app registration are owned by Connor as the
-  individual publisher. The one-time $19 fee is initiated only with a separate
-  explicit Connor authorization at the registration step.
+- [x] Shopify App Store registration is paid and complete under Connor's
+  publisher account. This does not submit the app, publish a listing, or
+  establish a production application URL.
 - [ ] Stable production HTTPS application URL is live; all URLs in deployed
   Shopify configuration use it, not a tunnel, localhost, example or Shopify
   placeholder.
@@ -42,7 +42,8 @@ Partner Dashboard without Connor's explicit authorization. Status is governed by
 
 ## Not ready to submit until Connor supplies
 
-1. Partner/app ownership and any required identity/payment/business answers.
+1. Final public-app configuration and any remaining identity, payment or
+   business answers in the Partner Dashboard.
 2. Final domain, production origin, publisher legal entity, support and
    emergency contacts.
 3. Protected customer-data request answers/evidence and Shopify approval.

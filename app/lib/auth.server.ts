@@ -17,7 +17,11 @@ import {
   RATE_LIMIT_MESSAGE,
   rateLimitHeaders,
 } from "./rate-limit.server";
-import { withTenantDatabase } from "~/db.server";
+import { systemPrisma, withTenantDatabase } from "~/db.server";
+import {
+  readShopifyBridgeSession,
+  serializeShopifyBridgeSession,
+} from "~/lib/shopify-bridge-session.server";
 
 const demoModeRequested = process.env.MERIDIAN_DEMO_MODE === "true";
 
@@ -74,6 +78,10 @@ export interface ShopContext {
    * switcher knows whose memberships to offer.
    */
   user: User | null;
+  /** A short-lived fallback created after Shopify verified the initial token. */
+  bridgeSessionFallback?: boolean;
+  /** Applied by a route response, never exposed to browser JavaScript. */
+  bridgeSessionCookie?: string | null;
 }
 
 /**
@@ -149,7 +157,38 @@ export async function requireShopContext(
       actorId: session.id,
       request,
     });
-    return { shop, admin, billing, session, isDemo: false, user: null };
+    return {
+      shop,
+      admin,
+      billing,
+      session,
+      isDemo: false,
+      user: null,
+      bridgeSessionFallback: false,
+      bridgeSessionCookie: serializeShopifyBridgeSession(session, request),
+    };
+  }
+
+  // A data navigation can race App Bridge's fetch interceptor. It has no
+  // bearer header, but it may carry the five-minute, signed bootstrap cookie
+  // minted only after the preceding request passed authenticate.admin().
+  const bridgeSession = readShopifyBridgeSession(request);
+  if (bridgeSession) {
+    const shop = await systemPrisma.shop.findFirst({
+      where: { domain: bridgeSession.shop, uninstalledAt: null, isDemo: false },
+    });
+    if (shop) {
+      return {
+        shop,
+        admin: null,
+        billing: null,
+        session: { shop: bridgeSession.shop, id: bridgeSession.sessionId },
+        isDemo: false,
+        user: null,
+        bridgeSessionFallback: true,
+        bridgeSessionCookie: null,
+      };
+    }
   }
 
   /*
@@ -185,6 +224,8 @@ export async function requireShopContext(
       session: null,
       isDemo: false,
       user,
+      bridgeSessionFallback: false,
+      bridgeSessionCookie: null,
     };
   }
 
@@ -202,7 +243,16 @@ export async function requireShopContext(
       actorId: session.id,
       request,
     });
-    return { shop, admin, billing, session, isDemo: false, user: null };
+    return {
+      shop,
+      admin,
+      billing,
+      session,
+      isDemo: false,
+      user: null,
+      bridgeSessionFallback: false,
+      bridgeSessionCookie: serializeShopifyBridgeSession(session, request),
+    };
   }
 
   if (!demoAvailable) {
@@ -223,6 +273,8 @@ export async function requireShopContext(
     session: null,
     isDemo: true,
     user: null,
+    bridgeSessionFallback: false,
+    bridgeSessionCookie: null,
   };
 }
 
@@ -237,10 +289,30 @@ export async function withShopContext<T>(
   const context = await requireShopContext(request);
   requireStandaloneMutationOrigin(request, context);
   await requireMerchantMutationAllowance(request, context);
-  return withTenantDatabase(
+  let redirectResponse: Response | null = null;
+  const result = await withTenantDatabase(
     { shopId: context.shop.id, userId: context.user?.id ?? null },
-    () => work(context),
+    async () => {
+      try {
+        return await work(context);
+      } catch (error) {
+        // React Router redirect responses are control flow, not failures. Let
+        // the tenant transaction commit before rethrowing the redirect so a
+        // completed form action is never silently rolled back.
+        if (
+          error instanceof Response &&
+          error.status >= 300 &&
+          error.status < 400
+        ) {
+          redirectResponse = error;
+          return undefined as T;
+        }
+        throw error;
+      }
+    },
   );
+  if (redirectResponse) throw redirectResponse;
+  return result;
 }
 
 /**
@@ -279,9 +351,12 @@ export async function requireMerchantMutationAllowance(
  */
 export function requireStandaloneMutationOrigin(
   request: Request,
-  context: { user: unknown },
+  context: { user: unknown; bridgeSessionFallback?: boolean },
 ): void {
-  if (!context.user || ["GET", "HEAD", "OPTIONS"].includes(request.method)) {
+  if (
+    (!context.user && !context.bridgeSessionFallback) ||
+    ["GET", "HEAD", "OPTIONS"].includes(request.method)
+  ) {
     return;
   }
   if (!requestOriginIsSelf(request)) {

@@ -415,12 +415,12 @@ export async function authenticateWithPassword(
  * Linking by verified email is deliberate and is the one place where an email
  * address is treated as proof: Google and Apple have both confirmed the
  * address themselves, so a merchant who signed up with a password and later
- * clicks "Continue with Google" reaches their own account rather than a
+ * clicks "Continue with Google" or "Continue with Apple" reaches their own account rather than a
  * duplicate. An *unverified* provider email is never linked, because then the
  * proof does not exist and linking would be an account takeover.
  */
 export async function upsertOAuthUser(input: {
-  provider: "GOOGLE" | "APPLE";
+  provider: "GOOGLE" | "MICROSOFT" | "APPLE";
   providerUserId: string;
   email: string | null;
   emailVerified: boolean;

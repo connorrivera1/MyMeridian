@@ -7,6 +7,7 @@ import {
 import {
   completeApple,
   completeGoogle,
+  completeMicrosoft,
   safeReturnPath,
   unpackHandshake,
 } from "~/lib/web-oauth.server";
@@ -60,7 +61,7 @@ async function handle(
 ): Promise<Response> {
   const secure = requestIsSecure(request);
 
-  if (provider !== "google" && provider !== "apple") {
+  if (provider !== "google" && provider !== "microsoft" && provider !== "apple") {
     throw new Response("Unknown provider", { status: 404 });
   }
   const limited = await firstDeniedRequestLimit({
@@ -96,17 +97,29 @@ async function handle(
           handshake.codeVerifier,
           handshake.nonce,
         )
-      : await completeApple(
-          input.code,
-          redirectUri,
-          handshake.nonce,
-          input.name,
-        );
+      : provider === "microsoft"
+        ? await completeMicrosoft(
+            input.code,
+            redirectUri,
+            handshake.codeVerifier,
+            handshake.nonce,
+          )
+        : await completeApple(
+            input.code,
+            redirectUri,
+            handshake.nonce,
+            input.name,
+          );
 
   if (!identity) return rejected(secure);
 
   const { user } = await upsertOAuthUser({
-    provider: provider === "google" ? "GOOGLE" : "APPLE",
+    provider:
+      provider === "google"
+        ? "GOOGLE"
+        : provider === "microsoft"
+          ? "MICROSOFT"
+          : "APPLE",
     providerUserId: identity.providerUserId,
     email: identity.email,
     emailVerified: identity.emailVerified,
@@ -136,7 +149,7 @@ async function handle(
   return new Response(null, { status: 302, headers });
 }
 
-/** Google returns with a GET. */
+/** Google and Microsoft return with a top-level GET. */
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const url = new URL(request.url);
 

@@ -512,6 +512,10 @@ export async function syncOrderFromShopify(shopId: string, payload: Payload) {
       // Falling back to the catalog's current cost keeps a variant with no
       // timeline behaving exactly as it did before this change.
       const effective = variant ? effectiveCosts.get(variant.id) : undefined;
+      // `undefined !== null` is true, so use a nullish check rather than a
+      // strict null comparison. A line with no matched catalog variant has no
+      // trustworthy COGS evidence and must remain visibly unresolved.
+      const cogsKnown = effective !== undefined || variant?.unitCost != null;
       const lineDiscount = (item.discount_allocations ?? []).reduce(
         (sum: number, allocation: Payload) =>
           sum + Number(allocation.amount ?? 0),
@@ -532,6 +536,7 @@ export async function syncOrderFromShopify(shopId: string, payload: Payload) {
           effective?.unitCost ?? variant?.unitCost ?? "0",
           "0.0000",
         ),
+        cogsKnown,
         costEffectiveAt: effective?.effectiveAt ?? null,
         refundedQty: refundedByLineItem.get(String(item.id)) ?? 0,
       };

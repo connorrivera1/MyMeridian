@@ -9,7 +9,7 @@ required.
    `https://mymeridian.io/assets/mymeridian-email-logo.png` after the public
    domain is live. Outlook signatures work most reliably with a public HTTPS
    image rather than a local file.
-2. In Outlook, create separate signatures for `hello@mymeridian.io` and
+2. In Outlook, create separate signatures for `welcome@mymeridian.io` and
    `support@mymeridian.io`. Insert the logo at 174 × 47 pixels, then add the
    address, website and exact tagline: **Know what you kept. Know what to
    fix.**

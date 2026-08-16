@@ -168,7 +168,8 @@ function allocateOrderToProducts(
       pickPackCents: pickPack[i] ?? 0,
       adCostCents: adCost[i] ?? 0,
       returnShippingCents: returnShipping[i] ?? 0,
-      hasMissingCogs: item.unitCostMicros <= 0 && soldQty > 0,
+      hasMissingCogs:
+        soldQty > 0 && !(item.cogsKnown ?? item.unitCostMicros > 0),
       usesModeledCosts: profit.usesModeledCosts,
     };
   });

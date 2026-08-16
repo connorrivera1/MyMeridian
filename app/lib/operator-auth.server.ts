@@ -124,6 +124,7 @@ export const OPERATOR_SECURITY_HEADERS = {
     "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'",
   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=()",
   "referrer-policy": "no-referrer",
+  "strict-transport-security": "max-age=31536000",
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
   "x-robots-tag": "noindex, nofollow, noarchive",

@@ -4531,8 +4531,47 @@ td.muted .money.neg,
    panel rather than the dashboard shell. */
 
 .account-panel {
+  position: relative;
   padding: 40px 36px 34px;
   text-align: left;
+}
+
+.account-back {
+  position: absolute;
+  top: 20px;
+  left: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 560;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.16s var(--ease-out), transform 0.16s var(--ease-out);
+}
+
+.account-back svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.account-back:hover {
+  color: var(--ink-primary);
+  transform: translateX(-2px);
+}
+
+.account-back:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
 }
 
 .account-mark {
@@ -4676,6 +4715,13 @@ td.muted .money.neg,
 }
 
 .account-fineprint { margin-top: 18px; }
+
+@media (max-width: 480px) {
+  .account-back {
+    top: 18px;
+    left: 18px;
+  }
+}
 
 /* ---------------------------------------------------------------- welcome
    Shown once, immediately after an account is created. Same sky, same mark
@@ -4883,6 +4929,18 @@ td.muted .money.neg,
   stroke: var(--panel);
   stroke-width: 4px;
   stroke-linejoin: round;
+}
+
+/* The Overview time-series card is intentionally flush so the plot can use
+   its full width. Its legend and chart still need the same reading gutter as
+   the title above them; otherwise the first legend label touches the card
+   rule and makes the section feel unfinished. */
+.overview-time-series .legend {
+  padding-inline: var(--ledger-gutter);
+}
+
+.overview-time-series-chart {
+  padding: var(--s-1) var(--ledger-gutter) var(--s-4);
 }
 
 /* Orders filters live inside the card's reading gutter instead of beginning

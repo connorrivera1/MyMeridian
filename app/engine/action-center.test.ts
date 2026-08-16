@@ -30,6 +30,24 @@ describe("buildActionCenter", () => {
     expect(actions[0]).toMatchObject({ severity: "CRITICAL", confidence: "High" });
   });
 
+  it("makes a measured shipping shortfall actionable with exact figures", () => {
+    const input = base();
+    input.period.orders = [
+      {
+        contributionProfitCents: -12_000,
+        hasMissingCogs: false,
+        shippingRevenueCents: 800,
+        shippingCostCents: 3_200,
+      },
+    ];
+
+    const [action] = buildActionCenter(input);
+    expect(action?.title).toBe("1 Orders Lost Contribution From A Shipping Fee Mismatch");
+    expect(action?.observedFact).toContain("$120");
+    expect(action?.observedFact).toContain("$24");
+    expect(action?.suggestedAction).toContain("carrier rates");
+  });
+
   it("does not recommend a product or channel when COGS evidence is missing", () => {
     const input = base();
     input.period.orders[0]!.hasMissingCogs = true;

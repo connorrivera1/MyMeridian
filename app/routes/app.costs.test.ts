@@ -22,6 +22,10 @@ const removeBundleComponent = vi.fn();
 const upsertBundleComponent = vi.fn();
 const enqueueBundleDetection = vi.fn();
 const variantFindFirst = vi.fn();
+const variantFindMany = vi.fn();
+const transaction = vi.fn(async (work: (tx: unknown) => unknown) =>
+  work({ variant: { findMany: (...args: unknown[]) => variantFindMany(...args) } }),
+);
 
 vi.mock("~/lib/cost-history.server", () => ({
   recordVariantCost: (...args: unknown[]) => recordVariantCost(...args),
@@ -57,10 +61,11 @@ vi.mock("~/lib/plan.server", () => ({
 vi.mock("~/db.server", () => ({
   default: {
     variant: {
-      findMany: async () => [],
+      findMany: (...args: unknown[]) => variantFindMany(...args),
       count: async () => 0,
       findFirst: (...args: unknown[]) => variantFindFirst(...args),
     },
+    $transaction: (work: (tx: unknown) => unknown) => transaction(work),
     bundleComponent: { findMany: async () => [] },
     periodSnapshot: { findMany: async () => [] },
     periodRestatement: { findMany: async () => [] },
@@ -68,7 +73,7 @@ vi.mock("~/db.server", () => ({
   },
 }));
 
-const { CostsView, action } = await import("./app.costs");
+const { CostsView, action, parseCogsCsv } = await import("./app.costs");
 
 function data(overrides: Record<string, unknown> = {}) {
   return {
@@ -184,6 +189,7 @@ const form = (fields: Record<string, string>) => {
 beforeEach(() => {
   vi.clearAllMocks();
   variantFindFirst.mockResolvedValue({ id: "v1" });
+  variantFindMany.mockResolvedValue([]);
   recordVariantCost.mockResolvedValue({
     divergedFrom: null,
     changedCurrentCost: true,
@@ -272,6 +278,23 @@ describe("Costs page", () => {
   });
 });
 
+describe("COGS CSV parsing", () => {
+  it("accepts the documented two-column file, including quoted SKUs", () => {
+    expect(
+      parseCogsCsv('sku,cogs_usd\nWIDGET,5.25\n"BUNDLE, BLUE",15.7500\n'),
+    ).toEqual([
+      { sku: "WIDGET", cogsUsd: 5.25, line: 2 },
+      { sku: "BUNDLE, BLUE", cogsUsd: 15.75, line: 3 },
+    ]);
+  });
+
+  it("rejects malformed headers, duplicate SKUs, and non-positive costs", () => {
+    expect(() => parseCogsCsv("sku,cost\nWIDGET,5.25")).toThrow("sku,cogs_usd");
+    expect(() => parseCogsCsv("sku,cogs_usd\nWIDGET,5\nWIDGET,6")).toThrow("more than once");
+    expect(() => parseCogsCsv("sku,cogs_usd\nWIDGET,0")).toThrow("positive");
+  });
+});
+
 describe("Costs actions", () => {
   it("records a cost and says history has not moved", async () => {
     const result = (await action(
@@ -336,6 +359,26 @@ describe("Costs actions", () => {
 
     expect(result.ok).toBe(false);
     expect(recordVariantCost).not.toHaveBeenCalled();
+  });
+
+  it("writes a bulk missing-COGS repair atomically", async () => {
+    variantFindMany.mockResolvedValue([{ id: "v1", unitCost: null }]);
+
+    const result = (await action(
+      form({
+        intent: "bulk-assign-missing-cogs",
+        variantIds: "v1",
+        unitCost: "6.50",
+        effectiveAt: "2026-06-01",
+      }),
+    )) as { ok: boolean };
+
+    expect(result.ok).toBe(true);
+    expect(transaction).toHaveBeenCalledOnce();
+    expect(recordVariantCost).toHaveBeenCalledWith(
+      expect.objectContaining({ variantId: "v1", unitCostMicros: 65_000 }),
+      expect.anything(),
+    );
   });
 
   it("rejects an unparseable effective date", async () => {

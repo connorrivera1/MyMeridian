@@ -67,6 +67,12 @@ export interface AdPlatformAuth {
   accessToken: string;
   /** Present only for providers whose tokens rotate (Google). */
   refreshToken?: string | null;
+  /**
+   * Google Ads requires the managing customer id when the selected advertiser
+   * is reachable only through an MCC. Directly authorized advertisers leave
+   * this unset; sending their own id as a manager header is not equivalent.
+   */
+  loginCustomerId?: string | null;
 }
 
 export interface AdPlatformAdapter {

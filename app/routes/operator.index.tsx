@@ -41,6 +41,16 @@ function dateTime(value: string | Date | null): string {
   }).format(new Date(value));
 }
 
+function titleCase(value: string): string {
+  return value
+    .replace(/_/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .trim()
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
 export default function OperatorOverview() {
   const { overview, stores, search } = useLoaderData<typeof loader>();
   const { revenue, lifecycle, failures, system, waitlist } = overview;
@@ -57,7 +67,7 @@ export default function OperatorOverview() {
           </p>
         </div>
         <div className={`operator-status operator-status-${system.status}`}>
-          <span aria-hidden="true" /> System {system.status}
+          <span aria-hidden="true" /> System {titleCase(system.status)}
         </div>
       </div>
 
@@ -73,7 +83,7 @@ export default function OperatorOverview() {
         </div>
         <div className="operator-plan-row">
           {Object.entries(revenue.planDistribution).map(([plan, count]) => (
-            <div key={plan}><span>{plan}</span><strong>{count}</strong></div>
+            <div key={plan}><span>{titleCase(plan)}</span><strong>{count}</strong></div>
           ))}
         </div>
       </section>
@@ -86,9 +96,9 @@ export default function OperatorOverview() {
           <Metric label="Failed Imports" value={failures.failedImports} />
           <Metric label="Webhook Failures" value={failures.webhookFailures} />
           <Metric label="Background-Job Failures" value={failures.recalcFailures + failures.notificationFailures + failures.adSyncFailures} note={`${failures.recalcFailures} Recalc · ${failures.notificationFailures} Notification · ${failures.adSyncFailures} Ad Sync`} />
-          <Metric label="Database" value={system.database} note={`${system.databaseLatencyMs} ms probe`} />
-          <Metric label="Ad-ingestion worker" value={system.adIngestion} note="Redis queue configuration" />
-          <Metric label="Email delivery" value={system.emailDelivery} note="Transactional provider configuration" />
+          <Metric label="Database" value={titleCase(system.database)} note={`${system.databaseLatencyMs} ms Probe`} />
+          <Metric label="Ad-Ingestion Worker" value={system.adIngestion ? titleCase(system.adIngestion) : "—"} note="Redis Queue Configuration" />
+          <Metric label="Email Delivery" value={system.emailDelivery ? titleCase(system.emailDelivery) : "—"} note="Transactional Provider Configuration" />
         </div>
         <div className="operator-backlog">
           <span>Webhook Backlog <strong>{system.webhookBacklog}</strong></span>
@@ -160,7 +170,7 @@ export default function OperatorOverview() {
           <div className="operator-alert-list">
             {overview.alerts.map((alert) => (
               <Link to={`/operator/stores/${alert.shopId}`} key={alert.id} className="operator-alert-row">
-                <span className={`operator-severity operator-severity-${alert.severity}`}>{alert.severity}</span>
+                <span className={`operator-severity operator-severity-${alert.severity}`}>{titleCase(alert.severity)}</span>
                 <span><strong>{alert.summary}</strong><small>{alert.shopDomain}</small></span>
                 <time>{dateTime(alert.occurredAt)}</time>
               </Link>
@@ -185,9 +195,9 @@ export default function OperatorOverview() {
               {stores.map((store) => (
                 <tr key={store.id}>
                   <td><Link to={`/operator/stores/${store.id}`}>{store.domain}</Link></td>
-                  <td>{store.subscription?.plan ?? "none"}</td>
-                  <td>{store.uninstalledAt ? "uninstalled" : (store.subscription?.status ?? "none")}</td>
-                  <td>{store.syncStatus.toLowerCase()}</td>
+                  <td>{titleCase(store.subscription?.plan ?? "none")}</td>
+                  <td>{titleCase(store.uninstalledAt ? "uninstalled" : (store.subscription?.status ?? "none"))}</td>
+                  <td>{titleCase(store.syncStatus)}</td>
                   <td>{dateTime(store.lastSyncedAt)}</td>
                 </tr>
               ))}

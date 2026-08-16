@@ -13,6 +13,7 @@ import type { User, WebSession } from "@prisma/client";
 
 import prisma from "~/db.server";
 import { decryptSecret, encryptSecret } from "~/lib/crypto.server";
+import { renderAuthenticationCode } from "~/lib/email-templates.server";
 import { sendEmail, mailConfiguration } from "~/lib/mail.server";
 import { generateCode, normalizeCode } from "~/lib/password-reset.server";
 
@@ -27,6 +28,19 @@ export type PendingWebSession = WebSession & { user: User };
 export interface SmsProviderConfiguration {
   configured: boolean;
   invalid: string[];
+}
+
+/** A provider response stripped to the two values safe to surface or log. */
+export class SmsVerificationProviderError extends Error {
+  readonly status: number;
+  readonly code: number | null;
+
+  constructor(status: number, code: number | null) {
+    super(`SMS verification provider rejected the request (${status}).`);
+    this.name = "SmsVerificationProviderError";
+    this.status = status;
+    this.code = code;
+  }
 }
 
 export function smsProviderConfiguration(
@@ -114,12 +128,29 @@ async function twilioPost(
       body,
     },
   );
+  const responseText = await response.text();
+  let payload: unknown = null;
+  try {
+    payload = responseText ? JSON.parse(responseText) : null;
+  } catch {
+    // Twilio errors should be JSON, but never promote a provider body to logs.
+  }
   if (!response.ok) {
-    throw new Error(
-      `SMS verification provider rejected the request (${response.status}).`,
+    const code =
+      payload &&
+      typeof payload === "object" &&
+      typeof (payload as { code?: unknown }).code === "number"
+        ? (payload as { code: number }).code
+        : null;
+    throw new SmsVerificationProviderError(
+      response.status,
+      code,
     );
   }
-  return (await response.json()) as Record<string, unknown>;
+  if (!payload || typeof payload !== "object") {
+    throw new Error("SMS verification provider returned an invalid response.");
+  }
+  return payload as Record<string, unknown>;
 }
 
 async function startSmsVerification(
@@ -232,12 +263,13 @@ export async function startMfaChallenge(
       if (!mailConfiguration(env).configured && env.NODE_ENV !== "production") {
         console.info(`[mfa] local challenge ${challenge.id}: ${code}`);
       } else {
+        const rendered = renderAuthenticationCode({ code: code!, env });
         await sendEmail(
           {
             to: destination,
-            subject: "Your MyMeridian authentication code",
-            text: `Your MyMeridian authentication code is ${code}. It expires in 10 minutes. If you did not request it, sign out of other sessions and reset your password.`,
-            html: `<p>Your MyMeridian authentication code is <strong>${code}</strong>.</p><p>It expires in 10 minutes. If you did not request it, sign out of other sessions and reset your password.</p>`,
+            subject: rendered.subject,
+            text: rendered.text,
+            html: rendered.html,
             idempotencyKey: `mfa/${challenge.id}`,
           },
           { env, fetchImpl },

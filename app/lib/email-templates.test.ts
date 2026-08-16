@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  renderAuthenticationCode,
   renderHumanEmailSignature,
   renderNewsletterProductUpdate,
   renderWaitlistWelcome,
@@ -15,9 +16,27 @@ describe("MyMeridian email templates", () => {
     expect(rendered.subject).toContain("You're early");
     expect(rendered.text).toContain("how much did you actually keep?");
     expect(rendered.text).toContain("15% off the first 12 months");
-    expect(rendered.html).toContain("mymeridian-email-logo.png");
+    expect(rendered.html).toContain("favicon-globe.svg");
+    expect(rendered.html).toContain("font-family:'Satoshi'");
+    expect(rendered.html).toContain("border-radius:28px");
+    expect(rendered.html).toContain("api.fontshare.com");
     expect(rendered.html).toContain('role="presentation"');
     expect(rendered.html).not.toContain("data:image");
+  });
+
+  it("uses the same branded card shell for authentication codes", () => {
+    const rendered = renderAuthenticationCode({
+      code: "123456",
+      env: { MERIDIAN_PUBLIC_ORIGIN: "https://staging.mymeridian.io" },
+    });
+
+    expect(rendered.subject).toBe("Your MyMeridian authentication code");
+    expect(rendered.text).toContain("123456");
+    expect(rendered.html).toContain("favicon-globe.svg");
+    expect(rendered.html).toContain("font-family:'Satoshi'");
+    expect(rendered.html).toContain("border-radius:28px");
+    expect(rendered.html).toContain("border-radius:18px");
+    expect(rendered.html).toContain("123456");
   });
 
   it("requires an unsubscribe URL for a marketing update and escapes untrusted copy", () => {

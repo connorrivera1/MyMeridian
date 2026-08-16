@@ -34,8 +34,9 @@ COPY --from=build /app/node_modules /app/node_modules
 COPY --from=build /app/build        /app/build
 COPY --from=build /app/prisma       /app/prisma
 COPY --from=build /app/package.json /app/package.json
+COPY --from=build /app/server.mjs   /app/server.mjs
 
 ENV PORT=8080
 EXPOSE 8080
 USER node
-CMD ["./node_modules/.bin/react-router-serve", "./build/server/index.js"]
+CMD ["node", "server.mjs"]

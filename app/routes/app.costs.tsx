@@ -1,9 +1,11 @@
 import { PeriodStatus, CostSource } from "@prisma/client";
 import {
   Form,
+  isRouteErrorResponse,
   useActionData,
   useLoaderData,
   useNavigation,
+  useRouteError,
 } from "react-router";
 import { useEffect, useRef, useState } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
@@ -48,7 +50,15 @@ async function loadCosts(request: Request, ctx: ShopContext) {
   const { shop } = ctx;
   await requireActivePlan(ctx, request);
 
-  const [variants, variantCount, edges, snapshots, restatements, jobs] =
+  const [
+    variants,
+    variantCount,
+    missingCogsCount,
+    edges,
+    snapshots,
+    restatements,
+    jobs,
+  ] =
     await Promise.all([
       prisma.variant.findMany({
         where: { shopId: shop.id },
@@ -75,6 +85,7 @@ async function loadCosts(request: Request, ctx: ShopContext) {
         take: VARIANT_LIMIT,
       }),
       prisma.variant.count({ where: { shopId: shop.id } }),
+      prisma.variant.count({ where: { shopId: shop.id, unitCost: null } }),
       prisma.bundleComponent.findMany({
         where: { shopId: shop.id },
         select: {
@@ -129,11 +140,13 @@ async function loadCosts(request: Request, ctx: ShopContext) {
     currency: shop.currency,
     timezone: shop.timezone,
     variantCount,
+    missingCogsCount,
     variantsShown: variants.length,
     variants: variants.map((variant) => ({
       id: variant.id,
       label: label(variant),
       unitCost: variant.unitCost ? variant.unitCost.toString() : null,
+      needsCogs: variant.unitCost === null,
       costSource: variant.costSource,
       history: variant.costHistory.map((version) => ({
         id: version.id,
@@ -209,6 +222,107 @@ const BundleEdit = z.object({
   quantity: z.coerce.number().int().min(1).max(1000),
 });
 
+const BulkCostEdit = z.object({
+  variantIds: z.array(z.string().min(1)).min(1).max(VARIANT_LIMIT),
+  unitCost: z.coerce.number().positive().max(1_000_000),
+  effectiveAt: z.string().min(1),
+});
+
+const COGS_CSV_MAX_BYTES = 2_000_000;
+const COGS_CSV_MAX_ROWS = 2_000;
+
+export interface CsvCogsRow {
+  sku: string;
+  cogsUsd: number;
+  line: number;
+}
+
+/**
+ * Parse the deliberately tiny COGS import format without treating commas in a
+ * quoted SKU as separate columns. We accept only the two documented columns;
+ * silently accepting a shifted or wider file could apply a supplier price to
+ * the wrong item.
+ */
+export function parseCogsCsv(input: string): CsvCogsRow[] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let quoted = false;
+
+  for (let index = 0; index < input.length; index += 1) {
+    const character = input[index]!;
+    if (quoted) {
+      if (character === '"') {
+        if (input[index + 1] === '"') {
+          field += '"';
+          index += 1;
+        } else {
+          quoted = false;
+        }
+      } else {
+        field += character;
+      }
+      continue;
+    }
+
+    if (character === '"') {
+      if (field.length !== 0) throw new Error("CSV quotes must wrap a whole cell.");
+      quoted = true;
+    } else if (character === ",") {
+      row.push(field.trim());
+      field = "";
+    } else if (character === "\n") {
+      row.push(field.trim());
+      rows.push(row);
+      row = [];
+      field = "";
+    } else if (character !== "\r") {
+      field += character;
+    }
+  }
+  if (quoted) throw new Error("CSV has an unclosed quoted value.");
+  if (field.length > 0 || row.length > 0) {
+    row.push(field.trim());
+    rows.push(row);
+  }
+
+  const nonEmptyRows = rows.filter((entry) => entry.some((value) => value !== ""));
+  const header = nonEmptyRows.shift()?.map((value) => value.replace(/^\uFEFF/, "").toLowerCase());
+  if (!header || header.length !== 2 || header[0] !== "sku" || header[1] !== "cogs_usd") {
+    throw new Error("CSV must begin with exactly: sku,cogs_usd");
+  }
+  if (nonEmptyRows.length === 0) throw new Error("CSV does not contain any COGS rows.");
+  if (nonEmptyRows.length > COGS_CSV_MAX_ROWS) {
+    throw new Error(`CSV can contain at most ${COGS_CSV_MAX_ROWS.toLocaleString()} COGS rows.`);
+  }
+
+  const seen = new Set<string>();
+  return nonEmptyRows.map((entry, index) => {
+    const line = index + 2;
+    const [sku, rawCogs] = entry;
+    if (entry.length !== 2 || !sku || !rawCogs) {
+      throw new Error(`CSV line ${line} must include both sku and cogs_usd.`);
+    }
+    if (!/^\d+(?:\.\d{1,4})?$/.test(rawCogs)) {
+      throw new Error(`CSV line ${line} has an invalid cogs_usd value.`);
+    }
+    const cogsUsd = Number(rawCogs);
+    if (!Number.isFinite(cogsUsd) || cogsUsd <= 0 || cogsUsd > 1_000_000) {
+      throw new Error(
+        `CSV line ${line} must have a positive cogs_usd value no larger than 1,000,000.`,
+      );
+    }
+    if (seen.has(sku)) throw new Error(`CSV includes SKU ${sku} more than once.`);
+    seen.add(sku);
+    return { sku, cogsUsd, line };
+  });
+}
+
+function validEffectiveAt(value: string): Date | null {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 export async function action({ request }: ActionFunctionArgs) {
   return withShopContext(request, (ctx) => updateCosts(request, ctx));
 }
@@ -221,6 +335,112 @@ async function updateCosts(request: Request, ctx: ShopContext) {
   const intent = form.get("intent");
 
   try {
+    if (intent === "bulk-assign-missing-cogs") {
+      const parsed = BulkCostEdit.safeParse({
+        variantIds: [...new Set(form.getAll("variantIds").map(String))],
+        unitCost: form.get("unitCost"),
+        effectiveAt: form.get("effectiveAt"),
+      });
+      if (!parsed.success) {
+        return { ok: false, message: "Choose missing variants, a positive COGS value and a valid date." };
+      }
+      const effectiveAt = validEffectiveAt(parsed.data.effectiveAt);
+      if (!effectiveAt) return { ok: false, message: "That effective date isn't a real date." };
+
+      const variants = await prisma.$transaction(async (tx) => {
+        const selected = await tx.variant.findMany({
+          where: { shopId: shop.id, id: { in: parsed.data.variantIds } },
+          select: { id: true, unitCost: true },
+        });
+        if (
+          selected.length !== parsed.data.variantIds.length ||
+          selected.some((variant) => variant.unitCost !== null)
+        ) {
+          throw new Error(
+            "One or more selected variants already has COGS or is not in this store. Refresh before trying again.",
+          );
+        }
+
+        for (const variant of selected) {
+          await recordVariantCost(
+            {
+              shopId: shop.id,
+              variantId: variant.id,
+              unitCostMicros: toMicros(parsed.data.unitCost),
+              effectiveAt,
+              source: CostSource.MANUAL,
+              note: "Bulk COGS assignment",
+            },
+            tx,
+          );
+        }
+        return selected;
+      });
+      return {
+        ok: true,
+        message: `${variants.length.toLocaleString()} missing COGS ${variants.length === 1 ? "value was" : "values were"} saved. ${effectiveAt.getTime() < Date.now() ? "Use Restate History to apply this correction to prior orders." : "New orders will use this cost from the effective date."}`,
+      };
+    }
+
+    if (intent === "upload-missing-cogs") {
+      const upload = form.get("cogsFile");
+      const effectiveAt = validEffectiveAt(String(form.get("effectiveAt") ?? ""));
+      if (!(upload instanceof File) || upload.size === 0) {
+        return { ok: false, message: "Choose a CSV file to upload." };
+      }
+      if (upload.size > COGS_CSV_MAX_BYTES) {
+        return { ok: false, message: "That CSV is too large. Upload at most 2 MB at a time." };
+      }
+      if (!effectiveAt) return { ok: false, message: "That effective date isn't a real date." };
+
+      const rows = parseCogsCsv(await upload.text());
+      await prisma.$transaction(async (tx) => {
+        const variants = await tx.variant.findMany({
+          where: { shopId: shop.id, sku: { in: rows.map((row) => row.sku) } },
+          select: { id: true, sku: true, unitCost: true },
+        });
+        const bySku = new Map<string, typeof variants>();
+        for (const variant of variants) {
+          if (!variant.sku) continue;
+          const matches = bySku.get(variant.sku);
+          if (matches) matches.push(variant);
+          else bySku.set(variant.sku, [variant]);
+        }
+        const problems: string[] = [];
+        for (const row of rows) {
+          const matches = bySku.get(row.sku) ?? [];
+          if (matches.length === 0) problems.push(`SKU ${row.sku} was not found`);
+          else if (matches.length > 1) problems.push(`SKU ${row.sku} matches multiple variants`);
+          else if (matches[0]!.unitCost !== null) problems.push(`SKU ${row.sku} already has COGS`);
+        }
+        if (problems.length > 0) {
+          throw new Error(
+            `No COGS were imported. ${problems.slice(0, 3).join("; ")}${problems.length > 3 ? `; and ${problems.length - 3} more.` : "."}`,
+          );
+        }
+
+        for (const row of rows) {
+          const variant = bySku.get(row.sku)?.[0];
+          if (!variant) throw new Error(`SKU ${row.sku} disappeared before it could be updated.`);
+          await recordVariantCost(
+            {
+              shopId: shop.id,
+              variantId: variant.id,
+              unitCostMicros: toMicros(row.cogsUsd),
+              effectiveAt,
+              source: CostSource.MANUAL,
+              note: `CSV COGS import (line ${row.line})`,
+            },
+            tx,
+          );
+        }
+      });
+      return {
+        ok: true,
+        message: `${rows.length.toLocaleString()} SKU ${rows.length === 1 ? "was" : "were"} assigned COGS. ${effectiveAt.getTime() < Date.now() ? "Use Restate History to apply this correction to prior orders." : "New orders will use these costs from the effective date."}`,
+      };
+    }
+
     if (intent === "save-cost") {
       const parsed = CostEdit.safeParse({
         variantId: form.get("variantId"),
@@ -353,6 +573,23 @@ export default function Costs() {
   const busy = navigation.state !== "idle";
 
   return <CostsView data={data} result={result ?? null} busy={busy} />;
+}
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  const detail = isRouteErrorResponse(error)
+    ? error.status === 403
+      ? "You no longer have permission to edit costs for this store."
+      : error.status === 404
+        ? "This cost record is no longer available."
+        : "Costs could not be loaded right now."
+    : "Costs could not be loaded right now. Your saved COGS values have not changed.";
+  return (
+    <Card title="Costs Unavailable">
+      <p className="muted" style={{ margin: 0 }}>{detail}</p>
+      <p style={{ marginBottom: 0 }}><a className="btn sm" href="/app/costs">Try Again</a></p>
+    </Card>
+  );
 }
 
 type CostsData = Awaited<ReturnType<typeof loader>>;
@@ -640,6 +877,12 @@ export function CostsView({
   const activeJobs = data.jobs.filter(
     (job) => job.status === "QUEUED" || job.status === "RUNNING",
   );
+  // The fallback keeps the presentational component resilient to a cached
+  // loader payload from immediately before this counter was added.
+  const missingCogsVariants = data.variants.filter(
+    (variant) => variant.needsCogs ?? variant.unitCost === null,
+  );
+  const missingCogsCount = data.missingCogsCount ?? missingCogsVariants.length;
 
   return (
     <>
@@ -664,6 +907,48 @@ export function CostsView({
           Figures update when it finishes.
         </Banner>
       )}
+
+      <Card
+        title="Fix Missing COGS"
+        hint="A missing Shopify cost_per_item is never counted as $0. Select variants to assign one shared COGS value, or upload a two-column CSV with the exact header sku,cogs_usd. Existing COGS are never overwritten by this bulk fixer."
+      >
+        {missingCogsCount === 0 ? (
+          <Empty>Every Imported Variant Has A Current COGS Value.</Empty>
+        ) : (
+          <div className="stack" style={{ gap: 20 }}>
+            <p className="tiny muted" style={{ margin: 0 }}>
+              {missingCogsCount.toLocaleString()} variant{missingCogsCount === 1 ? " needs" : "s need"} COGS.
+            </p>
+            <Form method="post" className="stack">
+              <input type="hidden" name="intent" value="bulk-assign-missing-cogs" />
+              <label className="stack" style={{ gap: 4 }}>
+                <span className="tiny muted">Missing Variants</span>
+                <select className="field-input" name="variantIds" multiple required size={Math.min(8, Math.max(3, missingCogsVariants.length))}>
+                  {missingCogsVariants.map((variant) => (
+                    <option key={variant.id} value={variant.id}>{variant.label}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
+                <Field label="COGS Per Item" name="unitCost" type="number" min="0.0001" step="0.0001" required width={160} />
+                <Field label="Effective From" name="effectiveAt" type="date" defaultValue={today} required width={160} />
+                <button className="btn primary" disabled={busy}>Assign COGS</button>
+              </div>
+            </Form>
+            <Form method="post" encType="multipart/form-data" className="stack">
+              <input type="hidden" name="intent" value="upload-missing-cogs" />
+              <div className="row" style={{ gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+                <label className="stack" style={{ gap: 4, flex: "1 1 260px" }}>
+                  <span className="tiny muted">CSV File</span>
+                  <input className="field-input" type="file" name="cogsFile" accept=".csv,text/csv" required />
+                </label>
+                <Field label="Effective From" name="effectiveAt" type="date" defaultValue={today} required width={160} />
+                <button className="btn sm" disabled={busy}>Upload COGS CSV</button>
+              </div>
+            </Form>
+          </div>
+        )}
+      </Card>
 
       <Card
         title="Restate History"
@@ -733,13 +1018,11 @@ export function CostsView({
                     </td>
                     <td>
                       <Badge
-                        tone={
-                          variant.costSource === "ESTIMATED"
-                            ? "warning"
-                            : "neutral"
-                        }
+                        tone={(variant.needsCogs ?? variant.unitCost === null) ? "critical" : variant.costSource === "ESTIMATED" ? "warning" : "neutral"}
                       >
-                        {SOURCE_LABEL[variant.costSource] ?? variant.costSource}
+                        {(variant.needsCogs ?? variant.unitCost === null)
+                          ? "Needs COGS"
+                          : SOURCE_LABEL[variant.costSource] ?? variant.costSource}
                       </Badge>
                     </td>
                     <td>

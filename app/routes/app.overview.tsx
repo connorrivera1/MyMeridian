@@ -1,4 +1,9 @@
-import { Link, useLoaderData } from "react-router";
+import {
+  isRouteErrorResponse,
+  Link,
+  useLoaderData,
+  useRouteError,
+} from "react-router";
 import type { LoaderFunctionArgs } from "react-router";
 
 import {
@@ -21,6 +26,7 @@ import {
   IconProducts,
   Legend,
   Money,
+  Stat,
   Tile,
   seriesColor,
 } from "~/design/components";
@@ -46,6 +52,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     plan,
     adSpendCoverage,
     profitConfidence,
+    isDemo,
   } = dashboard;
 
   const p = analytics.period;
@@ -141,6 +148,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
   });
 
   return {
+    isDemo,
+    awaitingFirstOrder:
+      !isDemo && shop.syncStatus === "COMPLETE" && p.orderCount === 0,
     rangeLabel,
     preset,
     currency: shop.currency,
@@ -266,6 +276,24 @@ export default function Overview() {
   return <OverviewView data={data} />;
 }
 
+export function ErrorBoundary() {
+  const error = useRouteError();
+  const detail = isRouteErrorResponse(error)
+    ? error.status === 403
+      ? "You no longer have access to this store’s overview."
+      : "The overview could not be loaded right now."
+    : "The overview could not be loaded right now. No data was changed.";
+
+  return (
+    <Card title="Overview Unavailable">
+      <p className="muted" style={{ margin: 0 }}>{detail}</p>
+      <p style={{ marginBottom: 0 }}>
+        <a className="btn sm" href="/app">Try Again</a>
+      </p>
+    </Card>
+  );
+}
+
 type OverviewData = Awaited<ReturnType<typeof loader>>;
 
 export function OverviewView({ data }: { data: OverviewData }) {
@@ -282,6 +310,18 @@ export function OverviewView({ data }: { data: OverviewData }) {
 
   return (
     <>
+      {data.awaitingFirstOrder && (
+        <Card
+          title="Demo Preview While You Await Your First Order"
+          hint="These example values are illustrative only. They are not included in your store’s profit, margin or trend calculations."
+        >
+          <div className="grid cols-3">
+            <Stat small label="Example Revenue" value={<Money cents={128_000} currency={data.currency} />} />
+            <Stat small label="Example COGS" value={<Money cents={49_000} currency={data.currency} />} />
+            <Stat small label="Example Contribution" value={<Money cents={38_500} currency={data.currency} />} />
+          </div>
+        </Card>
+      )}
       {/* The opening move, straight on the sky: the merchant is greeted by
           name, and the number they came for stands under it in sunlight. */}
       <section
@@ -438,7 +478,7 @@ export function OverviewView({ data }: { data: OverviewData }) {
                     </div>
                   )}
                   <div>
-                    <dt>Suggested next step</dt>
+                  <dt>Suggested Next Step</dt>
                     <dd>{item.suggestedAction}</dd>
                   </div>
                 </dl>
@@ -633,34 +673,36 @@ export function OverviewView({ data }: { data: OverviewData }) {
       </Card>
 
       <Card title="Profit And Revenue Over Time" flush>
-        <Legend
-          items={[
-            {
-              label: `Profit ${profitBasisTitle}`,
-              color: "var(--mark-result)",
-            },
-            { label: "Net revenue", color: "var(--mark-structure)" },
-          ]}
-        />
-        <div style={{ padding: "4px 16px 14px" }}>
-          <TimeSeriesChart
-            data={seriesPoints}
-            timeZone={data.timezone}
-            zeroLine
-            series={[
+        <div className="overview-time-series">
+          <Legend
+            items={[
               {
-                key: "profit",
                 label: `Profit ${profitBasisTitle}`,
                 color: "var(--mark-result)",
-                area: true,
               },
-              {
-                key: "revenue",
-                label: "Net revenue",
-                color: "var(--mark-structure)",
-              },
+              { label: "Net Revenue", color: "var(--mark-structure)" },
             ]}
           />
+          <div className="overview-time-series-chart">
+            <TimeSeriesChart
+              data={seriesPoints}
+              timeZone={data.timezone}
+              zeroLine
+              series={[
+                {
+                  key: "profit",
+                  label: `Profit ${profitBasisTitle}`,
+                  color: "var(--mark-result)",
+                  area: true,
+                },
+                {
+                  key: "revenue",
+                  label: "Net Revenue",
+                  color: "var(--mark-structure)",
+                },
+              ]}
+            />
+          </div>
         </div>
       </Card>
 

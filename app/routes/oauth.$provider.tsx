@@ -9,6 +9,7 @@ import {
   safeReturnPath,
   startApple,
   startGoogle,
+  startMicrosoft,
 } from "~/lib/web-oauth.server";
 import { requestIsSecure, requestOriginIsSelf } from "~/lib/web-session.server";
 import { publicAppOrigin } from "~/lib/public-origin.server";
@@ -66,7 +67,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   const provider = params.provider;
-  if (provider !== "google" && provider !== "apple") {
+  if (provider !== "google" && provider !== "microsoft" && provider !== "apple") {
     throw new Response("Unknown provider", { status: 404 });
   }
   const limited = await firstDeniedRequestLimit({
@@ -88,7 +89,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const redirectUri = callbackUrl(request, provider);
 
   const start =
-    provider === "google" ? startGoogle(redirectUri) : startApple(redirectUri);
+    provider === "google"
+      ? startGoogle(redirectUri)
+      : provider === "microsoft"
+        ? startMicrosoft(redirectUri)
+        : startApple(redirectUri);
 
   /*
    * The credentials for this provider are not set. Both buttons are always

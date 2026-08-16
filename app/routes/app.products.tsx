@@ -176,7 +176,7 @@ export function ProductsView({ data }: { data: ProductsData }) {
           icon={<IconProducts />}
           label="Profitable"
           value={<AnimatedInt value={data.counts.profitable} />}
-          meta={<span>{profitBasis}</span>}
+          meta={<span>{profitBasisTitle}</span>}
         />
         <Tile
           tone="var(--viz-amber)"
@@ -186,7 +186,7 @@ export function ProductsView({ data }: { data: ProductsData }) {
           meta={
             <>
               <span>Under 10% Contribution</span>
-              {profitBasis && <span>{profitBasis}</span>}
+              <span>{profitBasisTitle}</span>
             </>
           }
         />
@@ -204,7 +204,7 @@ export function ProductsView({ data }: { data: ProductsData }) {
                 decimals={false}
               />
               <span>Over The Period</span>
-              {profitBasis && <span>{profitBasis}</span>}
+              <span>{profitBasisTitle}</span>
             </>
           }
         />

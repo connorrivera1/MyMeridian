@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { inlineScriptHashes } from "~/lib/public-document-security.server";
+
 const looksLikeShopifyRequest = vi.fn((_request: Request) => false);
 const resolveWebUser = vi.fn();
 
@@ -51,18 +53,55 @@ describe("home resource route", () => {
     expect(response.headers.get("cache-control")).toBe(
       "public, max-age=0, must-revalidate",
     );
+    expect(response.headers.get("strict-transport-security")).toBe(
+      "max-age=31536000",
+    );
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get("referrer-policy")).toBe(
+      "strict-origin-when-cross-origin",
+    );
+    expect(response.headers.get("content-security-policy")).toContain(
+      "frame-ancestors 'none'",
+    );
     const html = await response.text();
-    expect(html).toContain("MyMeridian — see what your Shopify store actually keeps");
+    expect(html).toContain(
+      "MyMeridian — see what your Shopify store actually keeps",
+    );
     expect(html).toContain("Join Waitlist");
     expect(html).not.toContain("Get Early Access");
     expect(html).toContain('action="/waitlist"');
     expect(html).not.toContain('href="/login"');
     expect(html).not.toContain('href="/signup"');
+    const policy = response.headers.get("content-security-policy") ?? "";
+    expect(policy.match(/script-src ([^;]+)/)?.[1]).not.toContain(
+      "'unsafe-inline'",
+    );
+    for (const hash of inlineScriptHashes(html)) {
+      expect(policy).toContain(hash);
+    }
 
     const second = await loader({
       request: new Request("https://mymeridian.example/"),
     } as never);
     await expect(second.text()).resolves.toContain("<!doctype html>");
+  });
+
+  it("gives concurrent visitors independent response bodies", async () => {
+    const responses = await Promise.all(
+      Array.from({ length: 32 }, () =>
+        loader({
+          request: new Request("https://mymeridian.example/"),
+        } as never),
+      ),
+    );
+
+    await expect(
+      Promise.all(responses.map((response) => response.text())),
+    ).resolves.toEqual(
+      Array.from({ length: 32 }, () =>
+        expect.stringContaining("<!doctype html>"),
+      ),
+    );
   });
 
   it("routes an embedded Shopify launch into the app before web-account lookup", async () => {

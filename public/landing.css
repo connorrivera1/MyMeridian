@@ -1202,6 +1202,14 @@ strong[data-count],
   margin-top: 32px;
 }
 
+.hero-offer {
+  max-width: 48ch;
+  margin-top: 17px;
+  color: var(--ink-3);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
 /* Hero product ---------------------------------------------------------- */
 
 .hero-stage-wrap {
@@ -1446,6 +1454,49 @@ strong[data-count],
   grid-template-columns: minmax(0, 1.34fr) minmax(300px, 0.66fr);
   gap: clamp(24px, 3vw, 44px);
   align-items: stretch;
+}
+
+/* -------------------------------------------------------------- outcomes */
+
+.outcome-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(16px, 2vw, 26px);
+}
+
+.outcome-card {
+  position: relative;
+  min-height: 248px;
+  padding: clamp(24px, 2.6vw, 34px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(155deg, color-mix(in srgb, var(--gold) 8%, transparent), transparent 42%),
+    var(--card);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset;
+}
+
+.outcome-index {
+  display: block;
+  margin-bottom: clamp(36px, 4vw, 58px);
+  color: var(--gold);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+}
+
+.outcome-card h3 {
+  max-width: 13ch;
+  font-size: clamp(20px, 1.8vw, 26px);
+  letter-spacing: -0.036em;
+  line-height: 1.14;
+}
+
+.outcome-card p {
+  margin-top: 14px;
+  color: var(--ink-2);
+  font-size: 14.5px;
+  line-height: 1.62;
 }
 
 .dotfield {
@@ -3162,6 +3213,8 @@ footer {
 
 .trust-ledger > .reveal:nth-child(2) { transition-delay: 90ms; }
 .trust-ledger > .reveal:nth-child(3) { transition-delay: 180ms; }
+.outcome-grid > .reveal:nth-child(2) { transition-delay: 90ms; }
+.outcome-grid > .reveal:nth-child(3) { transition-delay: 180ms; }
 .refusals > .reveal:nth-child(2) { transition-delay: 90ms; }
 .refusals > .reveal:nth-child(3) { transition-delay: 180ms; }
 .plans > .reveal:nth-child(2) { transition-delay: 90ms; }
@@ -3218,6 +3271,7 @@ footer {
   .header-nav a:not(.pill) { display: none; }
 
   .refusals,
+  .outcome-grid,
   .trust-ledger,
   .plans {
     grid-template-columns: minmax(0, 1fr);
@@ -3263,6 +3317,7 @@ footer {
   .hero-actions { flex-direction: column; align-items: stretch; }
   .hero-actions .pill,
   .hero-actions .ghost-btn { width: 100%; }
+  .hero-offer { text-align: center; }
 
   /* The bar keeps only its dots on a phone. */
   .window-title,

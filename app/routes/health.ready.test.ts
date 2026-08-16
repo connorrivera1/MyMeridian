@@ -8,7 +8,6 @@ describe("production readiness", () => {
     RESEND_API_KEY: "resend-test-key",
     MERIDIAN_EMAIL_FROM: "MyMeridian <security@example.com>",
     MERIDIAN_SUPPORT_EMAIL: "support@example.com",
-    MERIDIAN_LEGAL_ENTITY: "Example Analytics LLC",
     MERIDIAN_WAITLIST_UNSUBSCRIBE_KEY: "waitlist-unsubscribe-test-key",
     TWILIO_ACCOUNT_SID: `AC${"a".repeat(32)}`,
     TWILIO_API_KEY_SID: `SK${"b".repeat(32)}`,
@@ -32,6 +31,14 @@ describe("production readiness", () => {
     expect(result.missing).toContain("MERIDIAN_WAITLIST_UNSUBSCRIBE_KEY");
     expect(result.missing).toContain("MERIDIAN_CUSTOMER_ERASURE_KEY");
     expect(result.missing).toContain("MERIDIAN_OPERATOR_TOTP_SECRET");
+  });
+
+  it("requires the publisher legal identity only for the public production release", () => {
+    const result = readinessConfiguration({
+      NODE_ENV: "production",
+      MERIDIAN_REQUIRE_PUBLIC_PUBLISHER_IDENTITY: "true",
+    });
+
     expect(result.missing).toContain("MERIDIAN_LEGAL_ENTITY");
   });
 
@@ -115,6 +122,8 @@ describe("production readiness", () => {
       MERIDIAN_OPERATOR_SESSION_KEY: "x".repeat(32),
       MERIDIAN_RATE_LIMIT_KEY: Buffer.alloc(32, 1).toString("base64"),
       MERIDIAN_REQUIRE_LAUNCH_CONNECTORS: "true",
+      MERIDIAN_REQUIRE_PUBLIC_PUBLISHER_IDENTITY: "true",
+      MERIDIAN_LEGAL_ENTITY: "Example Analytics LLC",
       MERIDIAN_ADS_WORKER_DISABLED: "false",
       META_APP_ID: "meta-id",
       META_APP_SECRET: "meta-secret",

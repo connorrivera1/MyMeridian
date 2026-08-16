@@ -24,12 +24,14 @@ it("keeps the environment template complete for a production secret entry", () =
   ) as {
     requiredEnvironment: string[];
     staticEnvironment: string[];
+    launchPublisherSecrets: string[];
     launchConnectorSecrets: string[];
     webOAuthSecrets: string[];
   };
   const example = readFileSync(join(repoRoot, ".env.example"), "utf8");
   const required = [
     ...requirements.requiredEnvironment,
+    ...requirements.launchPublisherSecrets,
     ...requirements.launchConnectorSecrets,
     ...requirements.webOAuthSecrets,
   ].filter((name) => !requirements.staticEnvironment.includes(name));

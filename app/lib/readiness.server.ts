@@ -16,6 +16,7 @@ const PRODUCTION_REQUIRED = requirements.requiredEnvironment;
 // single source of truth for the exact server-side credentials that gate that
 // promise; merchant tokens remain per-connector encrypted database records.
 const LAUNCH_CONNECTOR_REQUIRED = requirements.launchConnectorSecrets;
+const LAUNCH_PUBLISHER_REQUIRED = requirements.launchPublisherSecrets;
 const WEB_OAUTH_REQUIRED = requirements.webOAuthSecrets;
 
 export function readinessConfiguration(env: NodeJS.ProcessEnv = process.env): {
@@ -26,6 +27,11 @@ export function readinessConfiguration(env: NodeJS.ProcessEnv = process.env): {
   const missing: string[] = PRODUCTION_REQUIRED.filter(
     (name) => !env[name]?.trim(),
   );
+  if (env.MERIDIAN_REQUIRE_PUBLIC_PUBLISHER_IDENTITY?.trim() === "true") {
+    missing.push(
+      ...LAUNCH_PUBLISHER_REQUIRED.filter((name) => !env[name]?.trim()),
+    );
+  }
   if (env.MERIDIAN_REQUIRE_LAUNCH_CONNECTORS?.trim() === "true") {
     missing.push(
       ...LAUNCH_CONNECTOR_REQUIRED.filter((name) => !env[name]?.trim()),

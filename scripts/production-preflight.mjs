@@ -42,6 +42,7 @@ async function validateProductionConfig() {
   const requiredFlyLines = [
     'app = "mymeridian-prod"',
     'SHOPIFY_APP_URL = "https://mymeridian.io"',
+    'MERIDIAN_REQUIRE_PUBLIC_PUBLISHER_IDENTITY = "true"',
     'MERIDIAN_REQUIRE_LAUNCH_CONNECTORS = "true"',
     'MERIDIAN_REQUIRE_WEB_OAUTH = "true"',
     'MERIDIAN_ADS_WORKER_DISABLED = "false"',
@@ -70,6 +71,7 @@ async function validateProductionConfig() {
 await validateProductionConfig();
 const requiredNames = [
   ...requirements.requiredEnvironment,
+  ...requirements.launchPublisherSecrets,
   ...requirements.launchConnectorSecrets,
   ...requirements.webOAuthSecrets,
 ];

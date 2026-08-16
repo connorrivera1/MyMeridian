@@ -14,6 +14,10 @@ primary_region = "iad"
   MERIDIAN_SUPPORT_URL = "https://mymeridian.io/support"
   MERIDIAN_EMAIL_FROM = "MyMeridian <welcome@mymeridian.io>"
   MERIDIAN_PUBLIC_ORIGIN = "https://mymeridian.io"
+  # The public legal contact must name the actual publisher. This is separate
+  # from staging so preview deployments can be verified without publishing a
+  # private legal identity there.
+  MERIDIAN_REQUIRE_PUBLIC_PUBLISHER_IDENTITY = "true"
   # Meta, Google Ads and TikTok are launch commitments. /readyz refuses to
   # report production-ready until their exact global OAuth/API credentials are
   # present; merchant authorizations are still stored separately and encrypted.

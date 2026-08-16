@@ -1466,6 +1466,8 @@ strong[data-count],
 
 .outcome-card {
   position: relative;
+  display: flex;
+  flex-direction: column;
   min-height: 248px;
   padding: clamp(24px, 2.6vw, 34px);
   border: 1px solid var(--border);
@@ -1474,12 +1476,21 @@ strong[data-count],
     linear-gradient(155deg, color-mix(in srgb, var(--gold) 8%, transparent), transparent 42%),
     var(--card);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset;
+  transition: border-color 320ms ease, transform 420ms var(--ease), box-shadow 420ms ease;
+}
+
+.outcome-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(10, 10, 10, 0.34);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 40px 80px -56px rgba(0, 0, 0, 1);
 }
 
 .outcome-index {
   display: block;
-  margin-bottom: clamp(36px, 4vw, 58px);
-  color: var(--gold);
+  margin-bottom: 18px;
+  color: var(--ink-4);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.2em;
@@ -1487,9 +1498,9 @@ strong[data-count],
 
 .outcome-card h3 {
   max-width: 13ch;
-  font-size: clamp(20px, 1.8vw, 26px);
-  letter-spacing: -0.036em;
-  line-height: 1.14;
+  font-size: clamp(18px, 1.55vw, 22px);
+  letter-spacing: -0.028em;
+  line-height: 1.24;
 }
 
 .outcome-card p {

@@ -189,7 +189,7 @@ function leanEngineOrder(order: MaterializedOrder): EngineOrder {
   };
 }
 
-type ProductRollupRow = {
+export type ProductRollupRow = {
   productId: string;
   title: string;
   imageUrl: string | null;
@@ -250,8 +250,16 @@ async function loadMaterializedProducts(
       JOIN "Order" o ON o.id = li."orderId"
       WHERE li."shopId" = ${shopId}
         AND li."productId" IS NOT NULL
-        AND o."processedAt" >= ${range.from}
-        AND o."processedAt" <= ${range.to}
+        -- processedAt is "timestamp without time zone" holding UTC wall clock.
+        -- A bound JS Date arrives as timestamptz, and comparing the two makes
+        -- Postgres render the instant in the session timezone first — so an
+        -- America/New_York session silently moves both ends of the window four
+        -- or five hours earlier and drops the tail of the range. The order-side
+        -- loader goes through Prisma's typed filters and does not shift, so the
+        -- two halves of this screen disagreed. Same idiom as the customer
+        -- rollup in recompute.server.ts.
+        AND o."processedAt" >= (${range.from}::timestamptz AT TIME ZONE 'UTC')
+        AND o."processedAt" <= (${range.to}::timestamptz AT TIME ZONE 'UTC')
         AND o."computedAt" IS NOT NULL
     ), allocated AS (
       SELECT
@@ -298,9 +306,95 @@ async function loadMaterializedProducts(
     JOIN "Product" p ON p.id = a.product_id
     GROUP BY p.id, p.title, p."imageUrl", p."productType", p.vendor
   `);
+  return productProfitsFromRollups(rows, totalOrders, totalNetRevenueCents);
+}
+
+/**
+ * The money columns of a product rollup, in exact cents.
+ *
+ * Every one of these is a fractional-dollar figure in Postgres: `grossRevenue`
+ * and `cogs` because unit prices and costs carry four decimal places, and the
+ * five allocated cost columns because they are an order-level dollar amount
+ * multiplied by a line's share of that order.
+ */
+const PRODUCT_MONEY_FIELDS = [
+  "grossRevenue",
+  "discount",
+  "netRevenue",
+  "cogs",
+  "shipping",
+  "payment",
+  "pickPack",
+  "adCost",
+  "returnShipping",
+] as const;
+
+type ProductMoneyField = (typeof PRODUCT_MONEY_FIELDS)[number];
+
+type ProductRollupCents = Record<ProductMoneyField, number>;
+
+/**
+ * Round one money column across the whole result set without inventing or
+ * losing pennies against the total the query produced.
+ *
+ * Rounding each product independently is what a per-row `Math.round` does, and
+ * it does not conserve the aggregate: an order's shipping cost split across
+ * three products arrives as three fractional cents that each round to zero, so
+ * the Products screen reports nothing where the ledger charged a cent. The
+ * error is unbounded in the number of products, and it is signed — the rows can
+ * just as easily sum to a cent more than the order ledger holds.
+ *
+ * So the column is rounded once, as a whole, using the largest-remainder
+ * method: floor every row, then hand the leftover pennies to the rows with the
+ * largest discarded fractions. `Math.floor` rather than `Math.trunc` is load
+ * bearing — allocated columns go negative on a refund-heavy window, and only
+ * flooring keeps every fraction in `[0, 1)` so that one comparison orders
+ * positive and negative rows alike.
+ */
+export function allocateRollupCents(exact: readonly number[]): number[] {
+  const values = exact.map((value) => (Number.isFinite(value) ? value : 0));
+  const floors = values.map((value) => Math.floor(value));
+  const target = Math.round(values.reduce((sum, value) => sum + value, 0));
+  let remainder = target - floors.reduce((sum, value) => sum + value, 0);
+  if (remainder <= 0 || values.length === 0) return floors;
+
+  const byFraction = values
+    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+    .sort((a, b) => b.fraction - a.fraction || a.index - b.index);
+
+  for (const { index } of byFraction) {
+    if (remainder === 0) break;
+    floors[index] = (floors[index] ?? 0) + 1;
+    remainder -= 1;
+  }
+  return floors;
+}
+
+export function productProfitsFromRollups(
+  rows: readonly ProductRollupRow[],
+  totalOrders: number,
+  totalNetRevenueCents: number,
+): ProductProfit[] {
+  const allocated = new Map<ProductMoneyField, number[]>(
+    PRODUCT_MONEY_FIELDS.map((field) => [
+      field,
+      allocateRollupCents(rows.map((row) => Number(row[field] ?? 0) * 100)),
+    ]),
+  );
+
   return rows
-    .map((row) =>
-      productProfitFromRollup(row, totalOrders, totalNetRevenueCents),
+    .map((row, index) =>
+      productProfitFromCents(
+        row,
+        Object.fromEntries(
+          PRODUCT_MONEY_FIELDS.map((field) => [
+            field,
+            allocated.get(field)?.[index] ?? 0,
+          ]),
+        ) as ProductRollupCents,
+        totalOrders,
+        totalNetRevenueCents,
+      ),
     )
     .sort((a, b) => b.contributionProfitCents - a.contributionProfitCents);
 }
@@ -310,17 +404,33 @@ export function productProfitFromRollup(
   totalOrders: number,
   totalNetRevenueCents: number,
 ): ProductProfit {
+  return productProfitFromCents(
+    row,
+    Object.fromEntries(
+      PRODUCT_MONEY_FIELDS.map((field) => [field, cents(row[field])]),
+    ) as ProductRollupCents,
+    totalOrders,
+    totalNetRevenueCents,
+  );
+}
+
+function productProfitFromCents(
+  row: ProductRollupRow,
+  amounts: ProductRollupCents,
+  totalOrders: number,
+  totalNetRevenueCents: number,
+): ProductProfit {
   const units = Number(row.units);
   const ordersContaining = Number(row.ordersContaining);
-  const grossRevenueCents = cents(row.grossRevenue);
-  const discountCents = cents(row.discount);
-  const netRevenueCents = cents(row.netRevenue);
-  const cogsCents = cents(row.cogs);
-  const allocatedShippingCents = cents(row.shipping);
-  const allocatedPaymentFeeCents = cents(row.payment);
-  const allocatedPickPackCents = cents(row.pickPack);
-  const allocatedAdCostCents = cents(row.adCost);
-  const allocatedReturnShippingCents = cents(row.returnShipping);
+  const grossRevenueCents = amounts.grossRevenue;
+  const discountCents = amounts.discount;
+  const netRevenueCents = amounts.netRevenue;
+  const cogsCents = amounts.cogs;
+  const allocatedShippingCents = amounts.shipping;
+  const allocatedPaymentFeeCents = amounts.payment;
+  const allocatedPickPackCents = amounts.pickPack;
+  const allocatedAdCostCents = amounts.adCost;
+  const allocatedReturnShippingCents = amounts.returnShipping;
   const contributionProfitCents =
     netRevenueCents -
     cogsCents -

@@ -180,8 +180,11 @@ export async function readPeriodFigures(
       WHERE l."orderId" = o.id
     ) AS u ON TRUE
     WHERE o."shopId" = ${shopId}
-      AND o."processedAt" >= ${from}
-      AND o."processedAt" < ${toExclusive}
+      -- Instants, not wall clocks: a bound Date meeting a
+      -- "timestamp without time zone" column is rendered in the session
+      -- timezone first, which slides the whole restatement window.
+      AND o."processedAt" >= (${from}::timestamptz AT TIME ZONE 'UTC')
+      AND o."processedAt" < (${toExclusive}::timestamptz AT TIME ZONE 'UTC')
     GROUP BY 1
   `;
 
@@ -291,8 +294,11 @@ function candidateLineItems(
       LIMIT 1
     ) AS c
     WHERE li."shopId" = ${shopId}
-      AND o."processedAt" >= ${from}
-      AND o."processedAt" < ${toExclusive}
+      -- Instants, not wall clocks: a bound Date meeting a
+      -- "timestamp without time zone" column is rendered in the session
+      -- timezone first, which slides the whole restatement window.
+      AND o."processedAt" >= (${from}::timestamptz AT TIME ZONE 'UTC')
+      AND o."processedAt" < (${toExclusive}::timestamptz AT TIME ZONE 'UTC')
       AND li."variantId" IS NOT NULL
       ${variantFilter}
       AND li."unitCost" IS DISTINCT FROM c."unitCost"

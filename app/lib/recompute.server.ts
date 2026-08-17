@@ -262,8 +262,9 @@ async function loadRecomputeMonthSlices(
       ) AS month_key
       FROM "Order" AS o
       WHERE o."shopId" = ${shopId}
-        AND o."processedAt" >= ${range.from}
-        AND o."processedAt" <= ${range.to}
+        -- Instants, not wall clocks: see the note on the customer rollup below.
+        AND o."processedAt" >= (${range.from}::timestamptz AT TIME ZONE 'UTC')
+        AND o."processedAt" <= (${range.to}::timestamptz AT TIME ZONE 'UTC')
 
       UNION
 
@@ -272,8 +273,11 @@ async function loadRecomputeMonthSlices(
       SELECT DISTINCT to_char(a."date", 'YYYY-MM') AS month_key
       FROM "AdSpend" AS a
       WHERE a."shopId" = ${shopId}
-        AND a."date" >= ${range.from}
-        AND a."date" <= ${range.to}
+        -- The bound value has to be reduced to its UTC calendar day before it
+        -- meets a DATE column, or Postgres promotes the DATE to local midnight
+        -- and the same session-timezone shift reappears on this side.
+        AND a."date" >= (${range.from}::timestamptz AT TIME ZONE 'UTC')::date
+        AND a."date" <= (${range.to}::timestamptz AT TIME ZONE 'UTC')::date
     )
     SELECT
       month_key AS "monthKey",

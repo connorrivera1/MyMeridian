@@ -14,7 +14,11 @@ records resolve, but provider-dashboard status and actual delivery are not
 inferred from DNS. Fly CLI is authenticated; the empty `mymeridian-prod` and
 `mymeridian-staging` app records, included ingress IPs and three active TLS
 certificates now exist. `mymeridian-staging`, its Fly Machine, Fly Managed
-Postgres and staging Upstash Redis are provisioned. Production secrets and the
+Postgres and staging Upstash Redis are provisioned. The production Basic
+cluster `mymeridian-prod-db` is also ready in `iad`, with isolated
+`meridian-app-system` and `meridian-app-tenant` Writer users. Its pooled runtime
+connections and migration-only direct connection are staged on
+`mymeridian-prod`; production Redis, the remaining secrets, a release, and the
 live MyMeridian origin remain unprovisioned. The initial Fly target remains
 shared-cpu-2x / 2 GB in `iad`.
 Controlled delivery to `welcome@mymeridian.io`, `support@mymeridian.io` and

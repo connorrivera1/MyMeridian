@@ -67,8 +67,11 @@ are blocked, while the name and access-request work can proceed in parallel.
 serverless one would silently truncate every store's first import, plus the
 locally validated `Dockerfile`, `.dockerignore`, and `fly.toml`. Docker CLI
 29.7.1 and flyctl 0.4.79 are installed; the image was built and booted locally.
-The production Fly app record exists, but no production Managed Postgres
-cluster, production-secret set, or production deploy has been verified.
+The production Fly app record exists. The ready production Managed Postgres
+cluster `mymeridian-prod-db` and its isolated runtime users exist, and the
+three database connection secrets are staged on the app. Production Redis, the
+remaining secret set, a production deploy, and production acceptance remain
+unverified.
 **`shopify app config push` does not exist**
 on CLI 4.x: after editing and validating the config, publish it with `shopify app
 deploy` (`include_config_on_deploy = true`).

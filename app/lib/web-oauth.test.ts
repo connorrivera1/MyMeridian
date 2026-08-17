@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { generateKeyPairSync } from "node:crypto";
+import { generateKeyPairSync, verify } from "node:crypto";
 
 const {
   appleIsConfigured,
@@ -53,13 +53,16 @@ function configureGoogle() {
 }
 
 function configureApple() {
-  const { privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const { privateKey, publicKey } = generateKeyPairSync("ec", {
+    namedCurve: "P-256",
+  });
   process.env.APPLE_CLIENT_ID = "app.mymeridian.web";
   process.env.APPLE_TEAM_ID = "TEAM123456";
   process.env.APPLE_KEY_ID = "KEY1234567";
   process.env.APPLE_PRIVATE_KEY = privateKey
     .export({ type: "pkcs8", format: "pem" })
     .toString();
+  return publicKey;
 }
 
 function configureMicrosoft(tenantId = "common") {
@@ -264,7 +267,7 @@ describe("Apple client secret", () => {
   });
 
   it("is an ES256 JWT with a raw 64-byte signature", () => {
-    configureApple();
+    const publicKey = configureApple();
     const now = new Date("2026-08-11T12:00:00Z");
     const jwt = mintAppleClientSecret(now)!;
 
@@ -283,10 +286,33 @@ describe("Apple client secret", () => {
      * and DER is 70-72 bytes with a 0x30 header — Apple rejects that as
      * invalid_client, which reads like a wrong key id rather than a wrong
      * encoding.
+     *
+     * Check the encoding by verifying it rather than by reading its first
+     * byte. R‖S is uniformly random, so `signature[0] !== 0x30` is true only
+     * 255 times in 256: it failed this suite on correct code. Verification is
+     * deterministic and proves more — that these exact bytes are a valid
+     * signature over this exact signing input in the form Apple parses, and
+     * are not a DER structure.
      */
     const signature = Buffer.from(rawSignature!, "base64url");
+    const signingInput = Buffer.from(`${rawHeader}.${rawPayload}`);
     expect(signature.length).toBe(64);
-    expect(signature[0]).not.toBe(0x30);
+    expect(
+      verify(
+        "sha256",
+        signingInput,
+        { key: publicKey, dsaEncoding: "ieee-p1363" },
+        signature,
+      ),
+    ).toBe(true);
+    expect(
+      verify(
+        "sha256",
+        signingInput,
+        { key: publicKey, dsaEncoding: "der" },
+        signature,
+      ),
+    ).toBe(false);
   });
 });
 

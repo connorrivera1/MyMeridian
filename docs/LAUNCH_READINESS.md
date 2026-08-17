@@ -134,19 +134,20 @@ implied by an earlier one.
   The live staging sign-in initiation correctly redirects to Microsoft; the
   production client ID and secret must still be installed directly in the
   production Fly secret store before any production release.
-- **Ad-provider configuration audit (2026-08-14):** Meta’s existing
-  MyMeridian app is in development, has no required-action notices, enforces
-  HTTPS/strict OAuth redirects, and contains the exact staging and production
-  Meta connector callbacks. Its app secret was entered directly into Fly's
-  staging secret store and remains masked. Meta’s attached business portfolio is unverified, and
-  Meta blocks its required tech-provider access verification until that
-  owner-controlled business-verification process completes. Google Cloud’s
-  MyMeridian Google Ads client has both callbacks and an enabled server-side
-  secret, but Google Ads itself remains at initial business/campaign onboarding
-  with no developer token. TikTok for Business registration is populated with
-  accurate pre-launch information but remains unsubmitted; developer terms
-  remain unaccepted. No provider publication, review, campaign, spend, terms
-  acceptance, or secret reveal was performed.
+- **Ad-provider configuration audit (2026-08-17):** Meta’s existing
+  MyMeridian app is in development with the Marketing API use case and Facebook
+  Login for Business configured. It enforces HTTPS/strict OAuth redirects and
+  contains the exact staging and production Meta connector callbacks. Its app
+  ID, app secret and Login for Business configuration ID are staged—masked—on
+  both staging and production Fly apps. Meta’s attached business portfolio is
+  unverified, so Meta blocks Tech Provider access verification and production
+  `ads_read` access until a genuine legal-identity document is accepted.
+  Google Cloud’s MyMeridian Google Ads client has both callbacks and an enabled
+  server-side secret; its client ID and secret are likewise staged on production
+  Fly. Google Ads itself remains at manager-account onboarding with no developer
+  token. A TikTok developer-account session is available, but no TikTok app ID
+  or secret is staged on production. No provider publication, review, campaign,
+  spend, terms acceptance, or secret reveal was performed.
 - **Staging crawl-control acceptance (2026-08-14):** staging release v46
   serves `robots.txt` with `Disallow: /` and an empty sitemap. Both the
   crawl-control route and the live/ready health routes retain the required

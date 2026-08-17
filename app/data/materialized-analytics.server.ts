@@ -250,8 +250,16 @@ async function loadMaterializedProducts(
       JOIN "Order" o ON o.id = li."orderId"
       WHERE li."shopId" = ${shopId}
         AND li."productId" IS NOT NULL
-        AND o."processedAt" >= ${range.from}
-        AND o."processedAt" <= ${range.to}
+        -- processedAt is "timestamp without time zone" holding UTC wall clock.
+        -- A bound JS Date arrives as timestamptz, and comparing the two makes
+        -- Postgres render the instant in the session timezone first — so an
+        -- America/New_York session silently moves both ends of the window four
+        -- or five hours earlier and drops the tail of the range. The order-side
+        -- loader goes through Prisma's typed filters and does not shift, so the
+        -- two halves of this screen disagreed. Same idiom as the customer
+        -- rollup in recompute.server.ts.
+        AND o."processedAt" >= (${range.from}::timestamptz AT TIME ZONE 'UTC')
+        AND o."processedAt" <= (${range.to}::timestamptz AT TIME ZONE 'UTC')
         AND o."computedAt" IS NOT NULL
     ), allocated AS (
       SELECT

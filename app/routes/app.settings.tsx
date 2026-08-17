@@ -1241,7 +1241,21 @@ export default function Settings() {
           {data.reporting.lastWeeklySummaryAt && (
             <p className="tiny muted">
               Last sent{" "}
-              {new Date(data.reporting.lastWeeklySummaryAt).toLocaleString()}.
+              {/*
+                Named locale and the shop's zone, like every other date on this
+                screen. A bare toLocaleString() renders on the server in the
+                container's locale and the container's zone, so this line read
+                "2026 M08 16" in a time zone the merchant does not trade in.
+              */}
+              {new Date(data.reporting.lastWeeklySummaryAt).toLocaleString(
+                "en-US",
+                {
+                  timeZone: data.timezone,
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                },
+              )}
+              .
             </p>
           )}
           {data.reporting.lastWeeklySummaryError && (

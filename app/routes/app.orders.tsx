@@ -402,7 +402,14 @@ export function ProfitBreakdownDrawer({
             <p className="profit-drawer-eyebrow">Transparent Math</p>
             <h2 id="profit-drawer-title">Order #{order.orderNumber}</h2>
             <p id="profit-drawer-description" className="profit-drawer-meta">
-              {new Date(order.processedAt).toLocaleDateString(undefined, {
+              {/*
+                Named locale, like every other date on this screen. `undefined`
+                takes the runtime default, and this drawer renders on the
+                server, where that is whatever locale the container resolves to
+                — "und" in an image with no LANG, which formats this date as
+                "2026 M08 10" rather than "Aug 10, 2026".
+              */}
+              {new Date(order.processedAt).toLocaleDateString("en-US", {
                 timeZone,
                 month: "short",
                 day: "numeric",

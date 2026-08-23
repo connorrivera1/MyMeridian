@@ -185,7 +185,7 @@ describe("listing media and the demo store it is captured from", () => {
     expect(publicCopy).not.toContain("true net profit");
   });
 
-  it("uses Fontshare-hosted Satoshi without distributing its font binary", () => {
+  it("uses Satoshi consistently across the served product surfaces", () => {
     const forbidden = [
       "app/fonts/satoshi/Satoshi-Variable.woff2",
       "public/fonts/Satoshi-Variable.woff2",
@@ -206,8 +206,11 @@ describe("listing media and the demo store it is captured from", () => {
     ]
       .map(read)
       .join("\n");
-    expect(servedSource).not.toMatch(/Satoshi-Variable|fonts\/satoshi/i);
-    expect(read("public/landing.css")).toContain("api.fontshare.com/v2/css?f[]=satoshi");
+    expect(servedSource).toMatch(/api\.fontshare\.com\/v2\/css\?f\[\]=satoshi/i);
+    expect(servedSource).not.toMatch(/Space Grotesk|Plus Jakarta|SpaceGrotesk|PlusJakarta/i);
+    const landingStyles = read("public/landing.css");
+    expect(landingStyles).toContain('--font-display: "Satoshi"');
+    expect(landingStyles).toContain('--font: "Satoshi"');
   });
 
   it("reviewer instructions unlock the shipped gates without claiming dormant features", () => {

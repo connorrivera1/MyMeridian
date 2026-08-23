@@ -43,10 +43,6 @@ export function BrandMark({
   /** Play one full rotation on mount, settling back into the logo. */
   spin?: boolean;
 }) {
-  // useId can contain characters that are awkward inside url(#…); keep the
-  // fragment strictly [A-Za-z0-9_-] so the reference always resolves.
-  const id = useId().replace(/[^a-zA-Z0-9_-]/g, "");
-
   return (
     <svg
       className={spin ? "mark spinning" : "mark"}
@@ -56,16 +52,6 @@ export function BrandMark({
       fill="none"
       aria-hidden="true"
     >
-      <defs>
-        <filter id={`glow-${id}`} x="-80%" y="-80%" width="260%" height="260%">
-          <feGaussianBlur stdDeviation="2.6" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-      </defs>
-
       {orbit && (
         <circle
           className="orbit-ring"
@@ -106,12 +92,10 @@ export function BrandMark({
           fitting for the thing the app is named after, and it keeps the brand
           element legible throughout the spin. */}
       <path
-        className="glow-arc"
         d={`M48 14 A ${LIT_REST_RX} ${GLOBE_R} 0 0 1 48 82`}
-        stroke="var(--accent)"
-        strokeWidth="2.5"
+        stroke="currentColor"
+        strokeWidth="3.2"
         strokeLinecap="round"
-        filter={`url(#glow-${id})`}
       />
     </svg>
   );

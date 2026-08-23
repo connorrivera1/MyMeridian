@@ -33,6 +33,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
 }
 
 export const links = () => [
+  { rel: "preconnect", href: "https://api.fontshare.com" },
+  { rel: "preconnect", href: "https://cdn.fontshare.com", crossOrigin: "anonymous" },
+  {
+    rel: "stylesheet",
+    href: "https://api.fontshare.com/v2/css?f[]=satoshi@300,400,500,600,700,800,900&display=swap",
+  },
   { rel: "stylesheet", href: styles },
   {
     rel: "icon",

@@ -7,15 +7,12 @@
  * Deliberately NOT the landing page's scene. These pages are read, not
  * browsed: no shader, no sky, no reveals, no hover lifts. They inherit the
  * tokens, the type and the gold accent so they belong to the same product,
- * and nothing else — a raymarched cloudscape behind a privacy policy is
+ * and nothing else - a raymarched cloudscape behind a privacy policy is
  * exactly the "too much" the landing page was just cured of.
  *
- * The font matches the landing page and app. It is served by Fontshare rather
- * than copied into this repository, so legal pages use the same Satoshi face
- * without shipping a local font binary.
+ * The document head loads the same Satoshi face used by the landing page and
+ * app, so legal documents carry the identical brand voice.
  */
-
-@import url("https://api.fontshare.com/v2/css?f[]=satoshi@300,400,500,600,700,800,900&display=swap");
 
 :root {
   color-scheme: light;

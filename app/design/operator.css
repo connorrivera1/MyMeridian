@@ -10,7 +10,7 @@
   --operator-critical: #ff7b7b;
 }
 
-body:has(.operator-shell), body:has(.operator-login-shell) { margin: 0; background: var(--operator-bg); color: var(--operator-text); font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+body:has(.operator-shell), body:has(.operator-login-shell) { margin: 0; background: var(--operator-bg); color: var(--operator-text); font-family: "Satoshi", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 .operator-shell { min-height: 100vh; background: var(--operator-bg); color: var(--operator-text); }
 .operator-header { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 14px clamp(18px, 4vw, 56px); border-bottom: 1px solid var(--operator-border); background: rgb(11 16 23 / 94%); backdrop-filter: blur(14px); }
 .operator-header nav, .operator-brand { display: flex; align-items: center; gap: 14px; }

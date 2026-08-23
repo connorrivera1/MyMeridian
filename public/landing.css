@@ -15,52 +15,8 @@
 
 /* ------------------------------------------------------------------ type */
 
-/* Satoshi is delivered directly from Fontshare under its web-font licence.
-   The binary stays off this repository; this external delivery is the only
-   licensed way for the public website to use its intended brand face. */
-
-/* Plus Jakarta remains available for places that need a resilient fallback. */
-@font-face {
-  font-family: "Plus Jakarta Sans Variable";
-  src: url("fonts/PlusJakartaSans-Variable.woff2") format("woff2-variations");
-  font-weight: 200 800;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Plus Jakarta Sans Variable";
-  src: url("fonts/PlusJakartaSans-Italic.woff2") format("woff2-variations");
-  font-weight: 200 800;
-  font-style: italic;
-  font-display: swap;
-}
-
-
-/*
- * Space Grotesk, SIL OFL 1.1 — the display face.
- *
- * The mark is drawn in compass geometry: true circles, a vertical axis, one
- * arc struck at a fixed radius. Plus Jakarta Sans setting both the headline
- * and the body meant the page had a voice but no register — nothing on it
- * was drawn the way the logo is drawn.
- *
- * Space Grotesk answers the mark: constructed rather than written, flat
- * terminals cut on the horizontal and vertical, and bowls that are close to
- * true circles. Its figures matter more than its letters here — this page is
- * mostly numbers, and its tabular set is even-coloured and unambiguous at
- * display size, which is why $207.7K can be set large without wobbling.
- *
- * Plus Jakarta Sans keeps every paragraph: it is the warmer, more readable
- * face, and the contrast between the two is the point.
- */
-@font-face {
-  font-family: "Space Grotesk Variable";
-  src: url("fonts/SpaceGrotesk-Variable.woff2") format("woff2-variations");
-  font-weight: 300 700;
-  font-style: normal;
-  font-display: swap;
-}
+/* Satoshi is the single typeface for the landing page, product and legal
+   documents. The document head loads it from Fontshare before this sheet. */
 
 /* ---------------------------------------------------------------- tokens */
 
@@ -144,14 +100,9 @@
   --radius-lg: 28px;
   --radius-sm: 12px;
 
-  /* Serif for headings; the grotesque for every figure and label. */
-  /* The MyMeridian lockup is Satoshi. Use it across the public surface so the
-     wordmark and surrounding interface are a single visual system. */
-  --font-display:
-    "Space Grotesk Variable", ui-sans-serif, -apple-system,
+  --font-display: "Satoshi", ui-sans-serif, -apple-system,
     BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font:
-    "Plus Jakarta Sans Variable", ui-sans-serif, -apple-system,
+  --font: "Satoshi", ui-sans-serif, -apple-system,
     BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-soft: cubic-bezier(0.32, 0.72, 0, 1);
@@ -264,9 +215,10 @@ a {
  * Headings are set in the wordmark's own face.
  *
  * The editorial serif came from the Wix reference and looked handsome, but it
- * shared nothing with "MyMeridian" in the top-left — so the page read as two
+ * shared nothing with "MyMeridian" in the top-left - so the page read as two
  * brands stacked. The mark is the fixed point: whatever it is set in, the
- * headings are set in too. Space Grotesk it is, and the serif comes out.
+ * headings are set in too. Satoshi carries both the wordmark and the display
+ * sizes, so the page reads as one product.
  */
 h1,
 h2,

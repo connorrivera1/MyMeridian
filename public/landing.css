@@ -18,7 +18,6 @@
 /* Satoshi is delivered directly from Fontshare under its web-font licence.
    The binary stays off this repository; this external delivery is the only
    licensed way for the public website to use its intended brand face. */
-@import url("https://api.fontshare.com/v2/css?f[]=satoshi@300,400,500,600,700,800,900&display=swap");
 
 /* Plus Jakarta remains available for places that need a resilient fallback. */
 @font-face {
@@ -148,9 +147,11 @@
   /* Serif for headings; the grotesque for every figure and label. */
   /* The MyMeridian lockup is Satoshi. Use it across the public surface so the
      wordmark and surrounding interface are a single visual system. */
-  --font-display: "Satoshi", "Space Grotesk Variable", ui-sans-serif, -apple-system,
+  --font-display:
+    "Space Grotesk Variable", ui-sans-serif, -apple-system,
     BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font: "Satoshi", "Space Grotesk Variable", ui-sans-serif, -apple-system,
+  --font:
+    "Plus Jakarta Sans Variable", ui-sans-serif, -apple-system,
     BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-soft: cubic-bezier(0.32, 0.72, 0, 1);
@@ -4075,4 +4076,61 @@ html[data-theme="dark"] .theme-icon-moon { opacity: 1; }
   .contour-field .contour-minor { display: none; }
   .contour-field .contour-axis { display: none; }
   .contour-field .contour-major { opacity: 0.12; }
+}
+
+/* ========================================================================
+ * PERFORMANCE BASELINE
+ *
+ * The public page is a reading surface. Its decorative effects must never
+ * create a separate GPU workload or make scrolling depend on a browser's blur
+ * implementation. Keep the visual hierarchy, but render it as stable layers.
+ * ===================================================================== */
+
+.ghost-btn,
+.glass,
+.hero-chip,
+.theme-handle span,
+.theme-label,
+.waitlist-form {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.hero-chip,
+.scroll-rule em::after,
+.scroll-cue i {
+  animation: none;
+}
+
+.header-progress { display: none; }
+
+.hero-product,
+.product-window {
+  will-change: auto;
+}
+
+.reveal {
+  opacity: 1;
+  transform: none;
+  transition: none;
+}
+
+.story-screen { transition: none; }
+.hero-title .line-4 em::after {
+  animation: none;
+  transform: scaleX(1);
+}
+
+@media (hover: none), (pointer: coarse) {
+  html { scroll-behavior: auto; }
+
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .contour-field {
+    display: none;
+  }
 }

@@ -17,7 +17,6 @@
 <link rel="icon" href="favicon-globe.svg?v=20260812" type="image/svg+xml" />
 <link rel="preload" as="font" type="font/woff2" href="fonts/SpaceGrotesk-Variable.woff2" crossorigin />
 <link rel="preload" as="font" type="font/woff2" href="fonts/PlusJakartaSans-Variable.woff2" crossorigin />
-<link rel="preload" as="image" href="assets/overview-hero.jpg" />
 <link rel="stylesheet" href="landing.css" />
 <script>
 /*
@@ -959,7 +958,6 @@ document.documentElement.classList.add("js");
   var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   var splash = document.getElementById("site-splash");
   var header = document.getElementById("header");
-  var progress = document.querySelector(".header-progress i");
   var root = document.documentElement;
   var revealed = document.querySelectorAll(".reveal");
   var storySteps = document.querySelectorAll(".story-step");
@@ -967,7 +965,6 @@ document.documentElement.classList.add("js");
   var storyTitle = document.getElementById("story-window-title");
   var progressLabel = document.querySelector(".progress-label");
   var progressBar = document.querySelector(".story-progress b");
-  var hero = document.getElementById("hero");
   var ticking = false;
 
   if (splash) {
@@ -1035,28 +1032,7 @@ document.documentElement.classList.add("js");
 
   function paintScroll() {
     ticking = false;
-    var y = window.scrollY;
-    header.classList.toggle("scrolled", y > 40);
-
-    if (progress) {
-      var scrollable = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
-      progress.style.transform = "scaleX(" + Math.min(1, y / scrollable).toFixed(4) + ")";
-    }
-
-    if (!reduced) {
-      var heroProgress = Math.max(0, Math.min(1, y / Math.max(1, window.innerHeight)));
-      root.style.setProperty("--hero-scroll", heroProgress.toFixed(3));
-
-      if (hero) {
-        // The dashboard starts tilted away and stands up as it is scrolled
-        // into the reader's plane. Held at 0 once upright so it never
-        // over-rotates past flat.
-        var rect = hero.getBoundingClientRect();
-        var lift = Math.max(0, Math.min(1, (window.innerHeight - rect.bottom + rect.height * 0.42) / (rect.height * 0.42)));
-        root.style.setProperty("--product-lift", lift.toFixed(3));
-      }
-
-    }
+    header.classList.toggle("scrolled", window.scrollY > 40);
   }
 
   function requestPaint() {

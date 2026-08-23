@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 
 import { formatMoney, formatPercent, type Cents } from "~/engine/money";
 import { APP_NAME } from "~/lib/brand";
@@ -128,38 +128,8 @@ export function BrandMark({
  * figure to the new one instead of restarting. Reduced motion gets the final
  * value immediately.
  */
-export function useCountUp(target: number, duration = 750): number {
-  const [display, setDisplay] = useState(target);
-  const previous = useRef<number | null>(null);
-
-  useEffect(() => {
-    const reduced =
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-    const from = previous.current ?? 0;
-    previous.current = target;
-
-    if (reduced || from === target) {
-      setDisplay(target);
-      return;
-    }
-
-    let raf = 0;
-    const startedAt = performance.now();
-
-    const tick = (now: number) => {
-      const progress = Math.min(1, (now - startedAt) / duration);
-      const eased = 1 - (1 - progress) ** 3;
-      setDisplay(Math.round(from + (target - from) * eased));
-      if (progress < 1) raf = requestAnimationFrame(tick);
-    };
-
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [target, duration]);
-
-  return display;
+export function useCountUp(target: number): number {
+  return target;
 }
 
 /** Money that counts up. Same formatting contract as <Money>. */
@@ -190,72 +160,9 @@ export function AnimatedInt({ value }: { value: number }) {
 
 /* --------------------------------------------------------------- splash */
 
-/**
- * Total sequence length; must stay in step with the CSS delays.
- *
- * The last letter of a ten-letter wordmark starts at 0.682s and takes 0.3s, so
- * the word completes at ~0.98s. 1320ms leaves the same ~334ms of finished
- * wordmark on screen that the eight-letter "Meridian" had at 1240ms — the pause
- * after the word lands is what the sequence reads as, so it is held constant
- * rather than absorbed by the rename.
- */
-const SPLASH_MS = 1320;
-const SPLASH_FADE_MS = 260;
-
-/**
- * Plays once per document load, not per client-side navigation.
- *
- * A module-level flag rather than state, so moving between dashboard pages
- * never replays it. It starts false on both server and client, which keeps the
- * first render identical on each side and avoids a hydration mismatch.
- */
-let splashPlayed = false;
-
+/** The dashboard is immediately usable; no animated overlay blocks it. */
 export function Splash() {
-  const [done, setDone] = useState(splashPlayed);
-  const [leaving, setLeaving] = useState(false);
-
-  useEffect(() => {
-    if (splashPlayed) return;
-
-    // Reduced motion still sees the mark, just briefly and without movement.
-    const reduced = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
-    const hold = reduced ? 420 : SPLASH_MS;
-
-    const toFade = window.setTimeout(() => setLeaving(true), hold);
-    const toEnd = window.setTimeout(() => {
-      splashPlayed = true;
-      setDone(true);
-    }, hold + SPLASH_FADE_MS);
-
-    return () => {
-      window.clearTimeout(toFade);
-      window.clearTimeout(toEnd);
-    };
-  }, []);
-
-  if (done) return null;
-
-  return (
-    <div
-      className={leaving ? "splash out" : "splash"}
-      role="status"
-      aria-label={APP_NAME}
-    >
-      <div className="splash-inner">
-        <div className="splash-globe">
-          <BrandMark size={112} spin />
-        </div>
-        <div className="splash-word" aria-hidden="true">
-          {APP_NAME.split("").map((letter, i) => (
-            <span key={`${letter}-${i}`}>{letter}</span>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
+  return null;
 }
 
 /* ------------------------------------------------------------- KPI tiles */

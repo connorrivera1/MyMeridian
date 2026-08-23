@@ -28,11 +28,6 @@
   }
 
   /* ------------------------------------------------------------- easing */
-
-  function easeOutExpo(t) {
-    return t >= 1 ? 1 : 1 - Math.pow(2, -10 * t);
-  }
-
   function easeOutCubic(t) {
     return 1 - Math.pow(1 - t, 3);
   }
@@ -45,8 +40,8 @@
    *
    * The point the section is making is that a losing order is invisible on a
    * sales report, so the field is drawn in two beats: every order arrives
-   * identical, and only then do the losses ignite. Reversing that order — or
-   * running both at once — throws the whole argument away, because the reader
+   * identical, and only then do the losses ignite. Reversing that order - or
+   * running both at once - throws the whole argument away, because the reader
    * never sees the state the merchant is actually living in.
    *
    * Which dots lose is fixed, not re-rolled per visit: a seeded score per cell,
@@ -70,18 +65,10 @@
     var logicalH = 0;
     var isLoss = null;
     var RECEIPT_INDEX = -1;
-    var hoverIndex = -1;
-    var readout = document.getElementById("dot-readout");
     var started = false;
-    var startedAt = 0;
     var frame = null;
 
-    // The two beats, in milliseconds from the field entering the viewport.
-    var ARRIVE = 900;   // every order lands, left to right
-    var HOLD = 260;     // a moment where they all look the same
-    var IGNITE = 820;   // the losses catch
-
-    /* mulberry32 — small, fast, and identical in every browser, which is the
+    /* mulberry32 - small, fast, and identical in every browser, which is the
        only property that matters here: the field must not change between a
        reload and a screenshot. */
     function seeded(seed) {
@@ -103,7 +90,7 @@
         var row = (i / cols) | 0;
 
         /* Two sines at incommensurable frequencies: the sum never repeats
-           across the grid, so the clumps do not tile. Weighted lightly —
+           across the grid, so the clumps do not tile. Weighted lightly -
            at any more than this the top 383 scores fall into contiguous
            bands and the field stops reading as orders and starts reading
            as a map. */
@@ -125,7 +112,7 @@
       /*
        * One of these 383 is the order opened up in the receipt beside the
        * field. Without it the two halves of the section are a chart and an
-       * unrelated invoice; with it the field has a way in — that dot is this
+       * unrelated invoice; with it the field has a way in - that dot is this
        * receipt, and there are 382 more like it.
        *
        * Deliberately not the first or last cell: it has to sit in the body
@@ -233,14 +220,14 @@
        *
        * The glow is kept deliberately tight. A generous bloom looks better in
        * isolation but each ember then covers several cells of background, and
-       * 383 of 3,071 starts reading as something nearer a third of the store —
+       * 383 of 3,071 starts reading as something nearer a third of the store -
        * which is precisely the kind of flattering distortion this section
        * exists to accuse everyone else of. The picture has to agree with the
        * 12.5% in the paragraph above it.
        */
       ctx.save();
       /* Monochrome: a losing order is the darkest mark in the field, and a
-         kept one is a light tick. No glow — on paper a glow is a smudge. */
+         kept one is a light tick. No glow - on paper a glow is a smudge. */
       ctx.shadowBlur = 0;
       ctx.fillStyle = inkAlpha(1);
       for (var k = 0; k < TOTAL; k++) {
@@ -261,7 +248,7 @@
       /*
        * The one order that is also the receipt.
        *
-       * Ringed rather than recoloured — recolouring it would make it a fourth
+       * Ringed rather than recoloured - recolouring it would make it a fourth
        * category in a field that only has two. The ring says "this one", and
        * the receipt beside it says the rest.
        */
@@ -269,10 +256,6 @@
         ringDot(RECEIPT_INDEX, inkAlpha(0.95), Math.max(1, cell * 0.14), radius * 2.1);
       }
 
-      /* Whatever the pointer is currently over. */
-      if (hoverIndex >= 0 && hoverIndex !== RECEIPT_INDEX) {
-        ringDot(hoverIndex, inkAlpha(0.55), Math.max(1, cell * 0.12), radius * 1.9);
-      }
     }
 
     function ringDot(i, colour, width, r) {
@@ -325,98 +308,17 @@
       paintFinal();
     };
 
-    function tick(now) {
-      var elapsed = now - startedAt;
-      var arrive = Math.min(1, elapsed / ARRIVE);
-      var ignite = Math.min(1, Math.max(0, (elapsed - ARRIVE - HOLD) / IGNITE));
-
-      draw(easeOutCubic(arrive), ignite);
-
-      if (ignite < 1) {
-        frame = requestAnimationFrame(tick);
-      } else {
-        frame = null;
-      }
-    }
-
     function run() {
       if (started) return;
       started = true;
-      if (reduced || document.documentElement.classList.contains("settled")) {
-        paintFinal();
-        return;
-      }
-      startedAt = performance.now();
-      frame = requestAnimationFrame(tick);
-    }
-
-    /*
-     * Pointing at the field.
-     *
-     * The readout says which order it is and which side of zero it fell on —
-     * and stops there. It would be trivial to attach a plausible dollar
-     * figure to every dot, and it would be the one thing this page cannot
-     * do: those 3,071 amounts are not computed here, so inventing them to
-     * make the interaction feel richer would be the exact move the section
-     * spends four paragraphs refusing.
-     */
-    function indexAt(clientX, clientY) {
-      var box = canvas.getBoundingClientRect();
-      var x = ((clientX - box.left) / box.width) * logicalW;
-      var y = ((clientY - box.top) / box.height) * logicalH;
-      var col = Math.floor(x / cell);
-      var row = Math.floor(y / cell);
-      if (col < 0 || col >= cols || row < 0 || row >= rows) return -1;
-      var i = row * cols + col;
-      if (i < 0 || i >= TOTAL) return -1;
-      // Only register inside the dot itself, not the whitespace around it.
-      var cx = (col + 0.5) * cell;
-      var cy = (row + 0.5) * cell;
-      var reach = Math.max(cell * 0.42, 5);
-      if ((x - cx) * (x - cx) + (y - cy) * (y - cy) > reach * reach) return -1;
-      return i;
-    }
-
-    function showReadout(i, clientX, clientY) {
-      if (!readout) return;
-      var box = canvas.getBoundingClientRect();
-      var isThis = i === RECEIPT_INDEX;
-      readout.textContent = isThis
-        ? "Illustrative order — the breakdown alongside"
-        : "Illustrative order · " +
-          (isLoss[i] ? "needs investigation" : "qualified profit");
-      readout.className = "dot-readout is-on" +
-        (isThis ? " is-this" : isLoss[i] ? " is-loss" : "");
-      readout.style.left = (clientX - box.left) + "px";
-      readout.style.top = (clientY - box.top) + "px";
-    }
-
-    function hideReadout() {
-      hoverIndex = -1;
-      if (readout) readout.className = "dot-readout";
-      if (started && !frame) paintFinal();
-    }
-
-    canvas.addEventListener("pointermove", function (e) {
-      if (!started || frame) return;
-      var i = indexAt(e.clientX, e.clientY);
-      if (i === hoverIndex) {
-        if (i >= 0) showReadout(i, e.clientX, e.clientY);
-        return;
-      }
-      hoverIndex = i;
-      if (i < 0) { hideReadout(); return; }
-      showReadout(i, e.clientX, e.clientY);
+      // Drawing 3,071 canvas marks for roughly two seconds was the largest
+      // interaction hitch on low-power devices. The finished field communicates
+      // the same result without starting a long animation as it enters view.
       paintFinal();
-    }, { passive: true });
-
-    canvas.addEventListener("pointerleave", hideReadout, { passive: true });
+    }
 
     measure();
     paintFinal();
-    // Wipe it back to empty so the arrival actually has somewhere to arrive
-    // from; a field already painted has nothing to show.
-    if (!reduced) ctx.clearRect(0, 0, logicalW, logicalH);
 
     onceVisible(canvas, run);
 
@@ -444,7 +346,7 @@
 
   /*
    * Every figure on this page is one the app computes, so the counters count
-   * to the real value and stop — no rolling odometer past it, no overshoot
+   * to the real value and stop - no rolling odometer past it, no overshoot
    * bounce. The element already contains its final text, so a reader without
    * JavaScript reads the number, not a zero.
    */
@@ -472,26 +374,10 @@
       function settle() { node.textContent = final; }
       settlers.push(settle);
 
-      if (reduced) return;
-
-      var ran = false;
-      onceVisible(node, function () {
-        if (ran || document.documentElement.classList.contains("settled")) { settle(); return; }
-        ran = true;
-
-        var DURATION = 1100;
-        var begin = performance.now();
-
-        (function step(now) {
-          var t = Math.min(1, (now - begin) / DURATION);
-          node.textContent = format(node, target * easeOutExpo(t));
-          if (t < 1) {
-            requestAnimationFrame(step);
-          } else {
-            settle();
-          }
-        })(begin);
-      });
+      // Count-up animation created a separate render loop for every visible
+      // metric. The server-rendered final number is clearer and immediately
+      // usable, so no work is scheduled as a section enters view.
+      settle();
     });
   })();
 

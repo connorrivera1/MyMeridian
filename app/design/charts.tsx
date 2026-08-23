@@ -1540,9 +1540,9 @@ export function ChartFrame({
  * field is a control: point at a mark to read the order, click it to open the
  * receipt.
  *
- * Canvas rather than 3,000 DOM nodes. The field is redrawn on hover, on
- * resize, and when the theme changes — CSS cannot recolour a bitmap, so the
- * ink is read back out of the computed style each paint.
+ * Canvas rather than 3,000 DOM nodes. The field is redrawn only when its data,
+ * focus, size, or theme changes; the hover ring is a lightweight overlay so
+ * moving the pointer never repaints thousands of marks.
  */
 export function OrderField({
   numbers,
@@ -1629,10 +1629,13 @@ export function OrderField({
 
     const focusedIndex = focused === null ? -1 : numbers.indexOf(focused);
     if (focusedIndex >= 0) ring(focusedIndex, 0.95, radius * 2.2);
-    if (hover !== null && hover !== focusedIndex) ring(hover, 0.55, radius * 1.9);
 
-    setGeometry({ cols, rows, cell });
-  }, [numbers, profits, total, focused, hover]);
+    setGeometry((previous) =>
+      previous.cols === cols && previous.rows === rows && previous.cell === cell
+        ? previous
+        : { cols, rows, cell },
+    );
+  }, [numbers, profits, total, focused]);
 
   useEffect(() => {
     draw();
@@ -1665,6 +1668,16 @@ export function OrderField({
   };
 
   const hoveredProfit = hover === null ? null : (profits[hover] ?? null);
+  const focusedIndex = focused === null ? -1 : numbers.indexOf(focused);
+  const hoverRing =
+    hover === null || hover === focusedIndex
+      ? null
+      : {
+          left: `${(((hover % geometry.cols) + 0.5) / geometry.cols) * 100}%`,
+          top: `${((Math.floor(hover / geometry.cols) + 0.5) / geometry.rows) * 100}%`,
+          size: Math.max(10, geometry.cell * 0.99),
+          borderWidth: Math.max(1, geometry.cell * 0.13),
+        };
 
   return (
     <div className="order-field">
@@ -1685,6 +1698,19 @@ export function OrderField({
             if (picked !== undefined) onPick(picked);
           }}
         />
+        {hoverRing && (
+          <span
+            className="order-field-hover-ring"
+            aria-hidden="true"
+            style={{
+              left: hoverRing.left,
+              top: hoverRing.top,
+              width: hoverRing.size,
+              height: hoverRing.size,
+              borderWidth: hoverRing.borderWidth,
+            }}
+          />
+        )}
         {hover !== null && (
           <div className="order-field-readout" aria-hidden="true">
             Order #{numbers[hover]} ·{" "}

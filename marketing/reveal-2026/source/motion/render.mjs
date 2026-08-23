@@ -27,8 +27,7 @@ const meridianRoot = resolve(projectRoot, "../..");             // repo root
 const stillsDir = join(projectRoot, "raw/stills");
 const seqDir = join(projectRoot, "raw/footage/seq");
 const fontsDir = join(meridianRoot, "public/fonts");
-const scratch = process.env.REVEAL_SCRATCH ||
-  "/private/tmp/claude-501/-Users-connorrivera-KAIRA/70cd36f7-bded-4b7d-9e16-7758b2071b68/scratchpad/frames";
+const scratch = process.env.REVEAL_SCRATCH || join(projectRoot, ".scratch/frames");
 const previewDir = join(projectRoot, "source/motion/preview");
 
 const CHROME = `${process.env.HOME}/Library/Caches/ms-playwright/chromium_headless_shell-1228/chrome-headless-shell-mac-arm64/chrome-headless-shell`;

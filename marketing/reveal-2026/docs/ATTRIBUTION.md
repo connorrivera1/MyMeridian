@@ -16,7 +16,7 @@ No faces are shown; people appear as hands/silhouettes only.
 
 ## Voiceover (v3)
 Synthetic VO generated with ByteDance Seed Audio ("Ainsley" preset) via the
-project's media workspace, at Connor's direction. Script is original
+project's media workspace, at the owner's direction. Script is original
 MyMeridian copy. Files: `raw/audio/vo/line-*.wav` (+ audition MP3).
 
 ## Music bed

@@ -118,7 +118,7 @@ describe("code comparison", () => {
 
 describe("email masking", () => {
   it("keeps the domain and hides the local part", () => {
-    expect(maskEmail("connor@gmail.com")).toBe("*****@gmail.com");
+    expect(maskEmail("owner@example.com")).toBe("*****@example.com");
     expect(maskEmail("someone@sub.example.co.uk")).toBe("*****@sub.example.co.uk");
   });
 

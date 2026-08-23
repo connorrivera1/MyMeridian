@@ -294,7 +294,7 @@ describe("listing media and the demo store it is captured from", () => {
   });
 
   it("SUBMISSION.md does not record the ad-accuracy flag as closed while it is open", () => {
-    // The specific sentence that was wrong. It is the one Connor would act on
+    // The specific sentence that was wrong. It is the one the owner would act on
     // when deciding the listing was ready to submit.
     const submission = read("SUBMISSION.md");
     expect(

@@ -66,6 +66,6 @@ primary_region = "iad"
 [[vm]]
   cpu_kind = "shared"
   # Initial measured baseline selected in DEPLOYMENT_RUNBOOK.md. Deploying it
-  # is a paid action and still requires Connor's explicit authorization.
+  # is a paid action and still requires the owner's explicit authorization.
   cpus = 2
   memory_mb = 2048

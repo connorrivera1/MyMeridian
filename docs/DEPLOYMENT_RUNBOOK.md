@@ -1,7 +1,7 @@
 # Staging and production deployment runbook
 
 This is a preparation-only runbook. Do not execute a paid, publishing or
-external-state-changing command without Connor's authorization. The current
+external-state-changing command without the owner's authorization. The current
 release status is in [`LAUNCH_READINESS.md`](LAUNCH_READINESS.md).
 
 ## Release inputs and hard stops
@@ -60,7 +60,7 @@ client id for staging. Domain cutover is governed by
 10. For production, repeat steps 1–9 using production-only accounts/values.
     Validate `shopify.app.production.toml`, but release that Shopify
     configuration only after the Fly origin, custom-domain TLS and exact OAuth
-    callback are live and Connor authorizes the action. Do not submit or publish
+    callback are live and the owner authorizes the action. Do not submit or publish
     from this procedure.
 
 ## Exact acceptance sequence
@@ -140,5 +140,5 @@ do not claim production performance until the production-equivalent run occurs.
 | Security incident | Follow `INCIDENT_RESPONSE.md`; revoke only in-scope credentials and preserve evidence | Patch through reviewed CI, rotate/re-authorize as needed, prove health/GDPR/queue recovery and record retrospective |
 
 No production rollback deletes a database, secret, app, provider account or audit
-record. Connor or the named incident commander authorizes each external
+record. the owner or the named incident commander authorizes each external
 cutover, provider change and communication.

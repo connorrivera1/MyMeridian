@@ -174,7 +174,7 @@ server.tool(
 // Everything above is entitlements at list price. This is what money actually
 // moved: gross charged, Shopify's fee, net to us, refunds included. Source is
 // the Partner API's transaction ledger — a different system from the Admin
-// API, with its own credential that only Connor's Partner account can mint.
+// API, with its own credential that only the owner's Partner account can mint.
 //
 // VERIFIED against the live Partner API on 2026-08-10 (org 5094596): the query
 // below is accepted and returns an empty edge list, which is the correct answer
@@ -236,7 +236,7 @@ const CREDS_MISSING =
   "Partner API credentials are not configured, so the cash ledger is not " +
   "reachable yet. The subscription-side tools (revenue_summary etc.) still " +
   "work — they read Meridian's own database.\n\n" +
-  "To enable: Connor creates a Partner API client at partners.shopify.com → " +
+  "To enable: the owner creates a Partner API client at partners.shopify.com → " +
   "Settings → Partner API clients (read-only scope: 'View financials'), then " +
   `adds to ${ENV_PATH}:\n` +
   "  SHOPIFY_PARTNER_ORG_ID=<the number in the partners.shopify.com URL>\n" +

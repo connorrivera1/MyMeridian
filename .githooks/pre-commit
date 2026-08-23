@@ -4,7 +4,7 @@
 #
 # This repository has no remote, so there is no CI service and no pull-request
 # review. It also has more than one writer: an agent system commits here as
-# Connor. Without this hook the only thing standing between a type error and
+# the project owner. Without this hook the only thing standing between a type error and
 # `main` is someone remembering to run `npm run typecheck` by hand.
 #
 # Deliberately typecheck + tests, not the full `npm run ci`: coverage and the

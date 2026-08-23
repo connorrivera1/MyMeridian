@@ -101,7 +101,7 @@ brand identifier" is another developer's brand and app name. Neither
 requirement or the name collision — `listing/copy.md:24-35` reasons only about
 the 30-character limit and keyword stuffing.
 
-This is a business decision for Connor, not a code fix, and it should be made
+This is a business decision for the owner, not a code fix, and it should be made
 before anything is typed into the submission form.
 
 Docs: https://shopify.dev/changelog/updated-app-store-requirements-4-1-2-use-a-unique-name-for-your-app ,
@@ -316,7 +316,7 @@ between 2026-05-01 and today. The baseline's claims here are still accurate.*
 |---|---|---|---|
 | 2026-06-02 | App review and ongoing app audits are now managed in the Partner Dashboard (App → Distribution) with requirement-level tracking and direct messaging, replacing email-based review communication | `DEPLOY_PLAN.md` §5/§6 assume the older flow | https://shopify.dev/changelog/app-quality-checks-now-managed-in-partner-dashboard |
 | 2026-07-06 | Requirement 1.3 tightened on incentivised/fake reviews; Shopify is unpublishing reviews that fail its authenticity bar | Post-launch, not submission | https://shopify.dev/changelog/updated-app-store-requirements-13-always-use-honest-and-transparent-review-practices |
-| 2026-07-09 | Partner identity verification (Stripe, government ID + liveness) is optional now and "will become mandatory in the coming weeks before sending a new collaborator request" | Needed if anyone but Connor needs collaborator access to the demo/dev store | https://shopify.dev/changelog/identity-verification-for-partners |
+| 2026-07-09 | Partner identity verification (Stripe, government ID + liveness) is optional now and "will become mandatory in the coming weeks before sending a new collaborator request" | Needed if anyone but the owner needs collaborator access to the demo/dev store | https://shopify.dev/changelog/identity-verification-for-partners |
 | 2026-06-01 | App Home as a UI extension (API 2026-07) | Explicitly **not** for public App Store apps — "the iframe model remains recommended for most apps". No action; noted so nobody chases it | https://shopify.dev/changelog/build-app-home-as-a-ui-extension |
 
 Checked and found **unchanged** in the 2026-05-01 → 2026-08-06 window: the

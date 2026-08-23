@@ -1,13 +1,13 @@
 # Shopify submission packet checklist
 
 Preparation only. Do not attest, submit, publish, create charges or alter the
-Partner Dashboard without Connor's explicit authorization. Status is governed by
+Partner Dashboard without the owner's explicit authorization. Status is governed by
 [`LAUNCH_READINESS.md`](LAUNCH_READINESS.md).
 
 ## Required packet
 
-- [x] Shopify App Store registration is paid and complete under Connor's
-  publisher account. This does not submit the app, publish a listing, or
+- [x] Shopify App Store registration is paid and complete under the publisher
+  account. This does not submit the app, publish a listing, or
   establish a production application URL.
 - [ ] Stable production HTTPS application URL is live; all URLs in deployed
   Shopify configuration use it, not a tunnel, localhost, example or Shopify
@@ -32,11 +32,11 @@ Partner Dashboard without Connor's explicit authorization. Status is governed by
   the separate Pricing details field is prepared in
   [`../listing/pricing.md`](../listing/pricing.md). Keep prices out of every
   other public-listing field and asset.
-- [ ] Public privacy policy and terms use Connor's approved individual legal
+- [ ] Public privacy policy and terms use the owner's approved individual legal
   name, `support@mymeridian.io`, and accurate statements after the mailbox is
   live. The repository does not invent or publish those private values.
 - [ ] Monitored support contact and emergency technical contact (email + phone)
-  are entered by Connor.
+  are entered by the owner.
 - [ ] Billing uses Shopify Billing API, with current Starter $49/$490, Growth
   $129/$1,290 and Scale $299/$2,990 details; production approval/decline and
   lifecycle tests are recorded.
@@ -48,7 +48,7 @@ Partner Dashboard without Connor's explicit authorization. Status is governed by
   deployed app and listing; no stale claim, unavailable connector or unapproved
   protected-data feature remains advertised.
 
-## Not ready to submit until Connor supplies
+## Not ready to submit until the owner supplies
 
 1. Final public-app configuration and any remaining identity, payment or
    business answers in the Partner Dashboard.

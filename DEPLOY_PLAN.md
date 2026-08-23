@@ -1,8 +1,8 @@
 # Meridian deploy plan
 
-Canonical checkout: `/Users/connorrivera/Meridian`, branch
+Canonical checkout: `the Meridian project workspace`, branch
 `feature/mymeridian-web-accounts`, with GitHub remote
-`connorrivera1/MyMeridian`. The implementation is pushed to draft PR #1. No
+`the project repository`. The implementation is pushed to draft PR #1. No
 production deployment or App Store submission has been made.
 
 **Ads ingestion dependency.** `MERIDIAN_REDIS_URL` enables continuous
@@ -432,7 +432,7 @@ correctly recognized as having complete history rather than falsely showing the
 
 **d. Emergency developer contact.**
 Partner Dashboard → the app → App setup. Email **and phone**, and it is a
-different field from the support contact on the listing. Needs Connor's real
+different field from the support contact on the listing. Needs the owner's real
 phone number.
 
 **e. Meridian support domain, publisher and email.**

@@ -44,7 +44,7 @@ All six listing screenshots were re-shot after the August 9–10 UI redraw on
 ## How to bring a held screenshot back
 
 1. **Clear the invented spend.** `npm run db:reset` is the documented route, but
-   Prisma refuses to run a migrate reset for an AI agent without Connor's explicit
+   Prisma refuses to run a migrate reset for an AI agent without the owner's explicit
    consent, and it drops the whole database to fix one table. The surgical
    equivalent, which is what was actually run on 2026-08-06:
    delete every `AdSpend` row, then re-run the same engine tail `prisma/seed.ts`

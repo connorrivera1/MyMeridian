@@ -7,7 +7,7 @@ is the only current release-status source; use
 current submission handoff.
 
 **Historical branch context:** this checklist was originally written against
-`feature/mymeridian-web-accounts` on `connorrivera1/MyMeridian`. It is not a
+`feature/mymeridian-web-accounts` on `the project repository`. It is not a
 live deployment record. As of 2026-08-16, staging is deployed and its
 `/healthz` and `/readyz` checks are live; see the authoritative matrix for the
 current evidence. No production MyMeridian service has been verified, no App
@@ -287,8 +287,8 @@ A prior deputy's handoff flagged that a _later_ run had hit
 `isolated_worktree_reconciliation_required` — i.e. work stranded on an
 unmerged worktree/branch again, the recurring failure mode for this project.
 Re-checked from scratch this session: `git worktree list` shows exactly two
-worktrees (`/Users/connorrivera/Meridian` on `eevee/meridian-triage`,
-`/Users/connorrivera/Meridian-wt-113` on `eevee/meridian-deputy-113`);
+worktrees (`the Meridian project workspace` on `eevee/meridian-triage`,
+`the Meridian project workspace-wt-113` on `eevee/meridian-deputy-113`);
 `git log eevee/meridian-triage..eevee/meridian-deputy-113` is empty, so
 deputy-113's work is fully merged and nothing is stranded. `git fsck
 --unreachable` turns up eight dangling commits, all `git stash` autostash
@@ -596,7 +596,7 @@ been found — `/Applications/Google Chrome.app` exits headless here without
 writing a file. Playwright's `chrome-headless-shell` is already cached under
 `~/Library/Caches/ms-playwright/` and screenshots cleanly; that is the capture
 path to reuse. The rows were cleared surgically rather than by `npm run db:reset`,
-which Prisma refuses to run for an AI agent without Connor's explicit consent:
+which Prisma refuses to run for an AI agent without the owner's explicit consent:
 delete the `AdSpend` rows, then re-run the same engine tail the seed runs
 (`recomputeShopProfitability` + `generatePricingRecommendations`) so the
 persisted per-order `adCostAttributed` and customer aggregates are rewritten from

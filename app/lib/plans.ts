@@ -81,7 +81,7 @@ export type PlanId = keyof typeof PLANS;
  * Annual billing.
  *
  * Annual is 10x monthly — two months free, about 17% — matching the convention
- * Connor settled on for RankForge. Kept as whole dollars: an annual price with
+ * the product owner settled on for RankForge. Kept as whole dollars: an annual price with
  * cents reads as calculated at the buyer, not for them.
  *
  * Each plan has a second Billing API key, `<id>-annual`. The SUFFIX is load

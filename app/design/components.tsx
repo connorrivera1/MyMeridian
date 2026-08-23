@@ -70,8 +70,8 @@ export function BrandMark({
           still exactly the logo rather than a half-finished frame. */}
       <g
         stroke="currentColor"
-        strokeWidth="2"
-        opacity="0.8"
+        strokeWidth="2.6"
+        opacity="0.86"
         strokeLinecap="round"
       >
         <circle cx="48" cy="48" r={GLOBE_R} />

@@ -807,22 +807,21 @@ export function LegalContact({
     legalEntity: string;
   };
 }) {
-  const { supportEmail, supportUrl, legalEntity } = contact;
+  const { supportEmail, supportUrl } = contact;
 
   if (!supportEmail && !supportUrl) {
     return (
       <p className="legal-gap">
         Support contact is not configured on this deployment. Set{" "}
-        <code>MERIDIAN_SUPPORT_EMAIL</code>, <code>MERIDIAN_LEGAL_ENTITY</code>{" "}
-        and optionally <code>MERIDIAN_SUPPORT_URL</code> before submitting to
-        the Shopify App Store — a reachable contact is a listing requirement.
+        <code>MERIDIAN_SUPPORT_EMAIL</code> and optionally{" "}
+        <code>MERIDIAN_SUPPORT_URL</code> before submitting to the Shopify App
+        Store - a reachable contact is a listing requirement.
       </p>
     );
   }
 
   return (
     <p>
-      {legalEntity && <>{legalEntity}. </>}
       {supportEmail && (
         <>
           Email <a href={`mailto:${supportEmail}`}>{supportEmail}</a>.{" "}

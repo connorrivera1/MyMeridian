@@ -39,6 +39,7 @@ describe("public legal routes", () => {
     expect(html).not.toContain("staging.mymeridian.io");
     expect(html).not.toContain("has not been submitted yet");
     expect(html).toContain("support@example.com");
+    expect(html).not.toContain("Example Analytics LLC");
   });
 
   it("keeps support public and describes the connectors that actually ship", () => {
@@ -50,6 +51,7 @@ describe("public legal routes", () => {
     expect(html).toContain("connected Meta, Google or TikTok source");
     expect(html).toContain("never treats an unconnected account as zero spend");
     expect(html).toContain("support@example.com");
+    expect(html).not.toContain("Example Analytics LLC");
     expect(html).not.toContain("This release has no ad-spend connector");
   });
 });

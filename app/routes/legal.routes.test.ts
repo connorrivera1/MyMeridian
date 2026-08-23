@@ -21,7 +21,7 @@ const privacy = await import("./legal.privacy");
 const support = await import("./legal.support");
 
 describe("public legal routes", () => {
-  it("keeps privacy public, names every live data boundary, and renders contact", () => {
+  it("keeps privacy public, explains key data protections, and renders contact", () => {
     expect(privacy.loader()).toEqual({ contact });
 
     const html = renderToStaticMarkup(createElement(privacy.default));
@@ -31,6 +31,9 @@ describe("public legal routes", () => {
     expect(html).toContain("read_reports");
     expect(html).toContain("does not query or persist shopper name");
     expect(html).toContain("rather than treating the missing cost as $0.00");
+    expect(html).toContain("Customer information is not used for advertising.");
+    expect(html).not.toContain("Fly Managed Postgres");
+    expect(html).not.toContain("Twilio Verify");
     expect(html).not.toContain("permission is already approved");
     expect(html.toLowerCase()).not.toContain("pre-launch");
     expect(html).not.toContain("staging.mymeridian.io");

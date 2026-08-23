@@ -203,55 +203,25 @@ export default function Privacy() {
         authorization and first successful sync complete.
       </p>
 
-      <h2>How Data Is Stored And Secured</h2>
-      <ul>
-        <li>
-          Data is held in a PostgreSQL database, isolated per store, and reached
-          only over TLS.
-        </li>
-        <li>
-          Shopify session tokens are stored server-side and are never exposed to
-          the browser.
-        </li>
-        <li>
-          Third-party connector tokens are encrypted with AES-256-GCM using a
-          key held outside the database. OAuth state is one-use, short-lived and
-          stored only as a one-way hash.
-        </li>
-        <li>
-          Every webhook Shopify sends is HMAC-verified before it is acted on; an
-          unverified request is rejected with 401 and nothing is written.
-        </li>
-        <li>
-          For crash recovery, a verified webhook is reduced to the fields its
-          processor actually uses before it is written. The projected copy is
-          cleared as soon as processing succeeds. A failed projected order copy
-          is retried and is irreversibly cleared after seven days; names,
-          addresses, phone numbers, IP addresses and payment metadata never
-          enter that queue.
-        </li>
-        <li>
-          The minimum customer id and email carried by a mandatory compliance
-          request are purpose-limited recovery state and remain only until that
-          legal action succeeds. <code>shop/redact</code> needs no customer
-          payload. Compliance work is never marked complete merely because an
-          ordinary recovery-retention deadline passed.
-        </li>
-      </ul>
+      <h2>How We Protect Data</h2>
+      <p>
+        We use safeguards designed to protect data in transit and at rest,
+        limit access to authorized people and service providers, and keep each
+        merchant&rsquo;s data separate from other stores.
+      </p>
+      <p>
+        We minimize the data used to operate and secure MyMeridian, and keep it
+        only for as long as needed to provide the service or meet legal
+        obligations.
+      </p>
 
       <h2>Who Else Sees It</h2>
       <p>
-        {APP_NAME} does not sell store data, does not share it with advertisers,
-        and does not use it to train models. The service uses Fly.io, Fly
-        Managed Postgres and Upstash for application hosting, database and
-        durable queue processing. Resend and Twilio Verify process only the
-        minimum email or phone information needed for merchant or operator
-        security communications. Information is disclosed to Shopify as needed
-        to provide the app. When a merchant chooses a connector, MyMeridian calls that
-        provider only to read the merchant-authorized account, advertising
-        report or carrier-label cost. Shopify customer emails, addresses and
-        customer records are not sent to Meta, Google, TikTok or ShipStation by
-        this connector flow.
+        {APP_NAME} does not sell store data, share it with advertisers, or use
+        it to train models. We share information only as needed to operate,
+        secure and support the service; provide the app through Shopify; or
+        enable a connection a merchant chooses. Customer information is not
+        used for advertising.
       </p>
 
       <h2>How Long It Is Kept</h2>

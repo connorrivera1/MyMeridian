@@ -251,49 +251,25 @@ document.documentElement.classList.add("js");
           providers through the connector flow.
         </p>
 
-        <h2>How Data Is Stored And Secured</h2>
-        <ul>
-          <li>
-            Data is held in a PostgreSQL database, isolated per store, and
-            reached only over TLS. The production database will use separate
-            credentials and row-level security for each environment.
-          </li>
-          <li>
-            Shopify session tokens are stored server-side and are never exposed
-            to the browser.
-          </li>
-          <li>
-            Every webhook Shopify sends is HMAC-verified before it is acted on.
-            An unverified request is rejected with <code>401</code> and nothing
-            is written.
-          </li>
-          <li>
-            Access to operational support tools is separately authenticated,
-            restricted to authorised publisher operators, and audit logged.
-            Those tools do not expose shopper personal data by default.
-          </li>
-          <li>
-            For crash recovery a verified webhook is reduced to the fields its
-            processor actually uses before being written, and that copy is
-            cleared as soon as processing succeeds. Names, addresses, phone
-            numbers, IP addresses and payment metadata never enter that queue.
-          </li>
-        </ul>
+        <h2>How We Protect Data</h2>
+        <p>
+          We use safeguards designed to protect data in transit and at rest,
+          limit access to authorized people and service providers, and keep each
+          merchant&rsquo;s data separate from other stores.
+        </p>
+        <p>
+          We minimize the data used to operate and secure MyMeridian, and keep it
+          only for as long as needed to provide the service or meet legal
+          obligations.
+        </p>
 
         <h2>Who Else Sees It</h2>
         <p>
-          MyMeridian does <strong>not</strong> sell store data, does not share it
-          with advertisers, and does not use it to train machine-learning
-          models. The service uses Fly.io for application hosting, Fly Managed
-          Postgres for the database and Upstash for managed Redis; Shopify
-          receives information required to provide the app. Resend and Twilio
-          Verify process only the email or phone information needed for merchant
-          or operator security communications. When a
-          merchant chooses to connect Meta, Google, TikTok or ShipStation,
-          MyMeridian exchanges authorization details with that provider and
-          requests only the account and cost data needed for the selected
-          integration. MyMeridian does not send Shopify customer records to
-          advertising platforms.
+          MyMeridian does <strong>not</strong> sell store data, share it with
+          advertisers, or use it to train models. We share information only as
+          needed to operate, secure and support the service; provide the app
+          through Shopify; or enable a connection a merchant chooses. Customer
+          information is not used for advertising.
         </p>
 
         <h2>Waitlist</h2>

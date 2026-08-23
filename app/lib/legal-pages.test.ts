@@ -87,13 +87,15 @@ describe("public legal pages", () => {
       "mymeridian does not query or persist shopper name, address or phone",
     );
 
-    // Provider connections are merchant-controlled, and credentials must be
-    // described without implying that Shopify customer records are shared.
+    // Provider connections are merchant-controlled without exposing internal
+    // infrastructure to merchants reading this public policy.
     expect(privacy).toContain("meta ads");
     expect(privacy).toContain("encrypted at rest");
     expect(privacy).not.toContain("currently pre-launch");
     expect(privacy).toContain("publisher&rsquo;s legal identity");
-    expect(privacy).toMatch(/fly managed\s+postgres/);
+    expect(privacy).toMatch(/customer\s+information is not used for advertising/);
+    expect(privacy).not.toMatch(/fly managed\s+postgres/);
+    expect(privacy).not.toContain("twilio verify");
   });
 
   it("states the retention period the retention worker actually enforces", () => {

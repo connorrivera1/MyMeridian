@@ -804,7 +804,6 @@ export function LegalContact({
   contact: {
     supportEmail: string;
     supportUrl: string;
-    legalEntity: string;
   };
 }) {
   const { supportEmail, supportUrl } = contact;

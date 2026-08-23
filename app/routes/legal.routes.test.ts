@@ -9,6 +9,11 @@ const contact = {
   complete: true,
 };
 
+const publicContact = {
+  supportEmail: contact.supportEmail,
+  supportUrl: contact.supportUrl,
+};
+
 vi.mock("react-router", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-router")>()),
   useLoaderData: () => ({ contact }),
@@ -22,7 +27,7 @@ const support = await import("./legal.support");
 
 describe("public legal routes", () => {
   it("keeps privacy public, explains key data protections, and renders contact", () => {
-    expect(privacy.loader()).toEqual({ contact });
+    expect(privacy.loader()).toEqual({ contact: publicContact });
 
     const html = renderToStaticMarkup(createElement(privacy.default));
 
@@ -43,7 +48,7 @@ describe("public legal routes", () => {
   });
 
   it("keeps support public and describes the connectors that actually ship", () => {
-    expect(support.loader()).toEqual({ contact });
+    expect(support.loader()).toEqual({ contact: publicContact });
 
     const html = renderToStaticMarkup(createElement(support.default));
 

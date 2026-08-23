@@ -15,7 +15,8 @@ import { contactDetails } from "~/lib/brand.server";
  * this changes with them.
  */
 export function loader() {
-  return { contact: contactDetails() };
+  const { supportEmail, supportUrl } = contactDetails();
+  return { contact: { supportEmail, supportUrl } };
 }
 
 export const meta = () => [

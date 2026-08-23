@@ -10,7 +10,8 @@ import { contactDetails } from "~/lib/brand.server";
  * `/privacy`.
  */
 export function loader() {
-  return { contact: contactDetails() };
+  const { supportEmail, supportUrl } = contactDetails();
+  return { contact: { supportEmail, supportUrl } };
 }
 
 export const meta = () => [

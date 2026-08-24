@@ -806,18 +806,7 @@ export function LegalContact({
   return (
     <p>
       {supportEmail && (
-        <>
-          Email <a href={`mailto:${supportEmail}`}>{supportEmail}</a>.{" "}
-        </>
-      )}
-      {supportUrl && (
-        <>
-          Support site:{" "}
-          <a href={supportUrl} rel="noreferrer">
-            {supportUrl}
-          </a>
-          .
-        </>
+        <a href={`mailto:${supportEmail}`}>{supportEmail}</a>
       )}
     </p>
   );

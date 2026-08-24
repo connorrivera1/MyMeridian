@@ -15,7 +15,6 @@ export const PRIVACY_UPDATED = "16 August 2026";
 export interface ContactDetails {
   supportEmail: string;
   supportUrl: string;
-  legalEntity: string;
   /** True when every field a Shopify listing requires is filled in. */
   complete: boolean;
 }

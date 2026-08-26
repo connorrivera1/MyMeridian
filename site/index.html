@@ -1105,6 +1105,7 @@ document.documentElement.classList.add("js");
   // following screen a generous lead while it is still off-screen.
   function primeStoryScreens() {
     var mobile = window.matchMedia("(max-width: 1080px)").matches;
+    var steps = document.querySelectorAll(".story-step");
     function prime(step) {
       var img = mobile ? step.querySelector(".story-mobile-image") : document.querySelector('.story-screen[data-screen="' + step.getAttribute("data-screen") + '"]');
       if (!img) return;
@@ -1112,8 +1113,8 @@ document.documentElement.classList.add("js");
       img.decoding = "async";
       img.setAttribute("fetchpriority", "low");
     }
-    if (!storySteps.length) return;
-    prime(storySteps[0]);
+    if (!steps.length) return;
+    prime(steps[0]);
     if (!("IntersectionObserver" in window)) return;
     var preloadObserver = new IntersectionObserver(function (entries) {
       entries.forEach(function (entry) {
@@ -1122,7 +1123,7 @@ document.documentElement.classList.add("js");
         preloadObserver.unobserve(entry.target);
       });
     }, { rootMargin: "1800px 0px" });
-    storySteps.forEach(function (step) { preloadObserver.observe(step); });
+    steps.forEach(function (step) { preloadObserver.observe(step); });
   }
 
   sync();

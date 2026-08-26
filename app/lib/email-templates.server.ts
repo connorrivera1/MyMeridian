@@ -70,6 +70,15 @@ function paragraphs(lines: string[]): string {
     .join("");
 }
 
+function waitlistParagraphs(lines: string[]): string {
+  return lines
+    .map(
+      (line) =>
+        `<p style="margin:0 0 12px;color:rgba(245,245,245,0.72);font-family:${EMAIL_FONT};font-size:14px;font-weight:440;line-height:1.75;">${escapeHtml(line)}</p>`,
+    )
+    .join("");
+}
+
 function emailShell(input: {
   eyebrow: string;
   title: string;
@@ -124,6 +133,61 @@ function emailShell(input: {
 </html>`;
 }
 
+/**
+ * The waitlist message is the public product's first one-to-one touchpoint.
+ * Its shell deliberately mirrors the Support and Terms reading cards: the
+ * same near-black ground, translucent contour field, 28px radius and quiet
+ * white rule. It remains table/inline based so the visual treatment survives
+ * the mail clients this transactional message is sent through.
+ */
+function waitlistEmailShell(input: {
+  bodyHtml: string;
+  footerHtml: string;
+  preheader: string;
+  title: string;
+  env?: NodeJS.ProcessEnv;
+}): string {
+  const origin = publicOrigin(input.env);
+  const brandMark = `${origin}/email-card-brand-mark.svg`;
+  const contours = `${origin}/email-card-contours.svg`;
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="x-apple-disable-message-reformatting" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="supported-color-schemes" content="dark" />
+    <title>${escapeHtml(input.title)}</title>
+    <style>
+      @import url("https://api.fontshare.com/v2/css?f[]=satoshi@300,400,500,600,700,800,900&display=swap");
+      :root { color-scheme: dark; supported-color-schemes: dark; }
+    </style>
+  </head>
+  <body bgcolor="#0a0a0a" style="margin:0;padding:0;background:#0a0a0a!important;color:#f5f5f5!important;">
+    <span style="display:none!important;color:transparent;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">${escapeHtml(input.preheader)}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</span>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#0a0a0a" style="background:#0a0a0a;margin:0;padding:0;table-layout:fixed;width:100%;">
+      <tr><td align="center" style="padding:44px 16px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#0a0a0a" style="background:#0a0a0a url('${escapeHtml(contours)}') no-repeat right top;background-size:100% 100%;border:1px solid rgba(245,245,245,0.16);border-radius:28px;max-width:600px;overflow:hidden;table-layout:fixed;width:100%;">
+          <tr><td style="padding:52px 42px 18px;">
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>
+              <td style="padding:0 10px 0 0;"><img src="${escapeHtml(brandMark)}" width="30" height="30" alt="" style="border:0;display:block;height:30px;width:30px;outline:none;text-decoration:none;" /></td>
+              <td style="color:#f5f5f5;font-family:${EMAIL_FONT};font-size:14px;font-weight:500;letter-spacing:0.01em;line-height:30px;">MyMeridian</td>
+            </tr></table>
+          </td></tr>
+          <tr><td style="padding:16px 42px 8px;">
+            <h1 style="color:#f5f5f5;font-family:${EMAIL_FONT};font-size:30px;font-weight:350;letter-spacing:-0.022em;line-height:1.1;margin:0 0 23px;">${escapeHtml(input.title)}</h1>
+          </td></tr>
+          <tr><td style="padding:0 42px 20px;">${input.bodyHtml}</td></tr>
+          <tr><td style="padding:30px 42px 52px;border-top:1px solid rgba(245,245,245,0.16);">${input.footerHtml}</td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>`;
+}
+
 export function renderWaitlistWelcome(
   env: NodeJS.ProcessEnv = process.env,
 ): RenderedEmail {
@@ -145,30 +209,31 @@ export function renderWaitlistWelcome(
     "",
     "As a Founding Merchant, your server-side eligibility is reserved for 15% off the first 12 months of a monthly Meridian plan when the offer is activated at launch. Annual pricing is not automatically combined with this benefit.",
     "",
-    "MyMeridian",
-    "Know what you kept. Know what to fix.",
+    "From all of us at MyMeridian, thank you for your support. We look forward to giving you the service and support you need to keep your business up to date.",
+    "",
+    "- MyMeridian Team",
   ].join("\n");
 
   return {
     subject,
     text,
-    html: emailShell({
-      eyebrow: "Founding Merchant",
+    html: waitlistEmailShell({
       title: "You're Early.",
       preheader: "Your MyMeridian early-access place is reserved.",
       bodyHtml: [
         ...[
           "Thanks for joining the MyMeridian waitlist.",
           "We're building Meridian to answer a question every Shopify business should be able to answer:",
-        ].map((line) => paragraphs([line])),
-        `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#171717;border:1px solid #303030;border-radius:18px;margin:4px 0 22px;"><tr><td style="border-left:2px solid #f5f5f5;padding:19px 20px;"><p style="color:#f5f5f5;font-family:${EMAIL_FONT};font-size:20px;font-weight:600;letter-spacing:-0.5px;line-height:1.38;margin:0;">You know what you sold. But how much did you actually keep?</p></td></tr></table>`,
-        paragraphs([
+        ].map((line) => waitlistParagraphs([line])),
+        `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#171717" style="background:#171717;border:1px solid #303030;border-radius:18px;margin:4px 0 22px;"><tr><td bgcolor="#171717" style="border-left:2px solid #f5f5f5;padding:19px 20px;"><p style="color:#f5f5f5;font-family:${EMAIL_FONT};font-size:20px;font-weight:600;letter-spacing:-0.5px;line-height:1.38;margin:0;">You know what you sold. But how much did you actually keep?</p></td></tr></table>`,
+        waitlistParagraphs([
           "Meridian brings together your orders, product costs, shipping, fulfillment, payment fees, advertising and overhead to show where your money actually goes, then helps surface the orders, products, channels and operational problems that deserve attention.",
           "We're getting ready for launch now.",
           "You'll be among the first to know when early access opens.",
         ]),
-        `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#171717;border:1px solid #303030;border-radius:18px;margin:8px 0 13px;"><tr><td style="padding:20px 21px;"><p style="color:#8c8c8c;font-family:${EMAIL_FONT};font-size:11px;font-weight:600;letter-spacing:1.55px;line-height:15px;margin:0 0 8px;text-transform:uppercase;">Your Founding Merchant benefit</p><p style="color:#f5f5f5;font-family:${EMAIL_FONT};font-size:16px;font-weight:600;line-height:1.5;margin:0;">15% off your first 12 months on a monthly Meridian plan.</p><p style="color:#a7a7a7;font-family:${EMAIL_FONT};font-size:13px;font-weight:400;line-height:1.6;margin:8px 0 0;">Eligibility is held securely on our side and activated at launch. It is not automatically combined with annual pricing.</p></td></tr></table>`,
+        `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#171717" style="background:#171717;border:1px solid #303030;border-radius:18px;margin:8px 0 13px;"><tr><td bgcolor="#171717" style="padding:20px 21px;"><p style="color:#8c8c8c;font-family:${EMAIL_FONT};font-size:11px;font-weight:600;letter-spacing:1.55px;line-height:15px;margin:0 0 8px;text-transform:uppercase;">Your Founding Merchant benefit</p><p style="color:#f5f5f5;font-family:${EMAIL_FONT};font-size:16px;font-weight:600;line-height:1.5;margin:0;">15% off your first 12 months on a monthly Meridian plan.</p><p style="color:#a7a7a7;font-family:${EMAIL_FONT};font-size:13px;font-weight:400;line-height:1.6;margin:8px 0 0;">Eligibility is held securely on our side and activated at launch. It is not automatically combined with annual pricing.</p></td></tr></table>`,
       ].join(""),
+      footerHtml: `<p style="margin:0 0 20px;color:rgba(245,245,245,0.72);font-family:${EMAIL_FONT};font-size:14px;font-weight:440;line-height:1.75;">From all of us at MyMeridian, thank you for your support. We look forward to giving you the service and support you need to keep your business up to date.</p><p style="margin:0;color:#f5f5f5;font-family:${EMAIL_FONT};font-size:14px;font-weight:500;line-height:1.75;">- MyMeridian Team</p>`,
       env,
     }),
   };

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 1000" fill="none" preserveAspectRatio="none">
+  <g transform="translate(1590 500)" stroke="#f5f5f5">
+    <circle r="740" stroke-width="1.1" opacity=".13"/>
+    <ellipse rx="533" ry="740" stroke-width="1.1" opacity=".13"/>
+    <ellipse rx="294" ry="740" stroke-width="1" opacity=".07"/>
+    <path d="M0-740V740" stroke-width=".9" opacity=".055"/>
+  </g>
+</svg>

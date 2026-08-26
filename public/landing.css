@@ -527,8 +527,11 @@ strong[data-count],
   pointer-events: none;
 }
 
-/* ---------------------------------------------------------------- splash */
+/* --------------------------------------------------------------- splash */
 
+/* The public opening mark runs on every document refresh. It is deliberately
+   absent without JavaScript, so an embedded browser that refuses scripts is
+   never trapped behind an overlay. */
 .site-splash {
   display: none;
 }
@@ -540,45 +543,26 @@ strong[data-count],
   display: grid;
   place-items: center;
   overflow: hidden;
-  /*
-   * Follows the theme. This was hard-coded white, so in dark mode the splash
-   * painted a white panel and then drew the wordmark in the dark theme's ink —
-   * which is also white. The mark showed (its own stroke colour) and the word
-   * did not, which reads as the wordmark animation being broken rather than
-   * invisible.
-   */
+  isolation: isolate;
+  contain: layout paint style;
+  pointer-events: none;
   background: var(--ground);
+  color: var(--ink);
 }
 
-.js .site-splash::before,
-.js .site-splash::after {
+.site-splash::before {
   content: "";
   position: absolute;
-  border-radius: 50%;
-  pointer-events: none;
-}
-
-.js .site-splash::before {
-  width: min(80vw, 900px);
+  width: min(80vw, 820px);
   aspect-ratio: 1;
-  border: 1px solid rgba(10, 10, 10, 0.14);
-  box-shadow: inset 0 0 100px rgba(10, 10, 10, 0.06);
-  animation: splash-orbit 9s linear infinite;
-}
-
-.js .site-splash::after {
-  width: min(48vw, 540px);
-  height: 180px;
-  background: rgba(10, 10, 10, 0.13);
-  filter: blur(80px);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  box-shadow: inset 0 0 76px var(--surface-soft);
 }
 
 .site-splash.out {
-  animation: splash-out 260ms ease-in forwards;
-}
-
-.site-splash.done {
-  display: none;
+  animation: site-splash-out 260ms ease-in forwards;
+  will-change: opacity;
 }
 
 .site-splash-inner {
@@ -590,60 +574,63 @@ strong[data-count],
   padding: 24px;
 }
 
-.site-splash-globe {
-  color: var(--ink);
-  animation: globe-in 320ms var(--ease) both;
-}
-
-.site-splash-globe svg {
+.site-splash-mark {
   display: block;
   width: clamp(68px, 8vw, 112px);
   height: auto;
+  color: var(--ink);
+  animation: site-splash-mark-in 320ms var(--ease) both;
+}
+
+.site-splash-meridian-a {
+  animation: globe-sweep-a 720ms linear both;
+}
+
+.site-splash-meridian-b {
+  animation: globe-sweep-b 720ms linear both;
+}
+
+.site-splash-meridian-c {
+  animation: globe-sweep-c 720ms linear both;
 }
 
 .site-splash-word {
   display: flex;
-  overflow: hidden;
+  color: var(--ink);
   font-size: clamp(32px, 5vw, 66px);
-  font-weight: 560;
-  letter-spacing: -0.05em;
+  font-weight: 500;
+  letter-spacing: -0.048em;
+  line-height: 1;
 }
 
 .site-splash-word span {
+  display: inline-block;
   opacity: 0;
-  animation: letter-in 420ms var(--ease) forwards;
+  animation: site-splash-letter-in 300ms var(--ease) both;
 }
 
-.site-splash-word span:nth-child(1) { animation-delay: 210ms; }
-.site-splash-word span:nth-child(2) { animation-delay: 238ms; }
-.site-splash-word span:nth-child(3) { animation-delay: 266ms; }
-.site-splash-word span:nth-child(4) { animation-delay: 294ms; }
-.site-splash-word span:nth-child(5) { animation-delay: 322ms; }
-.site-splash-word span:nth-child(6) { animation-delay: 350ms; }
-.site-splash-word span:nth-child(7) { animation-delay: 378ms; }
-.site-splash-word span:nth-child(8) { animation-delay: 406ms; }
-.site-splash-word span:nth-child(9) { animation-delay: 434ms; }
-.site-splash-word span:nth-child(10) { animation-delay: 462ms; }
+.site-splash-word span:nth-child(1) { animation-delay: 0.32s; }
+.site-splash-word span:nth-child(2) { animation-delay: 0.358s; }
+.site-splash-word span:nth-child(3) { animation-delay: 0.396s; }
+.site-splash-word span:nth-child(4) { animation-delay: 0.434s; }
+.site-splash-word span:nth-child(5) { animation-delay: 0.472s; }
+.site-splash-word span:nth-child(6) { animation-delay: 0.51s; }
+.site-splash-word span:nth-child(7) { animation-delay: 0.548s; }
+.site-splash-word span:nth-child(8) { animation-delay: 0.586s; }
+.site-splash-word span:nth-child(9) { animation-delay: 0.624s; }
+.site-splash-word span:nth-child(10) { animation-delay: 0.662s; }
 
-.mark.spinning .meridian-a { animation: globe-sweep-a 720ms linear both; }
-.mark.spinning .meridian-b { animation: globe-sweep-b 720ms linear both; }
-.mark.spinning .meridian-c { animation: globe-sweep-c 720ms linear both; }
-
-@keyframes globe-in {
+@keyframes site-splash-mark-in {
   from { opacity: 0; transform: scale(0.82); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes site-splash-letter-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.94); }
   to { opacity: 1; transform: none; }
 }
 
-@keyframes letter-in {
-  from { opacity: 0; transform: translateY(14px); filter: blur(6px); }
-  to { opacity: 1; transform: none; filter: blur(0); }
-}
-
-@keyframes splash-orbit {
-  to { transform: rotate(360deg); }
-}
-
-@keyframes splash-out {
+@keyframes site-splash-out {
   to { opacity: 0; visibility: hidden; }
 }
 

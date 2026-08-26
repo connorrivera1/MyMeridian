@@ -139,20 +139,40 @@ document.documentElement.classList.add("js");
   <rect width="100%" height="100%" filter="url(#grain-filter)" />
 </svg>
 
-<div class="site-splash" id="site-splash" role="status" aria-label="MyMeridian">
+<div
+  class="site-splash"
+  id="site-splash"
+  role="status"
+  aria-label="MyMeridian"
+>
   <div class="site-splash-inner">
-    <div class="site-splash-globe">
-      <svg class="mark spinning" width="112" height="112" viewBox="0 0 96 96" fill="none" aria-hidden="true">
-        <g stroke="currentColor" stroke-width="2.6" opacity="0.86" stroke-linecap="round">
-          <circle cx="48" cy="48" r="34" />
-          <ellipse class="meridian-a" cx="48" cy="48" rx="24.5" ry="34" />
-          <ellipse class="meridian-b" cx="48" cy="48" rx="13.5" ry="34" />
-          <ellipse class="meridian-c" cx="48" cy="48" rx="0" ry="34" />
-          <path d="M48 14v68" />
-        </g>
-        <path d="M48 14 A 15 34 0 0 1 48 82" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" />
-      </svg>
-    </div>
+    <svg
+      class="site-splash-mark"
+      width="112"
+      height="112"
+      viewBox="0 0 96 96"
+      fill="none"
+      aria-hidden="true"
+    >
+      <g
+        stroke="currentColor"
+        stroke-width="2.6"
+        opacity="0.86"
+        stroke-linecap="round"
+      >
+        <circle cx="48" cy="48" r="34" />
+        <ellipse class="site-splash-meridian-a" cx="48" cy="48" rx="24.5" ry="34" />
+        <ellipse class="site-splash-meridian-b" cx="48" cy="48" rx="13.5" ry="34" />
+        <ellipse class="site-splash-meridian-c" cx="48" cy="48" rx="0" ry="34" />
+        <path d="M48 14v68" />
+      </g>
+      <path
+        d="M48 14 A 15 34 0 0 1 48 82"
+        stroke="currentColor"
+        stroke-width="3.2"
+        stroke-linecap="round"
+      />
+    </svg>
     <div class="site-splash-word" aria-hidden="true">
       <span>M</span><span>y</span><span>M</span><span>e</span><span>r</span><span>i</span><span>d</span><span>i</span><span>a</span><span>n</span>
     </div>
@@ -963,35 +983,14 @@ document.documentElement.classList.add("js");
   var ticking = false;
 
   if (splash) {
-    /*
-     * The app's opening beat, shortened for a page a stranger is deciding
-     * whether to read. Returning within the session skips it entirely.
-     *
-     * The hold cannot go below the wordmark's own timing. The last letter
-     * starts at 462ms and takes 420ms, so it finishes at 882ms — at the old
-     * 820ms hold the fade began before the word had finished assembling and
-     * nobody ever saw the name, only the globe. 1210ms is the shortest hold
-     * that leaves the finished wordmark on screen long enough to read, and
-     * still lands well inside the app's own 1320ms.
-     *
-     * Both numbers moved when the name gained two letters: they push the word's
-     * completion 56ms later, and the hold has to follow or the old bug comes
-     * straight back.
-     */
-    var seen = false;
-    try { seen = window.sessionStorage.getItem("meridian-splash") === "1"; } catch (e) {}
-    if (seen || reduced) {
-      splash.parentNode.removeChild(splash);
-      splash = null;
-      root.classList.add("splash-done");
-    } else {
-      try { window.sessionStorage.setItem("meridian-splash", "1"); } catch (e) {}
-      window.setTimeout(function () { splash.classList.add("out"); }, 1210);
-      window.setTimeout(function () {
-        splash.classList.add("done");
-        root.classList.add("splash-done");
-      }, 1470);
-    }
+    var splashHold = reduced ? 420 : 1220;
+
+    window.setTimeout(function () {
+      splash.classList.add("out");
+    }, splashHold);
+    window.setTimeout(function () {
+      if (splash.parentNode) splash.parentNode.removeChild(splash);
+    }, splashHold + 260);
   }
 
   function activateStory(step) {

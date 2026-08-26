@@ -1004,25 +1004,17 @@ document.documentElement.classList.add("js");
     if (progressBar) progressBar.style.transform = "scaleY(" + (Number(index) / storySteps.length) + ")";
   }
 
-  if ("IntersectionObserver" in window) {
-    var revealObserver = new IntersectionObserver(function (entries) {
-      entries.forEach(function (entry) {
-        if (entry.isIntersecting) {
-          entry.target.classList.add("in");
-          revealObserver.unobserve(entry.target);
-        }
-      });
-    }, { threshold: 0.1, rootMargin: "0px 0px -6% 0px" });
-    revealed.forEach(function (element) { revealObserver.observe(element); });
+  // Content must be present as soon as the document paints. Hiding it until
+  // an observer fires leaves a black gap on slower mobile GPUs.
+  revealed.forEach(function (element) { element.classList.add("in"); });
 
+  if ("IntersectionObserver" in window) {
     var storyObserver = new IntersectionObserver(function (entries) {
       entries.forEach(function (entry) {
         if (entry.isIntersecting) activateStory(entry.target);
       });
     }, { threshold: 0.5, rootMargin: "-18% 0px -18% 0px" });
     storySteps.forEach(function (step) { storyObserver.observe(step); });
-  } else {
-    revealed.forEach(function (element) { element.classList.add("in"); });
   }
 
   function paintScroll() {
@@ -1106,8 +1098,22 @@ document.documentElement.classList.add("js");
     }
   }
 
+  // The screenshots are product proof, not decorative lazy content. Prime the
+  // selected theme before the reader can scroll into the story. Desktop and
+  // mobile copies share a URL, so this is four cached images, not eight.
+  function primeStoryScreens() {
+    var shots = document.querySelectorAll(".story-screen, .story-mobile-image");
+    for (var i = 0; i < shots.length; i++) {
+      var img = shots[i];
+      img.loading = "eager";
+      img.decoding = "async";
+      img.setAttribute("fetchpriority", "low");
+    }
+  }
+
   sync();
   swapShots();
+  primeStoryScreens();
 })();
 </script>
 

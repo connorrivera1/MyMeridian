@@ -158,9 +158,8 @@ const SPLASH_FADE_MS = 260;
  * client-side navigation; a browser refresh creates a new module and plays it
  * again.
  *
- * CSS starts the visual sequence at first paint.  The deadline is measured
- * from the navigation clock instead of from hydration, so a slow bundle cannot
- * leave the splash parked over an already-finished animation.
+ * The deadline starts when the splash mounts.  That keeps the full sequence
+ * visible even when a slow connection delays hydration after the first paint.
  */
 export function Splash() {
   const [leaving, setLeaving] = useState(false);
@@ -169,12 +168,11 @@ export function Splash() {
   useEffect(() => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const hold = reduced ? 420 : SPLASH_MS;
-    const elapsed = Math.max(0, performance.now());
-    const fadeIn = Math.max(0, hold - elapsed);
-    const removeIn = Math.max(0, hold + SPLASH_FADE_MS - elapsed);
-
-    const fadeTimer = window.setTimeout(() => setLeaving(true), fadeIn);
-    const removeTimer = window.setTimeout(() => setDone(true), removeIn);
+    const fadeTimer = window.setTimeout(() => setLeaving(true), hold);
+    const removeTimer = window.setTimeout(
+      () => setDone(true),
+      hold + SPLASH_FADE_MS,
+    );
 
     return () => {
       window.clearTimeout(fadeTimer);

@@ -550,16 +550,6 @@ strong[data-count],
   color: var(--ink);
 }
 
-.site-splash::before {
-  content: "";
-  position: absolute;
-  width: min(80vw, 820px);
-  aspect-ratio: 1;
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  box-shadow: inset 0 0 76px var(--surface-soft);
-}
-
 .site-splash.out {
   animation: site-splash-out 260ms ease-in forwards;
   will-change: opacity;

@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 
 import { formatMoney, formatPercent, type Cents } from "~/engine/money";
 import { APP_NAME } from "~/lib/brand";
@@ -144,9 +144,64 @@ export function AnimatedInt({ value }: { value: number }) {
 
 /* --------------------------------------------------------------- splash */
 
-/** The dashboard is immediately usable; no animated overlay blocks it. */
+/**
+ * The visible sequence is 1.32 seconds, followed by a short fade.  Keeping
+ * these values beside the component makes the removal deadline explicit and
+ * independent of React's hydration timing.
+ */
+const SPLASH_MS = 1320;
+const SPLASH_FADE_MS = 260;
+
+/**
+ * Show the brand sequence on each document load.  The app layout persists
+ * while navigating inside the dashboard, so it does not replay during normal
+ * client-side navigation; a browser refresh creates a new module and plays it
+ * again.
+ *
+ * CSS starts the visual sequence at first paint.  The deadline is measured
+ * from the navigation clock instead of from hydration, so a slow bundle cannot
+ * leave the splash parked over an already-finished animation.
+ */
 export function Splash() {
-  return null;
+  const [leaving, setLeaving] = useState(false);
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const hold = reduced ? 420 : SPLASH_MS;
+    const elapsed = Math.max(0, performance.now());
+    const fadeIn = Math.max(0, hold - elapsed);
+    const removeIn = Math.max(0, hold + SPLASH_FADE_MS - elapsed);
+
+    const fadeTimer = window.setTimeout(() => setLeaving(true), fadeIn);
+    const removeTimer = window.setTimeout(() => setDone(true), removeIn);
+
+    return () => {
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(removeTimer);
+    };
+  }, []);
+
+  if (done) return null;
+
+  return (
+    <div
+      className={leaving ? "splash out" : "splash"}
+      role="status"
+      aria-label={APP_NAME}
+    >
+      <div className="splash-inner">
+        <div className="splash-globe">
+          <BrandMark size={112} spin />
+        </div>
+        <div className="splash-word" aria-hidden="true">
+          {APP_NAME.split("").map((letter, i) => (
+            <span key={`${letter}-${i}`}>{letter}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /* ------------------------------------------------------------- KPI tiles */

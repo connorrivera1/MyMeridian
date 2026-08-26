@@ -529,10 +529,10 @@ document.documentElement.classList.add("js");
               the right-hand column too, and on three of these four screens
               that column is the money.
             -->
-            <img data-dark="assets/orders-dark.jpg" class="story-screen is-active" data-screen="orders" style="--fy:100%; --zoom:1.78" src="assets/orders.jpg" alt="MyMeridian profit per order view: a table of orders with revenue, COGS, shipping, fees and a dash in the Ads column" width="1800" height="1126" loading="lazy" />
-            <img data-dark="assets/products-dark.jpg" class="story-screen" data-screen="products" style="--fy:100%; --zoom:1.15" src="assets/products.jpg" alt="MyMeridian product profit view, with two products showing negative profit before paid marketing" width="1800" height="1126" loading="lazy" />
-            <img data-dark="assets/pricing-dark.jpg" class="story-screen" data-screen="pricing" style="--fy:100%; --zoom:1.16" src="assets/pricing.jpg" alt="MyMeridian pricing recommendations with suggested prices, and one product marked as needing a price test" width="1800" height="1126" loading="lazy" />
-            <img data-dark="assets/fulfilment-dark.jpg" class="story-screen" data-screen="fulfilment" style="--fy:70%; --zoom:1.18" src="assets/fulfilment.jpg" alt="MyMeridian fulfilment view showing backlog exceeding the shipping promise and 14 days over capacity" width="1800" height="1126" loading="lazy" />
+            <img data-dark="assets/orders-dark.jpg" data-dark-srcset="assets/orders-dark-mobile.jpg 1200w, assets/orders-dark.jpg 3600w" class="story-screen is-active" data-screen="orders" style="--fy:100%; --zoom:1.78" src="assets/orders.jpg" srcset="assets/orders-mobile.jpg 1200w, assets/orders.jpg 3600w" sizes="(max-width: 1080px) 100vw, 66vw" alt="MyMeridian profit per order view: a table of orders with revenue, COGS, shipping, fees and a dash in the Ads column" width="1800" height="1126" loading="lazy" />
+            <img data-dark="assets/products-dark.jpg" data-dark-srcset="assets/products-dark-mobile.jpg 1200w, assets/products-dark.jpg 3600w" class="story-screen" data-screen="products" style="--fy:100%; --zoom:1.15" src="assets/products.jpg" srcset="assets/products-mobile.jpg 1200w, assets/products.jpg 3600w" sizes="(max-width: 1080px) 100vw, 66vw" alt="MyMeridian product profit view, with two products showing negative profit before paid marketing" width="1800" height="1126" loading="lazy" />
+            <img data-dark="assets/pricing-dark.jpg" data-dark-srcset="assets/pricing-dark-mobile.jpg 1200w, assets/pricing-dark.jpg 3600w" class="story-screen" data-screen="pricing" style="--fy:100%; --zoom:1.16" src="assets/pricing.jpg" srcset="assets/pricing-mobile.jpg 1200w, assets/pricing.jpg 3600w" sizes="(max-width: 1080px) 100vw, 66vw" alt="MyMeridian pricing recommendations with suggested prices, and one product marked as needing a price test" width="1800" height="1126" loading="lazy" />
+            <img data-dark="assets/fulfilment-dark.jpg" data-dark-srcset="assets/fulfilment-dark-mobile.jpg 1200w, assets/fulfilment-dark.jpg 3600w" class="story-screen" data-screen="fulfilment" style="--fy:70%; --zoom:1.18" src="assets/fulfilment.jpg" srcset="assets/fulfilment-mobile.jpg 1200w, assets/fulfilment.jpg 3600w" sizes="(max-width: 1080px) 100vw, 66vw" alt="MyMeridian fulfilment view showing backlog exceeding the shipping promise and 14 days over capacity" width="1800" height="1126" loading="lazy" />
           </div>
         </div>
         <div class="story-progress" aria-hidden="true">
@@ -544,7 +544,7 @@ document.documentElement.classList.add("js");
 
       <div class="story-steps">
         <article class="story-step is-active reveal" data-screen="orders" data-index="01" data-title="Profit Per Order">
-          <img data-dark="assets/orders-dark.jpg" class="story-mobile-image" style="--fy:100%" src="assets/orders.jpg" alt="MyMeridian profit per order view" width="1800" height="1126" loading="lazy" />
+          <img data-dark="assets/orders-dark.jpg" data-dark-srcset="assets/orders-dark-mobile.jpg 1200w, assets/orders-dark.jpg 3600w" class="story-mobile-image" style="--fy:100%" src="assets/orders.jpg" srcset="assets/orders-mobile.jpg 1200w, assets/orders.jpg 3600w" sizes="100vw" alt="MyMeridian profit per order view" width="1800" height="1126" loading="lazy" />
           <span class="chapter">01 · Orders</span>
           <h3>See exactly where every order’s money went.</h3>
           <p>
@@ -555,7 +555,7 @@ document.documentElement.classList.add("js");
         </article>
 
         <article class="story-step reveal" data-screen="products" data-index="02" data-title="Products">
-          <img data-dark="assets/products-dark.jpg" class="story-mobile-image" style="--fy:100%" src="assets/products.jpg" alt="MyMeridian product contribution view" width="1800" height="1126" loading="lazy" />
+          <img data-dark="assets/products-dark.jpg" data-dark-srcset="assets/products-dark-mobile.jpg 1200w, assets/products-dark.jpg 3600w" class="story-mobile-image" style="--fy:100%" src="assets/products.jpg" srcset="assets/products-mobile.jpg 1200w, assets/products.jpg 3600w" sizes="100vw" alt="MyMeridian product contribution view" width="1800" height="1126" loading="lazy" />
           <span class="chapter">02 · Products</span>
           <h3>Find the products draining margin.</h3>
           <p>
@@ -566,7 +566,7 @@ document.documentElement.classList.add("js");
         </article>
 
         <article class="story-step reveal" data-screen="pricing" data-index="03" data-title="Pricing">
-          <img data-dark="assets/pricing-dark.jpg" class="story-mobile-image" style="--fy:100%" src="assets/pricing.jpg" alt="MyMeridian pricing recommendations view" width="1800" height="1126" loading="lazy" />
+          <img data-dark="assets/pricing-dark.jpg" data-dark-srcset="assets/pricing-dark-mobile.jpg 1200w, assets/pricing-dark.jpg 3600w" class="story-mobile-image" style="--fy:100%" src="assets/pricing.jpg" srcset="assets/pricing-mobile.jpg 1200w, assets/pricing.jpg 3600w" sizes="100vw" alt="MyMeridian pricing recommendations view" width="1800" height="1126" loading="lazy" />
           <span class="chapter">03 · Pricing</span>
           <h3>Find pricing opportunities supported by your sales history.</h3>
           <p>
@@ -577,7 +577,7 @@ document.documentElement.classList.add("js");
         </article>
 
         <article class="story-step reveal" data-screen="fulfilment" data-index="04" data-title="Fulfilment Capacity">
-          <img data-dark="assets/fulfilment-dark.jpg" class="story-mobile-image" style="--fy:70%" src="assets/fulfilment.jpg" alt="MyMeridian fulfilment capacity view" width="1800" height="1126" loading="lazy" />
+          <img data-dark="assets/fulfilment-dark.jpg" data-dark-srcset="assets/fulfilment-dark-mobile.jpg 1200w, assets/fulfilment-dark.jpg 3600w" class="story-mobile-image" style="--fy:70%" src="assets/fulfilment.jpg" srcset="assets/fulfilment-mobile.jpg 1200w, assets/fulfilment.jpg 3600w" sizes="100vw" alt="MyMeridian fulfilment capacity view" width="1800" height="1126" loading="lazy" />
           <span class="chapter">04 · Fulfilment</span>
           <h3>See fulfilment pressure before customers feel it.</h3>
           <p>
@@ -1094,21 +1094,35 @@ document.documentElement.classList.add("js");
     for (var i = 0; i < shots.length; i++) {
       var img = shots[i];
       if (!img.dataset.light) img.dataset.light = img.getAttribute("src");
+      if (!img.dataset.lightSrcset) img.dataset.lightSrcset = img.getAttribute("srcset") || "";
       img.setAttribute("src", dark ? img.dataset.dark : img.dataset.light);
+      img.setAttribute("srcset", dark ? img.dataset.darkSrcset : img.dataset.lightSrcset);
     }
   }
 
-  // The screenshots are product proof, not decorative lazy content. Prime the
-  // selected theme before the reader can scroll into the story. Desktop and
-  // mobile copies share a URL, so this is four cached images, not eight.
+  // A 3600px capture is desktop source material, not a phone decode. Load
+  // only the current viewport's first screen at startup, then give each
+  // following screen a generous lead while it is still off-screen.
   function primeStoryScreens() {
-    var shots = document.querySelectorAll(".story-screen, .story-mobile-image");
-    for (var i = 0; i < shots.length; i++) {
-      var img = shots[i];
+    var mobile = window.matchMedia("(max-width: 1080px)").matches;
+    function prime(step) {
+      var img = mobile ? step.querySelector(".story-mobile-image") : document.querySelector('.story-screen[data-screen="' + step.getAttribute("data-screen") + '"]');
+      if (!img) return;
       img.loading = "eager";
       img.decoding = "async";
       img.setAttribute("fetchpriority", "low");
     }
+    if (!storySteps.length) return;
+    prime(storySteps[0]);
+    if (!("IntersectionObserver" in window)) return;
+    var preloadObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        prime(entry.target);
+        preloadObserver.unobserve(entry.target);
+      });
+    }, { rootMargin: "1800px 0px" });
+    storySteps.forEach(function (step) { preloadObserver.observe(step); });
   }
 
   sync();
